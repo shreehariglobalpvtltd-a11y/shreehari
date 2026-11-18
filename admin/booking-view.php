@@ -2910,6 +2910,35 @@ $ticket = $b['ticket'] ?? null;
 </div>
 <?php endif; ?>
 
+<?php
+/* 19 Nov 2026 (u5 / u4 blueprint): the desk's "पैसा कहिले? · When will they pay" note on a cash sale
+   (bookings.cash_note JSON {when, amount?, date?, note?}). A note only — it never confirms a payment.
+   Shown only where the column exists (database/upgrade-2026-11-19-u4-desk.sql); empty parts are left out. */
+$bvCashNote = null;
+try {
+    if (class_exists('CounterDesk') && CounterDesk::hasColumn('bookings', 'cash_note')) {
+        $bvRaw = array_key_exists('cash_note', $b) ? $b['cash_note']
+            : Database::scalar('SELECT cash_note FROM bookings WHERE id = :i', ['i' => (int) $b['id']], null);
+        $bvCashNote = is_string($bvRaw) && trim($bvRaw) !== '' ? json_decode($bvRaw, true) : null;
+    }
+} catch (Throwable $e) {
+    $bvCashNote = null;
+}
+if (is_array($bvCashNote) && $bvCashNote !== []):
+    $bvWhen = ['full' => 'पूरा तिरेको · Paid in full', 'partial' => 'आंशिक तिरेको · Part paid', 'later' => 'पछि तिर्ने · Pays later'][(string) ($bvCashNote['when'] ?? '')] ?? '';
+    $bvBits = [];
+    if ($bvWhen !== '') { $bvBits[] = $bvWhen; }
+    if (isset($bvCashNote['amount']) && is_numeric($bvCashNote['amount']) && (float) $bvCashNote['amount'] > 0) { $bvBits[] = 'रकम · ' . inr((float) $bvCashNote['amount']); }
+    if (!empty($bvCashNote['date']) && is_string($bvCashNote['date'])) { $bvBits[] = 'मिति · ' . $bvCashNote['date']; }
+    if (!empty($bvCashNote['note']) && is_scalar($bvCashNote['note'])) { $bvBits[] = 'नोट · ' . (string) $bvCashNote['note']; }
+    if ($bvBits !== []): ?>
+<div class="panel" style="border-left:4px solid #d68910">
+  <h2>💵 पैसा कहिले? · Cash note</h2>
+  <p style="margin:0"><?= implode(' &nbsp;·&nbsp; ', array_map(static fn(string $x): string => Security::e($x), $bvBits)) ?></p>
+  <p class="muted" style="font-size:12px;margin:6px 0 0">Written by the desk at the sale — a note only; the payment is still confirmed by a person.</p>
+</div>
+<?php endif; endif; ?>
+
 <?php if ((Auth::can('payments.verify') || Auth::can('payments.reject')) && in_array($b['status'], ['pending', 'confirmed', 'rejected'], true)): ?>
 <div class="panel">
   <h2>Payment review</h2>

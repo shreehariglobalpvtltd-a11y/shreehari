@@ -53,10 +53,18 @@ final class CustomerProfile
         return $ok;
     }
 
-    /** The code was right: remember it for this session and save the address typed with it. */
-    public static function markVerified(int $userId, string $address = '', array $extra = []): void
+    /**
+     * The code was right: remember it for this session and save the address typed with it.
+     * 19 Nov 2026 (u7, LG-2): every PROVEN door passes here (WhatsApp code / hi, e-mail code,
+     * passkey) — and only those — so this is also where the phone is remembered (remember()).
+     * $via names the door for the remembered row ('otp', 'whatsapp', 'email', 'passkey').
+     */
+    public static function markVerified(int $userId, string $address = '', array $extra = [], string $via = 'otp'): void
     {
         $_SESSION[self::SESSION_KEY] = $userId;
+        if ($userId > 0) {
+            self::remember($userId, $via);
+        }
         if (!self::ready() || $userId <= 0) {
             return;
         }
@@ -292,6 +300,287 @@ final class CustomerProfile
     private static function dir(): string
     {
         return rtrim(TICKET_PATH, '/\\') . '/profiles';
+    }
+
+    /* =================================================================
+     *  19 Nov 2026 (u7, LG-1 / LG-2): STAY SIGNED IN ON THIS PHONE.
+     *
+     *  A passenger who PROVED the number (markVerified: WhatsApp code / hi,
+     *  e-mail code, passkey — never the name + mobile "quick" door) stays
+     *  signed in and verified on that phone for customer_remember_days
+     *  (default 365, 0 = off). Same rules as the staff token
+     *  (AdminSessions::remember): 32 random bytes in cookie shg_crm
+     *  (HttpOnly, Secure on https, SameSite=Lax, path /), only the SHA-256 in
+     *  customer_sessions, bound to the shg_dev device cookie, rotated on every
+     *  use (the previous hash honoured for PREV_GRACE seconds), ended by
+     *  "Sign out" on that phone, by a blocked account, or when another
+     *  passenger signs in on it. Inert until the u7 migration has run.
+     * ================================================================= */
+
+    public const REMEMBER_COOKIE = 'shg_crm';
+    public const PREV_GRACE      = 120;
+
+    /** Test hook: the plain token the last remember() / resume() handed to the browser. */
+    public static ?string $lastRememberToken = null;
+
+    private static ?bool $rmReady = null;
+
+    public static function rememberReady(): bool
+    {
+        if (self::$rmReady === null) {
+            try {
+                self::$rmReady = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_sessions'",
+                    [], 0) > 0;
+            } catch (Throwable $e) {
+                self::$rmReady = false;
+            }
+        }
+        return self::$rmReady;
+    }
+
+    public static function rememberDays(): int
+    {
+        try {
+            return max(0, min(730, Settings::getInt('customer_remember_days', 365)));
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    private static function deviceHashNoMint(): string
+    {
+        $raw = (string) ($_COOKIE[LoginLog::DEVICE_COOKIE] ?? '');
+        return preg_match('/^[a-f0-9]{64}$/', $raw) === 1 ? hash('sha256', $raw) : '';
+    }
+
+    private static function setCookie(string $token, int $until): void
+    {
+        $_COOKIE[self::REMEMBER_COOKIE] = $token;
+        if (PHP_SAPI === 'cli' || headers_sent()) {
+            return;
+        }
+        setcookie(self::REMEMBER_COOKIE, $token, [
+            'expires' => $until, 'path' => '/', 'secure' => Security::isHttps(), 'httponly' => true, 'samesite' => 'Lax',
+        ]);
+    }
+
+    private static function dropCookie(): void
+    {
+        $had = isset($_COOKIE[self::REMEMBER_COOKIE]);
+        unset($_COOKIE[self::REMEMBER_COOKIE]);
+        if (!$had || PHP_SAPI === 'cli' || headers_sent()) {
+            return;
+        }
+        setcookie(self::REMEMBER_COOKIE, '', ['expires' => time() - 3600, 'path' => '/', 'secure' => Security::isHttps(), 'httponly' => true, 'samesite' => 'Lax']);
+    }
+
+    /** The row this browser's cookie names (current or just-rotated token), or null. */
+    private static function cookieRow(): ?array
+    {
+        $raw = (string) ($_COOKIE[self::REMEMBER_COOKIE] ?? '');
+        if (preg_match('/^[a-f0-9]{64}$/', $raw) !== 1 || !self::rememberReady()) {
+            return null;
+        }
+        $h = hash('sha256', $raw);
+        try {
+            return Database::fetch('SELECT * FROM customer_sessions WHERE token_hash = :h OR prev_hash = :p ORDER BY id DESC LIMIT 1',
+                ['h' => $h, 'p' => $h]);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * A proven door just signed this passenger in: remember this phone. One live row per
+     * phone: an older token of this browser is ended first. Never blocks a sign-in.
+     *
+     * @return int the Unix time it stays remembered until (0 = not remembered)
+     */
+    public static function remember(int $userId, string $via = 'otp'): int
+    {
+        self::$lastRememberToken = null;
+        $days = self::rememberDays();
+        $dev  = self::deviceHashNoMint();
+        if ($dev === '' && $userId > 0 && $days > 0 && PHP_SAPI !== 'cli') {
+            $dev = LoginLog::deviceHash();   // a first visit: mint the device cookie now (headers permitting)
+        }
+        if ($userId <= 0 || $days <= 0 || $dev === '' || !self::rememberReady()) {
+            return 0;
+        }
+        try {
+            self::forget('replaced by a new sign-in');
+            $token = bin2hex(random_bytes(32));
+            $until = time() + $days * 86400;
+            $now   = date('Y-m-d H:i:s');
+            Database::insert('customer_sessions', [
+                'user_id' => $userId, 'token_hash' => hash('sha256', $token), 'device_hash' => $dev,
+                'label' => mb_substr(LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 120),
+                'via' => mb_substr(preg_replace('/[^a-z_]/', '', strtolower($via)) ?? '', 0, 20),
+                'created_at' => $now, 'last_seen' => $now, 'rotated_at' => $now,
+                'expires_at' => date('Y-m-d H:i:s', $until),
+            ]);
+            self::setCookie($token, $until);
+            self::$lastRememberToken = $token;
+            if (isset($_SESSION[USER_SESSION_KEY]) && (int) ($_SESSION[USER_SESSION_KEY]['id'] ?? 0) === $userId) {
+                $_SESSION[USER_SESSION_KEY]['rm'] = $until;
+            }
+            if (random_int(1, 50) === 1) {
+                self::prune();   // 19 Nov 2026 (u7 review): housekeeping, about once every 50 sign-ins
+            }
+            return $until;
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 19 Nov 2026 (u7 review): housekeeping — drop rows ended or expired long ago (never a live
+     * one). Runs now and then from remember(); safe to call from a daily cron too.
+     * Retention: customer_sessions_keep_days (default 90, min 7).
+     */
+    public static function prune(?int $days = null): int
+    {
+        if (!self::rememberReady()) {
+            return 0;
+        }
+        try {
+            $keep = max(7, $days ?? Settings::getInt('customer_sessions_keep_days', 90));
+            $cut  = date('Y-m-d H:i:s', time() - $keep * 86400);
+            return Database::delete('customer_sessions',
+                '(ended_at IS NOT NULL AND ended_at < :c1) OR (expires_at < :c2)', ['c1' => $cut, 'c2' => $cut]);
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Before anything else, on a request with no passenger (and no staff) session: does
+     * this phone carry a remember token that still opens its passenger? On success the
+     * session is open AND verified again, and the token rotated. Every refusal ends the
+     * row and expires the cookie.
+     */
+    public static function resume(): bool
+    {
+        self::$lastRememberToken = null;
+        $raw = (string) ($_COOKIE[self::REMEMBER_COOKIE] ?? '');
+        if ($raw === '') {
+            return false;
+        }
+        if (preg_match('/^[a-f0-9]{64}$/', $raw) !== 1 || !self::rememberReady()) {
+            self::dropCookie();
+            return false;
+        }
+        $h = hash('sha256', $raw);
+        try {
+            $row = Database::fetch('SELECT * FROM customer_sessions WHERE token_hash = :h LIMIT 1', ['h' => $h]);
+            $grace = false;
+            if ($row === null) {
+                $row = Database::fetch('SELECT * FROM customer_sessions WHERE prev_hash = :h LIMIT 1', ['h' => $h]);
+                $grace = $row !== null && strtotime((string) ($row['rotated_at'] ?? '')) >= time() - self::PREV_GRACE;
+                if ($row !== null && !$grace) {
+                    self::endRow((int) $row['id'], 'old token reused after rotation');
+                    self::dropCookie();
+                    return false;
+                }
+            }
+        } catch (Throwable $e) {
+            return false;
+        }
+        if ($row === null) {
+            self::dropCookie();
+            return false;
+        }
+        $user = Database::fetch('SELECT * FROM users WHERE id = :id LIMIT 1', ['id' => (int) $row['user_id']]);
+        $dev  = self::deviceHashNoMint();
+        $why = match (true) {
+            !empty($row['ended_at'])                                                => 'ended',
+            strtotime((string) $row['expires_at']) <= time()                        => 'expired',
+            self::rememberDays() <= 0                                               => 'switched off',
+            $dev === '' || !hash_equals((string) ($row['device_hash'] ?? ''), $dev) => 'another device',
+            $user === null                                                          => 'account deleted',
+            (int) ($user['is_blocked'] ?? 0) === 1                                  => 'account blocked',
+            default                                                                 => '',
+        };
+        if ($why !== '') {
+            self::endRow((int) $row['id'], 'not resumed: ' . $why);
+            self::dropCookie();
+            return false;
+        }
+        try {
+            $now = date('Y-m-d H:i:s');
+            if ($grace) {
+                $until = (int) strtotime((string) $row['expires_at']);
+                Database::update('customer_sessions', ['last_seen' => $now], 'id = :id', ['id' => (int) $row['id']]);
+            } else {
+                $token = bin2hex(random_bytes(32));
+                $until = time() + self::rememberDays() * 86400;
+                $n = Database::update('customer_sessions', [
+                    'token_hash' => hash('sha256', $token), 'prev_hash' => $h, 'rotated_at' => $now,
+                    'last_seen' => $now, 'expires_at' => date('Y-m-d H:i:s', $until),
+                ], 'id = :id AND token_hash = :old AND ended_at IS NULL', ['id' => (int) $row['id'], 'old' => $h]);
+                if ($n < 1) {
+                    /* a parallel request (the app fires several at start) rotated it between our read and
+                       this write: this one is then a sibling too — open, and let that one's cookie stand */
+                    $sib = Database::fetch('SELECT expires_at FROM customer_sessions WHERE id = :id AND ended_at IS NULL
+                                              AND prev_hash = :h AND rotated_at >= :since',
+                        ['id' => (int) $row['id'], 'h' => $h, 'since' => date('Y-m-d H:i:s', time() - self::PREV_GRACE)]);
+                    if ($sib === null) {
+                        return false;
+                    }
+                    $until = (int) strtotime((string) $sib['expires_at']);
+                } else {
+                    self::setCookie($token, $until);
+                    self::$lastRememberToken = $token;
+                }
+            }
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
+        $_SESSION[USER_SESSION_KEY] = [
+            'id'        => (int) $user['id'],
+            'phone'     => (string) $user['phone'],
+            'name'      => (string) ($user['full_name'] ?? ''),
+            'role'      => (string) $user['role'],
+            'ref_code'  => (string) ($user['ref_code'] ?? ''),
+            'logged_in' => (int) (strtotime((string) $row['created_at']) ?: time()),
+            'last_seen' => time(),
+            'rm'        => $until,
+        ];
+        $_SESSION[self::SESSION_KEY] = (int) $user['id'];   // the number was proven when this phone was remembered
+        return true;
+    }
+
+    /** "Sign out" on this phone: end the row its cookie names and expire the cookie. */
+    public static function forget(string $reason = 'signed out'): void
+    {
+        $row = self::cookieRow();
+        if ($row !== null) {
+            self::endRow((int) $row['id'], $reason);
+        }
+        self::dropCookie();
+    }
+
+    /** Another passenger signs in on this phone: the earlier one's remember ends. */
+    public static function forgetIfOther(int $userId): void
+    {
+        $row = self::cookieRow();
+        if ($row !== null && (int) $row['user_id'] !== $userId) {
+            self::endRow((int) $row['id'], 'another passenger signed in on this phone');
+            self::dropCookie();
+        }
+    }
+
+    private static function endRow(int $id, string $reason): void
+    {
+        try {
+            Database::update('customer_sessions', ['ended_at' => date('Y-m-d H:i:s'), 'end_reason' => mb_substr($reason, 0, 120)],
+                'id = :id AND ended_at IS NULL', ['id' => $id]);
+        } catch (Throwable $e) {
+        }
     }
 
     /** A phone photo carries its rotation in EXIF; draw it the right way up. */

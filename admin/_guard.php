@@ -600,13 +600,26 @@ function admin_footer(): void
             require_once INCLUDE_PATH . '/quickunlock.php';
         }
         $idleMe = (int) (Auth::admin()['id'] ?? 0);
+        /* 19 Nov 2026 (u7, LG-1 + review): a FIELD device that stays signed in (AdminSessions::remember,
+           'rmf') is LOCKED by this timer, not signed out — admin/login.php?relock=1 keeps the session
+           and asks the person's own PIN / pattern (Auth::relock / unlockSession). Office roles and 2FA
+           accounts, remembered or not, are still signed out (logout.php also ends their remember). */
+        $idleRm = !empty($_SESSION[ADMIN_SESSION_KEY]['rmf']) && (int) ($_SESSION[ADMIN_SESSION_KEY]['rm'] ?? 0) > time();
+        $idleGo = '/admin/logout.php';
+        if ($idleRm) {
+            $nf = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
+            $nq = (string) ($_SERVER['QUERY_STRING'] ?? '');
+            $nx = $nf . ($nq !== '' ? '?' . $nq : '');
+            $idleGo = '/admin/login.php?relock=1'
+                . (preg_match('/^[A-Za-z0-9_\-]+\.php(\?[A-Za-z0-9_=&%.\-]*)?$/', $nx) === 1 ? '&next=' . rawurlencode($nx) : '');
+        }
         if ($idleMin > 0 && $idleMe > 0 && class_exists('QuickUnlock') && QuickUnlock::on()) {
             $st = QuickUnlock::status($idleMe);
             if ($st['pin'] || $st['pattern']) {
                 echo '<script>(function(){var K="shg_last_act",L=' . ($idleMin * 60000) . ',t=0;'
                    . 'function mark(){var n=Date.now();if(n-t>5000){t=n;try{localStorage.setItem(K,String(n));}catch(e){}}}'
                    . 'function last(){try{return Math.max(t,parseInt(localStorage.getItem(K)||"0",10)||0);}catch(e){return t;}}'
-                   . 'function chk(){if(Date.now()-last()>L){location.href="/admin/logout.php";}}'
+                   . 'function chk(){if(Date.now()-last()>L){location.href=' . json_encode($idleGo, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';}}'
                    . 't=Date.now();try{localStorage.setItem(K,String(t));}catch(e){}'
                    . '["pointerdown","keydown","scroll","touchstart"].forEach(function(ev){addEventListener(ev,mark,{passive:true,capture:true});});'
                    . 'setInterval(chk,30000);document.addEventListener("visibilitychange",function(){if(!document.hidden)chk();});})();</script>';

@@ -54,6 +54,16 @@ require_once __DIR__ . '/agentpro-learn.php';
 
 final class ApWa
 {
+    /**
+     * WA-4 (19 Nov 2026): a PDF the last reply() would like sent as a
+     * WhatsApp DOCUMENT (the agent statement). Kept OUT of the reply's
+     * 'media' on purpose: AiSensy / Messenger / Twilio replies would send
+     * 'media' as a picture and a PDF there fails (review 19 Nov). Only the
+     * Meta webhook (whatsapp/webhook.php) reads and clears it; every other
+     * path sends the text, which carries the PDF link anyway.
+     */
+    public static ?string $lastDocument = null;
+
     /** A pending "ho" expires after this long. */
     private const PENDING_TTL = 900;
 
@@ -110,6 +120,7 @@ final class ApWa
      */
     public static function reply(string $fromRaw, string $body, string $kind = 'text'): ?array
     {
+        self::$lastDocument = null;   // set only by THIS reply (one webhook POST can carry several messages)
         if (!AgentPro::available() || !Settings::getBool('ap_wa_on', true)) {
             return null;
         }
@@ -2532,6 +2543,13 @@ final class ApWa
             $pdf = Statement::agentStatementPdf($id, $from, $to, $id);
             $lines[] = '';
             $lines[] = self::t('stmt_pdf', $lang, ['url' => (string) $pdf['url']]);
+            /* 19 Nov 2026 (WA-4): the PDF itself rides along as a WhatsApp
+               document on the Meta number (whatsapp/webhook.php reads
+               self::$lastDocument); the link above stays for a phone that
+               cannot open it and for every other reply path. */
+            if (Settings::getBool('wa_stmt_pdf_doc_on', true) && (string) ($pdf['url'] ?? '') !== '') {
+                self::$lastDocument = (string) $pdf['url'];
+            }
         } catch (Throwable $e) {
             Logger::warning('Statement PDF for WhatsApp failed: ' . $e->getMessage(), [], 'agent');
             $lines[] = '';

@@ -90,6 +90,33 @@
       busGo: 'अनुमति देकर ड्राइवर ऐप खोलें', busOff: 'ऑफिस ने आपका ड्राइवर ऐप बंद किया है — ऑफिस को फ़ोन करें।', busPin: 'दूसरे फ़ोन पर? मोबाइल + WhatsApp पर आया PIN डालें।' }
   };
   Object.keys(W2).forEach(function (l) { Object.keys(W2[l]).forEach(function (k) { W[l][k] = W2[l][k]; }); });
+  /* 19 Nov 2026 (u5: AG-1 passengers + ₹/head, AG-2 withdraw by UPI / bank / QR, AG-5 help) */
+  var W3 = {
+    en: { heads: 'Passengers I brought', today: 'Today', thisMonth: 'This month', allTime: 'All time', pax: 'passengers', tickets: 'tickets', collected: 'Ticket value',
+      branch: 'Bank & branch', perHead: 'Per passenger ₹', staffOnly: 'Staff — passenger count only, no commission', canNow: 'You can withdraw now',
+      payHow: 'How should the office pay you?', m_upi: 'UPI ID', m_bank: 'Bank account', m_qr: 'QR', m_esewa: 'eSewa', m_khalti: 'Khalti',
+      addPayout: 'Add a UPI ID or bank account in Profile, or upload your QR here.', qrUp: 'Upload bank / UPI QR', qrHave: 'QR saved — the office can pay to it', qrSee: 'See my QR',
+      verified: 'Checked by the office', notVerified: 'Not yet checked by the office', needVerify: 'The office must check your payout details first — call the office.',
+      help: 'Help', helpLead: 'Call or WhatsApp the office. Share the link to register a new agent.', call: 'Call office', waOffice: 'WhatsApp office',
+      register: 'Register a new agent', shareMsg: 'Become an S Hari Global agent — register here:' },
+    ne: { heads: 'मैले ल्याएका यात्रु', today: 'आज', thisMonth: 'यो महिना', allTime: 'सुरुदेखि', pax: 'जना', tickets: 'टिकट', collected: 'बिक्री',
+      branch: 'बैंक र शाखा', perHead: 'प्रति यात्रु ₹', staffOnly: 'स्टाफ — यात्रु गन्ती मात्र, कमिसन छैन', canNow: 'अहिले निकाल्न मिल्ने',
+      payHow: 'अफिसले कसरी पठाओस्?', m_upi: 'UPI ID', m_bank: 'बैंक खाता', m_qr: 'QR', m_esewa: 'eSewa', m_khalti: 'Khalti',
+      addPayout: 'प्रोफाइलमा UPI ID वा बैंक खाता थप्नुहोस्, वा यहीँ QR अपलोड गर्नुहोस्।', qrUp: 'बैंक / UPI QR अपलोड', qrHave: 'QR सेभ भयो — अफिसले यसैमा पठाउन सक्छ', qrSee: 'मेरो QR हेर्नुहोस्',
+      verified: 'अफिसले जाँचेको', notVerified: 'अफिसले अझै जाँचेको छैन', needVerify: 'पहिले अफिसले भुक्तानी विवरण जाँच्नुपर्छ — अफिसलाई फोन गर्नुहोस्।',
+      help: 'मद्दत', helpLead: 'अफिसलाई फोन वा WhatsApp गर्नुहोस्। नयाँ एजेन्ट दर्ता गर्ने लिंक सेयर गर्नुहोस्।', call: 'अफिसलाई फोन', waOffice: 'अफिस WhatsApp',
+      register: 'नयाँ एजेन्ट दर्ता', shareMsg: 'S Hari Global को एजेन्ट बन्नुहोस् — यहाँ दर्ता गर्नुहोस्:' },
+    hi: { heads: 'मेरे लाए यात्री', today: 'आज', thisMonth: 'इस महीने', allTime: 'शुरू से', pax: 'यात्री', tickets: 'टिकट', collected: 'बिक्री',
+      branch: 'बैंक और शाखा', perHead: 'प्रति यात्री ₹', staffOnly: 'स्टाफ — सिर्फ़ यात्री गिनती, कमीशन नहीं', canNow: 'अभी निकाल सकते हैं',
+      payHow: 'ऑफिस कैसे भेजे?', m_upi: 'UPI ID', m_bank: 'बैंक खाता', m_qr: 'QR', m_esewa: 'eSewa', m_khalti: 'Khalti',
+      addPayout: 'प्रोफ़ाइल में UPI ID या बैंक खाता जोड़ें, या यहीं QR अपलोड करें।', qrUp: 'बैंक / UPI QR अपलोड', qrHave: 'QR सेव हुआ — ऑफिस इसी पर भेज सकता है', qrSee: 'मेरा QR देखें',
+      verified: 'ऑफिस ने जाँचा', notVerified: 'ऑफिस ने अभी नहीं जाँचा', needVerify: 'पहले ऑफिस भुगतान विवरण जाँचे — ऑफिस को फ़ोन करें।',
+      help: 'मदद', helpLead: 'ऑफिस को फ़ोन या WhatsApp करें। नए एजेंट के रजिस्ट्रेशन का लिंक शेयर करें।', call: 'ऑफिस को फ़ोन', waOffice: 'ऑफिस WhatsApp',
+      register: 'नया एजेंट रजिस्ट्रेशन', shareMsg: 'S Hari Global के एजेंट बनें — यहाँ रजिस्टर करें:' }
+  };
+  Object.keys(W3).forEach(function (l) { Object.keys(W3[l]).forEach(function (k) { W[l][k] = W3[l][k]; }); });
+  /* the help card's own label is always bilingual: 'मद्दत · Help' */
+  function helpTitle() { return t('help') === 'Help' ? 'मद्दत · Help' : t('help') + ' · Help'; }
   var lang = (function () { try { var s = localStorage.getItem('ap_lang'); if (s && W[s]) return s; } catch (e) {} var n = (navigator.language || 'en').toLowerCase(); return n.indexOf('ne') === 0 ? 'ne' : (n.indexOf('hi') === 0 ? 'hi' : 'en'); })();
   var t = function (k) { return (W[lang] && W[lang][k]) || W.en[k] || k; };
   var S = { me: null, wallet: null, tab: (location.hash || '#id').slice(1) };
@@ -243,7 +270,40 @@
       /* 31 Oct 2026 (owner: "afno portal kholera agent staff le sabai chhapauna milos"): every card in one PDF */
       + '<div class="ap-actions"><a class="ap-btn sm" href="/api/agentpro-card.php?pdf=1" target="_blank" rel="noopener">⬇ ' + esc(t('allCards')) + '</a></div>'
       + myFormBtn() + '</section>'
-      + quickNav();
+      + quickNav() + headsCard() + helpCard();
+  }
+  /* 19 Nov 2026 (AG-1 / AG-3): passengers this member brought — today, this month, all time — and
+     the ₹ per passenger the office set (staff: count only). Same rule as the office's Ticket Statement. */
+  function headsCard() {
+    var w = S.wallet; if (!w || !w.heads) return '';
+    var h = w.heads, ph = w.perHead || {};
+    var cell = function (lbl, x) {
+      x = x || {};
+      return '<div style="min-width:0"><div class="ap-caps">' + esc(lbl) + '</div><div style="font-size:22px;font-weight:700;line-height:1.2">' + (+x.heads || 0)
+        + ' <small style="font-size:13px;font-weight:600">' + esc(t('pax')) + '</small></div>'
+        + '<small class="ap-hint" style="display:block;font-size:12px;overflow-wrap:anywhere">' + (+x.tickets || 0) + ' ' + esc(t('tickets')) + ' · ' + esc(t('collected')) + ' ' + money(x.sales != null ? x.sales : x.collected) + '</small></div>';
+    };
+    return '<section class="ap-card"><h3 style="margin:0 0 10px">🧍 ' + esc(t('heads')) + '</h3>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">' + cell(t('today'), h.today) + cell(t('thisMonth'), h.month) + cell(t('allTime'), h.all) + '</div>'
+      + '<p class="ap-hint" style="margin:10px 0 0">' + (w.staffOnly ? esc(t('staffOnly'))
+        : '<b>' + esc(t('perHead')) + '</b> · ' + esc(ph.label || '') + (h.month && h.month.commission ? ' · ' + esc(t('commission')) + ' ' + money(h.month.commission) : '')) + '</p></section>';
+  }
+  /* 19 Nov 2026 (AG-5): 'मद्दत · Help' — call / WhatsApp the office (a Nepal member: the Nepal office
+     when its number is set), and share the link that registers a new agent. */
+  function helpCard() {
+    var h = S.me && S.me.help; if (!h) return '';
+    return '<section class="ap-card"><h3 style="margin:0 0 6px">🆘 ' + esc(helpTitle()) + '</h3><p class="lead" style="margin:0 0 10px">' + esc(t('helpLead')) + '</p>'
+      + '<div class="ap-actions" style="margin:0">'
+      + (h.call ? '<a class="ap-btn sm" href="tel:' + esc(h.call) + '">📞 ' + esc(t('call')) + '</a>' : '')
+      + (h.wa ? '<a class="ap-btn wa sm" href="https://wa.me/' + esc(h.wa) + '" target="_blank" rel="noopener">💬 ' + esc(t('waOffice')) + '</a>' : '')
+      + (h.joinUrl ? '<button type="button" class="ap-btn ghost sm" id="shareJoin">🔗 नयाँ एजेन्ट दर्ता · Register</button>' : '') + '</div>'
+      + (h.callDisplay ? '<p class="ap-hint" style="margin:8px 0 0">' + esc(t('office')) + ': ' + esc(h.callDisplay) + '</p>' : '') + '</section>';
+  }
+  function shareJoin() {
+    var h = S.me && S.me.help; if (!h || !h.joinUrl) return;
+    var text = t('shareMsg');
+    if (navigator.share) { navigator.share({ title: t('register'), text: text, url: h.joinUrl }).catch(function () {}); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + h.joinUrl), '_blank');
   }
   /* 30 Oct 2026 (owner: "afnai bhareko digital form download"): the filled A4 form, /me/form.php */
   function myFormBtn() {
@@ -270,7 +330,7 @@
   }
   function tabWork() {
     return busCard() + '<section class="ap-card"><h2>' + esc(t('work')) + '</h2><p class="lead">' + esc(t('workLead')) + '</p>' + toolList() + '</section>'
-      + '<section class="ap-card">' + myFormBtn() + '</section>';
+      + headsCard() + '<section class="ap-card">' + myFormBtn() + '</section>' + helpCard();
   }
   function quickNav() {
     if (!portal().walletOn) {
@@ -311,7 +371,7 @@
     if (!w) return '<section class="ap-card">' + esc(t('net')) + '</section>';
     var b = w.balances, s = w.summary;
     var rows = (w.entries || []).map(entryRow).join('') || '<li><span class="t"><small>' + esc(t('none')) + '</small></span></li>';
-    var req = (w.payouts || []).map(function (r) { return reqRow('💸', t('withdraw'), r.amount, r.status, r.at, r.note); })
+    var req = (w.payouts || []).map(function (r) { return reqRow('💸', t('withdraw') + (r.to ? ' · ' + r.to : ''), r.amount, r.status, r.at, r.note); })
       .concat((w.deposits || []).map(function (r) { return reqRow('💵', t('payIn') + (r.utr ? ' · ' + r.utr : ''), r.amount, r.status, r.at, r.note); })).join('');
     return '<section class="ap-money"><div class="lbl">' + esc(t('available')) + '</div><div class="amt">' + money(b.commission) + '</div>'
       + '<div class="sub"><span>' + esc(t('holding')) + ' <b>' + money(b.cash) + '</b></span><span>' + esc(t('month')) + ' <b>' + money(s.earnedMonth) + '</b></span></div></section>'
@@ -319,6 +379,7 @@
       + '<button type="button" data-sheet="pay"><span class="q green">₹</span>' + esc(t('payIn')) + '</button>'
       + '<button type="button" data-sheet="statement"><span class="q gold">📄</span>' + esc(t('statement')) + '</button>'
       + '<button type="button" data-go="me"><span class="q violet">🏦</span>' + esc(t('payout')) + '</button></div>'
+      + headsCard()
       + (req ? '<section class="ap-card"><h3>' + esc(t('requests')) + '</h3><ul class="ap-pass">' + req + '</ul></section>' : '')
       + '<section class="ap-card"><h3>' + esc(t('passbook')) + '</h3><ul class="ap-pass">' + rows + '</ul></section>';
   }
@@ -333,18 +394,45 @@
     return '<li><span class="ic q blue">' + ic + '</span><span class="t"><b>' + esc(label) + '</b><small>' + esc(fmtDate(at)) + (note ? ' · ' + esc(note) : '') + '</small></span>'
       + '<span style="text-align:right"><span class="a">' + money(amt) + '</span><br><span class="ap-pill ' + esc(status) + '">' + esc(t(status + '_s')) + '</span></span></li>';
   }
+  /* 19 Nov 2026 (AG-2): withdraw works for every agent — pick how the office pays (UPI ID, bank account
+     or an uploaded bank / UPI QR, only what is saved), up to what can be withdrawn now. The office pays
+     by hand and types the UTR; nothing is paid automatically. */
   function sheetWithdraw() {
-    var due = S.wallet.balances.commission;
-    sheet('<h2>' + esc(t('withdraw')) + '</h2><p class="lead">' + esc(t('withdrawLead')) + ' <b>' + esc(S.wallet.payoutTo || t('notSet')) + '</b></p>'
+    var w = S.wallet, due = w.available != null ? +w.available : +w.balances.commission;
+    var ms = w.payoutMethods || [], pm = ms.length ? ms[0].method : '';
+    if (w.payoutVerified === false) {
+      sheet('<h2>' + esc(t('withdraw')) + '</h2><div class="ap-note warn">' + esc(t('needVerify')) + '</div>' + helpCard());
+      var sj = $('#sheet #shareJoin'); if (sj) sj.addEventListener('click', shareJoin);
+      return;
+    }
+    var chips = ms.map(function (m, i) { return '<button type="button" class="ap-chip" data-pm="' + esc(m.method) + '" aria-pressed="' + (i === 0) + '">' + esc(t('m_' + m.method)) + '</button>'; }).join('');
+    sheet('<h2>' + esc(t('withdraw')) + '</h2>'
+      + '<p class="lead">' + esc(t('canNow')) + ' <b>' + money(due) + '</b></p>'
+      + '<div class="ap-field"><span>' + esc(t('payHow')) + '</span>' + (ms.length ? '<div class="ap-chips">' + chips + '</div><p class="ap-hint" id="wto" style="overflow-wrap:anywhere">' + esc(ms[0].to) + '</p>' : '<div class="ap-note warn">' + esc(t('addPayout')) + '</div>') + '</div>'
+      + '<label class="ap-btn ghost sm" style="position:relative;margin-bottom:12px">🖼 ' + esc(t('qrUp')) + '<input type="file" accept="image/*" id="wqr" style="position:absolute;inset:0;opacity:0"></label>'
       + '<label class="ap-field"><span>' + esc(t('amount')) + '</span><input class="ap-in" id="wa" type="number" inputmode="decimal" min="1" max="' + due + '" value="' + (due > 0 ? due : '') + '"></label>'
       + '<div class="ap-chips" style="margin-bottom:12px">' + [500, 1000, 2000].filter(function (x) { return x < due; }).map(function (x) { return '<button type="button" class="ap-chip" data-amt="' + x + '">' + money(x) + '</button>'; }).join('')
-      + '<button type="button" class="ap-chip" data-amt="' + due + '">' + esc(t('all')) + ' ' + money(due) + '</button></div>'
+      + (due > 0 ? '<button type="button" class="ap-chip" data-amt="' + due + '">' + esc(t('all')) + ' ' + money(due) + '</button>' : '') + '</div>'
       + '<label class="ap-field"><span>' + esc(t('note')) + '</span><input class="ap-in" id="wn" maxlength="200"></label>'
-      + '<button type="button" class="ap-btn block" id="wgo">' + esc(t('send')) + '</button>');
+      + '<button type="button" class="ap-btn block" id="wgo"' + (ms.length && due > 0 ? '' : ' disabled') + '>' + esc(t('send')) + '</button>');
     $$('#sheet [data-amt]').forEach(function (c) { c.addEventListener('click', function () { $('#wa').value = c.dataset.amt; }); });
+    $$('#sheet [data-pm]').forEach(function (c) { c.addEventListener('click', function () {
+      pm = c.dataset.pm; $$('#sheet [data-pm]').forEach(function (x) { x.setAttribute('aria-pressed', x === c); });
+      var m = ms.filter(function (x) { return x.method === pm; })[0]; $('#wto').textContent = m ? m.to : '';
+    }); });
+    $('#wqr').addEventListener('change', function () {
+      var inp = this; if (!inp.files[0]) return;
+      var fd = new FormData(); fd.append('file', inp.files[0]); toast(t('loading'));
+      api('payout_qr', fd, true).then(function (r) {
+        if (!r.ok) { toast(r.error || t('net'), true); return; }
+        toast('✓ ' + t('qrHave')); S.wallet.payoutMethods = (r.data && r.data.payoutMethods) || S.wallet.payoutMethods; sheetWithdraw();
+        var q = $('#sheet [data-pm="qr"]'); if (q) q.click();
+      });
+    });
     $('#wgo').addEventListener('click', function () {
-      var b = this; busy(b, true);
-      api('withdraw', { amount: +$('#wa').value, note: $('#wn').value }).then(function (r) { busy(b, false); if (!r.ok) { toast(r.error, true); return; } closeSheet(); toast('✓ ' + (r.message || t('sentOffice'))); load(); });
+      var b = this; if (!pm) { toast(t('addPayout'), true); return; }
+      busy(b, true);
+      api('withdraw', { amount: +$('#wa').value, note: $('#wn').value, method: pm }).then(function (r) { busy(b, false); if (!r.ok) { toast(r.error, true); return; } closeSheet(); toast('✓ ' + (r.message || t('sentOffice'))); load(); });
     });
   }
   function sheetPay() {
@@ -456,7 +544,13 @@
       + '<label class="ap-field"><span>' + esc(t('account')) + '</span><input class="ap-in" name="bank_account" inputmode="numeric" placeholder="' + (bk.last4 ? '••••' + esc(bk.last4) : '') + '"></label></div>'
       + '<div class="ap-grid2"><label class="ap-field"><span>' + esc(t('ifsc')) + '</span><input class="ap-in" name="bank_ifsc" value="' + esc(bk.ifsc) + '"></label>'
       + '<label class="ap-field"><span>' + esc(t('esewa')) + '</span><input class="ap-in" name="esewa_id" value="' + esc(bk.esewa) + '"></label></div>'
-      + '<button type="submit" class="ap-btn block">' + esc(t('save')) + '</button></form></section>'
+      + '<label class="ap-field"><span>' + esc(t('branch')) + '</span><input class="ap-in" name="bank_branch" maxlength="120" value="' + esc(bk.branch) + '"></label>'
+      + '<button type="submit" class="ap-btn block">' + esc(t('save')) + '</button></form>'
+      /* 19 Nov 2026 (AG-2): the member's own bank / UPI QR (private — only the office sees it) */
+      + '<div class="ap-row" style="gap:8px;flex-wrap:wrap;margin-top:12px">'
+      + (m.payoutQr ? '<a class="ap-btn ghost sm" href="' + esc(C.api) + '?a=payout_qr" target="_blank" rel="noopener">✓ ' + esc(t('qrSee')) + '</a>' : '')
+      + '<label class="ap-btn ghost sm" style="position:relative">🖼 ' + esc(t('qrUp')) + '<input type="file" accept="image/*" class="qrUp" style="position:absolute;inset:0;opacity:0"></label></div>'
+      + '<p class="ap-hint" style="margin:8px 0 0">' + (m.payoutVerified ? '✅ ' + esc(t('verified')) : '• ' + esc(t('notVerified'))) + '</p></section>'
       + '<section class="ap-card"><h3>' + esc(t('security_t')) + '</h3><p class="lead">' + esc(t('fpLead')) + '</p><ul class="ap-pass">' + pk + '</ul>'
       + (window.PublicKeyCredential ? '<button type="button" class="ap-btn block" id="fpAdd" style="margin-top:10px">🔐 ' + esc(t('fpOn')) + '</button>' : '')
       + '<h3 style="margin-top:18px">' + esc(t('waLinked')) + '</h3><ul class="ap-pass">' + (wa || '<li><span class="t"><small>' + esc(t('none')) + '</small></span></li>') + '</ul>'
@@ -488,6 +582,11 @@
       toast(t('loading')); api('photo', fd, true).then(function (r) { r.ok ? (toast('✓ ' + (r.message || t('saved'))), load()) : toast(r.error, true); });
     }); });
     docsBind();
+    var sj = $('#shareJoin'); if (sj) sj.addEventListener('click', shareJoin);
+    $$('.qrUp').forEach(function (inp) { inp.addEventListener('change', function () {
+      if (!inp.files[0]) return; var fd = new FormData(); fd.append('file', inp.files[0]);
+      toast(t('loading')); api('payout_qr', fd, true).then(function (r) { r.ok ? (toast('✓ ' + t('qrHave')), load()) : toast(r.error || t('net'), true); });
+    }); });
     $$('[data-kyc]').forEach(function (inp) { inp.addEventListener('change', function () {
       if (!inp.files[0]) return; var fd = new FormData(); fd.append('file', inp.files[0]); fd.append('slot', inp.dataset.kyc);
       api('kyc_upload', fd, true).then(function (r) { r.ok ? (toast('✓ ' + (r.message || t('saved'))), load()) : toast(r.error, true); });

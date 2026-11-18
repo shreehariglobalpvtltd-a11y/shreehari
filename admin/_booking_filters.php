@@ -247,6 +247,11 @@ function shg_booking_trip_filters(array &$where, array &$params, array $in): arr
         $params['deskScopeT'] = $desk;
         $counter = '';
     }
+    /* 19 Nov 2026 (NP-2): only a desk that exists (CounterDesk::all()) filters -
+       a hand-typed code no desk carries used to return an empty register */
+    if ($counter !== '' && !isset(CounterDesk::all()[$counter])) {
+        $counter = '';
+    }
     if ($counter !== '' && CounterDesk::stampColumn()) {
         $where[] = CounterDesk::scopeClause('b', 'ctrFltT');
         $params['ctrFltT'] = $counter;
@@ -288,4 +293,19 @@ function shg_booking_trip_filters(array &$where, array &$params, array $in): arr
 
     return ['counter' => $counter, 'board' => $board, 'drop' => $drop, 'mode' => $mode,
             'amin' => $amin, 'amax' => $amax, 'ids' => implode(',', $ids)];
+}
+
+/**
+ * 19 Nov 2026 (NP-2): an amount as the filtered desk writes it. With an NPR desk
+ * selected (the register's "counter" filter, or desk isolation) it reads
+ * "रू 4,480 (₹2,800)" - the NPR frozen on $row when it has one (fx_currency /
+ * fx_total), else the desk's rate; with no desk or a rupee desk it is the plain
+ * ₹ figure. Never adds INR and NPR together: the caller passes one desk.
+ *
+ * @param array<string,mixed>|null $row a bookings row (total_amount, fx_currency, fx_total)
+ */
+function shg_booking_desk_money(float $inr, string $desk, ?array $row = null): string
+{
+    require_once INCLUDE_PATH . '/chalanipng.php';
+    return ChalaniPng::deskMoney($inr, $desk, $row);
 }

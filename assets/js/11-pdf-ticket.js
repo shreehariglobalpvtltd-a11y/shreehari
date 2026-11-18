@@ -66,6 +66,20 @@ function _dt(doc, hasDev, x, y, nepali, roman, opts) {
    is not "paid": a cash-on-boarding seat is confirmed with the fare still
    owed, and the old band printed PAID · CASH on it. Display only — the money
    is the server's (paidAmount = verified payments). */
+/* 19 Nov 2026 (TK-5): a sale the Nepal window took in NPR prints NPR - the rate frozen
+   on the sale (fx_total for the whole fare, fx_rate for a part), the same rule as the
+   server's Ticket::money(); every other ticket keeps inr(). Reads b.fxCurrency /
+   b.fxTotal / b.fxRate (or the snake_case columns) when the booking JSON carries them. */
+function fbMoney(b, amount) {
+  var a = Number(amount || 0);
+  var cur = String((b && (b.fxCurrency || b.fx_currency)) || '').toUpperCase();
+  var fxT = Number((b && (b.fxTotal || b.fx_total)) || 0);
+  if (cur !== 'NPR' || !(fxT > 0)) return inr(a);
+  var tot = Number((b && b.total) || 0), rate = Number((b && (b.fxRate || b.fx_rate)) || 0);
+  if (!(rate > 0) && tot > 0) rate = fxT / tot;
+  var npr = tot > 0 && Math.abs(a - tot) < 0.005 ? fxT : a * rate;
+  return 'NPR ' + Math.round(npr).toLocaleString('en-IN');
+}
 function fbPayBand(b) {
   var pay = (b && b.payment) || {};
   var known = typeof b.paidAmount === 'number';
@@ -73,13 +87,13 @@ function fbPayBand(b) {
   var isCod = !!(b.codFlag || pay.method === 'cod');
   if (b.status === 'confirmed' && (due === 0 || (due === null && !isCod))) {
     var methodTxt = pay.method === 'esewa' ? 'eSewa' : (pay.method === 'cod' ? 'CASH' : 'UPI');
-    return { kind: 'paid', text: 'PAID  ·  ' + inr(b.total) + '  ·  ' + methodTxt };
+    return { kind: 'paid', text: 'PAID  ·  ' + fbMoney(b, b.total) + '  ·  ' + methodTxt };
   }
   if (isCod && (b.status === 'pending' || b.status === 'confirmed')) {
-    return { kind: 'cash', text: 'CASH ON BOARDING  ·  Pay ' + inr(due === null ? b.total : due) + ' to the crew' };
+    return { kind: 'cash', text: 'CASH ON BOARDING  ·  Pay ' + fbMoney(b, due === null ? b.total : due) + ' to the crew' };
   }
   if (b.status === 'confirmed' && due > 0) {
-    return { kind: 'due', text: 'CONFIRMED  ·  BALANCE DUE ' + inr(due) };
+    return { kind: 'due', text: 'CONFIRMED  ·  BALANCE DUE ' + fbMoney(b, due) };
   }
   return { kind: 'pending', text: 'PAYMENT PENDING  ·  Not valid until approved' };
 }
@@ -247,7 +261,7 @@ async function buildTicketCanvas(b) {
     ['मिति · DATE',       fmtDate(b.date)],
     ['चढ्ने · BOARDING', (depHHMM || '—') + ' IST'],
     [(b.seats && b.seats.length > 1 ? 'सिट' : 'सिट नं.'), seatLabelJoin(b.seats, r.type, b.bookingType) || '—'],
-    ['भाडा · FARE',      inr(b.total)]
+    ['भाडा · FARE',      fbMoney(b, b.total)]
   ];
   var tileW = (colW - 24) / 4, tileH = 110;
   tiles.forEach(function (t, i) {
@@ -287,7 +301,7 @@ async function buildTicketCanvas(b) {
       g.fillStyle = '#F6F7FB'; g.fillRect(pad, y, colW, 38);
       g.fillStyle = INK; g.font = 'bold 18px sans-serif';
       g.fillText(pnames[0] + '  ·  ' + b.passengers.length + ' passengers · ' + seatLabelJoin(b.seats, r.type, b.bookingType)
-        + (b.farePerSeat ? '  ·  ' + b.passengers.length + ' × ' + inr(b.farePerSeat) : ''), pad + 20, y + 26);
+        + (b.farePerSeat ? '  ·  ' + b.passengers.length + ' × ' + fbMoney(b, b.farePerSeat) : ''), pad + 20, y + 26);
       y += 38;
     } else {
       b.passengers.forEach(function (p, i) {
@@ -691,7 +705,7 @@ async function downloadTicketPDF(b) {
     [hasDev ? 'मिति · DATE' : 'MITI · DATE',               fmtDate(b.date)],
     [hasDev ? 'चढ्ने · BOARDING' : 'CHADNE · BOARDING',     (depHHMM || '—') + ' IST'],
     [hasDev ? (b.seats && b.seats.length > 1 ? 'सिट' : 'सिट नं.') : (b.seats && b.seats.length > 1 ? 'SEATS' : 'SEAT'), seatLabelJoin(b.seats, r.type, b.bookingType) || '—'],
-    [hasDev ? 'भाडा · FARE' : 'BHADA · FARE',              inr(b.total)]
+    [hasDev ? 'भाडा · FARE' : 'BHADA · FARE',              fbMoney(b, b.total)]
   ];
   var tileW = (W - 80) / 4, tileH = 46, tileGap = 2;
   tiles.forEach(function (t, i) {
@@ -741,7 +755,7 @@ async function downloadTicketPDF(b) {
       doc.setFillColor(251, 243, 222); doc.rect(40, y, W - 80, 18, 'F');
       doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
       doc.text(jpn[0] + '  ·  ' + b.passengers.length + ' passengers · ' + seatLabelJoin(b.seats, r.type, b.bookingType)
-        + (b.farePerSeat ? '  ·  ' + b.passengers.length + ' x ' + inr(b.farePerSeat) : ''), 50, y + 12, { maxWidth: W - 100 });
+        + (b.farePerSeat ? '  ·  ' + b.passengers.length + ' x ' + fbMoney(b, b.farePerSeat) : ''), 50, y + 12, { maxWidth: W - 100 });
       y += 18;
     } else {
       b.passengers.forEach(function (p, i) {

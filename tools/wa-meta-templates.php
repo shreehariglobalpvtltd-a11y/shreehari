@@ -1,10 +1,23 @@
 <?php
 /**
- * tools/wa-meta-templates.php — submit the 10 Oct 2026 templates to Meta
- * for approval on the Meta number's WhatsApp Business Account.
+ * tools/wa-meta-templates.php — the Meta template registry from the shell.
  *
- *     sudo -u www-data php tools/wa-meta-templates.php          # list + submit missing
- *     sudo -u www-data php tools/wa-meta-templates.php --list   # list only
+ * 19 Nov 2026 (WA-2): the site's own template set lives in
+ * includes/watplmeta.php (WaTplMeta::DEFS, all UTILITY, language en). This
+ * tool works on THAT set:
+ *
+ *     php tools/wa-meta-templates.php                # = --list (nothing sent to Meta)
+ *     php tools/wa-meta-templates.php --list         # every registry name + stored status
+ *     php tools/wa-meta-templates.php --sync         # read the WABA's statuses into kv_store (GET only)
+ *     php tools/wa-meta-templates.php --dry-run      # what --submit would ask Meta for (GET only)
+ *     php tools/wa-meta-templates.php --submit       # POST only the names the WABA does not have
+ *     php tools/wa-meta-templates.php --legacy-submit  # the old 10 Oct set below (was the default)
+ *
+ * The 7 templates already in the WABA (posted by hand on 18 Nov) are known
+ * and never re-submitted. Submitting is free; every SEND is still gated by
+ * the template's APPROVED status and the office's switches.
+ *
+ * The 10 Oct 2026 set (now only with --legacy-submit):
  *
  * Submitting is free. SENDING a template costs money, so every one of these
  * stays behind an OFF switch (owner rule, 10 Oct: credit only for the
@@ -21,11 +34,64 @@ if (PHP_SAPI !== 'cli') {
     http_response_code(404);
     exit;
 }
-define('SHG_APP', true);
+if (!defined('SHG_APP')) {
+    define('SHG_APP', true);
+}
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
-require_once dirname(__DIR__) . '/whatsapp/config.php';
+if (is_file(dirname(__DIR__) . '/whatsapp/config.php')) {
+    require_once dirname(__DIR__) . '/whatsapp/config.php';
+}
+require_once dirname(__DIR__) . '/includes/watplmeta.php';
 
-if (META_ACCESS_TOKEN === '' || META_WABA_ID === '') {
+/* ---- 19 Nov 2026: the registry (includes/watplmeta.php) ---------------- */
+$wtArgs = array_slice($argv, 1);
+if (!in_array('--legacy-submit', $wtArgs, true)) {
+    $mode = in_array('--submit', $wtArgs, true) ? 'submit'
+          : (in_array('--dry-run', $wtArgs, true) ? 'dry' : (in_array('--sync', $wtArgs, true) ? 'sync' : 'list'));
+    if ($mode === 'list') {
+        echo "Registry (includes/watplmeta.php) - stored status from the last sync";
+        echo WaTplMeta::lastSync() > 0 ? ' (' . date('Y-m-d H:i', WaTplMeta::lastSync()) . ")\n" : " (never synced - run --sync)\n";
+        foreach (WaTplMeta::overview() as $r) {
+            echo str_pad($r['name'], 24), str_pad($r['kind'] === 'known' ? 'by hand' : 'def', 9),
+                 str_pad($r['status'] !== '' ? $r['status'] : '-', 10), $r['ready'] ? 'READY  ' : '       ', $r['purpose'], "\n";
+        }
+        foreach (WaTplMeta::DEFS as $n => $d) {
+            $bad = WaTplMeta::validate($n, WaTplMeta::defs()[$n]);
+            if ($bad !== []) {
+                echo '  ! ', $n, ': ', implode('; ', $bad), "\n";
+            }
+        }
+        exit(0);
+    }
+    if (!WaTplMeta::configured()) {
+        fwrite(STDERR, "Meta token / WABA id not configured.\n");
+        exit(1);
+    }
+    if ($mode === 'sync') {
+        $s = WaTplMeta::sync();
+        if (!$s['ok']) {
+            fwrite(STDERR, 'Sync failed: ' . $s['error'] . "\n");
+            exit(1);
+        }
+        foreach ($s['statuses'] as $n => $st) {
+            echo str_pad($n, 24), $st, "\n";
+        }
+        echo '(+', $s['other'], " other template(s) in the WABA)\n";
+        exit(0);
+    }
+    $res = WaTplMeta::submitMissing($mode === 'dry');
+    if (!$res['ok']) {
+        fwrite(STDERR, 'Failed: ' . $res['error'] . "\n");
+        exit(1);
+    }
+    foreach ($res['rows'] as $r) {
+        echo str_pad($r['name'], 24), str_pad($r['action'], 14), $r['detail'], "\n";
+    }
+    echo $mode === 'dry' ? "Dry run - nothing was sent to Meta.\n" : 'Submitted: ' . $res['submitted'] . "\n";
+    exit(0);
+}
+
+if (!defined('META_ACCESS_TOKEN') || META_ACCESS_TOKEN === '' || META_WABA_ID === '') {
     exit("Meta token / WABA id not configured.\n");
 }
 

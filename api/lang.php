@@ -36,6 +36,21 @@ try {
 
     Database::update('users', ['preferred_lang' => $lang], 'id = :id', ['id' => (int) $me['id']]);
 
+    /* 19 Nov 2026 (u8 AI-2): the same choice for the person's WhatsApp number, so
+       offers and the bot write in it (contact_lang, source 'chosen' — chat
+       detection never overrides it). A missing table or country code is quiet. */
+    try {
+        $u = Database::fetch('SELECT phone, country_code FROM users WHERE id = :id', ['id' => (int) $me['id']]);
+        $cc = preg_replace('/\D/', '', (string) ($u['country_code'] ?? '')) ?? '';
+        $ph = substr(preg_replace('/\D/', '', (string) ($u['phone'] ?? '')) ?? '', -10);
+        if ($cc !== '' && strlen($ph) === 10) {
+            require_once INCLUDE_PATH . '/customerdirectory.php';
+            CustomerDirectory::setLang($cc . $ph, $lang);
+        }
+    } catch (Throwable $e) {
+        // the portal choice is already saved on the account
+    }
+
     Response::success(['lang' => $lang, 'stored' => true]);
 } catch (Throwable $e) {
     Response::serverError($e);

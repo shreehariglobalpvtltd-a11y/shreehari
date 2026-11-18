@@ -62,7 +62,21 @@ $in = [
     'role'  => isset($roles[(string) ($_POST['role'] ?? '')]) ? (string) $_POST['role'] : 'agent',
     'pin'   => preg_replace('/\D/', '', (string) ($_POST['pin'] ?? '')) ?? '',
     'share' => !empty($_POST['share']),
+    /* 19 Nov 2026 (NP-1): optional Nepal counter branch - a Nepal desk code,
+       '__new__' (open one for the town below) or '' (no branch, as before). */
+    'branch' => strtoupper(Security::clean((string) ($_POST['branch'] ?? ''), 20)),
+    'town'   => Security::clean((string) ($_POST['branch_town'] ?? ''), 60),
+    // the mobile's country chip: 'IN' / 'NP' / '' (from the typed +91 / +977)
+    'pcc'    => in_array((string) ($_POST['pcc'] ?? ''), ['IN', 'NP'], true) ? (string) $_POST['pcc'] : '',
 ];
+/* Who may OPEN a new Nepal desk: the same right admin/counters.php needs
+   (superadmin, or a manager with settings.manage). Anyone allowed here may
+   ASSIGN an existing one. */
+$canNewBranch = Auth::isSuperadmin() || Auth::canManageSettings();
+$npDesks      = CounterDesk::nepalDesks(true);
+if ($in['branch'] !== '' && $in['branch'] !== '__NEW__' && !isset($npDesks[$in['branch']])) {
+    $in['branch'] = '';
+}
 $error = '';
 $taken = null;      // ApPhoneTaken owners → "add another ID on this number?"
 $done  = $_SESSION['shg_quick2_done'] ?? null;
@@ -83,7 +97,20 @@ if ($allowed && Security::isPost()) {
                 throw new RuntimeException($why);
             }
             $by      = (int) $admin['id'];
-            $country = resolvePhoneCountry('', $in['phone']) ?: 'IN';
+            if ($in['branch'] === '__NEW__' && !$canNewBranch) {
+                throw new RuntimeException('नयाँ नेपाल शाखा सुपर एडमिनले मात्र खोल्न मिल्छ — सूचीबाट छान्नुहोस् · Only a super-admin may open a new Nepal branch — pick one from the list.');
+            }
+            /* The number's country: the typed +91 / +977 prefix, else the chip.
+               With a Nepal branch a bare number is NOT guessed (an Indian SIM
+               at Rupaidiha/Nepalgunj is common and the login goes to WhatsApp):
+               the office picks the country. Without a branch, as before: India. */
+            $country = resolvePhoneCountry('', $in['phone']) ?: $in['pcc'];   // a typed +91/+977 wins over the chip
+            if ($country === '') {
+                if ($in['branch'] !== '') {
+                    throw new RuntimeException('नम्बर कुन देशको? +91 वा +977 छान्नुहोस् · Which country is this number? Pick +91 or +977 (or type the number with its code).');
+                }
+                $country = 'IN';
+            }
             $draft   = AgentPro::newDraft('', $by);
             $key     = (string) $draft['draft_key'];
             if ($in['role'] !== 'agent') {
@@ -100,8 +127,24 @@ if ($allowed && Security::isPost()) {
                 QuickUnlock::set($aid, 'pin', $in['pin']);
                 $pinSet = true;
             }
+            /* NP-1: link the person to the Nepal branch. The ID already exists, so a
+               branch problem is shown on the next page, never undoing the person. */
+            $branchCode = '';
+            $branchErr  = '';
+            if ($in['branch'] !== '') {
+                try {
+                    $branchCode = CounterDesk::openNepalBranch(
+                        $aid,
+                        $in['town'] !== '' ? $in['town'] : 'Nepalgunj',
+                        $in['branch'] === '__NEW__' ? null : $in['branch'],
+                        $canNewBranch
+                    );
+                } catch (Throwable $bx) {
+                    $branchErr = $bx->getMessage();
+                }
+            }
             Logger::audit('agent.quick_add', 'admin', (string) $aid, null,
-                ['role' => $in['role'], 'pin' => $pinSet], 'Quick add (name + number) by admin #' . $by);
+                ['role' => $in['role'], 'pin' => $pinSet, 'branch' => $branchCode], 'Quick add (name + number) by admin #' . $by);
             $_SESSION['shg_quick2_done'] = [
                 'id'    => $aid,
                 'name'  => (string) ($m['name'] ?? $in['name']),
@@ -111,6 +154,8 @@ if ($allowed && Security::isPost()) {
                 'key'   => $key,
                 'pin'   => $pinSet ? $in['pin'] : '',     // shown ONCE on the next page, then dropped
                 'pwd'   => isset($res['password']),
+                'branch'    => $branchCode,
+                'branchErr' => $branchErr,
             ];
             Response::redirect('/admin/agent-quick.php?ok=1', 303);
         } catch (ApPhoneTaken $ex) {
@@ -166,6 +211,12 @@ admin_header('⚡ Quick Agent · नाम + नम्बर', 'agent-quick');
     <div class="muted"><?= $e($roles[$done['role']] ?? $done['role']) ?> · <?= $e($done['phone']) ?></div>
     <div class="code"><?= $e($done['code'] !== '' ? $done['code'] : '—') ?></div>
     <div class="muted">एजेन्ट कोड / ID नं. · Agent code / ID — तुरुन्त चालु · active now</div>
+    <?php if (($done['branch'] ?? '') !== ''): ?>
+      <p style="margin:10px 0 0;font-weight:800">🇳🇵 शाखा · Branch: <?= $e(CounterDesk::label((string) $done['branch'])) ?></p>
+      <div class="muted">बिक्री नेपाल → भारत, NPR मा · Sells Nepal → India, NPR (Nepal letterhead)</div>
+    <?php elseif (($done['branchErr'] ?? '') !== ''): ?>
+      <div class="flash bad" style="margin-top:10px">शाखा जोडिएन · Branch not linked: <?= $e($done['branchErr']) ?> — <a href="/admin/staff.php">Staff → desk</a></div>
+    <?php endif; ?>
     <?php if ($done['pin'] !== ''): ?>
       <p style="margin:14px 0 4px;font-weight:800">लगइन PIN (एक पटक मात्र देखिन्छ · shown once)</p>
       <div class="pin"><?= $e($done['pin']) ?></div>
@@ -185,6 +236,14 @@ admin_header('⚡ Quick Agent · नाम + नम्बर', 'agent-quick');
       <a class="btn ghost" href="/admin/team-member.php?id=<?= (int) $done['id'] ?>">🪪 ID card · record</a>
       <a class="btn ok" href="/admin/agent-quick.php">＋ अर्को · Add another</a>
     </div>
+    <?php /* 19 Nov 2026: the member's ID card in its three styles + the visiting card
+             (api/agentpro-card.php, built by the card unit). */ ?>
+    <div class="acts" aria-label="ID card styles">
+      <?php foreach (['royal' => '👑 Royal', 'modern' => '✨ Modern', 'heritage' => '🏛 Heritage'] as $v => $vl): ?>
+        <a class="btn ghost" target="_blank" rel="noopener" href="/api/agentpro-card.php?member=<?= (int) $done['id'] ?>&amp;kind=id&amp;variant=<?= $e($v) ?>">🪪 ID · <?= $e($vl) ?></a>
+      <?php endforeach; ?>
+      <a class="btn ghost" target="_blank" rel="noopener" href="/api/agentpro-card.php?member=<?= (int) $done['id'] ?>&amp;kind=vc">📇 भिजिटिङ कार्ड · Visiting card</a>
+    </div>
   </div>
 
 <?php else: ?>
@@ -201,12 +260,52 @@ admin_header('⚡ Quick Agent · नाम + नम्बर', 'agent-quick');
       <input id="qn" type="text" name="name" required autofocus maxlength="120" value="<?= $e($in['name']) ?>" placeholder="Ram Bahadur Thapa">
       <label for="qp">मोबाइल नम्बर · Mobile</label>
       <input id="qp" type="tel" name="phone" required inputmode="tel" maxlength="20" value="<?= $e($in['phone']) ?>" placeholder="98XXXXXXXX / +91 9XXXXXXXXX">
+      <div class="roles" role="radiogroup" aria-label="Mobile country" style="margin-top:8px">
+        <?php foreach (['' => 'स्वतः · Auto (+91/+977 typed)', 'IN' => '🇮🇳 +91 भारत · India', 'NP' => '🇳🇵 +977 नेपाल · Nepal'] as $cv => $cl): ?>
+          <label><input type="radio" name="pcc" value="<?= $e($cv) ?>"<?= $in['pcc'] === $cv ? ' checked' : '' ?>><span><?= $e($cl) ?></span></label>
+        <?php endforeach; ?>
+      </div>
+      <div class="muted">नेपाल शाखा छानेमा, +91/+977 नलेखेको नम्बरको देश छान्नै पर्छ · With a Nepal branch, a number typed without +91/+977 needs its country picked.</div>
       <label>के हो? · Role</label>
       <div class="roles">
         <?php foreach ($roles as $k => $lbl): ?>
           <label><input type="radio" name="role" value="<?= $e($k) ?>"<?= $in['role'] === $k ? ' checked' : '' ?>><span><?= $e($lbl) ?></span></label>
         <?php endforeach; ?>
       </div>
+      <?php if ($npDesks !== [] || $canNewBranch): ?>
+      <details id="qbr"<?= $in['branch'] !== '' ? ' open' : '' ?>>
+        <summary>🇳🇵 शाखा · Branch (Nepal counter, optional)</summary>
+        <label for="qbranch">शाखा · Branch</label>
+        <select id="qbranch" name="branch" style="width:100%;min-height:50px;font-size:16px;border-radius:12px;padding:8px 12px">
+          <option value="">— शाखा छैन · No branch —</option>
+          <?php foreach ($npDesks as $dc => $dk): ?>
+            <option value="<?= $e($dc) ?>"<?= $in['branch'] === $dc ? ' selected' : '' ?>>🇳🇵 <?= $e(CounterDesk::label((string) $dc, (string) $dk['name'])) ?></option>
+          <?php endforeach; ?>
+          <?php if ($canNewBranch): ?>
+            <option value="__new__"<?= $in['branch'] === '__NEW__' ? ' selected' : '' ?>>＋ नयाँ नेपाल शाखा · New Nepal branch</option>
+          <?php endif; ?>
+        </select>
+        <?php if ($canNewBranch): ?>
+          <div id="qtownBox"<?= $in['branch'] === '__NEW__' ? '' : ' hidden' ?>>
+            <label for="qtown">ठाउँ · Town</label>
+            <input id="qtown" type="text" name="branch_town" maxlength="60" value="<?= $e($in['town']) ?>" placeholder="Nepalgunj / Kohalpur / Baitadi">
+            <div class="muted">उही ठाउँको शाखा भए त्यही जोडिन्छ, नभए नयाँ कोड (NP…) बन्छ · An existing desk in that town is reused, else a new NP… desk opens (Nepal → India, NPR, Nepal letterhead).</div>
+          </div>
+        <?php endif; ?>
+        <div class="muted">शाखा भएको व्यक्तिको बिक्री नेपाल → भारत, NPR मा खुल्छ · A branch member's sales open on Nepal → India in NPR. बस Rupaidiha (Indian Oil pump) 18:00 बाटै चढ्छ।</div>
+      </details>
+      <script>
+      (function () {
+        var ph = document.getElementById('qp'), box = document.getElementById('qbr'),
+            sel = document.getElementById('qbranch'), town = document.getElementById('qtownBox');
+        if (ph && box) ph.addEventListener('input', function () {
+          var d = String(ph.value || '').replace(/\D/g, '').replace(/^00/, '');
+          if (/^977/.test(d) || /^\+\s*977/.test(ph.value)) box.open = true;   // a +977 number: offer the Nepal branch
+        });
+        if (sel && town) sel.addEventListener('change', function () { town.hidden = sel.value !== '__new__'; });
+      })();
+      </script>
+      <?php endif; ?>
       <?php if (QuickUnlock::ready()): ?>
       <label for="qpin">लगइन PIN (ऐच्छिक) · Starting PIN (optional)</label>
       <input id="qpin" type="text" name="pin" inputmode="numeric" maxlength="6" pattern="\d{4,6}" value="<?= $e($in['pin'] !== '' ? $in['pin'] : $suggestPin()) ?>" style="letter-spacing:6px;font-weight:800;max-width:200px">

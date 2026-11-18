@@ -28,7 +28,20 @@ if (!defined('SHG_APP')) {
     exit;
 }
 
-require_once __DIR__ . '/config.php';
+/* 19 Nov 2026: config.php is the server's own file (not in git). A box
+   without it (a developer's checkout, the CLI tests) gets empty credentials
+   instead of a fatal error - every send then fails cleanly ("not configured"). */
+if (is_file(__DIR__ . '/config.php')) {
+    require_once __DIR__ . '/config.php';
+}
+defined('META_ACCESS_TOKEN')      || define('META_ACCESS_TOKEN', '');
+defined('META_PHONE_NUMBER_ID')   || define('META_PHONE_NUMBER_ID', '');
+defined('META_WABA_ID')           || define('META_WABA_ID', '');
+defined('META_APP_SECRET')        || define('META_APP_SECRET', '');
+defined('META_API_VERSION')       || define('META_API_VERSION', 'v25.0');
+defined('META_API_BASE')          || define('META_API_BASE', 'https://graph.facebook.com/' . META_API_VERSION);
+defined('WHATSAPP_WEBHOOK_TOKEN') || define('WHATSAPP_WEBHOOK_TOKEN', '');
+defined('WHATSAPP_LOG_DIR')       || define('WHATSAPP_LOG_DIR', __DIR__ . '/logs');
 
 if (!function_exists('waGraphPost')) {
 
@@ -48,9 +61,10 @@ if (!function_exists('waGraphPost')) {
             $d = substr($d, 1);                 // 0 98xxxxxxxx trunk prefix
         }
         if (strlen($d) === 10) {
-            $cc = match ($countryHint) {
-                'NP'    => '977',
-                'IN'    => '91',
+            // 19 Nov 2026 (WA-1): a stored dial code ('977' / '91', as on bookings.contact_country_code) is a hint too.
+            $cc = match (ltrim(strtoupper(trim((string) $countryHint)), '+')) {
+                'NP', '977' => '977',
+                'IN', '91'  => '91',
                 default => class_exists('Settings')
                     ? ((preg_replace('/\D/', '', Settings::getString('whatsapp_default_country', '91')) ?? '') ?: '91')
                     : '91',
@@ -154,6 +168,12 @@ if (!function_exists('waGraphPost')) {
 
         // 'group' (29 Oct 2026, includes/wagroup.php): $to is then a Groups API group id.
         $body = ['messaging_product' => 'whatsapp', 'recipient_type' => $recipientType === 'group' ? 'group' : 'individual', 'to' => $to] + $payload;
+
+        /* Tests only (19 Nov 2026): $GLOBALS['WA_GRAPH_HOOK'] = fn(string $to, array $body, string $type): array
+           sees the exact payload instead of Meta. Never set by the site. */
+        if (PHP_SAPI === 'cli' && isset($GLOBALS['WA_GRAPH_HOOK']) && is_callable($GLOBALS['WA_GRAPH_HOOK'])) {
+            return (array) ($GLOBALS['WA_GRAPH_HOOK'])($to, $body, $type) + $result;
+        }
         $json = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
             $result['error'] = 'payload could not be JSON-encoded';
@@ -229,8 +249,11 @@ if (!function_exists('waGraphPost')) {
      *
      * @param list<string>|array<string,string> $bodyVars   {{1}}, {{2}} … in order
      * @param array<int|string, string>         $headerVars ['image' => url] | ['document' => url] | ['video' => url] | list of header text vars
+     * @param list<array<string, mixed>>        $buttons    19 Nov 2026: dynamic button values -
+     *        ['sub_type' => 'url', 'index' => 0, 'text' => 'SHG-2026-00584'] (the {{1}} of a URL button) or
+     *        ['sub_type' => 'flow', 'index' => 0, 'token' => '…'] (a FLOW button's flow_token)
      */
-    function sendWhatsAppTemplate(string $phone, string $templateName, string $langCode = 'en', array $bodyVars = [], array $headerVars = [], ?string $countryHint = null): array
+    function sendWhatsAppTemplate(string $phone, string $templateName, string $langCode = 'en', array $bodyVars = [], array $headerVars = [], ?string $countryHint = null, array $buttons = []): array
     {
         $to = waCleanPhone($phone, $countryHint);
         if (trim($templateName) === '') {
@@ -265,6 +288,16 @@ if (!function_exists('waGraphPost')) {
                 $params[] = ['type' => 'text', 'text' => $s !== '' ? $s : '-'];
             }
             $components[] = ['type' => 'body', 'parameters' => $params];
+        }
+        foreach ($buttons as $b) {
+            $sub = strtolower((string) ($b['sub_type'] ?? ''));
+            if ($sub === 'url' && trim((string) ($b['text'] ?? '')) !== '') {
+                $components[] = ['type' => 'button', 'sub_type' => 'url', 'index' => (string) (int) ($b['index'] ?? 0),
+                                 'parameters' => [['type' => 'text', 'text' => trim((string) $b['text'])]]];
+            } elseif ($sub === 'flow') {
+                $components[] = ['type' => 'button', 'sub_type' => 'flow', 'index' => (string) (int) ($b['index'] ?? 0),
+                                 'parameters' => [['type' => 'action', 'action' => ['flow_token' => (string) ($b['token'] ?? 'unused')]]]];
+            }
         }
 
         $template = ['name' => $templateName, 'language' => ['code' => $langCode !== '' ? $langCode : 'en']];
@@ -382,6 +415,38 @@ if (!function_exists('waGraphPost')) {
             }
         }
 
+        return waGraphPost($to, ['type' => 'interactive', 'interactive' => $interactive], 'interactive');
+    }
+
+    /**
+     * One "open this link" button (19 Nov 2026, WA-7 phase 1): Meta's
+     * interactive cta_url - e.g. "Pay ₹2,800" opening pay.php for the exact
+     * amount, with the pay QR picture as the header. Free inside the 24 h
+     * window like any reply; outside it Meta refuses it (the caller keeps
+     * its text / template path). Direct UPI only - no WhatsApp Payments.
+     *
+     * @param string|null $headerImageUrl public https picture shown above the text
+     */
+    function sendWhatsAppCtaUrl(string $phone, string $bodyText, string $buttonText, string $url, ?string $headerImageUrl = null, ?string $countryHint = null): array
+    {
+        $to   = waCleanPhone($phone, $countryHint);
+        $body = mb_substr(trim($bodyText), 0, 1024);
+        $btn  = mb_substr(trim($buttonText), 0, 20);
+        $url  = trim($url);
+        if ($body === '' || $btn === '' || !preg_match('~^https?://~i', $url)) {
+            $r = ['success' => false, 'message_id' => '', 'error' => $body === '' ? 'message is empty' : ($btn === '' ? 'button text is empty' : 'button URL must be absolute http(s)'),
+                  'http' => 0, 'code' => 0];
+            logWhatsAppEvent('interactive', $to, [], $r);
+            return $r;
+        }
+        $interactive = [
+            'type'   => 'cta_url',
+            'body'   => ['text' => $body],
+            'action' => ['name' => 'cta_url', 'parameters' => ['display_text' => $btn, 'url' => $url]],
+        ];
+        if ($headerImageUrl !== null && preg_match('~^https://~i', $headerImageUrl)) {
+            $interactive['header'] = ['type' => 'image', 'image' => ['link' => $headerImageUrl]];
+        }
         return waGraphPost($to, ['type' => 'interactive', 'interactive' => $interactive], 'interactive');
     }
 

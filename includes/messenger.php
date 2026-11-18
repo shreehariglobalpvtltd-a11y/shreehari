@@ -101,7 +101,9 @@ final class Messenger
             return '';
         }
         if (isset($m['message']['quick_reply']['payload'])) {
-            return (string) $m['message']['quick_reply']['payload'];
+            $p = (string) $m['message']['quick_reply']['payload'];
+            // 19 Nov 2026: our own booking answers ride as "shg:<answer>" - the answer is what was said
+            return (str_starts_with($p, 'shg:') && trim(substr($p, 4)) !== '') ? trim(substr($p, 4)) : $p;
         }
         if (isset($m['message']['text'])) {
             return (string) $m['message']['text'];
@@ -120,7 +122,39 @@ final class Messenger
      * API. Returns ['success'=>bool, 'message_id'=>?string, 'error'=>?string].
      * Never throws; a missing token or network error is a clean failure.
      */
-    public static function send(string $psid, string $text, ?string $imageUrl = null): array
+    /**
+     * The booking engine's tappable answers ($reply['ui'] from WaBooking /
+     * WaBot - reply buttons or a list, ids "shg:<answer>") as Messenger quick
+     * replies (19 Nov 2026, WA-3). Messenger takes up to 13, titles up to 20
+     * characters; the payload comes back exactly like a typed answer. A form
+     * (kind = flow) or a link button has no Messenger shape and gives none.
+     *
+     * @param array<string, mixed>|null $ui
+     * @return list<array{content_type: string, title: string, payload: string}>
+     */
+    public static function quickReplies(?array $ui): array
+    {
+        if ($ui === null) {
+            return [];
+        }
+        $kind  = (string) ($ui['kind'] ?? 'buttons');
+        $items = $kind === 'list' ? (array) ($ui['rows'] ?? []) : ($kind === 'buttons' ? (array) ($ui['buttons'] ?? []) : []);
+        $out   = [];
+        foreach ($items as $it) {
+            $id    = trim((string) ($it['id'] ?? ''));
+            $title = trim((string) ($it['title'] ?? ''));
+            if ($id === '' || $title === '') {
+                continue;
+            }
+            $out[] = ['content_type' => 'text', 'title' => mb_substr($title, 0, 20), 'payload' => mb_substr($id, 0, 1000)];
+            if (count($out) === 13) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    public static function send(string $psid, string $text, ?string $imageUrl = null, ?array $ui = null): array
     {
         $token = self::pageToken();
         if ($token === '' || $psid === '') {
@@ -140,10 +174,15 @@ final class Messenger
         if ($text === '') {
             return ['success' => true, 'message_id' => null, 'error' => null];
         }
+        $message = ['text' => mb_substr($text, 0, 2000)];
+        $quick   = self::quickReplies($ui);
+        if ($quick !== []) {
+            $message['quick_replies'] = $quick;
+        }
         return self::post($token, [
             'recipient'      => ['id' => $psid],
             'messaging_type' => 'RESPONSE',
-            'message'        => ['text' => mb_substr($text, 0, 2000)],
+            'message'        => $message,
         ]);
     }
 

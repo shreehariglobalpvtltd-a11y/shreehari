@@ -394,9 +394,14 @@ final class WaTemplates
             $page = max(1, min(50, (int) ($ctx['page'] ?? 1)));
             $tgt  = (string) ($ctx['target'] ?? 'office');
             if ($tgt === 'driver') {
-                $to = trim((string) ($trip['driver_phone'] ?? ''));
-                if ($to === '') { throw new RuntimeException('This departure has no driver phone on file.'); }
-                $who = 'Driver ' . trim((string) ($trip['driver_name'] ?? ''));
+                /* 19 Nov 2026 (WA-5): the trip's driver, else the bus's default
+                   driver, else the route crew phone - DriverList::crewFor, the
+                   same answer the automatic passenger list uses */
+                require_once __DIR__ . '/driverlist.php';
+                $crew = DriverList::crewFor($sid);
+                $to = trim((string) $crew['phone']);
+                if ($to === '') { throw new RuntimeException('This departure has no driver phone on file (trip, bus default driver or route crew phone).'); }
+                $who = 'Driver ' . trim((string) $crew['name']);
                 $hint = resolvePhoneCountry('', $to) ?: null;
             } elseif ($tgt === 'custom') {
                 $to = preg_replace('/\D/', '', (string) ($ctx['phone'] ?? '')) ?? '';
@@ -420,6 +425,17 @@ final class WaTemplates
             $pax   = (int) Database::scalar(
                 "SELECT COUNT(*) FROM booking_passengers bp JOIN booking_legs bl ON bl.id = bp.leg_id JOIN bookings b ON b.id = bp.booking_id
                   WHERE bl.schedule_id = :s AND b.status IN ('confirmed','pending','completed')", ['s' => $sid], 0);
+            /* 19 Nov 2026 (AI-3): the money on this bus, from the chalani's own
+               rule (ChalaniPng::departureMoney) - never a second count */
+            $moneyLine = '';
+            try {
+                require_once __DIR__ . '/chalanipng.php';
+                $dmT = ChalaniPng::departureMoney($sid)['totals'];
+                $moneyLine = 'नगद ' . inr((float) $dmT['cash']) . ' · अनलाइन ' . inr((float) $dmT['online'])
+                    . ' · बोर्डिङमा उठाउनु ' . (int) $dmT['boardDueN'] . ' जना ' . inr((float) $dmT['boardDue']) . "\n";
+            } catch (Throwable $e) {
+                $moneyLine = '';
+            }
             $label = $doc === 'challan' ? 'Challan (seat picture)' : 'Chalani page ' . $page;
             $out['to'] = $to; $out['intl'] = self::intl($to, $hint); $out['hint'] = $hint; $out['recipientName'] = $who;
             $out['text'] = "🚌 " . $name . "\n"
@@ -427,6 +443,7 @@ final class WaTemplates
                 . trim((string) $trip['from_city']) . " → " . trim((string) $trip['to_city']) . " · " . formatDate((string) $trip['travel_date']) . " · " . substr((string) ($trip['dep_time'] ?? ''), 0, 5) . "\n"
                 . "Bus: " . $plate . ($slot > 1 ? " (extra bus #" . $slot . ")" : '') . (!empty($trip['driver_name']) ? " · Driver: " . (string) $trip['driver_name'] : '') . "\n"
                 . "Passengers: " . $pax . "\n"
+                . $moneyLine
                 . $label . ": " . $url . $note . "\n"
                 . "बस चलानी संलग्न छ।";
             $out['mediaUrl'] = $url; $out['mediaType'] = 'image'; $out['attachments'] = [$url];

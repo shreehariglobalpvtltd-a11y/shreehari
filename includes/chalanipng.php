@@ -48,7 +48,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 16;  // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 17;  // 17 = desk copy (NP-2): ?desk= filter, an NPR desk draws NPR (Rs beside the net), the desk in the number (19 Nov 2026)   // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -308,6 +308,330 @@ final class ChalaniPng
         return is_string($png) && $png !== '' ? $png : null;
     }
 
+    /* ------------------------------------------------------------------ */
+    /*  19 Nov 2026 (AI-3) - THE chalani money rule, in one place.          */
+    /*  Lifted verbatim out of admin/manifest.php (rows query, per-seat     */
+    /*  fare split, desk extras, cash / online by ChalaniPng::paidWay, pay  */
+    /*  at boarding still due, and the whole-bus totals), so the manifest   */
+    /*  screen, the print sheet, the PDF, these PNG pages, the office       */
+    /*  WhatsApp report and the driver's list can never print two numbers.  */
+    /*  NP-2: an optional desk filter and the money in that desk's currency */
+    /*  (NPR at the rate frozen on the sale, else the desk's rate).         */
+    /* ------------------------------------------------------------------ */
+
+    /** A desk code validated against CounterDesk::all(), or '' (no filter). */
+    public static function deskCode(string $desk): string
+    {
+        $desk = strtoupper(trim($desk));
+        if ($desk === '' || preg_match('/^[A-Z0-9_-]{1,16}$/', $desk) !== 1) {
+            return '';
+        }
+        return isset(CounterDesk::all()[$desk]) ? $desk : '';
+    }
+
+    /** The desk's currency facts when it is NOT a rupee desk, else null. @return array{code:string,sym:string,latin:string,rate:float,desk:string}|null */
+    public static function deskCurrency(string $desk): ?array
+    {
+        $desk = self::deskCode($desk);
+        if ($desk === '' || CounterDesk::currency($desk) === 'INR') {
+            return null;
+        }
+        $cur = CounterDesk::currency($desk);
+        return ['code' => $cur, 'sym' => CounterDesk::SYMBOL[$cur] ?? $cur, 'latin' => $cur, 'rate' => CounterDesk::rate($desk), 'desk' => $desk];
+    }
+
+    /**
+     * Local units per rupee for ONE sale: the rate frozen on the booking
+     * (bookings.fx_rate first - the same order as Ticket::nprOf - and only
+     * when that is missing fx_total / total_amount, when it was quoted in
+     * that money), else the desk's rate today. 1.0 for a rupee desk. Never
+     * guessed past that. fx_total is frozen once at sale time while
+     * total_amount moves on a fare correction or a partial seat cancel, so
+     * the ratio is only a fallback (review fix, 19 Nov 2026).
+     *
+     * @param array<string,mixed> $row needs total_amount (+ fx_currency, fx_rate, fx_total when frozen)
+     */
+    public static function rateFor(array $row, string $desk): float
+    {
+        $cur = self::deskCurrency($desk);
+        if ($cur === null) {
+            return 1.0;
+        }
+        $fxCur = strtoupper(trim((string) ($row['fx_currency'] ?? '')));
+        if ($fxCur === $cur['code']) {
+            $fxRate = (float) ($row['fx_rate'] ?? 0);
+            if ($fxRate > 0) {
+                return $fxRate;
+            }
+            $fx  = (float) ($row['fx_total'] ?? 0);
+            $tot = (float) ($row['total_amount'] ?? 0);
+            if ($fx > 0 && $tot > 0) {
+                return $fx / $tot;
+            }
+        }
+        return (float) $cur['rate'];
+    }
+
+    /**
+     * An INR amount as $desk writes it: "रू 4,480 (₹2,800)" at an NPR desk
+     * (the frozen rate of $row when it has one), "₹2,800" at a rupee desk or
+     * with no desk. $latin = Roman for the GD pages ("NPR 4,480 (Rs 2,800)").
+     */
+    public static function deskMoney(float $inr, string $desk, ?array $row = null, bool $latin = false, bool $withInr = true): string
+    {
+        $inrTxt = $latin ? 'Rs ' . number_format($inr) : CounterDesk::format(round($inr, 2), 'INR');
+        $cur    = self::deskCurrency($desk);
+        if ($cur === null) {
+            return $inrTxt;
+        }
+        $amt  = (float) round($inr * self::rateFor($row ?? [], $desk));
+        $main = $latin ? $cur['latin'] . ' ' . number_format($amt) : CounterDesk::format($amt, $cur['code']);
+        return $main . ($withInr ? ' (' . $inrTxt . ')' : '');
+    }
+
+    /**
+     * Every passenger row of one departure and the money rule over them.
+     *
+     * @param int|null $scopeAdminId an agent login: only its own sales (the AGENT COPY)
+     * @param string   $order        group | stop | seat (as admin/manifest.php)
+     * @param string   $desk         a desk code: only the sales of that desk (NP-2)
+     * @return array<string,mixed>   rows, ticks, state, paxTotal, legs, bids, xBook, xFirst, xInfants,
+     *                               pmBook, pmDue, pmPax, pmLead, pmClaim, boardDue (raw), boardDueN,
+     *                               closures extrasOf / extraOnRow / farePer / money, totals{passengers,
+     *                               ticket, cash, online, discount, net, extras, extrasPaid, extrasDue,
+     *                               infants, boardDue, boardDueN}, desk, cur (null | deskCurrency()),
+     *                               local (null | the same totals in the desk's money), moneyLocal, rateOf
+     */
+    public static function departureMoney(int $sid, ?int $scopeAdminId = null, string $order = 'group', string $desk = ''): array
+    {
+        require_once INCLUDE_PATH . '/opshub.php';
+        $order = in_array($order, ['group', 'stop', 'seat'], true) ? $order : 'group';
+        $desk  = self::deskCode($desk);
+
+        /* ---- the rows (admin/manifest.php, 29 Oct - 16 Nov 2026) ---- */
+        $rows    = [];
+        $routeId = $sid > 0 ? (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :s', ['s' => $sid], 0) : 0;
+        if ($sid > 0 && $routeId > 0) {
+            $where  = ['bl.schedule_id = :sid', "b.status IN ('confirmed','pending','completed')"];
+            $params = ['sid' => $sid];
+            if ($scopeAdminId !== null) {
+                $where[] = 'b.sold_by_admin_id = :scope';
+                $params['scope'] = $scopeAdminId;
+            }
+            if ($desk !== '' && CounterDesk::stampColumn()) {
+                $where[] = CounterDesk::scopeClause('b', 'deskF');
+                $params['deskF'] = $desk;
+            }
+            $xCols = '';
+            foreach (['luggage_pieces', 'luggage_fee', 'infant_count', 'infant_fee'] as $xc) {
+                $xCols .= CounterDesk::hasColumn('bookings', $xc) ? ', b.' . $xc : ', 0 AS ' . $xc;
+            }
+            /* NP-2: the desk the sale was cut at, and the money frozen on it */
+            $xCols .= CounterDesk::stampColumn() ? ', b.counter_code' : ", '' AS counter_code";
+            foreach (['fx_currency', 'fx_rate', 'fx_total'] as $fc) {
+                $xCols .= CounterDesk::hasColumn('bookings', $fc) ? ', b.' . $fc : ', NULL AS ' . $fc;
+            }
+            $rows = Database::fetchAll(
+                "SELECT bp.id AS pax_id, bp.seat_no, bp.full_name, bp.age, bp.gender, bp.boarded_at,
+                        bp.id_type, bp.id_number, bp.special_need,
+                        b.booking_mode" . $xCols . ",
+                        b.id AS booking_id, b.pnr, b.contact_phone, b.status AS booking_status,
+                        b.source, b.is_cod, b.total_amount, b.base_total, b.sold_by_admin_id, b.created_at,
+                        bl.boarding_stop, bl.drop_stop,
+                        p.status AS pay_status, p.method AS pay_method, p.utr_number AS pay_utr, p.admin_note AS pay_note,
+                        t.ticket_number, t.scanned_at, t.is_void,
+                        ad.full_name AS agent_name, ad.username AS agent_user, ad.role AS agent_role
+                   FROM booking_passengers bp
+                   JOIN bookings b      ON b.id = bp.booking_id
+                   JOIN booking_legs bl ON bl.id = bp.leg_id
+                   LEFT JOIN payments p ON p.id = (
+                         SELECT p2.id FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1)
+                   LEFT JOIN tickets t  ON t.booking_id = b.id
+                   LEFT JOIN admins ad  ON ad.id = b.sold_by_admin_id
+                  WHERE " . implode(' AND ', $where) . "
+                  ORDER BY " . ($order !== 'seat'
+                      ? "COALESCE((SELECT MIN(rs.sort_order) FROM route_stops rs
+                                    WHERE rs.route_id = :rid AND rs.stop_type = 'boarding' AND rs.stop_name <> ''
+                                      AND bl.boarding_stop LIKE CONCAT(rs.stop_name, '%')), 9999), "
+                        . ($order === 'group' ? 'bl.boarding_stop, b.id, ' : '')
+                      : '') . "LENGTH(bp.seat_no), bp.seat_no",
+                $params + ($order !== 'seat' ? ['rid' => $routeId] : [])
+            );
+        }
+
+        /* paid · with agent · due - one rule (OpsHub::payState) */
+        $mfTicks = OpsHub::collections(array_map(static fn(array $r): int => (int) ($r['booking_id'] ?? 0), $rows));
+        $mfState = [];
+        foreach ($rows as $r) {
+            $bid = (int) ($r['booking_id'] ?? 0);
+            if (!isset($mfState[$bid])) {
+                $mfState[$bid] = OpsHub::payState($r, $mfTicks[$bid] ?? null);
+            }
+        }
+
+        /* the per-person divisor: every passenger-seat on the WHOLE booking (both legs) */
+        $paxTotalPerBooking = [];
+        $bids = array_values(array_unique(array_map(static fn(array $r): int => (int) ($r['booking_id'] ?? 0), $rows)));
+        $bids = array_values(array_filter($bids, static fn(int $i): bool => $i > 0));
+        if ($bids !== []) {
+            $in = implode(',', $bids);   // ints from the DB - safe to inline
+            foreach (Database::fetchAll("SELECT booking_id, COUNT(*) c FROM booking_passengers WHERE booking_id IN ($in) GROUP BY booking_id") as $pr) {
+                $paxTotalPerBooking[(int) $pr['booking_id']] = (int) $pr['c'];
+            }
+        }
+
+        /* the desk extras (luggage / lap infants), once per booking, split across its legs */
+        $legsPerBooking = [];
+        if ($bids !== []) {
+            foreach (Database::fetchAll('SELECT booking_id, COUNT(*) c FROM booking_legs WHERE booking_id IN (' . implode(',', $bids) . ') GROUP BY booking_id') as $lr) {
+                $legsPerBooking[(int) $lr['booking_id']] = max(1, (int) $lr['c']);
+            }
+        }
+        $extrasOf = static fn(array $r): float => round(max(0.0, (float) ($r['luggage_fee'] ?? 0)) + max(0.0, (float) ($r['infant_fee'] ?? 0)), 2);
+        $xBook  = [];
+        $xFirst = [];
+        foreach ($rows as $r) {
+            $bid = (int) ($r['booking_id'] ?? 0);
+            if (!isset($xFirst[$bid])) { $xFirst[$bid] = (int) ($r['pax_id'] ?? 0); }
+            $lug = max(0, (int) ($r['luggage_pieces'] ?? 0));
+            $inf = max(0, (int) ($r['infant_count'] ?? 0));
+            if ($lug === 0 && $inf === 0 && $extrasOf($r) <= 0) { continue; }
+            if (!isset($xBook[$bid])) {
+                $xBook[$bid] = [
+                    'pnr' => (string) $r['pnr'], 'lead' => (string) $r['full_name'], 'phone' => (string) ($r['contact_phone'] ?? ''),
+                    'mode' => (string) (($r['booking_mode'] ?? '') ?: 'sharing'),
+                    'seats' => [], 'lug' => $lug, 'lugFee' => max(0.0, (float) ($r['luggage_fee'] ?? 0)),
+                    'inf' => $inf, 'infFee' => max(0.0, (float) ($r['infant_fee'] ?? 0)),
+                    'amt' => round($extrasOf($r) / ($legsPerBooking[$bid] ?? 1), 2),
+                    'state' => $extrasOf($r) > 0 ? ($mfState[$bid] ?? 'due') : 'free',
+                ];
+            }
+            $xBook[$bid]['seats'][] = (string) $r['seat_no'];
+        }
+        $xInfants = array_sum(array_map(static fn(array $x): int => $x['inf'], $xBook));
+        $extraOnRow = static function (array $r) use ($xBook, $xFirst): float {
+            $bid = (int) ($r['booking_id'] ?? 0);
+            return (isset($xBook[$bid]) && ($xFirst[$bid] ?? -1) === (int) ($r['pax_id'] ?? 0)) ? (float) $xBook[$bid]['amt'] : 0.0;
+        };
+        $farePer = static function (array $r) use ($paxTotalPerBooking, $extrasOf): float {
+            $n = max(1, (int) ($paxTotalPerBooking[(int) ($r['booking_id'] ?? 0)] ?? 1));
+            return round(max(0.0, (float) $r['total_amount'] - $extrasOf($r)) / $n);
+        };
+        /* money per ROW: ticket = the seat's share; नगद / अनलाइन by paidWay(); the
+           extras ride with the fare on the booking's first row, only where they came in */
+        $money = static function (array $r) use ($farePer, $extraOnRow, $mfState, $mfTicks): array {
+            $fare   = (float) $farePer($r);
+            $extra  = (float) $extraOnRow($r);
+            $bid    = (int) ($r['booking_id'] ?? 0);
+            $way    = (($r['pay_status'] ?? '') === 'verified') ? self::paidWay($r, $mfTicks[$bid] ?? null) : '';
+            $xIn    = (($mfState[$bid] ?? 'due') !== 'due') ? $extra : 0.0;
+            $cash   = $way === 'cash' ? $fare + $xIn : 0.0;
+            $online = $way === 'online' ? $fare + $xIn : 0.0;
+            return ['ticket' => $fare, 'extra' => $extra, 'cash' => $cash, 'online' => $online];
+        };
+
+        /* pay at boarding: the booking's fare share + extras still due on THIS bus */
+        $pmBook = []; $pmDue = []; $pmPax = []; $pmLead = []; $pmClaim = [];
+        foreach ($rows as $r) {
+            $bid = (int) ($r['booking_id'] ?? 0);
+            if (!isset($pmBook[$bid])) {
+                $pmBook[$bid]  = self::payMode($r, $mfState[$bid] ?? 'due', $mfTicks[$bid] ?? null);
+                $pmDue[$bid]   = 0.0;
+                $pmPax[$bid]   = 0;
+                $pmLead[$bid]  = (string) ($r['full_name'] ?? '');
+                $pmClaim[$bid] = $pmBook[$bid] === 'boarding' && self::payClaimSent($r);
+            }
+            $pmPax[$bid]++;
+            if ($pmBook[$bid] === 'boarding') {
+                $pmDue[$bid] += $farePer($r) + $extraOnRow($r);
+            }
+        }
+        $boardDue = 0.0; $boardDueN = 0;
+        foreach ($pmBook as $bid => $pmMode) {
+            if ($pmMode === 'boarding') { $boardDue += $pmDue[$bid]; $boardDueN += $pmPax[$bid]; }
+        }
+
+        /* NP-2: the same money in the desk's own currency, sale by sale.
+           No ?desk= but EVERY row was cut at one and the same non-rupee desk
+           (an NPJ agent's copy, a bus sold only at Nepalgunj): that desk's
+           money too - INR and NPR are still never added together, because a
+           single online / other-desk row keeps the copy in rupees.
+           Setting chalani_auto_desk_currency (default on). */
+        $deskAuto = false;
+        if ($desk === '' && $rows !== [] && Settings::getBool('chalani_auto_desk_currency', true)) {
+            $codes = array_values(array_unique(array_map(static fn(array $r): string => strtoupper(trim((string) ($r['counter_code'] ?? ''))), $rows)));
+            if (count($codes) === 1 && $codes[0] !== '' && self::deskCurrency($codes[0]) !== null) {
+                $desk     = self::deskCode($codes[0]);
+                $deskAuto = $desk !== '';
+            }
+        }
+        $cur    = self::deskCurrency($desk);
+        $bRate  = [];
+        foreach ($rows as $r) {
+            $bid = (int) ($r['booking_id'] ?? 0);
+            if (!isset($bRate[$bid])) { $bRate[$bid] = $cur !== null ? self::rateFor($r, $desk) : 1.0; }
+        }
+        $rateOf = static fn(array $r): float => $bRate[(int) ($r['booking_id'] ?? 0)] ?? ($cur !== null ? (float) $cur['rate'] : 1.0);
+        $moneyLocal = static function (array $r) use ($money, $rateOf): array {
+            $m = $money($r);
+            $k = $rateOf($r);
+            return array_map(static fn(float $v): float => (float) round($v * $k), $m);
+        };
+
+        /* the whole-bus totals (manifest chalani branch, 16 Nov 2026) */
+        $tTicket = 0.0; $tCash = 0.0; $tOnline = 0.0; $tDisc = 0.0; $tExtra = 0.0; $seenB = [];
+        $lTicket = 0.0; $lCash = 0.0; $lOnline = 0.0; $lDisc = 0.0; $lExtra = 0.0;
+        foreach ($rows as $r) {
+            $m = $money($r);
+            $tTicket += $m['ticket']; $tCash += $m['cash']; $tOnline += $m['online']; $tExtra += $m['extra'];
+            $k = $rateOf($r);
+            $lTicket += round($m['ticket'] * $k); $lCash += round($m['cash'] * $k); $lOnline += round($m['online'] * $k); $lExtra += round($m['extra'] * $k);
+            $bid = (int) ($r['booking_id'] ?? 0);
+            if ($bid > 0 && !isset($seenB[$bid])) {
+                $seenB[$bid] = true;
+                $baseAmt = (float) ($r['base_total'] ?? 0);
+                if ($baseAmt > 0) {
+                    $d = max(0.0, $baseAmt - max(0.0, (float) ($r['total_amount'] ?? 0) - $extrasOf($r)));
+                    $tDisc += $d;
+                    $lDisc += round($d * $k);
+                }
+            }
+        }
+        $xPaid = 0.0; $xDue = 0.0; $lxPaid = 0.0; $lxDue = 0.0;
+        foreach ($xBook as $xbid => $xb) {
+            $k = $bRate[(int) $xbid] ?? 1.0;
+            if ($xb['state'] === 'due') { $xDue += $xb['amt']; $lxDue += round($xb['amt'] * $k); }
+            else { $xPaid += $xb['amt']; $lxPaid += round($xb['amt'] * $k); }
+        }
+        $lBoard = 0.0;
+        foreach ($pmBook as $bid => $pmMode) {
+            if ($pmMode === 'boarding') { $lBoard += round($pmDue[$bid] * ($bRate[(int) $bid] ?? 1.0)); }
+        }
+        $totals = [
+            'passengers' => count($rows), 'ticket' => $tTicket, 'cash' => $tCash,
+            'online' => $tOnline, 'discount' => $tDisc, 'net' => $tCash + $tOnline,
+            'extras' => $tExtra, 'extrasPaid' => $xPaid, 'extrasDue' => $xDue, 'infants' => $xInfants,
+            'boardDue' => round($boardDue, 2), 'boardDueN' => $boardDueN,
+        ];
+        $local = $cur === null ? null : [
+            'passengers' => count($rows), 'ticket' => $lTicket, 'cash' => $lCash,
+            'online' => $lOnline, 'discount' => $lDisc, 'net' => $lCash + $lOnline,
+            'extras' => $lExtra, 'extrasPaid' => $lxPaid, 'extrasDue' => $lxDue, 'infants' => $xInfants,
+            'boardDue' => $lBoard, 'boardDueN' => $boardDueN,
+        ];
+
+        return [
+            'sid' => $sid, 'routeId' => $routeId, 'rows' => $rows, 'ticks' => $mfTicks, 'state' => $mfState,
+            'paxTotal' => $paxTotalPerBooking, 'bids' => $bids, 'legs' => $legsPerBooking,
+            'xBook' => $xBook, 'xFirst' => $xFirst, 'xInfants' => $xInfants,
+            'pmBook' => $pmBook, 'pmDue' => $pmDue, 'pmPax' => $pmPax, 'pmLead' => $pmLead, 'pmClaim' => $pmClaim,
+            'boardDue' => $boardDue, 'boardDueN' => $boardDueN,
+            'extrasOf' => $extrasOf, 'extraOnRow' => $extraOnRow, 'farePer' => $farePer, 'money' => $money,
+            'totals' => $totals, 'desk' => $desk, 'deskAuto' => $deskAuto, 'cur' => $cur, 'local' => $local,
+            'moneyLocal' => $moneyLocal, 'rateOf' => $rateOf,
+        ];
+    }
+
     /**
      * What the page was drawn FROM. Any change to a seat, a name, a phone,
      * a stop, a payment or the layout produces a different file name, so a
@@ -334,6 +658,7 @@ final class ChalaniPng
 
         $seed = [
             'v'    => self::LAYOUT_VERSION,
+            'cur'  => (string) ($fmt['cur']['code'] ?? 'INR'),   // 19 Nov 2026 (NP-2)
             'date' => $date,
             'trip' => [
                 $trip['schedule_id'] ?? 0, $trip['bus_number'] ?? '', $trip['coach_type'] ?? '',
@@ -816,8 +1141,9 @@ final class ChalaniPng
         [$startIdx, $rowCount] = $chunks[$page - 1];
         $drawRows = $page === $pages ? max($rowCount, self::ROWS_LAST) : $rowCount;
 
+        $cl    = (string) ($fmt['cur']['latin'] ?? 'Rs');   // 19 Nov 2026 (NP-2): NPR on a Nepal desk copy
         $heads = ['#', 'SEAT', 'PASSENGER NAME', 'MOBILE', 'BOARDING', 'DROP',
-                  'FARE Rs', 'CASH Rs', 'ONLINE Rs', 'AGENT / CODE', 'REMARKS'];
+                  'FARE ' . $cl, 'CASH ' . $cl, 'ONLINE ' . $cl, 'AGENT / CODE', 'REMARKS'];
         $cw    = [52, 84, 430, 176, 196, 196, 116, 116, 130, 190];
         $cw[]  = $inner - array_sum($cw);                 // REMARKS takes the rest
         $align = ['c', 'c', 'l', 'l', 'l', 'l', 'r', 'r', 'r', 'l', 'l'];
@@ -918,7 +1244,7 @@ final class ChalaniPng
                    never reads as an amount. */
                 $across = $mode !== '' ? self::payModeLabel($mode, 'ro') : 'TO COLLECT';
                 if ($mode === 'boarding' && !empty($pm['first']) && (float) ($pm['amt'] ?? 0) > 0) {
-                    $across .= ' Rs ' . number_format((float) $pm['amt']);
+                    $across .= ' ' . $cl . ' ' . number_format((float) $pm['amt']);
                 }
                 $acrossCol = in_array($mode, ['', 'boarding', 'due'], true) ? $maroon : ($mode === 'pending' || $mode === 'agent' ? $goldD : $green);
                 self::tC($im, 15, $cx[7], $cx[8] + $cw[8], $vy + 3, $acrossCol, self::fit(15, $across, $cw[7] + $cw[8] - 12), true);
@@ -949,7 +1275,7 @@ final class ChalaniPng
             $xAmt = (float) ($m['extra'] ?? 0);
             $xSt  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? (string) $fmt['rowState']($r) : 'due';
             $parts = [];
-            if ($xAmt > 0)  { $parts[] = 'Extra Rs ' . number_format($xAmt) . ' ' . ($xSt === 'due' ? 'DUE' : 'PAID'); }
+            if ($xAmt > 0)  { $parts[] = 'Extra ' . $cl . ' ' . number_format($xAmt) . ' ' . ($xSt === 'due' ? 'DUE' : 'PAID'); }
             if (!empty($pm['claim'])) { $parts[] = self::payClaimLabel('ro'); }   // 16 Nov 2026: a UTR sent, the office checks it
             if ($late)      { $parts[] = $xAmt > 0 ? 'late' : 'Booked after departure'; }
             elseif ($wsRow) { $parts[] = $xAmt > 0 ? 'WOMAN single' : 'WOMAN · single sleeper'; }
@@ -983,7 +1309,7 @@ final class ChalaniPng
 
             GoldSheet::card($im, $M, $by, $M + $halfW, $by + self::BOXES_H, 12, [255, 253, 246]);
             GoldSheet::foilRound($im, $M + 2, $by + 2, $M + $halfW - 2, $by + 38, 10);
-            self::t($im, 17, $M + 18, $by + 9, $navy, 'PAYMENT SUMMARY  ·  WHOLE BUS', true);
+            self::t($im, 17, $M + 18, $by + 9, $navy, 'PAYMENT SUMMARY  ·  ' . (isset($fmt['cur']['desk']) ? self::ro((string) $fmt['cur']['desk']) . ' DESK COPY · ' . $cl : 'WHOLE BUS'), true);
             /* 16 Nov 2026: 9 lines no longer fit one column of this 200px box, so it
                reads in two - the booking side left; the money side right (cash,
                online, and the pay-at-boarding money the crew still collects, never
@@ -991,15 +1317,15 @@ final class ChalaniPng
             $cols = [
                 [
                     ['Total passengers',        number_format((float) ($totals['passengers'] ?? 0))],
-                    ['Total ticket value',      'Rs ' . number_format((float) ($totals['ticket'] ?? 0))],
-                    ['Discount / concession',   'Rs ' . number_format((float) ($totals['discount'] ?? 0))],
-                    ['Special pay (luggage/infant)', 'Rs ' . number_format((float) ($totals['extras'] ?? 0))],
-                    ['   paid / due',           'Rs ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
+                    ['Total ticket value',      $cl . ' ' . number_format((float) ($totals['ticket'] ?? 0))],
+                    ['Discount / concession',   $cl . ' ' . number_format((float) ($totals['discount'] ?? 0))],
+                    ['Special pay (luggage/infant)', $cl . ' ' . number_format((float) ($totals['extras'] ?? 0))],
+                    ['   paid / due',           $cl . ' ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))],
                 ],
                 [
-                    ['Cash collected',          'Rs ' . number_format((float) ($totals['cash'] ?? 0))],
-                    ['Online / UPI received',   'Rs ' . number_format((float) ($totals['online'] ?? 0))],
-                    ['To collect on boarding',  (int) ($totals['boardDueN'] ?? 0) . ' pax  ·  Rs ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
+                    ['Cash collected',          $cl . ' ' . number_format((float) ($totals['cash'] ?? 0))],
+                    ['Online / UPI received',   $cl . ' ' . number_format((float) ($totals['online'] ?? 0))],
+                    ['To collect on boarding',  (int) ($totals['boardDueN'] ?? 0) . ' pax  ·  ' . $cl . ' ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
                 ],
             ];
             $colW = (int) (($halfW - 44 - 40) / 2);
@@ -1019,7 +1345,7 @@ final class ChalaniPng
             $ly = $by + 48 + 5 * 22 + 8;
             self::t($im, 17, $M + 22, $ly, $maroon, 'NET COLLECTION', true);
             imageline($im, $M + $halfW - 260, $ly + 22, $M + $halfW - 22, $ly + 22, $hair);
-            self::tR($im, 18, $M + $halfW - 24, $ly - 1, $maroon, 'Rs ' . number_format((float) ($totals['net'] ?? 0)), true);
+            self::tR($im, 18, $M + $halfW - 24, $ly - 1, $maroon, $cl . ' ' . number_format((float) ($totals['net'] ?? 0)) . (isset($totals['inr']['net']) ? '  (Rs ' . number_format((float) $totals['inr']['net']) . ')' : ''), true);
 
             $ax = $M + $halfW + 16;
             GoldSheet::card($im, $ax, $by, $W - $M, $by + self::BOXES_H, 12, [255, 253, 246]);

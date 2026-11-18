@@ -49,6 +49,11 @@ if (preg_match('/^(\d{2}):(\d{2})$/', $time, $m) === 1) {
 }
 $F  = SiteFacts::all();
 $qr = QrCode::dataUri(Ticket::qrPayload($b, $seats), 4, 2);
+/* 19 Nov 2026 (TK-3 / TK-5): the issuing company (Nepal letterhead on a Nepal sale),
+   the berths big, and an NPR sale's amounts in NPR (Ticket::money, the frozen rate). */
+$co80   = Ticket::companyOf($b);
+$seat80 = implode(' · ', array_map(static fn(string $s): string => Seats::displayLabel($s, $coach, $mode), $seats));
+$amt80  = static fn(float $a): string => Ticket::isNprSale($b) ? Ticket::money($b, $a, false) : inr($a);
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title><?= $e($pnr) ?> · 80 mm</title>
 <style>
@@ -62,15 +67,24 @@ hr{border:0;border-top:1px dashed #000;margin:5px 0}
 table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}td:last-child{text-align:right}
 .qr{display:block;margin:4px auto;width:34mm;height:34mm;image-rendering:pixelated}
 .big{font-size:16px;font-weight:800}
+.seat{border:2px solid #000;border-radius:4px;padding:2px 4px;margin:4px 0;text-align:center}
+.seat small{display:block;font-size:10px;font-weight:700;letter-spacing:.06em}
+.seat b{display:block;font-size:26px;line-height:1.1;font-weight:900;letter-spacing:.03em}
 .box{border:1px solid #000;padding:3px;text-align:center;font-weight:800;margin:4px 0}
 @media screen{body{margin:10px auto;box-shadow:0 0 0 1px #ccc;padding:6px}}
 </style></head>
 <body onload="setTimeout(function(){window.print()},250)">
+<?php if (($co80['entity'] ?? 'IN') === 'NP'): ?>
+<h1><?= $e(strtoupper((string) $co80['name'])) ?></h1>
+<div class="c sm"><?= $e(implode(' · ', array_filter([(string) ($co80['regLine'] ?? ''), (string) $co80['phone']], 'strlen'))) ?></div>
+<?php else: ?>
 <h1><?= $e(strtoupper((string) $F['brand']['name'])) ?></h1>
 <div class="c sm">CIN <?= $e($F['brand']['cin']) ?> · <?= $e($F['support']['phone']) ?></div>
+<?php endif; ?>
 <hr>
 <div class="pnr"><?= $e($pnr) ?></div>
 <img class="qr" src="<?= $e($qr) ?>" alt="Verify QR">
+<?php if ($seat80 !== ''): ?><div class="seat"><small>सिट · SEAT<?= count($seats) > 1 ? 'S' : '' ?></small><b><?= $e($seat80) ?></b></div><?php endif; ?>
 <?php if ($leg !== null): ?>
 <table>
   <tr><td>Route</td><td class="b"><?= $e($leg['from_city'] . ' → ' . $leg['to_city']) ?></td></tr>
@@ -87,10 +101,11 @@ table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}td
 </table>
 <hr>
 <?php if ((float) ($b['coupon_discount'] ?? 0) > 0): /* 15 Nov 2026: the discount and its share of the fare */ ?>
-<table><tr><td>Fare</td><td class="b"><?= $e(inr((float) $b['base_total'])) ?></td></tr>
-<tr><td>Discount / छुट</td><td class="b">− <?= $e(inr((float) $b['coupon_discount']) . Ticket::discountPctTxt($b)) ?></td></tr></table>
+<table><tr><td>Fare</td><td class="b"><?= $e($amt80((float) $b['base_total'])) ?></td></tr>
+<tr><td>Discount / छुट</td><td class="b">− <?= $e($amt80((float) $b['coupon_discount']) . Ticket::discountPctTxt($b)) ?></td></tr></table>
 <?php endif; ?>
-<table><tr><td>Total</td><td class="big"><?= $e(inr((float) $b['total_amount'])) ?></td></tr></table>
+<table><tr><td>Total</td><td class="big"><?= $e($amt80((float) $b['total_amount'])) ?></td></tr>
+<?php if (Ticket::isNprSale($b)): ?><tr><td class="sm">भारु · INR</td><td class="sm"><?= $e(inr((float) $b['total_amount'])) ?></td></tr><?php endif; ?></table>
 <?php if (($tn80 = Ticket::ticketNote($b)) !== ''): ?><div class="box">Note / टिप्पणी: <?= $e($tn80) ?></div><?php endif; ?>
 <div class="box"><?= $paid ? 'PAID' : ((int) $b['is_cod'] === 1 ? 'CASH — PAY AT BOARDING' : 'PAYMENT PENDING') ?></div>
 <div class="sm"><?= $e(Fare::refundPolicyLine('en')) ?></div>

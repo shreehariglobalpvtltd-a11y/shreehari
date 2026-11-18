@@ -26,8 +26,20 @@ if (($st['pin'] || $st['pattern']) && !$secAsk) {
     $_SESSION[ADMIN_SESSION_KEY]['qk_ok'] = true;
     Response::redirect(ltrim(Auth::homeUrl(), '/'));
 }
+/* 19 Nov 2026 (u7, LG-1): with the mobile-first door the PIN / pattern is OFFERED, not forced
+   (CodeLogin::required() is false): ?offer=1 shows "Skip for now". */
+$offer = !CodeLogin::required();
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['qk_kind'] ?? '') === 'skip') {
+    Security::requireCsrf();
+    if (CodeLogin::required()) {
+        $flash = 'PIN / pattern अनिवार्य छ · A PIN or pattern is required.';
+    } else {
+        $_SESSION[ADMIN_SESSION_KEY]['qk_ok'] = true;
+        Logger::audit('admin.login.setup_skipped', 'admin', (string) $id, null, null, 'PIN / pattern offer skipped (mobile-first door)');
+        Response::redirect(ltrim(Auth::homeUrl(), '/'));
+    }
+} elseif (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     Security::requireCsrf();
     try {
         if (!$fresh) {
@@ -40,7 +52,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($kind === 'secq') {
             // 15 Nov 2026 (owner): security question right after the PIN / pattern, optional
             $qk = (string) ($_POST['sec_q'] ?? '');
-            $q  = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS[$qk] ?? '');
+            // 19 Nov 2026 (u7): only the offered questions for a NEW answer (no date of birth); existing answers keep working
+            $q  = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS_OFFERED[$qk] ?? '');
             QuickUnlock::secSet($id, $q, (string) ($_POST['sec_a'] ?? ''));
             $_SESSION['home_flash'] = '✅ सुरक्षा प्रश्न राखियो · Security question saved.';
             Response::redirect(ltrim(Auth::homeUrl(), '/'));
@@ -89,8 +102,13 @@ admin_header('PIN / Pattern', '');
 </style>
 <div class="ps-wrap">
   <div class="ps-card">
-    <h2><?= $secAsk ? '✅ PIN / pattern राखियो · PIN / pattern saved' : '🔐 PIN वा Pattern अनिवार्य · A PIN or pattern is required' ?></h2>
+    <h2><?= $secAsk ? '✅ PIN / pattern राखियो · PIN / pattern saved'
+        : ($offer ? '🔐 PIN वा Pattern (ऐच्छिक) · A PIN or pattern (optional)' : '🔐 PIN वा Pattern अनिवार्य · A PIN or pattern is required') ?></h2>
+    <?php if ($offer && !$secAsk): ?>
+    <p class="muted">यो फोनमा छिटो खोल्न PIN वा pattern राख्न सक्नुहुन्छ — नराखे पनि पासवर्डले भित्र आउन मिल्छ · Set a PIN or pattern to open faster on this phone, or skip: your password still works.</p>
+    <?php else: ?>
     <p class="muted">अबदेखि लगइन: <b>कोड → PIN / pattern</b>। एक पटक मात्र राख्नुहोस् · From now on you sign in with your code and a PIN or pattern. Set it once.</p>
+    <?php endif; ?>
     <p class="ps-code">🪪 <?= Security::e($code) ?></p>
     <?php if ($flash !== null): ?><p class="pill" style="display:block;padding:10px 12px;background:#ffdede;color:#8a1f1f"><?= Security::e($flash) ?></p><?php endif; ?>
     <?php if (!$fresh): ?>
@@ -105,8 +123,8 @@ admin_header('PIN / Pattern', '');
     <form method="post" autocomplete="off">
       <?= Security::csrfField() ?><input type="hidden" name="qk_kind" value="secq"><input type="hidden" name="secq" value="1">
       <label>प्रश्न · Question
-        <select name="sec_q" onchange="document.getElementById('psOwn').hidden=this.value!=='own';var a=document.getElementById('psA');a.type=this.value==='dob'?'date':'text'">
-          <?php foreach (QuickUnlock::SEC_QUESTIONS as $k => $label): ?><option value="<?= Security::e($k) ?>"><?= Security::e($label) ?></option><?php endforeach; ?>
+        <select name="sec_q" onchange="document.getElementById('psOwn').hidden=this.value!=='own'">
+          <?php foreach (QuickUnlock::SEC_QUESTIONS_OFFERED as $k => $label): ?><option value="<?= Security::e($k) ?>"><?= Security::e($label) ?></option><?php endforeach; ?>
           <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
         </select></label>
       <label id="psOwn" hidden>तपाईंको प्रश्न · Your question<input name="sec_own" maxlength="150"></label>
@@ -134,6 +152,10 @@ admin_header('PIN / Pattern', '');
       <p data-qk-msg></p>
     </form>
   </div>
+  <?php endif; ?>
+  <?php if ($offer && !$secAsk): ?>
+  <form method="post" class="ps-card" style="text-align:center"><?= Security::csrfField() ?><input type="hidden" name="qk_kind" value="skip">
+    <button class="btn" type="submit" style="background:transparent;color:inherit;border:1px solid var(--line,#dfe5ef)">अहिलेलाई छोड्नुहोस् · Skip for now →</button></form>
   <?php endif; ?>
 </div>
 <script src="/assets/js/quick-unlock.js?v=20261101a"></script>

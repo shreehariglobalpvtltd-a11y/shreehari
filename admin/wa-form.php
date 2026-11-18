@@ -14,10 +14,13 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/waflow.php';
-require_once ROOT_PATH . '/whatsapp/config.php';
+if (is_file(ROOT_PATH . '/whatsapp/config.php')) {
+    require_once ROOT_PATH . '/whatsapp/config.php';
+}
 
 $admin   = admin_boot('reports.view');
 $canEdit = Auth::canManageSettings();
+$isSuper = Auth::isSuperadmin();
 $e       = static fn($v): string => Security::e((string) $v);
 
 $flash = null;
@@ -30,12 +33,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             throw new RuntimeException('This needs the Settings permission.');
         }
         $act = (string) ($_POST['action'] ?? '');
-        if ($act === 'publish') {
+        if ($act === 'recreate') {
+            /* 19 Nov 2026 (WA-3): drop the stored form (it may belong to the old
+               WhatsApp account) and make a fresh one in THIS account. Owner only. */
+            if (!$isSuper) {
+                throw new RuntimeException('Only the owner (superadmin) can re-create the form.');
+            }
+            $old = WaFlow::flowId();
+            $r   = WaFlow::publish(true);
+            Logger::audit('wa.flow_recreate', 'settings', 'whatsapp', null, ['old' => $old] + $r, 'WhatsApp booking form re-created by admin #' . (int) $admin['id']);
+            $flash = $r['ok']
+                ? ['ok', 'New form made and PUBLISHED in this WhatsApp account (id ' . $r['id'] . ')' . ($old !== '' ? '; the old form ' . $old . ' is no longer used' : '') . '. / नयाँ फारम चालु भयो।']
+                : ['bad', ($r['id'] !== '' ? 'New form ' . $r['id'] . ' made in this account but Meta kept it as a DRAFT - it stays OFF; the retry job publishes it once Meta allows. ' : 'No new form was made. ')
+                    . 'Meta said: ' . $r['error'] . ($r['errors'] !== [] ? ' — ' . implode(' · ', $r['errors']) : '')];
+        } elseif ($act === 'publish') {
             $r = WaFlow::publish();
             Logger::audit('wa.flow_publish', 'settings', 'whatsapp', null, $r, 'WhatsApp booking form published by admin #' . (int) $admin['id']);
             $flash = $r['ok']
-                ? ['ok', 'Form published on Meta (id ' . $r['id'] . '). "ticket" on WhatsApp now opens it. / फारम चालु भयो।']
-                : ['bad', ($r['id'] !== '' ? 'Meta made the form (id ' . $r['id'] . ') but kept it as a DRAFT — customers still get the chat questions; "Send form" works for testing. ' : '')
+                ? ['ok', 'Form published on Meta (id ' . $r['id'] . ')' . ($r['replaced'] !== '' ? ' - it replaces ' . $r['replaced'] . ', which was not in this WhatsApp account' : '') . '. "ticket" on WhatsApp now opens it. / फारम चालु भयो।']
+                : ['bad', ($r['replaced'] !== '' ? 'The old form ' . $r['replaced'] . ' was not in this WhatsApp account (' . $r['why'] . ') and was dropped. ' : '')
+                    . ($r['id'] !== '' ? 'Meta made the form (id ' . $r['id'] . ') but kept it as a DRAFT — customers still get the chat questions. ' : '')
                     . 'Meta said: ' . $r['error'] . ($r['errors'] !== [] ? ' — ' . implode(' · ', $r['errors']) : '')
                     . (stripos($r['error'], 'integrity') !== false ? ' → Meta Business Manager: finish Business Verification / fix the phone number quality, then press Publish again.' : '')];
         } elseif ($act === 'template') {
@@ -55,13 +72,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         } elseif ($act === 'save') {
             $id = preg_replace('/\D/', '', (string) ($_POST['wa_flow_book_id'] ?? '')) ?? '';
+            if ($id !== WaFlow::flowId()) {
+                Settings::set('wa_flow_waba', '', 'string', 'whatsapp');   // a pasted id is checked again before it can go on
+            }
             Settings::set('wa_flow_book_id', $id, 'string', 'whatsapp');
-            Settings::set('wa_flow_on', !empty($_POST['wa_flow_on']) ? '1' : '0', 'bool', 'whatsapp');
             Settings::set('wa_flow_draft', !empty($_POST['wa_flow_draft']) ? '1' : '0', 'bool', 'whatsapp');
-            Logger::audit('wa.flow_settings', 'settings', 'whatsapp', null, ['id' => $id, 'on' => !empty($_POST['wa_flow_on']), 'draft' => !empty($_POST['wa_flow_draft'])], 'WhatsApp form settings');
-            $flash = ['ok', 'Saved. / सेभ भयो।'];
+            $wantOn = !empty($_POST['wa_flow_on']);
+            $note   = '';
+            if ($wantOn) {
+                /* 19 Nov 2026 (WA-3): ON only for a form Meta reports PUBLISHED in
+                   THIS WhatsApp account - never a draft or another account's form. */
+                $own = WaFlow::ownership();
+                if ($own['state'] === 'own' && $own['status'] === 'PUBLISHED') {
+                    Settings::set('wa_flow_waba', defined('META_WABA_ID') ? (string) META_WABA_ID : '', 'string', 'whatsapp');
+                    Settings::set('wa_flow_draft', '0', 'bool', 'whatsapp');
+                } else {
+                    $wantOn = false;
+                    $note   = ' The form stays OFF: Meta does not show form ' . ($id !== '' ? $id : '(none)') . ' as PUBLISHED in this WhatsApp account ('
+                        . $own['state'] . ($own['status'] !== '' ? ', ' . $own['status'] : '') . ($own['error'] !== '' ? ', ' . $own['error'] : '') . ').';
+                }
+            }
+            Settings::set('wa_flow_on', $wantOn ? '1' : '0', 'bool', 'whatsapp');
+            Logger::audit('wa.flow_settings', 'settings', 'whatsapp', null, ['id' => $id, 'on' => $wantOn, 'draft' => !empty($_POST['wa_flow_draft'])], 'WhatsApp form settings');
+            $flash = [$note === '' ? 'ok' : 'bad', 'Saved. / सेभ भयो।' . $note];
         } elseif ($act === 'test') {
-            $r = WaFlow::sendTo((string) ($_POST['phone'] ?? ''), (string) ($_POST['lang'] ?? 'ne'));
+            $cc = (string) ($_POST['country'] ?? '');
+            $r = WaFlow::sendTo((string) ($_POST['phone'] ?? ''), (string) ($_POST['lang'] ?? 'ne'), false, in_array($cc, ['IN', 'NP'], true) ? $cc : '');
             $flash = $r['success'] ? ['ok', 'Sent via ' . $r['via'] . '. Open WhatsApp on that phone.'] : ['bad', 'Not sent — ' . $r['error']];
         }
     } catch (Throwable $ex) {
@@ -77,10 +113,12 @@ if (isset($_GET['json'])) {
 }
 
 $id      = WaFlow::flowId();
-$on      = Settings::getBool('wa_flow_on', true);
+$on      = WaFlow::enabled();
 $draft   = Settings::getBool('wa_flow_draft', false);
-$metaOk  = META_ACCESS_TOKEN !== '' && META_WABA_ID !== '';
+$metaOk  = WaFlow::metaReady();
 $status  = $id !== '' && $metaOk ? WaFlow::status() : ['status' => '', 'error' => '', 'validation_errors' => []];
+$owner   = $id !== '' && $metaOk ? WaFlow::ownership() : ['state' => $id === '' ? 'none' : 'unknown', 'status' => '', 'error' => ''];
+$dropped = Settings::getString('wa_flow_dropped', '');
 $data    = WaFlow::screenData('ne', false);
 $sold    = (int) Database::scalar(
     "SELECT COUNT(*) FROM audit_logs WHERE action = 'wa.flow_submit' AND created_at >= CURDATE() - INTERVAL 30 DAY", [], 0);
@@ -117,7 +155,15 @@ admin_page_head('The one-sheet booking form inside WhatsApp: pickup, date, seats
         <?php if ($id === ''): ?><span class="wf-st no">not published yet</span>
         <?php else: ?><span class="wf-st <?= in_array($status['status'], ['PUBLISHED'], true) ? 'ok' : 'wait' ?>"><?= $e($status['status'] !== '' ? $status['status'] : 'id ' . $id) ?></span>
           <small class="muted">id <?= $e($id) ?><?= $status['error'] !== '' ? ' · ' . $e($status['error']) : '' ?></small><?php endif; ?></p>
+      <?php if ($owner['state'] === 'foreign'): ?>
+      <div class="flash bad" style="margin:6px 0 10px"><b>This form is not in the current WhatsApp account</b> (WABA <?= $e(defined('META_WABA_ID') ? META_WABA_ID : '') ?>).
+        It was made under the old account and Meta can never publish it for this number. Press <b>♻️ Re-create form</b> (owner) or <b>Publish</b> — a fresh form is made here.</div>
+      <?php elseif ($owner['state'] === 'deprecated'): ?>
+      <div class="flash bad" style="margin:6px 0 10px">Meta has retired this form (DEPRECATED). Publish makes a new one.</div>
+      <?php endif; ?>
+      <?php if ($dropped !== ''): ?><p class="muted text-sm">Last form dropped: <?= $e($dropped) ?></p><?php endif; ?>
       <p>Switched: <?= $on ? '<span class="wf-st ok">ON</span>' : '<span class="wf-st no">OFF</span>' ?>
+        <small class="muted">(goes ON only when Meta shows the form PUBLISHED in this account)</small>
         · Template <?= $e(WaFlow::TEMPLATE) ?>: <span class="wf-st wait"><?= $e(Settings::getString('wa_flow_template_status', 'not made')) ?></span>
         · Forms filled (30 days): <b><?= $sold ?></b></p>
       <?php if (!empty($status['validation_errors'])): ?>
@@ -142,12 +188,20 @@ admin_page_head('The one-sheet booking form inside WhatsApp: pickup, date, seats
         <a class="btn ghost" href="?json=1">⬇ Form JSON</a>
       </div>
       <?php endif; ?>
+      <?php if ($isSuper): ?>
+      <form method="post" class="wf-row" onsubmit="return confirm('Make a NEW booking form in this WhatsApp account? The stored form (if any) stops being used.');">
+        <?= Security::csrfField() ?><input type="hidden" name="action" value="recreate">
+        <button class="btn ghost" type="submit" <?= $metaOk ? '' : 'disabled' ?>>♻️ Re-create form (new, in this WhatsApp account)</button>
+        <small class="muted">Owner only. Use when the form belongs to an old account or Meta refuses it.</small>
+      </form>
+      <?php endif; ?>
     </div></div>
 
     <div class="panel"><h2>Try it</h2><div class="panel-body">
       <p class="muted text-sm" style="margin-top:0">Sends booking instructions to one customer who asked to book. While the form is in review, they can book by replying in chat. Sending the starter outside an open service window requires Meta template approval.</p>
       <form method="post" class="wf-row"><?= Security::csrfField() ?><input type="hidden" name="action" value="test">
         <input type="tel" name="phone" placeholder="98XXXXXXXX or +977 98…" required>
+        <select name="country" aria-label="Country of a 10-digit number"><option value="IN">🇮🇳 +91</option><option value="NP">🇳🇵 +977</option></select>
         <select name="lang"><option value="ne">नेपाली</option><option value="hi">हिन्दी</option><option value="en">English</option><option value="gu">ગુજરાતી</option></select>
         <button class="btn" type="submit" <?= $canEdit && $metaOk ? '' : 'disabled' ?>>Send booking instructions</button></form>
     </div></div>
@@ -171,13 +225,15 @@ admin_page_head('The one-sheet booking form inside WhatsApp: pickup, date, seats
         <div class="wf-msg"><?= nl2br($e(WaFlow::ui('0', 'ne', false)['body'])) ?><div class="cta">🎫 टिकट बुक</div></div>
         <div class="wf-sheet">
           <h4>Book bus ticket</h4><p><?= $e($data['intro']) ?></p>
+          <div class="wf-f"><small>Name · नाम <b>*</b></small>&nbsp;</div>
+          <div class="wf-f"><small>Mobile · मोबाइल <b>*</b></small>98XXXXXXXX <small>(prefilled: the sender's own number · <?= $e($data['phone_hint']) ?>)</small></div>
+          <div class="wf-f"><small>Mobile code · मोबाइल कोड</small><?php foreach ($data['country_opts'] as $c): ?><?= $c['id'] === $data['country_init'] ? '◉' : '◯' ?> <?= $e($c['title']) ?><br><?php endforeach; ?></div>
+          <div class="wf-f"><small>Travel date · यात्रा मिति</small>📅 ▾ <small><?= $e(implode(' · ', array_map(static fn(array $d): string => (string) $d['title'], array_slice($data['date_opts'], 0, 3)))) ?> … (<?= count($data['date_opts']) ?> days)</small></div>
           <div class="wf-f"><small>Pickup · चढ्ने ठाउँ</small><?= $e($data['pickups'][0]['title'] ?? '—') ?> ▾ <small><?= count($data['pickups']) ?> choices</small></div>
-          <div class="wf-f"><small>Travel date · यात्रा मिति</small>📅 <?= $e(formatDate($data['min_date'])) ?> … <?= $e(formatDate($data['max_date'])) ?></div>
           <div class="wf-f"><small>Seats · सिट</small>1 ▾ (up to <?= count($data['seat_opts']) ?>)</div>
-          <div class="wf-f"><small>Name · नाम</small>&nbsp;</div>
-          <div class="wf-f"><small>Mobile · मोबाइल</small><?= $e($data['phone_hint']) ?></div>
           <div class="wf-f"><small>Others · अरू नाम</small>&nbsp;</div>
-          <div class="wf-f"><small>Payment · भुक्तानी</small><?php foreach ($data['pay_opts'] as $p): ?>◯ <?= $e($p['title']) ?><br><?php endforeach; ?></div>
+          <div class="wf-f"><small>Payment · भुक्तानी</small><?php foreach ($data['pay_opts'] as $p): ?><?= $p['id'] === $data['pay_init'] ? '◉' : '◯' ?> <?= $e($p['title']) ?><br><?php endforeach; ?></div>
+          <p style="margin:6px 0 0;font-size:11px;color:#777">* required. Everything else starts filled in; the day is always picked by the customer.</p>
           <div class="wf-btn">Book ticket · टिकट बुक</div>
         </div>
       </div>

@@ -777,7 +777,7 @@ final class AiAgent
      */
     private static function ask(string $system, array $history, array $tools, array $ctx = [], bool $noTools = false): ?array
     {
-        $order = self::buildLadder();
+        $order = self::buildLadder($ctx);
         require_once INCLUDE_PATH . '/aimeter.php';
         AiMeter::context([
             'channel' => (string) ($ctx['channel'] ?? 'whatsapp'),
@@ -838,9 +838,57 @@ final class AiAgent
      * sensible order — fast cheap ones first, strong expensive ones last.
      * A comma list like "cerebras,grok,gemini" overrides the order.
      *
+     * 19 Nov 2026 (u8 AI-1 agent mode): $ctx is the sender. For our own
+     * people — office (admin) and agents / counters / staff (staff) — the
+     * brain named in ai_staff_provider (default 'anthropic') answers first
+     * when it has a key, because those turns use the selling and lookup
+     * tools; Claude Haiku (ai_staff_model) is cheap enough for that. A
+     * customer keeps the ladder below unchanged. ai_staff_provider = ''
+     * (or 'off') gives everyone the old order. The daily ceiling skip in
+     * ask() still drops Claude, so the next brain (Gemini) answers then.
+     *
+     * @param array<string,mixed> $ctx
      * @return string[]
      */
-    private static function buildLadder(): array
+    public static function buildLadder(array $ctx = []): array
+    {
+        $ladder = self::baseLadder();
+        $staff = self::staffProvider($ctx);
+        if ($staff !== '' && in_array($staff, $ladder, true)) {
+            $ladder = array_values(array_unique(array_merge([$staff], $ladder)));
+        }
+        return $ladder;
+    }
+
+    /** The staff-first brain for this sender, or '' (customer / switched off / explicit ladder). */
+    private static function staffProvider(array $ctx): string
+    {
+        if (!in_array((string) ($ctx['role'] ?? 'customer'), ['staff', 'admin'], true)) {
+            return '';
+        }
+        $explicit = strtolower(trim(Settings::getString('ai_model_ladder', 'auto')));
+        if ($explicit !== '' && $explicit !== 'auto') {
+            return '';                                   // the office's own comma list always wins
+        }
+        $p = strtolower(trim(Settings::getString('ai_staff_provider', 'anthropic')));
+        return in_array($p, ['', 'off', 'auto', 'none'], true) ? '' : $p;
+    }
+
+    /** The Claude model for this sender: ai_staff_model for staff turns that Claude answers first. */
+    private static function claudeModelFor(array $ctx): string
+    {
+        if (self::staffProvider($ctx) === 'anthropic') {
+            $m = trim(Settings::getString('ai_staff_model', 'claude-haiku-5-5'));
+            if ($m !== '') {
+                return $m;
+            }
+        }
+        return trim(Settings::getString('ai_agent_model', ''))
+            ?: (trim(Settings::getString('ai_model', '')) ?: AiBrain::CLAUDE_DEFAULT);
+    }
+
+    /** @return string[] */
+    private static function baseLadder(): array
     {
         $setting = strtolower(trim(Settings::getString('ai_model_ladder', 'auto')));
 
@@ -883,8 +931,7 @@ final class AiAgent
         }
         /* The AI Brain page saves ai_model; this agent used to read only
            ai_agent_model, so a model chosen on the page never reached it. */
-        $model   = trim(Settings::getString('ai_agent_model', ''))
-            ?: (trim(Settings::getString('ai_model', '')) ?: AiBrain::CLAUDE_DEFAULT);
+        $model   = self::claudeModelFor($ctx);
         $payload = self::anthropicPayload($model, $system, $history, $tools, $ctx, $noTools);
         $timeout = self::webResearchOn($ctx) ? self::HTTP_TIMEOUT_WEB : self::HTTP_TIMEOUT;
 

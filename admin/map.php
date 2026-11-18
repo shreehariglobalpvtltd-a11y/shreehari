@@ -280,6 +280,31 @@ $allStops = Database::fetchAll(
       ORDER BY r.sort_order, rs.route_id, rs.stop_type, rs.sort_order"
 );
 $canEditStops = Auth::can('routes.edit');
+/* 19 Nov 2026 (u8 AI-4): real times learned from GPS at night (cron/stop-timing.php).
+   Suggestions only - "Use this time" posts the normal stop update above (routes.edit,
+   audited map.stop_update); nothing changes a timetable by itself. */
+require_once INCLUDE_PATH . '/stoptiming.php';
+$stopLearned = StopTiming::learned();
+/* Fix of 19 Nov (review): halts are learned too - show them read-only (a halt's
+   time is edited on Admin → Routes → Halts, not here). */
+$haltLearned = [];
+foreach ($stopLearned as $lk => $lr) {
+    if (str_starts_with((string) $lk, 'halt:')) {
+        $haltLearned[(int) $lr['stop_ref']] = $lr;
+    }
+}
+$learnedHalts = [];
+if ($haltLearned !== []) {
+    try {
+        $learnedHalts = Database::fetchAll(
+            'SELECT h.id, h.name, h.kind, h.clock_time, h.halt_min, h.km_from_origin, h.is_approx, r.route_code, r.from_city, r.to_city
+               FROM route_halts h JOIN routes r ON r.id = h.route_id
+              WHERE h.id IN (' . implode(',', array_map('intval', array_keys($haltLearned))) . ')
+              ORDER BY r.sort_order, h.route_id, h.km_from_origin');
+    } catch (Throwable $e) {
+        $learnedHalts = [];   // halts table not installed
+    }
+}
 
 // Today's Booked Passengers for Quick Radar Link Dispatch
 $todayPaxBookings = Database::fetchAll(
@@ -1038,7 +1063,23 @@ window.ADMAP = {
           <td><b><?= Security::e($st['route_code']) ?></b> <span class="muted" style="font-size:11px">(<?= Security::e($st['from_city'] . ' → ' . $st['to_city']) ?>)</span></td>
           <td><span class="pill" style="background:<?= $st['stop_type'] === 'boarding' ? '#d7f4e3;color:#0a6b3b' : '#fee2e2;color:#991b1b' ?>"><?= ucfirst((string)$st['stop_type']) ?></span></td>
           <td><b><?= Security::e($st['stop_name']) ?></b></td>
-          <td class="mono"><b><?= $st['stop_time'] ? substr((string)$st['stop_time'], 0, 5) : '<span class="muted">—</span>' ?></b></td>
+          <td class="mono"><b><?= $st['stop_time'] ? substr((string)$st['stop_time'], 0, 5) : '<span class="muted">—</span>' ?></b>
+            <?php $lr = $stopLearned['stop:' . (int) $st['id']] ?? null; if ($lr !== null && $lr['suggested_time'] !== null): $sug = substr((string) $lr['suggested_time'], 0, 5); ?>
+              <div class="muted" style="font-size:11.5px;font-family:inherit;white-space:normal" data-learned="<?= (int) $st['id'] ?>">
+                GPS ≈ <?= Security::e($sug) ?><?= (int) $lr['day_offset'] > 0 ? ' (+' . (int) $lr['day_offset'] . ' दिन · day)' : '' ?>
+                · <?= (int) $lr['samples'] ?> trips · p80 <?= (int) $lr['p80_offset_min'] - (int) $lr['median_offset_min'] >= 0 ? '+' : '' ?><?= (int) $lr['p80_offset_min'] - (int) $lr['median_offset_min'] ?> min
+                <?php if ($lr['median_dwell_min'] !== null): ?> · रोकिने · stop <?= (int) $lr['median_dwell_min'] ?> min<?php endif; ?>
+              </div>
+              <?php if ($canEditStops && $sug !== substr((string) ($st['stop_time'] ?? ''), 0, 5)): ?>
+              <form method="post" style="margin-top:4px" onsubmit="return confirm('<?= Security::e(addslashes($st['stop_name'])) ?>: समय <?= Security::e($sug) ?> राख्ने? Set the time to <?= Security::e($sug) ?>?')">
+                <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="update_stop">
+                <input type="hidden" name="stop_id" value="<?= (int) $st['id'] ?>"><input type="hidden" name="stop_time" value="<?= Security::e($sug) ?>">
+                <input type="hidden" name="fare" value="<?= (float) ($st['fare'] ?? 0) > 0 ? Security::e((string) (float) $st['fare']) : '' ?>">
+                <input type="hidden" name="landmark" value="<?= Security::e((string) ($st['landmark'] ?? '')) ?>">
+                <button type="submit" class="btn ghost" style="font-size:11.5px;padding:3px 8px">यो समय राख्नुहोस् · Use this time</button>
+              </form>
+              <?php endif; ?>
+            <?php endif; ?></td>
           <td class="num"><b><?= (float)$st['fare'] > 0 ? '₹' . number_format((float)$st['fare']) : '<span class="muted">Default</span>' ?></b></td>
           <td><?= !empty($st['landmark']) ? Security::e($st['landmark']) : '<span class="muted">—</span>' ?></td>
           <td><?= (int)$st['is_border'] === 1 ? '<span class="pill" style="background:#fef3c7;color:#92400e">🛃 Border Point</span>' : '<span class="muted">—</span>' ?></td>
@@ -1052,6 +1093,30 @@ window.ADMAP = {
     </tbody>
   </table>
 </div>
+
+<?php if ($learnedHalts !== []): ?>
+<h3 style="font-size:14.5px;margin:18px 0 8px">☕ बाटोका रोकाइ · Halts on the way — GPS timings</h3>
+<div class="muted" style="font-size:12px;margin-bottom:8px">Learned at night from the GPS trail. Halt km are typed by hand (≈), so these times are approximate. To change a halt: Admin → Routes → Halts on the way.</div>
+<div class="dt-wrap">
+  <table class="dt no-card">
+    <thead><tr><th>Route</th><th>Halt</th><th>km</th><th>Timetable</th><th>GPS ≈</th><th>Trips</th><th>Stop (min)</th></tr></thead>
+    <tbody>
+      <?php foreach ($learnedHalts as $h): $lr = $haltLearned[(int) $h['id']]; ?>
+        <tr data-learned-halt="<?= (int) $h['id'] ?>">
+          <td><b><?= Security::e($h['route_code']) ?></b> <span class="muted" style="font-size:11px">(<?= Security::e($h['from_city'] . ' → ' . $h['to_city']) ?>)</span></td>
+          <td><b><?= Security::e($h['name']) ?></b> <span class="muted" style="font-size:11px"><?= Security::e((string) $h['kind']) ?></span></td>
+          <td class="num"><?= $h['km_from_origin'] !== null ? ((int) $h['is_approx'] === 1 ? '≈ ' : '') . Security::e((string) (float) $h['km_from_origin']) : '<span class="muted">—</span>' ?></td>
+          <td class="mono"><?= $h['clock_time'] !== null ? Security::e(substr((string) $h['clock_time'], 0, 5)) : '<span class="muted">—</span>' ?></td>
+          <td class="mono"><b><?= $lr['suggested_time'] !== null ? Security::e(substr((string) $lr['suggested_time'], 0, 5)) : '—' ?></b><?= (int) $lr['day_offset'] > 0 ? ' <span class="muted">(+' . (int) $lr['day_offset'] . ' day)</span>' : '' ?>
+            <span class="muted" style="font-size:11px"> · p80 <?= (int) $lr['p80_offset_min'] - (int) $lr['median_offset_min'] >= 0 ? '+' : '' ?><?= (int) $lr['p80_offset_min'] - (int) $lr['median_offset_min'] ?> min</span></td>
+          <td class="num"><?= (int) $lr['samples'] ?></td>
+          <td class="num"><?= $lr['median_dwell_min'] !== null ? (int) $lr['median_dwell_min'] : '<span class="muted">—</span>' ?><span class="muted" style="font-size:11px"> / <?= (int) $h['halt_min'] ?> planned</span></td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+<?php endif; ?>
 
 <?php if ($canEditStops): /* 16 Nov 2026: the edit / add forms only for routes.edit (the handlers refuse the rest) */ ?>
 <!-- STOP EDIT MODAL -->

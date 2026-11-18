@@ -145,6 +145,25 @@ function a360_country_hint(array $profile, string $rawPhone): ?string
 }
 
 /**
+ * 19 Nov 2026 (u5 AG-2): a paid / declined WITHDRAWAL REQUEST first tries the approved
+ * shg_withdraw_update template (AgentPro::payoutTemplate — false while the template
+ * sender does not exist); the caller sends its usual text only when this is false,
+ * so the agent never gets both.
+ */
+function a360_payout_template(int $agentId, string $status, float $amount, string $detail): bool
+{
+    if (!Settings::getBool('agent_notify_settlement', true)) {
+        return false;
+    }
+    try {
+        require_once INCLUDE_PATH . '/agentpro.php';
+        return AgentPro::payoutTemplate($agentId, $status, $amount, $detail);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
  * Tell the agent a settlement was recorded (agent_notify_settlement, default
  * on). Best effort: an outage never undoes the ledger row. Returns a wa.me
  * link when the WhatsApp driver is click-to-chat, so the flash can offer a
@@ -250,7 +269,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                whole-balance request (₹700 due, ₹700 asked) refused every payout with "Funds are
                reserved". Same as agent.php / Team Management → Withdrawals: agent row locked,
                payout written with request_id and the request marked paid in ONE transaction. */
-            $ledgerId = Database::transaction(static function () use ($targetId, $action, $amount, $setMeta, $selfId): int {
+            $settledReq = 0;   // 19 Nov 2026 (u5 AG-2): the withdrawal request this payout settled, if any
+            $ledgerId = Database::transaction(static function () use ($targetId, $action, $amount, $setMeta, $selfId, &$settledReq): int {
                 if ($action !== 'payout') {
                     return AgentWallet::record($targetId, $action, $amount, $setMeta);
                 }
@@ -261,10 +281,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $lid = AgentWallet::record($targetId, 'payout', $amount, $setMeta + ['request_id' => (int) $oreq['id']]);
                 AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $selfId, 'Settled by payout ' . AgentWallet::voucherFor($lid), $lid);
+                $settledReq = (int) $oreq['id'];
                 return $lid;
             }, 1);
             $voucher = AgentWallet::voucherFor($ledgerId);
-            $wa = a360_notify_settlement($agent, $profile, $action, $amount, $ledgerId);
+            $refTxt  = trim((string) ($setMeta['ref'] ?? ''));
+            $wa = $settledReq > 0 && a360_payout_template($targetId, 'paid', $amount, $refTxt !== '' ? $refTxt : $voucher)
+                ? '' : a360_notify_settlement($agent, $profile, $action, $amount, $ledgerId);
             a360_flash('ok', ($action === 'payout' ? 'Commission payout of ' : 'Cash handover of ') . inr($amount)
                 . ' recorded' . ($voucher !== '' ? ' — voucher ' . $voucher : '') . '.', $wa);
             a360_go($targetId, 'settlements');
@@ -344,7 +367,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 return $lid;
             }, 1);
             $voucher = AgentWallet::voucherFor($ledgerId);
-            $wa      = a360_notify_settlement($agent, $profile, 'payout', $amount, $ledgerId);
+            $refTxt  = trim((string) ($_POST['ref'] ?? ''));
+            $wa      = a360_payout_template($targetId, 'paid', $amount, $refTxt !== '' ? mb_substr($refTxt, 0, 80) : $voucher)
+                ? '' : a360_notify_settlement($agent, $profile, 'payout', $amount, $ledgerId);
             a360_flash('ok', 'Payout request #' . (int) $req['id'] . ' paid — ' . inr($amount)
                 . ($voucher !== '' ? ', voucher ' . $voucher : '') . '.', $wa);
             a360_go($targetId, 'requests');
@@ -359,7 +384,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             AgentWallet::decidePayoutRequest((int) $req['id'], 'declined', $selfId, $note);
             $wa = '';
-            if (Settings::getBool('agent_notify_settlement', true)) {
+            if (Settings::getBool('agent_notify_settlement', true)
+                && !a360_payout_template($targetId, 'declined', (float) $req['amount'], $note)) {
                 try {
                     $to = a360_wa_digits($agent, $profile);
                     if ($to !== '') {
@@ -1993,7 +2019,7 @@ $tPct = static fn(float $v): string => rtrim(rtrim(number_format($v, 2), '0'), '
     <h2><svg class="a-ic"><use href="#a-send"/></svg> Open requests <span class="muted" style="font-weight:500">· commission due <?= $e(inr($balances['commission'])) ?></span></h2>
     <div class="tbl-scroll">
       <table>
-        <thead><tr><th>Requested</th><th class="num">Amount</th><th>Agent's note</th><th style="min-width:340px">Decision</th></tr></thead>
+        <thead><tr><th>Requested</th><th class="num">Amount</th><th>Pay to · पठाउने · note</th><th style="min-width:340px">Decision</th></tr></thead>
         <tbody>
           <?php if ($openReqs === []): ?>
             <tr><td colspan="4"><?= admin_empty('Nothing waiting', 'An agent asks for a payout from their own panel; it lands here until the office pays or declines it.', '💸') ?></td></tr>
@@ -2001,7 +2027,10 @@ $tPct = static fn(float $v): string => rtrim(rtrim(number_format($v, 2), '0'), '
             <tr>
               <td class="muted" style="white-space:nowrap"><?= $e(date('j M Y, H:i', (int) strtotime((string) $rq['created_at']))) ?><div class="text-xs">#<?= (int) $rq['id'] ?> · <?= $e(timeAgo((string) $rq['created_at'])) ?></div></td>
               <td class="num money fw7"><?= $e(inr((float) $rq['amount'])) ?><?= (float) $rq['amount'] > $balances['commission'] + 0.009 ? '<div class="text-xs" style="color:var(--bad)">more than the balance now due</div>' : '' ?></td>
-              <td class="muted" style="font-size:12px"><?= $e($rq['note'] ?: '—') ?></td>
+              <td class="muted" style="font-size:12px"><?php /* 19 Nov 2026 (u5 AG-2): where the agent asked to be paid (snapshot) + their QR */ ?>
+                <?php if (trim((string) ($rq['pay_to'] ?? '')) !== ''): ?><b style="color:var(--ink,inherit)"><?= $e($rq['pay_to']) ?></b><br><?php endif; ?>
+                <?php if (trim((string) ($rq['pay_qr_path'] ?? '')) !== ''): ?><a href="/api/agentpro.php?a=payout_qr&amp;req=<?= (int) $rq['id'] ?>" target="_blank" rel="noopener">🖼 QR</a><br><?php endif; ?>
+                <?= $e($rq['note'] ?: '—') ?></td>
               <td>
                 <?php if ($showSettle): ?>
                   <form method="post" class="row" style="gap:6px;margin-bottom:6px" onsubmit="return confirm('Pay <?= $e(inr((float) $rq['amount'])) ?> to this agent and close the request?')">

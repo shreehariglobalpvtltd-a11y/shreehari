@@ -155,6 +155,25 @@ if ($sugg !== []) {
     }
 }
 
+/* ---- last night's Claude review (19 Nov 2026, u8 AI-1) -------------------
+   Three Nepali lines from cron/ai-review.php's report on yesterday, when it
+   ran 'ok' (ai_review_in_digest, default on). Read only; the full report is
+   on AI Control Center. Nothing new is sent: it rides in this same brief. */
+$reviewLines = [];
+try {
+    require_once INCLUDE_PATH . '/aireview.php';
+    $reviewLines = AiReview::digestLines(date('Y-m-d', strtotime($today . ' -1 day')));
+} catch (Throwable $e) {
+    Logger::warning('brain-digest: night review lines skipped', ['error' => $e->getMessage()], 'cron');
+}
+if ($reviewLines !== []) {
+    $lines[] = '';
+    $lines[] = '🌙 हिजोको समीक्षा · Night review:';
+    foreach ($reviewLines as $l) {
+        $lines[] = '• ' . $l;
+    }
+}
+
 if ((int) $acc['sample'] >= 10) {
     $lines[] = '';
     $lines[] = sprintf('Brain accuracy (30 days): %d%% of %d cards became tickets.', (int) round(((float) $acc['hitRate']) * 100), (int) $acc['sample']);
@@ -172,6 +191,7 @@ $out  = [
     'drafts' => count($drafts),
     'alerts' => count($alerts),
     'suggestions' => count($sugg),
+    'review_lines' => count($reviewLines),
 ];
 
 if ($dry) {

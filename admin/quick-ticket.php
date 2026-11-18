@@ -115,29 +115,27 @@ $who = trim((string) ($admin['full_name'] ?? ($admin['username'] ?? 'staff')));
 require_once INCLUDE_PATH . '/agentwallet.php';
 $staffId    = (int) ($admin['id'] ?? 0);
 $staffCode  = AgentWallet::agentCodeLabel($staffId) ?: '';
-$agentRows  = [];
-try {
-    $agentRows = Database::fetchAll(
-        "SELECT a.id, a.username, a.full_name, COALESCE(p.counter_name, '') AS city
-           FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
-          WHERE a.role = 'agent' AND a.is_active = 1 ORDER BY a.full_name, a.username"
-    );
-} catch (Throwable $e) {}
-$agentList = [];
-foreach ($agentRows as $ar) {
-    $aid   = (int) $ar['id'];
-    $aCode = AgentWallet::agentCodeLabel($aid);
-    if ($aCode) {
-        $agentList[] = [
-            'code' => $aCode,
-            'name' => (string) ($ar['full_name'] ?: $ar['username']),
-            'type' => AgentWallet::agentTypeFor($aid),
-            'co'   => AgentWallet::isCompanyCode($aCode),
-            'city' => trim((string) ($ar['city'] ?? '')),
-        ];
+/* 19 Nov 2026: the one desk list (agents by code, then staff by staff number) -
+   AgentWallet::sellableAgents(), the list counter mode and SmartBook use.
+   AG-4: an AGENT sells on its own code only - its list is just itself and the
+   select is locked (BookingService::create refuses another code anyway).
+   AG-3: with staff_commission_off on, staff entries say "no commission". */
+$agentOnly   = Auth::isCounterAgent();
+$staffNoComm = Settings::getBool('staff_commission_off', false);
+$agentList   = [];
+if ($agentOnly) {
+    if ($staffCode !== '') {
+        $agentList[] = ['code' => $staffCode, 'name' => $who, 'type' => AgentWallet::agentTypeFor($staffId),
+                        'co' => AgentWallet::isCompanyCode($staffCode), 'city' => ''];
     }
+} else {
+    $agentList = AgentWallet::sellableAgents();
 }
-usort($agentList, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
+$agentLabel = static function (array $ag) use ($staffNoComm): string {
+    $isStaff = ($ag['type'] ?? '') === 'staff';
+    return ($ag['co'] ? '🏢 ' : ($isStaff ? '🧑‍💼 ' : '👤 ')) . $ag['code'] . ' · ' . $ag['name']
+        . ($isStaff && $staffNoComm ? ' · स्टाफ · staff (no commission)' : '');
+};
 $commFlat   = AgentWallet::flatMode();
 $commDirect = Settings::getFloat('agent_flat_direct', 200.0);
 $commJoint  = Settings::getFloat('agent_flat_joint', 400.0);
@@ -531,20 +529,21 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 
       <div class="qt-row" style="margin:10px 0">
         <span class="qt-k" style="font-weight:700">एजेन्ट · Agent <small style="color:#e53e3e">(अनिवार्य / required)</small></span>
-        <select id="qtAgent" class="qt-in" style="max-width:320px" required>
-          <option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>
+        <select id="qtAgent" class="qt-in" style="max-width:320px" required<?= $agentOnly ? ' disabled data-own="1" title="आफ्नै कोड · your own code"' : '' ?>>
+          <?php if (!$agentOnly): ?><option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option><?php endif; ?>
           <?php foreach ($agentList as $ag): ?>
-            <option value="<?= Security::e($ag['code']) ?>" data-name="<?= Security::e($ag['name']) ?>" data-city="<?= Security::e($ag['city']) ?>" data-co="<?= $ag['co'] ? '1' : '0' ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name']) ?></option>
+            <option value="<?= Security::e($ag['code']) ?>" data-name="<?= Security::e($ag['name']) ?>" data-city="<?= Security::e($ag['city']) ?>" data-co="<?= $ag['co'] ? '1' : '0' ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e($agentLabel($ag)) ?></option>
           <?php endforeach; ?>
-          <option value="OTHER" data-name="अन्य / Other">अन्य / Other (Direct Sale — company)</option>
+          <?php if (!$agentOnly): ?><option value="OTHER" data-name="अन्य / Other">अन्य / Other (Direct Sale — company)</option><?php endif; ?>
         </select>
+        <?php if ($agentOnly): ?><small class="qt-hint" style="width:100%">आफ्नै कोडमा मात्र बिक्री · You sell on your own code only.</small><?php endif; ?>
       </div>
       <?php /* 5 Oct 2026: search the agent by name / code / city instead of scrolling
                a long list, and say when the sale began as a WhatsApp message. */ ?>
       <label class="qt-via-wa"><input type="checkbox" id="qtViaWa"> <span>💬 WhatsApp बाट आएको request · this booking came from a WhatsApp message</span></label>
       <style>.qt-via-wa{display:flex;align-items:center;gap:10px;min-height:44px;margin:0 0 10px;font-size:13.5px;font-weight:600;cursor:pointer}.qt-via-wa input{width:22px;height:22px;accent-color:#25D366;flex:none}#qtAgent+.shg-ap,.qt-row .shg-ap{max-width:420px}</style>
       <script src="/assets/js/agent-picker.js?v=20261015e"></script>
-      <script>if (window.shgAgentPicker) { shgAgentPicker(document.getElementById('qtAgent')); }</script>
+      <?php if (!$agentOnly): ?><script>if (window.shgAgentPicker) { shgAgentPicker(document.getElementById('qtAgent')); }</script><?php endif; ?>
 
       <!-- Phone summary (2 Oct 2026): on a phone the suggestion card sits
            BELOW this form, so the clerk sees what Confirm will sell right
@@ -608,6 +607,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   /* 16 Nov 2026 (P8-3f / P4-4d): desk extras - 0 / false = the field is not on the page */
   var LUG_FEE = <?= (int) $lugFee ?>, INF_FARE = <?= (int) $infFare ?>, LUG_MAX = <?= BookingService::LUGGAGE_MAX ?>, INF_MAX = <?= BookingService::INFANT_MAX ?>;
   var AGENTS = <?= json_encode($agentList, JSON_UNESCAPED_UNICODE) ?>;
+  var STAFF_NO_COMM = <?= $staffNoComm ? 'true' : 'false' ?>;
   var COMM_FLAT = <?= $commFlat ? 'true' : 'false' ?>;
   var COMM_DIRECT = <?= json_encode($commDirect) ?>;
   var COMM_JOINT = <?= json_encode($commJoint) ?>;
@@ -871,6 +871,9 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   function commLine(seats) {
     var ag = $('#qtAgent'); if (!ag || !ag.value || ag.value === 'OTHER' || !COMM_FLAT || !seats) return '';
     var sel = AGENTS.find(function (a) { return a.code === ag.value; });
+    if (sel && sel.type === 'staff' && STAFF_NO_COMM) {
+      return '<div style="margin-top:2px"><small>🧑‍💼 स्टाफ · staff (no commission)</small><em>' + esc(ag.value) + ' · ' + seats + ' जना</em></div>';
+    }
     var rate = (sel && sel.type === 'joint') ? COMM_JOINT : COMM_DIRECT;
     return '<div style="margin-top:2px"><small>💰 कमिशन · Commission</small><b style="color:#178A50">' + money(rate * seats) + '</b><em>' + esc(ag.value) + ' · ' + money(rate) + ' × ' + seats + ' seat' + (seats > 1 ? 's' : '') + '</em></div>';
   }
@@ -888,7 +891,14 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     if (!plan) return;
     var f = plan.fare || {};
     var seatsTxt = seatLabelJoin(plan.seats, plan.coach, plan.bookingMode);
-    var html = ''
+    /* 19 Nov 2026 (NP-3): today's bus was closed by the sales clock and the
+       plan moved to a later day - say so loudly, never a silent jump. */
+    var cn = plan.clockNote;
+    var html = (cn && (cn.label || cn.reason)
+        ? '<div class="qt-clock-note" role="alert" style="margin:0 0 8px;padding:8px 10px;border-radius:8px;background:#FFF4E5;border:1px solid #F5A623;color:#7A4100;font-weight:600">⛔ '
+          + esc(cn.label || '') + (cn.reason ? '<br><small style="font-weight:500">' + esc(cn.reason) + '</small>' : '')
+          + '<br><small style="font-weight:500">यो टिकट <b>' + esc(plan.dateLabel || plan.date || '') + '</b> को बसका लागि हो · This ticket is for <b>' + esc(plan.dateLabel || plan.date || '') + '</b>.</small></div>'
+        : '')
       + '<div class="qt-route"><span class="qt-dir">' + esc(plan.directionLabel || plan.direction) + (plan.extraBus ? ' · extra bus' : '') + '</span>'
       + '<b>' + esc(plan.from) + ' → ' + esc(plan.to) + '</b>'
       + (plan.busName ? '<small>' + esc(plan.busName) + (plan.busNumber ? ' · ' + esc(plan.busNumber) : '') + '</small>' : '') + '</div>'
@@ -911,7 +921,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     renderDiscountPreview();
     var sum = $('#qtSum');
     if (sum) {
-      sum.innerHTML = '🚌 <b>' + esc(plan.dateLabel) + '</b> · ' + esc(plan.boardingCode) + ' ' + esc(plan.boardingTime || plan.depTime || '')
+      sum.innerHTML = (cn ? '⛔ ' : '') + '🚌 <b>' + esc(plan.dateLabel) + '</b> · ' + esc(plan.boardingCode) + ' ' + esc(plan.boardingTime || plan.depTime || '')
         + ' · 💺 <b>' + esc(seatsTxt) + '</b> · <b class="qt-sum-fare">' + money(f.total) + '</b>'
         + ' <a href="#qtPlan">details ↓</a>';
       sum.hidden = false;
@@ -1067,7 +1077,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       '',
       'Passenger: ' + name + (phone ? ' · ' + phone : ' · walk-in'),
       'Journey: ' + (plan.from || '') + ' → ' + (plan.to || ''),
-      'Date: ' + (plan.dateLabel || dateValue() || '—'),
+      'Date: ' + (plan.dateLabel || dateValue() || '—')
+        + (plan.clockNote ? '  ⛔ ' + (plan.clockNote.label || '') + ' — आजको बस होइन · NOT today\'s bus' : ''),
       'Boarding: ' + (plan.boardingCode ? plan.boardingCode + ' · ' : '') + (plan.boardingName || '—'),
       'Seat: ' + seatText,
       'Bus: ' + (plan.busNumber || plan.busName || '—'),

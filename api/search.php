@@ -376,6 +376,12 @@ try {
         // widened the gap by a berth.
         $seatsLeft = $publicState === TripStatus::STATE_SOLD_OUT ? 0 : $availCount;
 
+        /* 19 Nov 2026 (u9, owner's blueprint "seats-left urgency"): the same availability
+           number, no extra query - 1..search_low_seats_at (6) free berths carry the bilingual
+           badge text the result card prints. 0 = sold out (its own card state), never "low". */
+        $lowAt    = max(0, Settings::getInt('search_low_seats_at', 6));
+        $seatsLow = $lowAt > 0 && $seatsLeft > 0 && $seatsLeft <= $lowAt;
+
         $results[] = [
             'routeId'      => $routeId,
             'routeCode'    => $route['route_code'],
@@ -412,6 +418,8 @@ try {
             'crewName'     => $route['crew_name'],
             'crewPhone'    => $route['crew_phone'],
             'seatsLeft'    => $seatsLeft,
+            'seatsLow'     => $seatsLow,
+            'seatsLowLabel'=> $seatsLow ? 'केवल ' . $seatsLeft . ' सिट बाँकी · Only ' . $seatsLeft . ' seat' . ($seatsLeft === 1 ? '' : 's') . ' left' : '',
             'totalSeats'   => $totalSeats,
             'boarding'     => $boarding,
             'drop'         => $drop,

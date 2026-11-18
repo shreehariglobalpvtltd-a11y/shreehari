@@ -56,6 +56,16 @@ final class WaRoute
     /** Tests replace the Meta transport: fn(string $to, string $text, ?string $image): array */
     public static $transport = null;
 
+    /**
+     * 19 Nov 2026 (WA-1): the last template metaTemplate() really put on the
+     * wire (null = none this request): name, success, code, error. Notify
+     * reads it so the Cloud API driver never sends the same template twice
+     * for one message (18 Nov: every ticket called shg_ticket_image two times).
+     *
+     * @var array{name: string, success: bool, code: int, error: string}|null
+     */
+    public static ?array $lastTemplate = null;
+
     /* -----------------------------------------------------------------
      *  Policy
      * ----------------------------------------------------------------- */
@@ -110,8 +120,15 @@ final class WaRoute
      *  The Meta number's own 24 h window
      * ----------------------------------------------------------------- */
 
-    /** International digits as the webhook records them (91…, 977…). */
-    public static function intl(string $phone): string
+    /**
+     * International digits as the webhook records them (91…, 977…).
+     *
+     * 19 Nov 2026 (WA-1): $countryHint ('NP' / 'IN' / '977' / '91') decides a
+     * bare 10-digit number. India and Nepal both use 10-digit mobiles
+     * (98xxxxxxxx is valid in both), so a Nepal-stamped booking must pass its
+     * hint - only a call without one falls back to whatsapp_default_country.
+     */
+    public static function intl(string $phone, ?string $countryHint = null): string
     {
         $d = preg_replace('/\D/', '', $phone) ?? '';
         if (str_starts_with($d, '00')) {
@@ -121,15 +138,32 @@ final class WaRoute
             $d = substr($d, 1);
         }
         if (strlen($d) === 10) {
-            $d = (preg_replace('/\D/', '', Settings::getString('whatsapp_default_country', '91')) ?: '91') . $d;
+            $cc = self::hintDigits($countryHint);
+            if ($cc === '') {
+                $cc = preg_replace('/\D/', '', Settings::getString('whatsapp_default_country', '91')) ?: '91';
+            }
+            $d = $cc . $d;
         }
         return (strlen($d) >= 11 && strlen($d) <= 15) ? $d : '';
     }
 
-    /** Seconds the window still has, 0 when closed / never seen. */
-    public static function metaWindowLeft(string $phone): int
+    /** 'NP' / '977' / '+977' -> '977', 'IN' / '91' -> '91', anything else ''. */
+    public static function hintDigits(?string $hint): string
     {
-        $intl = self::intl($phone);
+        $h = strtoupper(trim((string) $hint));
+        if ($h === 'NP' || ltrim($h, '+') === '977') {
+            return '977';
+        }
+        if ($h === 'IN' || ltrim($h, '+') === '91') {
+            return '91';
+        }
+        return '';
+    }
+
+    /** Seconds the window still has, 0 when closed / never seen. */
+    public static function metaWindowLeft(string $phone, ?string $countryHint = null): int
+    {
+        $intl = self::intl($phone, $countryHint);
         if ($intl === '') {
             return 0;
         }
@@ -147,9 +181,9 @@ final class WaRoute
         return max(0, $at + self::WINDOW_SEC - time());
     }
 
-    public static function metaWindowOpen(string $phone): bool
+    public static function metaWindowOpen(string $phone, ?string $countryHint = null): bool
     {
-        return self::metaWindowLeft($phone) > 0;
+        return self::metaWindowLeft($phone, $countryHint) > 0;
     }
 
     /** Numbers whose Meta window is open right now (for the admin card). */
@@ -185,7 +219,7 @@ final class WaRoute
         if (!self::metaOn()) {
             return null;
         }
-        $to   = self::intl($phone);
+        $to   = self::intl($phone, isset($meta['country']) ? (string) $meta['country'] : null);
         $text = trim($text);
         if ($to === '' || $text === '' || !self::metaWindowOpen($to)) {
             return null;
@@ -249,16 +283,26 @@ final class WaRoute
             Logger::info('WaRoute: Meta template not sent - ' . $cap, ['template' => $name, 'purpose' => $purpose], 'whatsapp');
             return null;
         }
-        $to = self::intl($phone);
+        $to = self::intl($phone, isset($meta['country']) ? (string) $meta['country'] : null);
         if ($to === '') {
             return null;
         }
+        /* 19 Nov 2026 (WA-2): $meta['header'] = ['document' => pdf] / ['image' => png]
+           (WaTplMeta::forPurpose) wins over $headerImage; $meta['buttons'] carries a
+           URL button's value (pay.php?pnr=…) or a FLOW button's token. */
+        $hdr = [];
+        if (isset($meta['header']) && is_array($meta['header']) && $meta['header'] !== []) {
+            $hdr = $meta['header'];
+        } elseif ($headerImage !== null && $headerImage !== '') {
+            $hdr = ['image' => $headerImage];
+        }
+        $buttons = isset($meta['buttons']) && is_array($meta['buttons']) ? $meta['buttons'] : [];
         try {
             if (self::$transport !== null) {
-                $r = (self::$transport)($to, 'template:' . $name, $headerImage);
+                $r = (self::$transport)($to, 'template:' . $name, $hdr['image'] ?? ($hdr['document'] ?? $headerImage));
             } else {
                 require_once ROOT_PATH . '/whatsapp/api.php';
-                $r = sendWhatsAppTemplate($to, $name, $lang !== '' ? $lang : 'en', $vars, $headerImage !== null && $headerImage !== '' ? ['image' => $headerImage] : []);
+                $r = sendWhatsAppTemplate($to, $name, $lang !== '' ? $lang : 'en', $vars, $hdr, null, $buttons);
             }
         } catch (Throwable $e) {
             return null;
@@ -269,6 +313,21 @@ final class WaRoute
             'error'      => (string) ($r['error'] ?? ''),
             'how'        => 'meta template ' . $name,
         ];
+        $code = (int) ($r['code'] ?? 0);
+        if ($code === 0 && preg_match('/\b(13\d{4})\b/', $out['error'], $cm) === 1) {
+            $code = (int) $cm[1];
+        }
+        self::$lastTemplate = ['name' => $name, 'success' => $out['success'], 'code' => $code, 'error' => $out['error']];
+        /* Meta refused the TEMPLATE (132001 "does not exist in en" right after
+           approval, paused, ...): the registry skips it for a few hours, so the
+           next ticket tries the duplicate (shg_ticket_v2) instead. */
+        if (!$out['success'] && $code > 0) {
+            try {
+                require_once __DIR__ . '/watplmeta.php';
+                WaTplMeta::noteRefused($name, $code);
+            } catch (Throwable $ignored) {
+            }
+        }
         if (class_exists('Notify')) {
             try {
                 Notify::logOutbound($to, 'Template ' . $name . ' (Meta)', $out['success'] ? 'sent' : 'failed', [

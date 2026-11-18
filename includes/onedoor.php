@@ -590,6 +590,37 @@ final class OneDoor
         return ['step' => 'forgot_code', 'notice' => 'यो नम्बर दर्ता छ भने WhatsApp मा कोड पठाइयो · If this number is registered, a code is on its way on WhatsApp.'];
     }
 
+    /* =================================================================
+     *  19 Nov 2026 (u7, LG-1, owner: "mobile number + OTP ek choti, ani
+     *  aafno password; PIN / pattern chaahe bhane"). Setting
+     *  login_mobile_first_on (default OFF — it needs the WhatsApp AUTH
+     *  template shg_login_code in the current WABA, else a number that never
+     *  wrote "hi" gets no code). On: the door opens on the mobile box; the
+     *  mobile step's first button is "First time / forgot password", which is
+     *  the tested forgot flow (code -> which ID -> OWN password -> session);
+     *  the repeated WhatsApp sign-in buttons are hidden (OTP once, then the
+     *  password); PIN / pattern are optional (CodeLogin::required()).
+     * ================================================================= */
+
+    public static function mobileFirstOn(): bool
+    {
+        try {
+            return self::on() && Settings::getBool('login_mobile_first_on', false);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** "First time / forgot password" on the mobile step: the code goes to the number already typed. */
+    public static function firstSend(): array
+    {
+        $s = self::state();
+        if ($s === null || ($s['kind'] ?? '') !== 'mobile') {
+            return ['step' => 'start', 'error' => 'मोबाइल नम्बर लेख्नुहोस् · Type your mobile number.'];
+        }
+        return self::forgotSend((string) $s['phone'], (string) $s['cc']);
+    }
+
     /** "Send hi instead" straight from the first forgot screen: no code is sent, the "hi" proves the number. */
     public static function forgotHiFirst(string $raw, string $cc): array
     {

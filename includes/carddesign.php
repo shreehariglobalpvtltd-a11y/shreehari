@@ -13,6 +13,14 @@ final class CardDesign {
   $fields=[];foreach(['id_front'=>$front,'id_back'=>$back,'visiting_front'=>$vf,'visiting_back'=>$vb] as $surface=>$rows){foreach($rows as $key=>$box){$fields[$surface][]=['key'=>$key,'x'=>$box[0],'y'=>$box[1],'w'=>$box[2],'h'=>$box[3],'size'=>$box[4],'color'=>$theme[1],'text'=>'','visible'=>true];}}
   return ['preset'=>$name,'background'=>$theme[0],'ink'=>$theme[1],'accent'=>$theme[2],'orient_id'=>'portrait','orient_visiting'=>'landscape','bw'=>false,'fields'=>$fields];
  }
+ /** 19 Nov 2026 (CD-1): the ApCard design (agentpro-card.php) nearest to a studio preset. */
+ public static function apStyle(string $preset): string {
+  return match($preset){'minimal'=>'modern','orange'=>'heritage',default=>'royal'};
+ }
+ /** The three ApCard designs every member's card comes in, for pickers: key => label. */
+ public static function apStyles(): array {
+  return ['royal'=>'Royal Gold','modern'=>'Modern Blue','heritage'=>'Nepal-India Heritage'];
+ }
  public static function clean(array $in): array {
   $d=self::preset(in_array($in['preset']??'', ['royal','minimal','orange'],true)?$in['preset']:'royal');
   foreach(['background','ink','accent'] as $k){if(preg_match('/^#[a-f0-9]{6}$/i',(string)($in[$k]??''))){$d[$k]=$in[$k];}}

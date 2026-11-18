@@ -25,6 +25,9 @@
  *                     payments changed after a shift was closed (re-read now
  *                     vs frozen at close), counter cash taken with no shift
  *                     open, and shifts nobody closed.
+ *   7. Day closes (19 Nov 2026, WA-6) — counter_day_close of the last 14
+ *                     days: a count that did not match, and a day whose
+ *                     register cash reads differently now than at the close.
  *
  * Who: reports.view or commissions.pay (owner, manager, accountant).
  */
@@ -133,6 +136,37 @@ try {
     }
 } catch (Throwable $e) {
     Logger::warning('reconcile shifts: ' . $e->getMessage());
+}
+
+/* 7. Day closes (19 Nov 2026, WA-6) - the last 14 days of counter_day_close:
+   a count that did not match, and a close whose register reads differently
+   now (a payment verified / corrected after the desk closed its day). Read-
+   only, like the rest of this page; correcting = the desk (or the office)
+   saves the day close again on shift.php. */
+$dcReady = CounterShift::dayCloseReady();
+$dcRows = []; $dcDiffN = 0; $dcMovedN = 0;
+if ($dcReady) {
+    try {
+        require_once INCLUDE_PATH . '/counterbook.php';
+        $books = [];
+        foreach (Database::fetchAll(
+            'SELECT c.*, a.full_name AS by_name FROM counter_day_close c LEFT JOIN admins a ON a.id = c.closed_by
+              WHERE c.business_date >= :f ORDER BY c.business_date DESC, c.desk_key LIMIT 300',
+            ['f' => $shFrom]) as $c) {
+            $d = (string) $c['business_date'];
+            $books[$d] ??= CounterBook::day($d);
+            $line = $books[$d]['rows'][(string) $c['desk_key']] ?? CounterBook::line($d, (string) $c['desk_key']);
+            $nowDrawer = CounterShift::dayDrawer($line);
+            $wasDrawer = (float) $c['expected_cash'] + (float) $c['expenses'];
+            $diff  = CounterShift::verdict((float) $c['variance']) !== 'ok';
+            $moved = abs($nowDrawer - $wasDrawer) > 0.009;
+            $dcDiffN  += $diff ? 1 : 0;
+            $dcMovedN += $moved ? 1 : 0;
+            $dcRows[] = $c + ['now_drawer' => $nowDrawer, 'is_diff' => $diff, 'is_moved' => $moved];
+        }
+    } catch (Throwable $ex) {
+        Logger::warning('reconcile day closes: ' . $ex->getMessage());
+    }
 }
 
 admin_header('Money Reconciliation', 'reconcile');
@@ -278,5 +312,39 @@ admin_header('Money Reconciliation', 'reconcile');
   <?php endif; ?>
   <a class="rc-act" href="shift.php">→ Shift &amp; cash</a>
 </div>
+
+<?php if ($dcReady): ?>
+<div class="panel">
+  <h2>7. Day closes · दिनको हिसाब <span class="muted" style="font-size:12.5px;font-weight:500">· last 14 days</span></h2>
+  <div class="rc-grid">
+    <div><b>Days closed</b><span><?= count($dcRows) ?></span></div>
+    <div><b><?= $dcDiffN === 0 ? '✅' : '⚠️' ?> Count did not match</b><span><?= $dcDiffN ?></span></div>
+    <div><b><?= $dcMovedN === 0 ? '✅' : '⚠️' ?> Changed after close</b><span><?= $dcMovedN ?></span></div>
+  </div>
+  <p class="rc-note">One row per desk per day, in the drawer's own money (NPR at a Nepal desk). “Changed after close” = the register's cash
+    for that day reads differently now than when the desk counted it. The count stays as signed; saving the day close again on
+    Shift &amp; cash corrects it (every save is in the audit log).</p>
+  <?php $dcShow = array_values(array_filter($dcRows, static fn(array $r): bool => $r['is_diff'] || $r['is_moved'])); ?>
+  <?php if ($dcShow !== []): ?>
+  <div class="dt-wrap"><table class="dt card-table">
+    <thead><tr><th>Day</th><th>Desk</th><th data-type="num">Counted</th><th data-type="num">Expected</th><th data-type="num">Difference</th><th data-type="num">Register now</th><th>Signed</th></tr></thead>
+    <tbody>
+    <?php foreach (array_slice($dcShow, 0, 200) as $r): $cc = (string) ($r['currency'] ?: 'INR'); ?>
+      <tr>
+        <td data-label="Day"><a href="shift.php?<?= $e(http_build_query(['dcday' => (string) $r['business_date'], 'dcdesk' => (string) $r['desk_key']])) ?>#dayClose"><?= $e($r['business_date']) ?></a></td>
+        <td data-label="Desk"><?= $e((string) $r['desk_key'] !== '' ? (string) $r['desk_key'] : 'Online') ?></td>
+        <td data-label="Counted" class="num"><?= $e(CounterDesk::format((float) $r['counted_cash'], $cc)) ?></td>
+        <td data-label="Expected" class="num"><?= $e(CounterDesk::format((float) $r['expected_cash'], $cc)) ?></td>
+        <td data-label="Difference" class="num"><b><?= $e(((float) $r['variance'] > 0 ? '+' : ((float) $r['variance'] < 0 ? '−' : '')) . CounterDesk::format(abs((float) $r['variance']), $cc)) ?></b></td>
+        <td data-label="Register now" class="num"><?= $e(CounterDesk::format((float) $r['now_drawer'], $cc)) ?><?= $r['is_moved'] ? ' ⚠️' : '' ?></td>
+        <td data-label="Signed"><?= $e((string) ($r['signed_name'] ?? '')) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
+  <a class="rc-act" href="shift.php#dayClose">→ Day close</a>
+</div>
+<?php endif; ?>
 
 <?php admin_footer();

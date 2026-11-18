@@ -169,6 +169,8 @@ try {
             'discountType'  => (string) ($input['discountType'] ?? ''),
             'discountValue' => (float) ($input['discountValue'] ?? 0),
             'note'          => (string) ($input['note'] ?? ''),
+            // 19 Nov 2026: "पैसा कहिले? · When will they pay" on a cash sale (a note only)
+            'cashNote'      => is_array($input['cashNote'] ?? null) ? $input['cashNote'] : null,
         ];
         // Coupons / loyalty points are customer-app perks; the counter has its own discount.
         $request['couponCode']      = '';
@@ -194,6 +196,13 @@ try {
        passenger may already have paid the full amount on the screen. The server
        still decides whether the mobile qualifies; the flag only allows it. */
     $request['skipReturnDiscount'] = empty($input['returnSeen']);
+
+    /* AG-4 (19 Nov 2026): an AGENT session sells on its own code only. A blank
+       code becomes the agent's own; a different agent's code is refused (403)
+       by BookingService::create - staff, counter and office keep choosing. */
+    if (Auth::isCounterAgent() && trim((string) $request['referralCode']) === '') {
+        $request['referralCode'] = AgentWallet::agentCodeLabel((int) ($staff['id'] ?? 0));
+    }
 
     $booking = BookingService::create($request, $seller);
 
@@ -266,8 +275,8 @@ try {
     // logged and answered generically, never shown to a passenger as raw SQL.
     Response::serverError($e);
 } catch (RuntimeException $e) {
-    // Rule violations carry a user-safe message.
-    Response::error($e->getMessage(), 409);
+    // Rule violations carry a user-safe message (403: an agent selling on another code).
+    Response::error($e->getMessage(), $e->getCode() === 403 ? 403 : 409);
 } catch (Throwable $e) {
     Response::serverError($e);
 }

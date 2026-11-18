@@ -230,8 +230,29 @@ final class SmartBook
                 'depTime'   => substr((string) ($r['dep_time'] ?? ''), 0, 5),
             ];
         }
-        usort($out, static fn(array $a, array $b): int => ($a['direction'] === 'toNepal' ? 0 : 1) <=> ($b['direction'] === 'toNepal' ? 0 : 1));
+        // 19 Nov 2026 (NP-1): a Nepal-side desk lists its own run (Rupaidiha -> Surat) first
+        $first = self::deskDirection() === 'toIndia' ? 'toIndia' : 'toNepal';
+        usort($out, static fn(array $a, array $b): int => ($a['direction'] === $first ? 0 : 1) <=> ($b['direction'] === $first ? 0 : 1));
         return $out;
+    }
+
+    /**
+     * 19 Nov 2026 (NP-1): the run the signed-in seller's DESK opens on
+     * (CounterDesk default_direction: a Nepal desk / Nepal agent branch sells
+     * Nepal -> India). '' for a customer, a seller with no desk, or a desk that
+     * sells both. Customers are never steered by this.
+     */
+    public static function deskDirection(): string
+    {
+        $admin = Auth::admin();
+        if ($admin === null || self::sessionMode() === 'customer') {
+            return '';
+        }
+        try {
+            return CounterDesk::direction(CounterDesk::forAdmin((int) ($admin['id'] ?? 0))['code']);
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
     private static ?bool $hasVisibleTo = null;
@@ -322,6 +343,15 @@ final class SmartBook
 
         // Direction: opposite of the last one-way trip when it was > 7 days ago, else the same.
         $dir = in_array($in['direction'] ?? '', ['toNepal', 'toIndia'], true) ? (string) $in['direction'] : '';
+        /* 19 Nov 2026 (NP-1): the desk's own run before the phone's history - a
+           Nepal counter / Nepal agent opens on Rupaidiha -> Surat. A direction
+           the clerk chose still wins; customers are unchanged. */
+        if ($dir === '' && $mode !== 'customer' && ($deskDir = self::deskDirection()) !== '') {
+            $dir = $deskDir;
+            $why['direction'] = $deskDir === 'toIndia'
+                ? self::why('Your desk sells Nepal → India', 'आपका काउंटर नेपाल → भारत बेचता है', 'तपाईंको काउन्टरले नेपाल → भारत बेच्छ')
+                : self::why('Your desk sells India → Nepal', 'आपका काउंटर भारत → नेपाल बेचता है', 'तपाईंको काउन्टरले भारत → नेपाल बेच्छ');
+        }
         if ($dir === '' && $history !== null && $history['direction'] !== '') {
             $dir = $history['direction'];
             if ($history['daysAgo'] !== null && $history['daysAgo'] > 7) {
@@ -947,6 +977,8 @@ final class SmartBook
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
             'boardingStop' => $boardStop,   // the list name of the pickup really booked ('' on a drop run)
             'pointNote'    => $pointNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null
+            // 19 Nov 2026 (NP-3): {label, at, tz, reason} when today's bus is closed by the sales clock and this is a later day
+            'clockNote'    => $plan['clockNote'] ?? null,
             'coach'        => $coach,
             'type'         => $mode2 ?? 'seater',
             'cabin'        => $req['cabin'],
@@ -1321,6 +1353,22 @@ final class SmartBook
         if ($seller !== null) {
             $seller['paymentMethod'] = $cod ? 'cash' : (string) ($seller['paymentMethod'] ?? 'upi');
             $request['paymentMethod'] = $seller['paymentMethod'];
+            /* 19 Nov 2026: the desk card may carry the passenger's optional second
+               WhatsApp number (its own country) - the ticket goes to both - and,
+               on a cash sale, "पैसा कहिले? · When will they pay" (a note only;
+               BookingService::cashNoteClean keeps what is real). */
+            $alt = substr(preg_replace('/\D/', '', (string) ($in['altPhone'] ?? '')) ?? '', -10);
+            if ($alt !== '' && $request['contact']['altPhone'] === '') {
+                if (strlen($alt) !== 10 || $alt === substr($phone, -10)) {
+                    throw new RuntimeException('Second mobile: 10 digits, different from the first — or leave it empty. / दोस्रो मोबाइल: १० अङ्क, पहिलोभन्दा फरक — वा खाली छोड्नुहोस्।');
+                }
+                $request['contact']['altPhone']   = $alt;
+                $request['contact']['altCountry'] = in_array(strtoupper((string) ($in['altCountry'] ?? '')), ['NP', '977'], true) ? 'NP'
+                    : (in_array(strtoupper((string) ($in['altCountry'] ?? '')), ['IN', '91'], true) ? 'IN' : '');
+            }
+            if ($cod && isset($in['cashNote'])) {
+                $seller['cashNote'] = $in['cashNote'];
+            }
         }
 
         $booking = BookingService::create($request, $seller);

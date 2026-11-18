@@ -103,7 +103,19 @@ if (Security::isPost()) {
                 case 'bank':
                     $need($canOwn);
                     AgentPro::saveBank($id, $_POST, $me);
+                    if (!empty($_FILES['payout_qr']) && (int) ($_FILES['payout_qr']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                        AgentPro::savePayoutQr($id, $_FILES['payout_qr'], $me);
+                    }
                     $flash = ['ok', 'Payout details saved.'];
+                    break;
+                case 'payout_verify':
+                case 'payout_unverify':
+                    // 19 Nov 2026 (u5 AG-2): "payout details checked against the originals" - commissions.pay /
+                    // staff.manage / super-admin, never one's own. Any later change of UPI / bank / QR clears it.
+                    $need(!$self && ($isSuper || Auth::can('commissions.pay') || Auth::can('staff.manage')),
+                        'Only the office (pay-out or staff rights) checks payout details — never their own.');
+                    AgentPro::setPayoutVerified($id, $act === 'payout_verify', $me);
+                    $flash = ['ok', $act === 'payout_verify' ? '✅ Payout details marked as checked.' : 'Payout check removed.'];
                     break;
                 case 'photo':
                     $need($canPrint, 'The ID card photo is changed by the office.');
@@ -614,15 +626,27 @@ endif; ?>
 </div>
 
 <div class="tp-money">
-  <section class="panel"><h2><svg class="a-ic"><use href="#a-banknote"/></svg> Payout details</h2><div class="panel-body">
+  <section class="panel" id="bank"><h2><svg class="a-ic"><use href="#a-banknote"/></svg> Payout details · भुक्तानी विवरण</h2><div class="panel-body">
+    <?php /* 19 Nov 2026 (u5 AG-2): the member's own bank / UPI QR + the office's "checked" tick */
+      $mayCheck = !$self && ($isSuper || Auth::can('commissions.pay') || Auth::can('staff.manage'));
+      $mayQr    = $self || $isSuper || Auth::can('commissions.pay') || Auth::can('staff.manage'); ?>
+    <div class="mm-acts" style="margin:0 0 10px;align-items:center;flex-wrap:wrap">
+      <?php if (!empty($m['payoutQr']) && $mayQr): ?><a class="btn soft sm" href="/api/agentpro.php?a=payout_qr&amp;m=<?= $id ?>" target="_blank" rel="noopener">🖼 Payout QR</a><?php endif; ?>
+      <span class="ph-sub" style="margin:0"><?= !empty($m['payoutVerified']) ? '✅ Checked by the office' : '• Not checked yet' ?><?= Settings::getBool('agent_payout_verify_required', false) ? ' (needed before a withdrawal)' : ' (withdraw does not wait for it; the office checks when paying)' ?></span>
+      <?php if ($mayCheck): ?><form method="post" style="display:inline"><?= Security::csrfField() ?>
+        <input type="hidden" name="action" value="<?= !empty($m['payoutVerified']) ? 'payout_unverify' : 'payout_verify' ?>">
+        <button class="btn <?= !empty($m['payoutVerified']) ? 'ghost' : 'ok' ?> sm" type="submit"<?= empty($m['payoutVerified']) ? ' onclick="return confirm(\'Checked the UPI / bank / QR against the originals (passbook, cheque, QR on the phone)?\')"' : '' ?>><?= !empty($m['payoutVerified']) ? 'Remove check' : '✓ Payout details checked' ?></button></form><?php endif; ?>
+    </div>
     <?php if ($canOwn): ?>
-    <form method="post" class="mp-form"><?= Security::csrfField() ?><input type="hidden" name="action" value="bank">
+    <form method="post" class="mp-form" enctype="multipart/form-data"><?= Security::csrfField() ?><input type="hidden" name="action" value="bank">
       <label>UPI ID<input name="upi_id" value="<?= $e($m['bank']['upi']) ?>"></label>
       <label>Account holder<input name="bank_holder" value="<?= $e($m['bank']['holder']) ?>"></label>
       <label>Account number<input name="bank_account" autocomplete="off" placeholder="<?= $e($fullAcct !== '' ? $fullAcct : ($m['bank']['last4'] ? '••••' . $m['bank']['last4'] : '')) ?>"></label>
       <label>IFSC<input name="bank_ifsc" value="<?= $e($m['bank']['ifsc']) ?>"></label>
       <label>Bank<input name="bank_name" value="<?= $e($m['bank']['name']) ?>"></label>
       <label>eSewa<input name="esewa_id" value="<?= $e($m['bank']['esewa']) ?>"></label>
+      <label>Branch<input name="bank_branch" value="<?= $e($m['bank']['branch']) ?>"></label>
+      <label>Bank / UPI QR (photo)<input type="file" name="payout_qr" accept="image/*"></label>
       <div class="full"><button class="btn sm" type="submit">Save</button></div>
     </form>
     <?php else: ?><p><?= $e($m['bank']['upi'] ?: ($m['bank']['last4'] ? $m['bank']['name'] . ' ••••' . $m['bank']['last4'] : '—')) ?></p><?php endif; ?>

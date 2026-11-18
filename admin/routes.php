@@ -786,6 +786,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             }
             Database::update('route_stops', $set, 'id = :id', ['id' => $stopId]);
             Boarding::flush();
+            /* 19 Nov 2026 (TK-2): the ticket's pickup-map QR reads this pin (row first),
+               so a moved pin redraws every cached ticket once on its next open. */
+            if (array_key_exists('latitude', $set)
+                && (round((float) ($set['latitude'] ?? 0), 7) !== round((float) ($old['latitude'] ?? 0), 7)
+                    || round((float) ($set['longitude'] ?? 0), 7) !== round((float) ($old['longitude'] ?? 0), 7)
+                    || ($set['latitude'] === null) !== ($old['latitude'] === null))) {
+                Settings::touchTicketIdentity();
+            }
 
             Logger::audit('route_stop.edit', 'routes', (string) ($old['route_id'] ?? 0),
                 ['stop' => $old['stop_name'], 'landmark' => $old['landmark'], 'time' => $old['stop_time'],
@@ -1477,8 +1485,8 @@ $haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinn
           <div><label>Stop name</label><input type="text" name="stop_name" required maxlength="191" value="<?= Security::e((string) $st['stop_name']) ?>"></div>
           <div><label>Landmark</label><input type="text" name="landmark" maxlength="191" value="<?= Security::e((string) ($st['landmark'] ?? '')) ?>"></div>
           <div><label>Time (HH:MM)</label><input type="time" name="stop_time" value="<?= $st['stop_time'] !== null ? Security::e(substr((string) $st['stop_time'], 0, 5)) : '' ?>"></div>
-          <div><label>Latitude</label><input type="number" name="latitude" step="any" min="-90" max="90" inputmode="decimal" value="<?= $st['latitude'] !== null ? Security::e((string) (float) $st['latitude']) : '' ?>" placeholder="22.3039"></div>
-          <div><label>Longitude</label><input type="number" name="longitude" step="any" min="-180" max="180" inputmode="decimal" value="<?= $st['longitude'] !== null ? Security::e((string) (float) $st['longitude']) : '' ?>" placeholder="70.8022"></div>
+          <div><label>Latitude</label><input type="number" name="latitude" step="any" min="-90" max="90" inputmode="decimal" value="<?= $st['latitude'] !== null ? Security::e(sprintf('%.6f', (float) $st['latitude'])) : '' ?>" placeholder="22.303900"></div>
+          <div><label>Longitude</label><input type="number" name="longitude" step="any" min="-180" max="180" inputmode="decimal" value="<?= $st['longitude'] !== null ? Security::e(sprintf('%.6f', (float) $st['longitude'])) : '' ?>" placeholder="70.802200"></div>
           <div><label>&nbsp;</label><button class="btn" type="button" data-pick-map>📍 नक्सामा छान्नुहोस् · Pick on map</button></div>
           <?php if ($hasDetails): ?>
           <div><label>Road km from route start</label><input type="number" name="km" step="0.1" min="0" max="9999" inputmode="decimal" value="<?= ($st['km_from_origin'] ?? null) !== null ? Security::e((string) (float) $st['km_from_origin']) : '' ?>" placeholder="not measured"></div>
@@ -1686,6 +1694,50 @@ if (window.MutationObserver) {
     });
   }
   btns.forEach(function (b) { b.addEventListener('click', function () { var f = b.closest('form'); if (f) open(f); }); });
+})();
+/* 19 Nov 2026 (TK-2): "paste a Google Maps link" beside latitude / longitude - the
+   office copies the share link (or the numbers) from Google Maps and both boxes
+   fill with 6 decimals (~10 cm). Understands @lat,lng / q= / query= / ll= /
+   !3d..!4d.. / a plain "lat, lng". A short maps.app.goo.gl link has no numbers in
+   it: open it once, then copy the long link from the address bar. */
+(function () {
+  function pick(t) {
+    t = String(t || '').trim();
+    try { t = decodeURIComponent(t); } catch (e) {}
+    var m;
+    var pats = [/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/, /@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,
+                /[?&](?:q|query|ll|destination|center)=(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/,
+                /\/place\/(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/, /^(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)$/];
+    for (var i = 0; i < pats.length; i++) {
+      m = t.match(pats[i]);
+      if (m) {
+        var la = parseFloat(m[1]), ln = parseFloat(m[2]);
+        if (isFinite(la) && isFinite(ln) && Math.abs(la) <= 90 && Math.abs(ln) <= 180 && !(la === 0 && ln === 0)) return [la, ln];
+      }
+    }
+    return null;
+  }
+  window.shgPickLatLng = pick;
+  document.querySelectorAll('form').forEach(function (f) {
+    var lat = f.querySelector('input[name="latitude"]'), lng = f.querySelector('input[name="longitude"]');
+    if (!lat || !lng || f.querySelector('[data-maps-paste]')) return;
+    var box = document.createElement('div');
+    box.innerHTML = '<label>Google Maps link · नक्सा लिंक</label><input type="text" data-maps-paste inputmode="url" autocomplete="off" placeholder="paste a Google Maps link or lat, lng"><small class="muted" data-maps-paste-out style="display:block;font-size:11.5px;margin-top:3px"></small>';
+    var holder = lng.closest('div') || lng.parentNode;
+    holder.parentNode.insertBefore(box, holder.nextSibling);
+    var inp = box.querySelector('input'), out = box.querySelector('small');
+    inp.addEventListener('input', function () {
+      if (inp.value.trim() === '') { out.textContent = ''; return; }
+      var ll = pick(inp.value);
+      if (!ll) {
+        out.textContent = /goo\.gl|maps\.app/i.test(inp.value) ? 'Short link: open it, then copy the long link from the address bar.' : 'No position found in this text.';
+        return;
+      }
+      lat.value = ll[0].toFixed(6); lng.value = ll[1].toFixed(6);
+      lat.dispatchEvent(new Event('input', { bubbles: true })); lng.dispatchEvent(new Event('input', { bubbles: true }));
+      out.textContent = '✓ ' + lat.value + ', ' + lng.value;
+    });
+  });
 })();
 </script>
 <?php if (Auth::can('routes.edit')): ?>

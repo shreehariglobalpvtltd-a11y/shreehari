@@ -71,6 +71,22 @@ $params = ['f' => $from, 't' => $to];
 if ($scopeBy !== null) { $where[] = 'b.sold_by_admin_id = :me'; $params['me'] = $scopeBy; }
 // A desk-isolated counter sees its own desk AND the website's Cash tickets (no desk) - it collects those at boarding.
 if ($scopeDesk !== null) { $where[] = '(b.counter_code = :desk OR b.counter_code IS NULL)'; $params['desk'] = $scopeDesk; }
+/* 19 Nov 2026 (NP-2): the office may look at ONE desk (validated against
+   CounterDesk::all()); a Nepal desk's book then reads NPR with ₹ beside it. */
+require_once INCLUDE_PATH . '/chalanipng.php';
+$deskF = $scopeDesk === null ? ChalaniPng::deskCode((string) ($_GET['desk'] ?? '')) : '';
+if ($deskF !== '' && CounterDesk::stampColumn()) { $where[] = CounterDesk::scopeClause('b', 'deskF'); $params['deskF'] = $deskF; }
+$moneyDesk = $deskF !== '' ? $deskF : (string) ($scopeDesk ?? '');
+$fxCols    = (CounterDesk::hasColumn('bookings', 'fx_currency') ? 'b.fx_currency' : 'NULL AS fx_currency') . ', '
+           . (CounterDesk::hasColumn('bookings', 'fx_rate') ? 'b.fx_rate' : 'NULL AS fx_rate') . ', '
+           . (CounterDesk::hasColumn('bookings', 'fx_total') ? 'b.fx_total' : 'NULL AS fx_total');
+/* Which desk's money ONE row is written in. An explicit ?desk= already keeps
+   only that desk's sales. A desk-isolated clerk also sees the website's Cash
+   tickets (no desk): those were never quoted in NPR, so they stay in ₹ and
+   only the rows cut at the clerk's own desk read NPR (review fix, 19 Nov). */
+$rowDesk = static fn(array $r): string => ($moneyDesk !== '' && ($deskF !== '' || strtoupper((string) ($r['counter_code'] ?? '')) === $moneyDesk)) ? $moneyDesk : '';
+/** An amount as this book's desk writes it (₹ when no NPR desk is chosen). */
+$dm = static fn(float $inr, ?array $row = null): string => ChalaniPng::deskMoney($inr, $row !== null ? $rowDesk($row) : $moneyDesk, $row);
 if ($q !== '') {
     $qd = (string) preg_replace('/\D/', '', $q);
     if ($qd !== '') { $where[] = '(b.pnr LIKE :q OR b.contact_phone LIKE :q2)'; $params['q2'] = '%' . $qd . '%'; }
@@ -79,7 +95,7 @@ if ($q !== '') {
 }
 
 $rows = Database::fetchAll(
-    "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.counter_code, b.source, b.created_at, b.sold_by_admin_id,
+    "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.counter_code, b.source, b.created_at, b.sold_by_admin_id, $fxCols,
             l.travel_date, l.boarding_stop, l.boarding_time,
             p.status AS pay_status, p.verified_by, p.verified_at, p.admin_note,
             (SELECT bp.full_name FROM booking_passengers bp WHERE bp.booking_id = b.id ORDER BY bp.is_primary DESC, bp.id LIMIT 1) AS lead_name,
@@ -110,11 +126,19 @@ $kind = static function (array $r): string {
     return $gone ? 'noshow' : 'pending';
 };
 $sum = ['pending' => [0, 0.0], 'collected' => [0, 0.0], 'cancelled' => [0, 0.0], 'noshow' => [0, 0.0]];
+$sumLocal = ['pending' => 0.0, 'collected' => 0.0, 'cancelled' => 0.0, 'noshow' => 0.0];   // NP-2: in the desk's money
+$allLocal = true;   // every row is a sale of the NPR desk - else the cards stay in ₹ (never INR + NPR added)
 foreach ($rows as $r) {
     $k = $kind($r);
     $sum[$k][0]++;
     $sum[$k][1] += (float) $r['total_amount'];
+    $sumLocal[$k] += round((float) $r['total_amount'] * ChalaniPng::rateFor($r, $moneyDesk));
+    if ($rowDesk($r) === '') { $allLocal = false; }
 }
+$deskCur = $allLocal ? ChalaniPng::deskCurrency($moneyDesk) : null;
+/** A card total: NPR summed sale by sale (frozen rate each), ₹ beside it. */
+$cardMoney = static fn(string $k): string => $deskCur === null ? inr($sum[$k][1])
+    : CounterDesk::format($sumLocal[$k], (string) $deskCur['code']) . ' (' . inr($sum[$k][1]) . ')';
 $shown = $status === 'all' ? $rows : array_values(array_filter($rows, static fn(array $r): bool => $kind($r) === $status));
 
 /* Daily totals: collected cash per day per collector and per seller. */
@@ -169,8 +193,8 @@ $label = ['pending' => '⏳ Pending', 'collected' => '✅ Collected', 'cancelled
 
 <div class="cb-cards">
 <?php foreach (['pending', 'collected', 'noshow', 'cancelled'] as $k): ?>
-  <a href="?<?= $e(http_build_query(['from' => $from, 'to' => $to, 'status' => $k, 'q' => $q])) ?>" class="<?= $status === $k ? 'on' : '' ?>">
-    <small><?= $e($label[$k]) ?></small><b><?= $e(inr($sum[$k][1])) ?></b><small><?= (int) $sum[$k][0] ?> ticket(s)</small></a>
+  <a href="?<?= $e(http_build_query(array_filter(['from' => $from, 'to' => $to, 'status' => $k, 'q' => $q, 'desk' => $deskF]))) ?>" class="<?= $status === $k ? 'on' : '' ?>">
+    <small><?= $e($label[$k]) ?></small><b><?= $e($cardMoney($k)) ?></b><small><?= (int) $sum[$k][0] ?> ticket(s)</small></a>
 <?php endforeach; ?>
 </div>
 
@@ -179,8 +203,14 @@ $label = ['pending' => '⏳ Pending', 'collected' => '✅ Collected', 'cancelled
   <label style="font-size:12px;font-weight:700">To <input type="date" name="to" value="<?= $e($to) ?>"></label>
   <select name="status"><?php foreach ($label as $k => $v): ?><option value="<?= $e($k) ?>"<?= $status === $k ? ' selected' : '' ?>><?= $e($v) ?></option><?php endforeach; ?></select>
   <input type="search" name="q" value="<?= $e($q) ?>" placeholder="PNR or mobile">
+  <?php if ($scopeDesk === null && CounterDesk::stampColumn()): ?>
+  <select name="desk" aria-label="Desk · काउन्टर">
+    <option value="">All desks · सबै काउन्टर</option>
+    <?php foreach (CounterDesk::all() as $dc => $dd): ?><option value="<?= $e($dc) ?>"<?= $deskF === (string) $dc ? ' selected' : '' ?>><?= $e(CounterDesk::label((string) $dc) . ((string) ($dd['currency'] ?? 'INR') === 'NPR' ? ' · NPR' : '')) ?></option><?php endforeach; ?>
+  </select>
+  <?php endif; ?>
   <button class="btn ghost" type="submit">Show</button>
-  <a class="btn ghost" href="?<?= $e(http_build_query(['from' => $from, 'to' => $to, 'status' => $status, 'q' => $q, 'export' => 'csv'])) ?>">⬇ Excel (CSV)</a>
+  <a class="btn ghost" href="?<?= $e(http_build_query(array_filter(['from' => $from, 'to' => $to, 'status' => $status, 'q' => $q, 'desk' => $deskF, 'export' => 'csv']))) ?>">⬇ Excel (CSV)</a>
   <button class="btn ghost" type="button" onclick="window.print()">🖨 Print / PDF</button>
 </form>
 
@@ -201,7 +231,7 @@ $label = ['pending' => '⏳ Pending', 'collected' => '✅ Collected', 'cancelled
         <td><?= $e(formatDate((string) $r['travel_date'], 'j M')) ?></td>
         <td><?= $e((string) (Boarding::stopDisplay((string) $r['boarding_stop'])['name'] ?? '')) ?><?= $r['boarding_time'] ? ' ' . $e(substr((string) $r['boarding_time'], 0, 5)) : '' ?></td>
         <td><?= $e($r['lead_name']) ?><?= (int) $r['pax'] > 1 ? ' +' . ((int) $r['pax'] - 1) : '' ?><br><small><?= $e($r['contact_phone']) ?></small></td>
-        <td><b><?= $e(inr((float) $r['total_amount'])) ?></b></td>
+        <td><b><?= $e($dm((float) $r['total_amount'], $r)) ?></b></td>
         <td><span class="cb-st cb-<?= $e($k) ?>"><?= $e($label[$k]) ?></span></td>
         <td><?= $k === 'collected' ? $e($r['collector'] ?: $r['collector_user'] ?: 'Office') . '<br><small>' . $e(date('j M H:i', (int) strtotime((string) $r['verified_at']))) . '</small>' : '—' ?></td>
         <td><?= $e($r['counter_code'] ?: 'Online') ?><?= $r['seller'] ? '<br><small>' . $e($r['seller']) . '</small>' : '' ?></td>

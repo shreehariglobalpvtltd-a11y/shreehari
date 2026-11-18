@@ -562,9 +562,51 @@ final class MkAutopilot
         }
     }
 
-    /** The hand-written line for a group (used when the AI is off or wrote something unsafe). */
-    public static function fallback(string $seg, array $facts, string $dir = ''): string
+    /**
+     * 19 Nov 2026 (u8 AI-2): the languages the autopilot writes a line in
+     * (mk_auto_langs, default "ne,hi,en"); the default language
+     * (CustomerDirectory::defaultLang, mk_default_lang 'ne') is always one.
+     * Each person gets the line in CustomerDirectory::lang(); a language not
+     * in this list folds into the default. Sending is unchanged.
+     *
+     * @return list<string>
+     */
+    public static function langs(): array
     {
+        $want = array_map('trim', explode(',', strtolower(Settings::getString('mk_auto_langs', 'ne,hi,en'))));
+        $out = array_values(array_intersect(CustomerDirectory::LANGS, $want));
+        $def = CustomerDirectory::defaultLang();
+        if (!in_array($def, $out, true)) {
+            array_unshift($out, $def);
+        }
+        return $out;
+    }
+
+    /**
+     * Split one send list by each person's language.
+     *
+     * @param list<array<string,mixed>> $list rows with 'intl'
+     * @return array<string, list<array<string,mixed>>> lang → rows (default first, empty groups left out)
+     */
+    public static function splitByLang(array $list): array
+    {
+        $allowed = self::langs();
+        $def = CustomerDirectory::defaultLang();
+        $of = CustomerDirectory::langs(array_map(static fn($p) => (string) $p['intl'], $list));
+        $out = array_fill_keys($allowed, []);
+        foreach ($list as $p) {
+            $l = $of[(string) $p['intl']] ?? $def;
+            $out[in_array($l, $allowed, true) ? $l : $def][] = $p;
+        }
+        return array_filter($out);
+    }
+
+    /** The hand-written line for a group (used when the AI is off or wrote something unsafe). */
+    public static function fallback(string $seg, array $facts, string $dir = '', string $lang = 'ne'): string
+    {
+        if ($lang === 'hi' || $lang === 'en') {
+            return self::fallbackOther($seg, $facts, $dir, $lang);
+        }
         /* "₹2,000 देखि" (from) when other pickups / drops pay more (site facts, 9 Oct 2026) */
         $go = number_format($facts['fare_go']) . ((int) ($facts['fare_go_max'] ?? 0) > (int) $facts['fare_go'] ? ' देखि' : '');
         $back = number_format($facts['fare_back']) . ((int) ($facts['fare_back_max'] ?? 0) > (int) $facts['fare_back'] ? ' देखि' : '');
@@ -578,6 +620,41 @@ final class MkAutopilot
                                 : 'घर जाने बेला भयो? Gujarat → Rupaidiha बस, भाडा ₹' . $go . '।') . ' सिट अनलाइन छान्नुहोस्।' . $offer,
             'lapsed'        => 'धेरै दिन भयो 🙏 Gujarat ⇄ Rupaidiha बस सेवा जारी छ — घर जाने ₹' . $go . ', फर्कने ₹' . $back . '। सिट अनलाइन छान्नुहोस्।' . $offer,
             default         => 'तपाईंले बस टिकटबारे सोध्नुभएको थियो 🙏 Gujarat ⇄ Rupaidiha — घर जाने ₹' . $go . ', फर्कने ₹' . $back . '। सिट अनलाइन छान्नुहोस्।' . $offer,
+        };
+    }
+
+    /** The hand-written line in Hindi (Devanagari) or simple English (19 Nov 2026). */
+    private static function fallbackOther(string $seg, array $facts, string $dir, string $lang): string
+    {
+        $hi = $lang === 'hi';
+        $from = $hi ? ' से' : '';
+        $go = ($hi ? '' : 'from ') . number_format($facts['fare_go']);
+        $back = ($hi ? '' : 'from ') . number_format($facts['fare_back']);
+        if ($hi) {
+            $go .= (int) ($facts['fare_go_max'] ?? 0) > (int) $facts['fare_go'] ? $from : '';
+            $back .= (int) ($facts['fare_back_max'] ?? 0) > (int) $facts['fare_back'] ? $from : '';
+        }
+        $fn = (string) ($facts['festival']['name'] ?? '');
+        $offer = $facts['offer'] !== '' ? ' ' . $facts['offer'] : '';
+        if ($hi) {
+            return match ($seg) {
+                'festival_go'   => $fn . ' नज़दीक है 🪔 घर जाने की बस Gujarat → Rupaidiha, किराया ₹' . $go . '। त्योहार में भीड़ होती है, अभी सीट पक्की कीजिए।' . $offer,
+                'festival_back' => $fn . ' की शुभकामनाएँ 🙏 गुजरात लौटने की बस Rupaidiha → Gujarat, किराया ₹' . $back . '। अपनी सीट अभी चुनिए।' . $offer,
+                'return'        => ($dir === 'toIndia'
+                                    ? 'गुजरात लौटने का समय हो गया? Rupaidiha → Gujarat बस, किराया ₹' . $back . '।'
+                                    : 'घर जाने का समय हो गया? Gujarat → Rupaidiha बस, किराया ₹' . $go . '।') . ' सीट ऑनलाइन चुनिए।' . $offer,
+                'lapsed'        => 'काफ़ी दिन हो गए 🙏 Gujarat ⇄ Rupaidiha बस सेवा जारी है — घर जाने ₹' . $go . ', लौटने ₹' . $back . '। सीट ऑनलाइन चुनिए।' . $offer,
+                default         => 'आपने बस टिकट के बारे में पूछा था 🙏 Gujarat ⇄ Rupaidiha — घर जाने ₹' . $go . ', लौटने ₹' . $back . '। सीट ऑनलाइन चुनिए।' . $offer,
+            };
+        }
+        return match ($seg) {
+            'festival_go'   => $fn . ' is coming 🪔 The bus home Gujarat → Rupaidiha, fare ₹' . $go . '. Festival days fill up, book your seat now.' . $offer,
+            'festival_back' => 'Best wishes for ' . $fn . ' 🙏 The bus back to Gujarat Rupaidiha → Gujarat, fare ₹' . $back . '. Choose your seat now.' . $offer,
+            'return'        => ($dir === 'toIndia'
+                                ? 'Time to head back to Gujarat? Rupaidiha → Gujarat bus, fare ₹' . $back . '.'
+                                : 'Time to go home? Gujarat → Rupaidiha bus, fare ₹' . $go . '.') . ' Choose your seat online.' . $offer,
+            'lapsed'        => 'We miss you 🙏 The Gujarat ⇄ Rupaidiha bus runs as always — home ₹' . $go . ', back ₹' . $back . '. Choose your seat online.' . $offer,
+            default         => 'You asked us about a bus ticket 🙏 Gujarat ⇄ Rupaidiha — home ₹' . $go . ', back ₹' . $back . '. Choose your seat online.' . $offer,
         };
     }
 
@@ -661,9 +738,11 @@ final class MkAutopilot
      *
      * @return array{text:string, by:string, why:string}
      */
-    public static function copy(string $seg, array $facts, string $dir = ''): array
+    public static function copy(string $seg, array $facts, string $dir = '', string $lang = ''): array
     {
-        $fallback = self::fallback($seg, $facts, $dir);
+        // 19 Nov 2026 (u8 AI-2): the line's language is the group's ('' = the default language).
+        $lang = in_array($lang, CustomerDirectory::LANGS, true) ? $lang : CustomerDirectory::defaultLang();
+        $fallback = self::fallback($seg, $facts, $dir, $lang);
         if (!Settings::getBool('mk_auto_ai_copy', true)) {
             return ['text' => $fallback, 'by' => 'fixed', 'why' => 'AI writing switched off'];
         }
@@ -675,7 +754,11 @@ final class MkAutopilot
         } catch (Throwable $e) {
             return ['text' => $fallback, 'by' => 'fixed', 'why' => 'AI unavailable'];
         }
-        $lang = Settings::getString('mk_auto_lang', 'ne') === 'hi' ? 'Hindi (Devanagari)' : 'Nepali (Devanagari)';
+        $lang = match ($lang) {
+            'hi'    => 'Hindi (Devanagari)',
+            'en'    => 'simple English',
+            default => 'Nepali (Devanagari)',
+        };
         $les = self::lessons();
         $goal = match ($seg) {
             'festival_go'   => 'Festival "' . $facts['festival']['name'] . '" is on ' . $facts['festival']['date'] . ' (' . $facts['festival']['days'] . ' days away). Invite them to book the bus HOME (Gujarat → Rupaidiha, Nepal border), fare ₹' . $facts['fare_go'] . '.',
@@ -781,15 +864,20 @@ final class MkAutopilot
                 ? array_filter(['toNepal' => array_values(array_filter($pick, static fn ($p) => $p['dir'] === 'toNepal')),
                                 'toIndia' => array_values(array_filter($pick, static fn ($p) => $p['dir'] === 'toIndia'))])
                 : ['' => $pick];
-            foreach ($parts as $dir => $list) {
-                $copy = $dry && !Settings::getBool('mk_auto_preview_ai', true) ? ['text' => self::fallback($seg, $facts, (string) $dir), 'by' => 'fixed', 'why' => 'preview'] : self::copy($seg, $facts, (string) $dir);
-                $c = ['segment' => $seg, 'dir' => $dir, 'people' => count($list), 'text' => $copy['text'], 'by' => $copy['by'], 'why' => $copy['why'], 'id' => 0,
-                      'photo' => self::templateAndPhoto()[1],
-                      'sample' => array_map(static fn ($p) => ['name' => $p['name'], 'ph' => '•••' . substr($p['ph'], -4)], array_slice($list, 0, 3))];
-                if (!$dry && $mode !== 'off') {
-                    $c['id'] = self::queue($seg, (string) $dir, $copy['text'], $list, $mode === 'auto', $by);
+            foreach ($parts as $dir => $dirList) {
+                // 19 Nov 2026 (u8 AI-2): one line (and one campaign) per language of the people in it.
+                foreach (self::splitByLang($dirList) as $lang => $list) {
+                    $copy = $dry && !Settings::getBool('mk_auto_preview_ai', true)
+                        ? ['text' => self::fallback($seg, $facts, (string) $dir, (string) $lang), 'by' => 'fixed', 'why' => 'preview']
+                        : self::copy($seg, $facts, (string) $dir, (string) $lang);
+                    $c = ['segment' => $seg, 'dir' => $dir, 'lang' => (string) $lang, 'people' => count($list), 'text' => $copy['text'], 'by' => $copy['by'], 'why' => $copy['why'], 'id' => 0,
+                          'photo' => self::templateAndPhoto()[1],
+                          'sample' => array_map(static fn ($p) => ['name' => $p['name'], 'ph' => '•••' . substr($p['ph'], -4)], array_slice($list, 0, 3))];
+                    if (!$dry && $mode !== 'off') {
+                        $c['id'] = self::queue($seg, (string) $dir, $copy['text'], $list, $mode === 'auto', $by, (string) $lang);
+                    }
+                    $res['campaigns'][] = $c;
                 }
-                $res['campaigns'][] = $c;
             }
         }
         if (!$dry) {
@@ -799,12 +887,14 @@ final class MkAutopilot
     }
 
     /** One campaign row + its recipients. Returns the campaign id. */
-    private static function queue(string $seg, string $dir, string $line, array $list, bool $send, int $by): int
+    private static function queue(string $seg, string $dir, string $line, array $list, bool $send, int $by, string $lang = ''): int
     {
-        $name = '🤖 AI · ' . self::SEGMENTS[$seg] . ($dir !== '' ? ' · ' . ($dir === 'toNepal' ? 'घर जाने' : 'फर्कने') : '') . ' · ' . date('j M');
+        $name = '🤖 AI · ' . self::SEGMENTS[$seg] . ($dir !== '' ? ' · ' . ($dir === 'toNepal' ? 'घर जाने' : 'फर्कने') : '')
+            . ($lang !== '' ? ' · ' . strtoupper($lang) : '') . ' · ' . date('j M');
         $link = trim(Settings::getString('mk_auto_link', ''));
         [$tpl, $photo] = self::templateAndPhoto();
-        $id = (int) Database::insert('mk_campaigns', [
+        $extra = $lang !== '' && self::hasTemplateLang() ? ['template_lang' => $lang] : [];
+        $id = (int) Database::insert('mk_campaigns', $extra + [
             'name'            => mb_substr($name, 0, 120),
             'channel'         => 'wa_template',
             'template_name'   => $tpl,
@@ -833,8 +923,24 @@ final class MkAutopilot
         }
         Campaigns::recount($id);
         Logger::audit('marketing.autopilot_queue', 'mk_campaign', (string) $id, null,
-            ['segment' => $seg, 'dir' => $dir, 'recipients' => count($list), 'send' => $send], $by > 0 ? 'by admin #' . $by : 'by the autopilot');
+            ['segment' => $seg, 'dir' => $dir, 'lang' => $lang, 'recipients' => count($list), 'send' => $send], $by > 0 ? 'by admin #' . $by : 'by the autopilot');
         return $id;
+    }
+
+    /** mk_campaigns.template_lang exists (database/upgrade-2026-11-19-u8-contact-lang.sql)? */
+    private static function hasTemplateLang(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.columns
+                      WHERE table_schema = DATABASE() AND table_name = 'mk_campaigns' AND column_name = 'template_lang'", [], 0) === 1;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
     }
 
     /**

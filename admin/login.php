@@ -29,6 +29,95 @@ $next     = (string) ($_GET['next'] ?? ($_POST['next'] ?? ''));
 $safeNext = (preg_match('/^[A-Za-z0-9_\-]+\.php(\?[A-Za-z0-9_=&%.\-]*)?$/', $next) === 1) ? $next : 'index.php';
 
 /* =====================================================================
+   19 Nov 2026 (u7 review) — THE RELOCK. A remembered field device that
+   sat idle (staff_idle_lock_min) is locked, not signed out: the session
+   stays, nothing opens until the person's own PIN / pattern is given here
+   (Auth::relock / Auth::unlockSession; QuickUnlock::match keeps its budget
+   and lockout). Sign out is one tap away. Office roles never land here.
+   ===================================================================== */
+if (Auth::lockedSession() === null && (string) ($_GET['relock'] ?? '') === '1') {
+    Auth::relock();   // only a signed-in, remembered field session with a PIN / pattern
+}
+if (($rlS = Auth::lockedSession()) !== null) {
+    $rlErr = '';
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['mode'] ?? '') === 'relock') {
+        if (!Security::verifyCsrf()) {
+            $rlErr = 'यो पेज धेरै बेर खुला थियो — फेरि प्रयास गर्नुहोस् · This page was open too long, please try again.';
+        } else {
+            $rlR = Auth::unlockSession((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? ''));
+            if (!empty($rlR['ok'])) {
+                Response::redirect('admin/' . $safeNext);
+            }
+            if (!empty($rlR['gone'])) {
+                Response::redirect('admin/login.php');
+            }
+            $rlErr = (string) ($rlR['error'] ?? 'PIN / pattern मिलेन · PIN or pattern did not match.');
+        }
+    }
+    $rlId   = (int) $rlS['id'];
+    $rlSt   = QuickUnlock::status($rlId);
+    $rlLen  = QuickUnlock::pinLen($rlId);
+    $rlName = trim((string) ($rlS['full_name'] ?? '')) ?: (string) ($rlS['username'] ?? '');
+    $rlUntil = QuickUnlock::lockedUntil($rlId);
+    if ($rlUntil > 0 && $rlErr === '') {
+        $rlErr = '🔒 धेरै पटक गलत भयो — ' . (int) ceil(($rlUntil - time()) / 60) . ' मिनेट पर्खनुहोस्, वा साइन आउट गर्नुहोस् · Too many wrong tries: wait ' . (int) ceil(($rlUntil - time()) / 60) . ' min, or sign out.';
+    }
+    $rlH   = static fn($v): string => Security::e((string) ($v ?? ''));
+    $rlHid = Security::csrfField() . '<input type="hidden" name="mode" value="relock">'
+           . ($safeNext !== 'index.php' ? '<input type="hidden" name="next" value="' . $rlH($safeNext) . '">' : '');
+    header('Cache-Control: no-store');
+    ?><!doctype html>
+<html lang="ne"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Locked · S Hari</title>
+<style>
+:root{color-scheme:dark;--bg:#070B14;--ink:#E8F0FB;--mut:#9FB2D0;--line:#2B3F63;--acc:#F07C1F;--bad:#FFADB9;--badbg:#30161B}
+body{margin:0;min-height:100vh;background:var(--bg);background-image:radial-gradient(120% 70% at 50% -10%,#16305F 0%,rgba(22,48,95,0) 62%);color:var(--ink);font:15px/1.45 Poppins,"Noto Sans Devanagari",system-ui,sans-serif;display:flex;align-items:flex-start;justify-content:center}
+.box{width:100%;max-width:340px;padding:28px 16px 32px;box-sizing:border-box;text-align:center}
+.lk-ic{font-size:34px;margin:8px 0 4px}.who{font-size:17px;font-weight:600;margin:0 0 4px;word-break:break-word}
+.note{color:var(--mut);font-size:13px;margin:6px 0 14px}
+.msg{background:var(--badbg);color:var(--bad);border-radius:12px;padding:10px 12px;font-size:13.5px;margin:0 0 12px}
+.qk-pin{width:100%;box-sizing:border-box;min-height:52px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:#fff;font-size:22px;text-align:center;letter-spacing:.5em}
+.qk-pin:focus{outline:2px solid var(--acc);outline-offset:2px}
+.btn{display:block;width:100%;min-height:52px;margin-top:12px;border-radius:14px;background:var(--acc);border:0;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+.out{display:inline-block;margin-top:22px;color:#FF9AA5;font-weight:600;font-size:13.5px;min-height:44px;line-height:44px}
+body .qk-pad{background:transparent;width:264px;height:264px}
+body .qk-dot{background:#5E7399}body .qk-dot.on{background:var(--acc)}
+body .qk-tabs button{background:transparent;border-color:var(--line);color:#C9D6EA;min-height:44px;border-radius:99px}
+body .qk-tabs button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+[hidden]{display:none !important}
+</style></head>
+<body><main class="box">
+  <div class="lk-ic" aria-hidden="true">🔒</div>
+  <h1 class="who"><?= $rlH($rlName) ?></h1>
+  <p class="note">स्क्रिन लक भयो — तपाईं अझै लगइन हुनुहुन्छ · Screen locked: you are still signed in.</p>
+  <?php if ($rlErr !== ''): ?><div class="msg" role="alert"><?= $rlH($rlErr) ?></div><?php endif; ?>
+  <div class="qk" data-qk>
+    <?php if ($rlSt['pattern'] && $rlSt['pin']): ?>
+    <div class="qk-tabs" role="tablist"><button type="button" class="on" data-qk-tab="pattern">◯ Pattern</button><button type="button" data-qk-tab="pin">🔢 PIN</button></div>
+    <?php endif; ?>
+    <?php if ($rlSt['pattern']): ?>
+    <form method="post" action="/admin/login.php" data-qk-form="pattern"><?= $rlHid ?><input type="hidden" name="qk_kind" value="pattern"><input type="hidden" name="qk_val" value="">
+      <div class="qk-pad" data-qk-pad aria-label="Pattern"></div>
+      <p class="note">आफ्नो pattern कोर्नुहोस् · Draw your pattern</p>
+    </form>
+    <?php endif; ?>
+    <?php if ($rlSt['pin']): ?>
+    <form method="post" action="/admin/login.php" data-qk-form="pin"<?= $rlSt['pattern'] ? ' hidden' : '' ?>><?= $rlHid ?><input type="hidden" name="qk_kind" value="pin">
+      <label for="rlpin" class="note">PIN</label>
+      <input id="rlpin" class="qk-pin" name="qk_val" type="password" inputmode="numeric" pattern="\d{4,6}" minlength="4" maxlength="<?= $rlLen > 0 ? $rlLen : 6 ?>" autocomplete="off" required<?= $rlSt['pattern'] ? '' : ' autofocus' ?>>
+      <button class="btn" type="submit">🔓 खोल्नुहोस् · Unlock</button>
+    </form>
+    <?php endif; ?>
+  </div>
+  <a class="out" href="/admin/logout.php">साइन आउट · Sign out</a>
+</main>
+<script src="/assets/js/quick-unlock.js?v=20261101a"></script>
+</body></html>
+<?php
+    exit;
+}
+
+/* =====================================================================
    16 Nov 2026 (master v2.0, P1-5b + P1-5c) — the device-limit step.
    A door accepted the sign-in, but the account's role is on its device
    limit (setting device_limit_<role>; 0 = no limit, the default for every
@@ -96,7 +185,11 @@ if (Auth::oneDoorOn()) {
        the office's recovery route while everyone moves to a PIN / pattern; a sign-in
        there still has to set a PIN / pattern before any page opens (Auth::requireAdmin). */
     $codeFirst = CodeLogin::on();
-    $classic   = $codeFirst && (string) ($_GET['classic'] ?? ($_POST['classic'] ?? '')) === '1';
+    /* 19 Nov 2026 (u7, LG-1): login_mobile_first_on (default OFF) — the door opens on the mobile box
+       (the classic one door); first time = WhatsApp code once, then the person's own password; the
+       code + PIN door stays one tap away (?step=c_code) and a remembered phone keeps its lock screen. */
+    $mobileFirst = OneDoor::mobileFirstOn();
+    $classic   = $codeFirst && ((string) ($_GET['classic'] ?? ($_POST['classic'] ?? '')) === '1' || $mobileFirst);
     $odDest = static function (string $go = 'home') use ($keepNext, $back): string {
         if ($go === 'team') {
             return '/team/';
@@ -143,7 +236,7 @@ if (Auth::oneDoorOn()) {
             };
             $r = match ($mode) {
                 // ---- 15 Nov 2026: the code-first door (includes/codelogin.php holds every decision) ----
-                'c_code'         => CodeLogin::enter((string) ($_POST['code'] ?? '')),
+                'c_code'         => CodeLogin::enter((string) ($_POST['code'] ?? ''), (string) ($_POST['cc'] ?? '91')),   // 19 Nov 2026 (u7): an office mobile -> mobile step
                 'c_unlock'       => CodeLogin::unlock((string) ($_POST['qk_kind'] ?? ''), (string) ($_POST['qk_val'] ?? '')),
                 'c_forgot'       => CodeLogin::forgot(),
                 'c_identity'     => CodeLogin::identity((string) ($_POST['dob'] ?? ''), (string) ($_POST['mobile'] ?? ''), (string) ($_POST['sec_a'] ?? '')),
@@ -191,6 +284,7 @@ if (Auth::oneDoorOn()) {
                 'wa_finish'      => OneDoor::waFinish(),
                 'pick'           => OneDoor::pick((int) ($_POST['id'] ?? 0)),
                 'forgot_send'    => OneDoor::forgotSend((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
+                'first_send'     => OneDoor::firstSend(),   // 19 Nov 2026 (u7, LG-1): "first time / forgot" on the mobile step
                 'forgot_hi_first'=> OneDoor::forgotHiFirst((string) ($_POST['who'] ?? ''), (string) ($_POST['cc'] ?? '91')),
                 'forgot_hi'      => OneDoor::forgotHi(),
                 'forgot_prove'   => OneDoor::forgotProve((string) ($_POST['code'] ?? '')),
@@ -248,6 +342,10 @@ if (Auth::oneDoorOn()) {
                         : ['step' => 'start', 'error' => (string) ($a['error'] ?? 'Sign in failed.')];
                 })(),
             };
+            // 19 Nov 2026 (u7): an office mobile typed in the code box continues on the one door's mobile step
+            if (!empty($r['classic'])) {
+                $classic = true;
+            }
             /* 16 Nov 2026 (P1-5b/5c): whichever door ran, a sign-in held at the device limit
                shows the device step (nothing is open yet, so it must not "go" anywhere). */
             if ($mode !== 'dev_cancel' && Auth::deviceHold() !== null) {
@@ -273,6 +371,14 @@ if (Auth::oneDoorOn()) {
                     $_SESSION['home_flash'] = '✅ नयाँ पासवर्ड राखियो, तपाईं भित्र आउनुभयो · New password saved — you are signed in.';
                     if ($r['go'] === 'team') {
                         $_SESSION['team_flash'] = ['ok', (string) $_SESSION['home_flash']];
+                    }
+                    /* 19 Nov 2026 (u7, LG-1): mobile-first — after the first password, OFFER a PIN /
+                       pattern once (optional; pin-setup.php?offer=1 has "Skip for now"). */
+                    if ($mobileFirst && $r['go'] === 'home' && ($me = Auth::admin()) !== null && QuickUnlock::on()) {
+                        $qs = QuickUnlock::status((int) $me['id']);
+                        if (!$qs['pin'] && !$qs['pattern']) {
+                            Response::redirect('/admin/pin-setup.php?offer=1');
+                        }
                     }
                 }
                 Response::redirect($odDest((string) $r['go']));
@@ -387,7 +493,9 @@ if (Auth::oneDoorOn()) {
         }
     }
     $title = match ($step) {
-        'forgot', 'forgot_code', 'forgot_pick', 'forgot_pw' => '🔑 पासवर्ड बिर्सनुभयो? · Forgot password',
+        'forgot', 'forgot_code', 'forgot_pick', 'forgot_pw' => $mobileFirst
+            ? '🆕 पहिलो पटक / नयाँ पासवर्ड · First time / new password'   // 19 Nov 2026 (u7, LG-1)
+            : '🔑 पासवर्ड बिर्सनुभयो? · Forgot password',
         'pick'      => '🪪 कुन ID खोल्ने? · Which ID?',
         'admin_otp' => '🔐 WhatsApp कोड · Login code',
         'wa'        => '💬 WhatsApp मा hi पठाउनुहोस् · Send hi',
@@ -1029,7 +1137,11 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 
   <?php elseif ($step === 'mobile' || $step === 'id'): ?>
   <div class="who"><span><?= $h(OneDoor::masked($st)) ?></span> · <a href="<?= $h($odUrl(['step' => 'start'])) ?>">✎ बदल्नुहोस् · Change</a></div>
-  <?php if ($step === 'mobile'): ?>
+  <?php if ($step === 'mobile' && $mobileFirst): /* 19 Nov 2026 (u7, LG-1): OTP once — to set the person's own password */ ?>
+    <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="first_send">
+      <button class="btn wa" type="submit">🆕 पहिलो पटक / पासवर्ड बिर्सनुभयो — WhatsApp कोड · First time or forgot password<small>कोडपछि आफ्नै पासवर्ड राख्नुहोस् · After the code, set your own password</small></button></form>
+    <div class="or">वा पासवर्ड · or your password</div>
+  <?php elseif ($step === 'mobile'): ?>
     <?php if ($hiOn): ?>
     <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="wa_start">
       <button class="btn wa" type="submit">💬 WhatsApp मा hi पठाएर भित्र · Sign in by sending hi<small>एक ट्याप — कोड टाइप गर्नु पर्दैन · One tap, no code to type</small></button></form>

@@ -51,6 +51,12 @@ final class WaQueue
     /** A waiting ticket is dropped after this many days (or once travelled). */
     public const KEEP_DAYS = 7;
 
+    /** Meta's "no open 24 h window" failures (re-engagement / unsupported in window): the ticket waits for a "hi". */
+    public const WINDOW_CODES = [131047, 131051];
+
+    /** via of a ticket Notify's Cloud API driver sent (afterNotify); starts with 'meta' so the webhook reaches it. */
+    public const VIA_NOTIFY = 'meta notify';
+
     private static ?bool $ready = null;
 
     public static function ready(): bool
@@ -150,7 +156,16 @@ final class WaQueue
         if ($cust !== '') {
             $out[$cust] = 'customer';
         }
-        $alt = self::intl((string) ($b['alt_phone'] ?? ''), (string) ($b['alt_country_code'] ?? ''));
+        /* 19 Nov 2026 (WA-1): the second number's own country; when it was not
+           stamped, the booking's (never a blind 91 for a Nepal booking). */
+        $altHint = trim((string) ($b['alt_country_code'] ?? ''));
+        if ($altHint === '' && trim((string) ($b['alt_phone'] ?? '')) !== '') {
+            $altHint = class_exists('Notify') ? (string) (Notify::bookingCountryHint($b) ?? '') : (string) ($b['contact_country_code'] ?? '');
+        }
+        $alt = self::intl((string) ($b['alt_phone'] ?? ''), $altHint);
+        if ($alt !== '' && preg_match('/^(91|977)0+$/', $alt) === 1) {
+            $alt = '';        // the walk-in placeholder 0000000000 is nobody's number
+        }
         if ($alt !== '' && !isset($out[$alt])) {
             $out[$alt] = 'alt';
         }
@@ -426,6 +441,146 @@ final class WaQueue
         } catch (Throwable $e) {
             Logger::warning('wa queue onConfirmed failed', ['e' => $e->getMessage(), 'pnr' => (string) ($b['pnr'] ?? '')]);
         }
+    }
+
+    /**
+     * AiSensy is NOT the ticket sender (no key / aisensy_mode = off): only the
+     * Meta number carries tickets, and AiSensyAPI::onBookingConfirmed() - the
+     * old maker of this queue's rows - returns at once (19 Nov 2026, WA-1).
+     */
+    public static function metaOnly(): bool
+    {
+        try {
+            return !(AiSensyAPI::enabled() && AiSensyAPI::mode() !== 'off');
+        } catch (Throwable $e) {
+            return true;
+        }
+    }
+
+    /** This booking's ticket already went to this number (a row sent / delivered / read). */
+    public static function alreadyHas(int $bid, string $phone): bool
+    {
+        if (!self::ready() || $bid <= 0 || $phone === '') {
+            return false;
+        }
+        try {
+            return Database::fetch(
+                "SELECT 1 FROM wa_ticket_queue WHERE booking_id = :b AND phone = :p AND status IN ('sent','delivered','read')",
+                ['b' => $bid, 'p' => $phone]
+            ) !== null;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * WA-1 (19 Nov 2026): the booking.approved hook, right after
+     * Notify::bookingConfirmed(), while AiSensy is off.
+     *
+     * Live 18 Nov: a Nepal customer's ticket failed at 22:42 (window closed,
+     * the template answered 132001), the customer wrote at 22:43 and got the
+     * bot's reply - but no ticket, because only AiSensy's hook ever made the
+     * rows this queue flushes on an inbound message. Now Notify's journal for
+     * THIS confirmation ($journalFrom = its length before bookingConfirmed)
+     * decides, per number on the booking (customer, second number):
+     *   - reached (free reply / template / Cloud API): recorded as sent, so a
+     *     later "hi" does not send it again;
+     *   - not reached: a 'pending' row - the number's next message to the
+     *     Meta number (whatsapp/webhook.php -> onInbound(…, 'meta')) delivers
+     *     it free, India or Nepal, within the queue's KEEP_DAYS;
+     *   - 'idempotent' (sent on an earlier confirmation): nothing.
+     * No customer number at all: the seller copy goes now (sellerNow, still
+     * under wa_seller_copy_on). Switch: wa_queue_meta_on (default 1).
+     *
+     * @return array{customer: string, alt: string} what happened per role ('' = nothing to do)
+     */
+    public static function afterNotify(array $booking, int $journalFrom = 0): array
+    {
+        $out = ['customer' => '', 'alt' => ''];
+        try {
+            if (!Settings::getBool('wa_queue_meta_on', true) || !self::ready() || !self::metaOnly()
+                || !Settings::getBool('whatsapp_notify_customer', true) || !class_exists('Notify')) {
+                return $out;
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            if ($bid <= 0) {
+                return $out;
+            }
+            $b = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bid]) ?? $booking;
+            $pnr = (string) ($b['pnr'] ?? '');
+            if ($pnr === '' || !in_array((string) ($b['status'] ?? 'confirmed'), ['confirmed', 'completed'], true)) {
+                return $out;
+            }
+            $journal = array_slice(Notify::whatsappJournal(), max(0, $journalFrom));
+
+            $cust = Notify::usablePhone($b['contact_phone'] ?? '') !== '' ? Notify::whatsappNumberFor($b) : '';
+            $cust = $cust !== '' ? AiSensyAPI::normalizePhone($cust) : '';
+            if ($cust === '') {
+                $out['customer'] = self::sellerNow($b) ? 'seller_copy' : 'no_number';
+                return $out;
+            }
+            $out['customer'] = self::settleFromJournal($b, $cust, 'customer', $journal);
+
+            if (Settings::getBool('wa_ticket_alt_on', true)) {
+                foreach (self::recipients($b) as [$phone, $role]) {
+                    if ($role === 'alt') {
+                        $out['alt'] = self::settleFromJournal($b, (string) $phone, 'alt', $journal);
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('wa queue afterNotify failed', ['e' => $e->getMessage(), 'pnr' => (string) ($booking['pnr'] ?? '')]);
+        }
+        return $out;
+    }
+
+    /**
+     * One number's outcome in Notify's journal -> its queue row.
+     * @param list<array<string,mixed>> $journal
+     */
+    private static function settleFromJournal(array $b, string $phone, string $role, array $journal): string
+    {
+        $bid = (int) $b['id'];
+        $pnr = (string) $b['pnr'];
+        $hit = null;
+        foreach ($journal as $j) {
+            $to = preg_replace('/\D+/', '', (string) ($j['to'] ?? '')) ?? '';
+            if ($to !== '' && $to === $phone) {
+                $hit = $j;        // the last entry for this number wins
+            }
+        }
+        if ($hit !== null && (string) ($hit['reason'] ?? '') === 'idempotent') {
+            return 'already_sent';
+        }
+        if ($hit !== null && !empty($hit['ok'])) {
+            $reason = (string) ($hit['reason'] ?? '');
+            $driver = (string) ($hit['driver'] ?? 'sent');
+            /* Every Cloud API send is a Meta send: its real fate comes later
+               through whatsapp/webhook.php, which reaches onMetaFailed() only
+               for a 'meta…' via (and checkStatuses() must not ask AiSensy
+               about a Meta wamid). A free picture to a closed window is
+               ACCEPTED (200 + wamid) and failed a minute later with 131047. */
+            $via = $reason === 'meta_free' ? 'meta free'
+                : ($reason === 'meta_template' ? 'meta template'
+                : ($driver === 'cloud_api' ? self::VIA_NOTIFY : mb_substr($driver, 0, 20)));
+            if (!self::alreadyHas($bid, $phone)) {
+                self::recordSent($bid, $pnr, $phone, $role, $via, (string) ($hit['ref'] ?? ''));
+            }
+            return 'sent';
+        }
+        if (self::alreadyHas($bid, $phone)) {
+            return 'already_sent';
+        }
+        $id = self::enqueue($bid, $pnr, $phone, $role);
+        if ($id <= 0) {
+            return 'queue_failed';
+        }
+        $why = $hit === null ? 'not attempted' : ('not reached (' . (string) ($hit['reason'] ?? '') . ')');
+        Database::run(
+            "UPDATE wa_ticket_queue SET status = 'pending', last_error = :e WHERE id = :i AND status IN ('pending','failed','expired')",
+            ['e' => mb_substr('Meta: ' . $why . ' - waits for this number\'s next message', 0, 250), 'i' => $id]
+        );
+        return 'queued';
     }
 
     /**
@@ -724,6 +879,23 @@ final class WaQueue
                 Database::run("UPDATE wa_ticket_queue SET status = 'expired', last_error = 'booking not confirmed' WHERE id = :i", ['i' => (int) $q['id']]);
                 return false;
             }
+            $windowShut = in_array($code, self::WINDOW_CODES, true);
+            /* WA-1 (19 Nov 2026): Notify's own confirmation send (VIA_NOTIFY,
+               recorded by afterNotify) already took its one template turn
+               before the free picture went (WaRoute::metaTemplate). A closed
+               window (131047) now puts the ticket back to wait: the number's
+               next message to the Meta number delivers it free, India or
+               Nepal - never a second template call for the same ticket.
+               (The outbox's own free sends are 'meta cloud' and keep their
+               WaSend::metaFailed template turn below.) */
+            if ($windowShut && (string) ($q['via'] ?? '') === self::VIA_NOTIFY) {
+                Database::run(
+                    "UPDATE wa_ticket_queue SET status = 'pending', checked_at = NULL, last_error = :e WHERE id = :i",
+                    ['e' => mb_substr('Meta failed it later (code ' . $code . ', window closed) - waits for this number\'s next message', 0, 250),
+                     'i' => (int) $q['id']]
+                );
+                return false;
+            }
             if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
                 require_once ROOT_PATH . '/whatsapp/aisensy.php';
             }
@@ -740,7 +912,12 @@ final class WaQueue
                 if ($own !== null) {
                     return $own === 'sent';
                 }
-                return self::deliverCloud($q, $b, true);
+                $ok = self::deliverCloud($q, $b, true);
+                if (!$ok && $windowShut) {
+                    // The template did not go either: the number's next message delivers it free.
+                    Database::run("UPDATE wa_ticket_queue SET status = 'pending' WHERE id = :i AND status = 'failed'", ['i' => (int) $q['id']]);
+                }
+                return $ok;
             }
             $f    = AiSensyAPI::facts((int) $b['id']);
             $role = (string) $q['role'];
@@ -749,7 +926,7 @@ final class WaQueue
             Database::run(
                 "UPDATE wa_ticket_queue SET status = :s, via = :v, wamid = :w, attempts = attempts + 1,
                         last_error = :e, sent_at = IF(:ok = 1, NOW(), sent_at), checked_at = NULL WHERE id = :i",
-                ['s' => $r['success'] ? 'sent' : 'failed', 'v' => mb_substr('ais after ' . $code, 0, 20),   // via is VARCHAR(20)
+                ['s' => $r['success'] ? 'sent' : ($windowShut ? 'pending' : 'failed'), 'v' => mb_substr('ais after ' . $code, 0, 20),   // via is VARCHAR(20)
                  'w' => $r['message_id'] !== '' ? $r['message_id'] : null,
                  'e' => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250), 'ok' => $r['success'] ? 1 : 0, 'i' => (int) $q['id']]
             );

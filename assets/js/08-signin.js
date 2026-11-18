@@ -252,6 +252,48 @@ function lgAfterSignIn() {
   }
 }
 
+/* ---------------------------------------------------------------------
+   19 Nov 2026 (u7, LG-2): after an app booking, a passenger whose number is
+   not proven yet sees ONE card — "वाट्सएपमा पुष्टि गर्नुहोस् · Verify on
+   WhatsApp" — that opens the usual sign-in sheet with the name, number and
+   country already filled. Proving it once keeps the tickets on this phone
+   (the server remembers a proven phone: customer_remember_days). Booking
+   never waits for it; "Later" hides it for this booking.
+   ------------------------------------------------------------------- */
+function shgVerifyNudge(info) {
+  info = info || {};
+  const p = digits(info.phone || '');
+  if (!/^\d{10}$/.test(p)) return;
+  const u = getUser();
+  if (u && u.verified && digits(u.phone || '') === p) return;   // already proven on this phone
+  const key = 'shg_vnudge_' + (info.pnr || p);
+  try { if (sessionStorage.getItem(key)) return; } catch (e) {}
+  const old = document.getElementById('shgVNudge'); if (old) old.remove();
+  const box = document.createElement('div');
+  box.id = 'shgVNudge';
+  box.setAttribute('role', 'region');
+  box.setAttribute('aria-label', 'Verify on WhatsApp');
+  box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:60;max-width:460px;margin:0 auto;'
+    + 'background:var(--card,#fff);color:inherit;border:1.5px solid #1faa59;border-radius:16px;padding:14px 14px 12px;box-shadow:0 10px 30px rgba(0,0,0,.18)';
+  box.innerHTML = '<div style="font-weight:800;font-size:15.5px;line-height:1.35">💬 वाट्सएपमा पुष्टि गर्नुहोस् · Verify on WhatsApp</div>'
+    + '<div style="font-size:13px;opacity:.8;margin:4px 0 10px;line-height:1.4">टिकट यो फोनमा सधैं — एक पटक मात्र · Keep your tickets on this phone — once only. +'
+    + (info.country === 'NP' ? '977' : '91') + ' ' + esc(p.slice(0, 2) + '•••••' + p.slice(-3)) + '</div>'
+    + '<div style="display:flex;gap:8px"><button type="button" class="btn" id="shgVNGo" style="flex:1;min-height:44px;background:#1faa59 !important;background-image:none !important;color:#fff !important">💬 पुष्टि गर्नुहोस् · Verify</button>'
+    + '<button type="button" class="btn btn-ghost" id="shgVNLater" style="min-height:44px">पछि · Later</button></div>';
+  document.body.appendChild(box);
+  const done = () => { try { sessionStorage.setItem(key, '1'); } catch (e) {} box.remove(); };
+  document.getElementById('shgVNLater').onclick = done;
+  document.getElementById('shgVNGo').onclick = () => {
+    done();
+    openLoginModal({ u: { phone: p, name: info.name || '', country: info.country === 'NP' ? 'NP' : (info.country === 'IN' ? 'IN' : '') } });
+  };
+  /* the card belongs to this booking's screen: leaving it removes the card */
+  const h0 = location.hash;
+  const off = () => { if (location.hash !== h0) { box.remove(); window.removeEventListener('hashchange', off); } };
+  window.addEventListener('hashchange', off);
+}
+window.shgVerifyNudge = shgVerifyNudge;
+
 /* Step 1 → ask the server to send the code on WhatsApp. */
 async function sendOtp() {
   const p = digits($('#otpPhone').value);

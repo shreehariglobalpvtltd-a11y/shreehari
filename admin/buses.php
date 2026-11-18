@@ -264,6 +264,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'permit_exp'  => $per !== '' ? $per : null,
                     'fitness_exp' => $fit !== '' ? $fit : null,
                 ];
+                /* 19 Nov 2026 (WA-5): the driver who normally drives THIS coach -
+                   buses rotate daily, so the passenger list (DriverList) follows
+                   the bus. A trip's own driver (admin/trips.php) still wins. */
+                if (CounterDesk::hasColumn('buses', 'default_driver_id') && array_key_exists('default_driver_id', $_POST)) {
+                    $dd = (int) ($_POST['default_driver_id'] ?? 0);
+                    if ($dd > 0 && !Database::exists('SELECT 1 FROM drivers WHERE id = :i AND is_active = 1', ['i' => $dd])) {
+                        throw new RuntimeException('Pick an active driver (Drivers page).');
+                    }
+                    $upd['default_driver_id'] = $dd > 0 ? $dd : null;
+                }
                 Database::update('buses', $upd, 'id=:id', ['id' => $busId]);
 
                 // Also update any linked routes/schedules crew info if provided
@@ -677,6 +687,7 @@ if ($todayBus === null) {
                 'insurance_exp'=> $bus['insurance_exp'] ?? '',
                 'permit_exp'   => $bus['permit_exp'] ?? '',
                 'fitness_exp'  => $bus['fitness_exp'] ?? '',
+                'default_driver_id' => (int) ($bus['default_driver_id'] ?? 0),
               ]), ENT_QUOTES) ?>)">✏️ Edit</button>
 
       <!-- Toggle -->
@@ -913,6 +924,18 @@ if ($todayBus === null) {
           <div class="form-grid">
             <div class="form-group"><label>Driver / Crew Name</label><input name="crew_name" id="editCrew" maxlength="120"></div>
             <div class="form-group"><label>Crew Phone</label><input type="tel" name="crew_phone" id="editCrewPh" maxlength="20"></div>
+            <?php if (CounterDesk::hasColumn('buses', 'default_driver_id')):
+                $drvOpts = [];
+                try { $drvOpts = Database::fetchAll("SELECT id, full_name, phone FROM drivers WHERE is_active = 1 ORDER BY full_name"); } catch (Throwable $e) { $drvOpts = []; } ?>
+            <div class="form-group"><label>Driver (default) · यो बसको चालक</label>
+              <select name="default_driver_id" id="editDefDriver">
+                <option value="0">— none · छैन —</option>
+                <?php foreach ($drvOpts as $dv): ?>
+                  <option value="<?= (int) $dv['id'] ?>"><?= htmlspecialchars(trim((string) $dv['full_name']) !== '' ? (string) $dv['full_name'] : 'Driver #' . (int) $dv['id'], ENT_QUOTES) ?> · …<?= htmlspecialchars(substr(preg_replace('/\D/', '', (string) $dv['phone']) ?? '', -4), ENT_QUOTES) ?></option>
+                <?php endforeach; ?>
+              </select>
+              <small style="color:var(--mut)">The passenger list goes to this driver on WhatsApp (a trip's own driver wins).</small></div>
+            <?php endif; ?>
           </div>
         </div>
         <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end">
@@ -961,6 +984,8 @@ function openEditModal(bus) {
   document.getElementById('editIns').value       = bus.insurance_exp;
   document.getElementById('editPer').value       = bus.permit_exp;
   document.getElementById('editFit').value       = bus.fitness_exp;
+  var dd = document.getElementById('editDefDriver');   // 19 Nov 2026 (WA-5)
+  if (dd) dd.value = String(bus.default_driver_id || 0);
 
   /* ── Legacy-model fallback ──
      If this bus's stored seat_model isn't one of the known presets

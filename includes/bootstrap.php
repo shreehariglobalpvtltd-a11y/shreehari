@@ -224,6 +224,28 @@ if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_NONE) {
     if (empty($_SESSION['lock_token'])) {
         $_SESSION['lock_token'] = Security::randomToken(24);
     }
+
+    /* 19 Nov 2026 (u7, LG-1 / LG-2): "stay signed in on this device". The server deletes
+       an idle session file after ~24-54 minutes whatever SESSION_LIFETIME says; a device
+       that was remembered at sign-in (staff: AdminSessions::remember, cookie shg_rm;
+       passenger after a PROVEN door: CustomerProfile::remember, cookie shg_crm) gets its
+       session back here, before any page or endpoint runs. One indexed query, and only
+       on a request that carries the cookie but no session. Never breaks a request. */
+    if (empty($_SESSION[ADMIN_SESSION_KEY]['id']) && !empty($_COOKIE[AdminSessions::REMEMBER_COOKIE])) {
+        try {
+            AdminSessions::resume();
+        } catch (Throwable $e) {
+            Logger::warning('Stay signed in (staff) could not resume: ' . $e->getMessage(), [], 'security');
+        }
+    }
+    if (empty($_SESSION[ADMIN_SESSION_KEY]['id']) && empty($_SESSION[USER_SESSION_KEY]['id']) && !empty($_COOKIE['shg_crm'])) {
+        try {
+            require_once INCLUDE_PATH . '/customerprofile.php';
+            CustomerProfile::resume();
+        } catch (Throwable $e) {
+            Logger::warning('Stay signed in (passenger) could not resume: ' . $e->getMessage(), [], 'security');
+        }
+    }
 }
 
 

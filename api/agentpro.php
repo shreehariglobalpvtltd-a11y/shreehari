@@ -272,6 +272,69 @@ function ap_scan_finish(array $r, string $key, string $ref, int $officeId, int $
     return $out;
 }
 
+/** 19 Nov 2026 (AG-2): commission that can be asked for now = due minus what open requests already hold. */
+function ap_available(int $id): float
+{
+    try {
+        require_once INCLUDE_PATH . '/teamfinance.php';
+        return (float) TeamFinance::available($id)['available'];
+    } catch (Throwable $e) {
+        return max(0.0, (float) (AgentWallet::balances($id)['commission'] ?? 0));
+    }
+}
+
+/**
+ * The ways this member can be paid, for the withdraw sheet: only what is saved.
+ *
+ * @return list<array{method: string, to: string}>
+ */
+function ap_payout_methods(int $id): array
+{
+    $out = [];
+    foreach (AgentWallet::PAYOUT_METHODS as $k) {
+        try {
+            $t = AgentWallet::payoutTarget($id, $k);
+            if ($t['method'] !== '') {
+                $out[] = ['method' => $k, 'to' => $t['to']];
+            }
+        } catch (Throwable $e) {
+            // not saved: not offered
+        }
+    }
+    return $out;
+}
+
+/**
+ * 19 Nov 2026 (AG-5) 'मद्दत · Help': the office to call / WhatsApp and the link that
+ * registers a new agent. A Nepal member (+977) gets the Nepal office first when its
+ * number is set (nepal_phone / nepal_whatsapp), else the India office. Nothing invented.
+ *
+ * @return array{call: string, callDisplay: string, wa: string, joinUrl: string, nepal: bool}
+ */
+function ap_help(string $countryCode): array
+{
+    $call = Settings::officePhone();
+    $wa = Settings::officeWhatsApp();
+    $nepal = false;
+    if ($countryCode === '977') {
+        $np = trim(Settings::getString('nepal_phone', ''));
+        if ($np !== '') {
+            $call = trim((string) (preg_split('#\s*/\s*#', $np)[0] ?? $np));   // '+977 98662 01375 / 98257 88450' -> the first
+            $nepal = true;
+        }
+        $nw = preg_replace('/\D/', '', Settings::getString('nepal_whatsapp', '')) ?? '';
+        if (strlen($nw) === 10) {
+            $nw = '977' . $nw;
+        }
+        if (preg_match('/^[1-9]\d{9,14}$/', $nw) === 1) {
+            $wa = $nw;
+            $nepal = true;
+        }
+    }
+    return ['call' => preg_replace('/[^0-9+]/', '', $call) ?? '', 'callDisplay' => $call, 'wa' => $wa,
+            'joinUrl' => appUrl('join.php'), 'nepal' => $nepal];
+}
+
 /** Signed-in member or 401. */
 function ap_me(): array
 {
@@ -658,6 +721,7 @@ try {
                 'verify' => appUrl('id.php?c=' . rawurlencode((string) $m['cardToken'])),
                 'company' => ['name' => Settings::getString('company_name', APP_NAME), 'upi' => Settings::getString('upi_id', ''),
                               'upiName' => Settings::getString('upi_name', APP_NAME), 'wa' => Settings::bookingWhatsApp()],
+                'help' => ap_help((string) ($m['countryCode'] ?? '')),
                 'csrf' => Security::csrfToken(),
             ]);
 
@@ -708,11 +772,19 @@ try {
                 'deposit' => AgentWallet::depositInfo($id),
                 'entries' => $entries,
                 'payouts' => array_map(static fn(array $r): array => ['id' => (int) $r['id'], 'amount' => (float) $r['amount'], 'status' => $r['status'],
-                    'at' => $r['created_at'], 'note' => $r['decided_note'] ?? $r['note'] ?? ''], AgentWallet::payoutRequests($id, 20)),
+                    'at' => $r['created_at'], 'note' => $r['decided_note'] ?? $r['note'] ?? '', 'to' => (string) ($r['pay_to'] ?? '')], AgentWallet::payoutRequests($id, 20)),
                 'deposits' => array_map(static fn(array $r): array => ['id' => (int) $r['id'], 'amount' => (float) $r['amount'], 'status' => $r['status'],
                     'at' => $r['created_at'], 'utr' => $r['utr'], 'purpose' => $r['purpose'], 'note' => $r['decided_note'] ?? ''], AgentPro::deposits($id, 20)),
                 'payoutTo' => trim((string) (AgentWallet::profile($id)['payout_method'] ?? '') . ' ' . (string) (AgentWallet::profile($id)['payout_account'] ?? '')),
                 'minPayout' => Settings::getFloat('agent_payout_min', 0.0),
+                /* 19 Nov 2026 (u5 AG-1 / AG-2 / AG-3): passengers brought, the per-head price, what can be
+                   withdrawn now and the ways to be paid (each method only when saved). */
+                'heads' => AgentWallet::headcountSet($id),
+                'perHead' => AgentWallet::perHeadRate($id),
+                'staffOnly' => AgentWallet::staffCommissionOff($id),
+                'available' => ap_available($id),
+                'payoutMethods' => ap_payout_methods($id),
+                'payoutVerified' => AgentWallet::payoutVerified($id),
             ]);
 
         case 'photo':
@@ -744,13 +816,70 @@ try {
         case 'withdraw':
             Security::requirePost();
             $admin = ap_me();
-            $id = AgentWallet::requestPayout((int) $admin['id'], (float) Response::field('amount', 0), (string) Response::field('note', ''));
+            // 19 Nov 2026 (AG-2): the member names how to be paid (upi / bank / qr / esewa / khalti); the request keeps it.
+            $method = strtolower(preg_replace('/[^a-z]/i', '', (string) Response::field('method', '')) ?? '');
+            if ($method !== '' && !in_array($method, AgentWallet::PAYOUT_METHODS, true)) {
+                Response::error('Choose UPI, bank account or QR.', 422);
+            }
+            $amt = round((float) Response::field('amount', 0), 2);
+            $avail = ap_available((int) $admin['id']);
+            if ($amt > $avail + 0.009) {
+                Response::error('You can withdraw up to ' . inr($avail) . ' · ' . inr($avail) . ' सम्म मात्र निकाल्न मिल्छ।', 422);
+            }
+            $id = AgentWallet::requestPayout((int) $admin['id'], $amt, (string) Response::field('note', ''), $method);
             try {
-                Notify::adminNote('💸 Withdrawal request', ['Member' => (string) $admin['full_name'], 'Amount' => inr((float) Response::field('amount', 0)),
+                $snap = AgentWallet::payoutRequestHasMethod()
+                    ? Database::fetch('SELECT amount, pay_to FROM agent_payout_requests WHERE id = :i', ['i' => $id]) : null;
+                Notify::adminNote('💸 Withdrawal request', ['Member' => (string) $admin['full_name'],
+                    'Amount' => inr((float) ($snap['amount'] ?? $amt)), 'Pay to' => (string) ($snap['pay_to'] ?? ''),
                     'Open' => appUrl('admin/team.php?tab=money')]);
             } catch (Throwable $e) {
             }
             Response::success(['id' => $id], 'Request sent to the office.');
+
+        case 'payout_qr':
+            /* 19 Nov 2026 (AG-2): POST = the member uploads their own bank / UPI QR (image, at most 3 MB).
+               GET = the picture: the member's own; the office (commissions.pay / staff.manage /
+               super-admin) any member's (?m=) or the one a request was made with (?req=). */
+            $admin = ap_me();
+            $self = (int) $admin['id'];
+            if ($post) {
+                if (empty($_FILES['file'])) {
+                    Response::error('Choose the QR photo.', 422);
+                }
+                Security::requireRateLimit('ap_payout_qr', (string) $self, 10, 3600);
+                AgentPro::savePayoutQr($self, $_FILES['file'], $self);
+                Response::success(['payoutMethods' => ap_payout_methods($self)], 'QR saved — the office pays to it.');
+            }
+            $office = Auth::isSuperadmin() || Auth::can('commissions.pay') || Auth::can('staff.manage');
+            $req = (int) ($_GET['req'] ?? 0);
+            $mid = (int) ($_GET['m'] ?? $self);
+            if ($req > 0) {
+                $r = AgentWallet::payoutRequestHasMethod()
+                    ? Database::fetch('SELECT agent_admin_id, pay_qr_path FROM agent_payout_requests WHERE id = :i', ['i' => $req]) : null;
+                if ($r === null || (!$office && (int) $r['agent_admin_id'] !== $self)) {
+                    Response::notFound('No QR.');
+                }
+                $abs = AgentPro::privateAbs((string) ($r['pay_qr_path'] ?? ''));
+            } else {
+                if ($mid !== $self && !$office) {
+                    Response::forbidden('Not yours.');
+                }
+                $abs = AgentPro::payoutQrAbs($mid);
+            }
+            if ($abs === null) {
+                Response::notFound('No QR uploaded.');
+            }
+            if ($mid !== $self || $req > 0) {
+                Logger::audit('agentpro.payout_qr_viewed', 'admin', $req > 0 ? 'req:' . $req : (string) $mid, null, null,
+                    'Payout QR opened by admin #' . $self);
+            }
+            header('Content-Type: image/jpeg');
+            header('Cache-Control: private, no-store');
+            header('X-Content-Type-Options: nosniff');
+            header('Content-Length: ' . (string) filesize($abs));
+            readfile($abs);
+            exit;
 
         case 'deposit':
             Security::requirePost();

@@ -235,6 +235,101 @@ final class EtaAlerts
         return $best;
     }
 
+    /**
+     * 19 Nov 2026 (u8 AI-4): minutes to $stop from the learned stop timings
+     * (route_stop_learned, written by StopTiming at night), or null = use
+     * the speed rule. Only when eta_learned_on = 1 (default OFF) and both a
+     * learned stop behind the coach and one ahead of it exist, plus the
+     * target itself. The coach's "expected clock" is interpolated between
+     * the two learned stops around it; the answer is never earlier than the
+     * 70 km/h bound and never under 1 minute.
+     *
+     * @param array{line: list<array<string,mixed>>} $geo
+     * @param array<string,mixed> $stop  one routeLine() stop
+     */
+    public static function learnedMinutes(int $routeId, array $geo, float $posKm, array $stop): ?int
+    {
+        if (!Settings::getBool('eta_learned_on', false)) {
+            return null;
+        }
+        $pts = self::learnedPoints($routeId, $geo);
+        $target = $pts[(string) $stop['name']] ?? null;
+        if ($target === null) {
+            return null;
+        }
+        $a = null; $b = null;
+        foreach ($pts as $p) {
+            if ($p['km'] <= $posKm && ($a === null || $p['km'] > $a['km'])) { $a = $p; }
+            if ($p['km'] > $posKm && ($b === null || $p['km'] < $b['km'])) { $b = $p; }
+        }
+        if ($a === null || $b === null || $b['km'] <= $a['km']) {
+            return null;
+        }
+        $now = $a['off'] + ($posKm - $a['km']) / ($b['km'] - $a['km']) * ($b['off'] - $a['off']);
+        $eta = (int) round($target['off'] - $now);
+        if ($eta <= 0) {
+            return null;
+        }
+        $ahead = (float) $stop['km'] - $posKm;
+        return max(1, $eta, (int) ceil($ahead / 70 * 60));
+    }
+
+    /** @return array<string, array{km: float, off: int}> learned stops on this line, by name */
+    private static function learnedPoints(int $routeId, array $geo): array
+    {
+        if (isset(self::$learnedMemo[$routeId])) {
+            return self::$learnedMemo[$routeId];
+        }
+        $out = [];
+        try {
+            $rows = Database::fetchAll(
+                "SELECT rs.stop_name, rs.stop_type, l.median_offset_min, l.median_dwell_min FROM route_stop_learned l
+                   JOIN route_stops rs ON rs.id = l.stop_ref AND l.stop_kind = 'stop'
+                  WHERE l.route_id = :r", ['r' => $routeId]);
+            $off = [];
+            foreach ($rows as $r) {
+                $off[(string) $r['stop_name']] = [(int) $r['median_offset_min'], (string) $r['stop_type'] === 'boarding', (int) ($r['median_dwell_min'] ?? 0)];
+            }
+            foreach ($geo['line'] as $i => $s) {
+                if (isset($off[(string) $s['name']])) {
+                    [$o, $board, $dwell] = $off[(string) $s['name']];
+                    /* A boarding stop is learned on its DEPARTURE (StopTiming,
+                       fix of 19 Nov): the coach REACHES it one dwell earlier.
+                       The first stop of the line stays on its departure — the
+                       depot wait before it is not part of the run. */
+                    if ($board && $i > 0 && $dwell > 0) {
+                        $o -= $dwell;
+                    }
+                    $out[(string) $s['name']] = ['km' => (float) $s['km'], 'off' => $o];
+                }
+            }
+            /* The origin is learned only from a recorded departure. Until it
+               is, it anchors at its timetable departure (offset 0) — but only
+               when the first stop on the line really is the origin (boarding,
+               timed at the route's departure). */
+            $first = $geo['line'][0] ?? null;
+            if ($out !== [] && $first !== null && !isset($out[(string) $first['name']])
+                && (string) ($first['type'] ?? '') === 'boarding' && ($first['time'] ?? null) !== null) {
+                $dep = (string) Database::scalar('SELECT dep_time FROM routes WHERE id = :r', ['r' => $routeId], '');
+                if ($dep !== '' && substr((string) $first['time'], 0, 5) === substr($dep, 0, 5)) {
+                    $out = [(string) $first['name'] => ['km' => (float) $first['km'], 'off' => 0]] + $out;
+                }
+            }
+        } catch (Throwable $e) {
+            $out = [];   // table not installed: the speed rule
+        }
+        return self::$learnedMemo[$routeId] = $out;
+    }
+
+    /** @var array<int, array<string, array{km: float, off: int}>> */
+    private static array $learnedMemo = [];
+
+    /** For tests: forget the learned points read this request. */
+    public static function resetLearned(): void
+    {
+        self::$learnedMemo = [];
+    }
+
     /** Minutes to cover $km. A crawling or unknown speed is read as 40 km/h; the band is 25–70. */
     public static function etaMinutes(float $km, ?float $speedKmh): int
     {
@@ -374,7 +469,8 @@ final class EtaAlerts
             if ($stop['type'] !== 'boarding' || $ahead <= 0.5 || $ahead > 400) {
                 continue;
             }
-            $out[Boarding::townKey($stop['name'])] = ['name' => $stop['name'], 'eta' => self::etaMinutes($ahead, $fix['kmh'] ?? null), 'km' => round($ahead, 1)];
+            $eta = self::learnedMinutes($routeId, $geo, (float) $pos['km'], $stop) ?? self::etaMinutes($ahead, $fix['kmh'] ?? null);
+            $out[Boarding::townKey($stop['name'])] = ['name' => $stop['name'], 'eta' => $eta, 'km' => round($ahead, 1)];
         }
         return $out;
     }
@@ -498,7 +594,7 @@ final class EtaAlerts
             if ($ahead <= 0.5 || $ahead > self::MAX_ALERT_KM) {
                 continue;
             }
-            $eta = self::etaMinutes($ahead, $fix['kmh'] ?? null);
+            $eta = self::learnedMinutes((int) $trip['route_id'], $geo, (float) $pos['km'], $stop) ?? self::etaMinutes($ahead, $fix['kmh'] ?? null);
             if ($eta > $maxEta || $eta < self::MIN_ETA_MIN) {
                 continue;
             }

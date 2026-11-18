@@ -175,6 +175,37 @@ final class PaymentAdapters
         return $out;
     }
 
+    /**
+     * ON-1 / WA-7 (19 Nov 2026): the first switched-on adapter that pays by
+     * REDIRECT (a gateway page), as an absolute URL - '' when none is on
+     * (payment_gateway empty: today's QR-only set-up). The WhatsApp "Pay ₹X"
+     * button prefers it; without one the button opens pay.php. Never throws.
+     */
+    public static function redirectUrl(array $booking): string
+    {
+        try {
+            foreach (self::all() as $a) {
+                if ($a->key() === 'manual_qr') {
+                    continue;            // the QR adapter never redirects (and drawing its QR here is waste)
+                }
+                $s = $a->start($booking, (float) ($booking['total_amount'] ?? 0));
+                if (($s['kind'] ?? '') !== 'redirect') {
+                    continue;
+                }
+                $url = trim((string) ($s['url'] ?? ''));
+                if ($url === '') {
+                    continue;
+                }
+                if (preg_match('~^https?://~i', $url) !== 1) {
+                    $url = appUrl(ltrim($url, '/'));
+                }
+                return $url;
+            }
+        } catch (Throwable $e) {
+        }
+        return '';
+    }
+
     /** What is still owed on a booking (INR): total minus verified payments. */
     public static function due(array $booking): float
     {

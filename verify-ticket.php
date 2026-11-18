@@ -169,6 +169,12 @@ if ($authed && $booking !== null) {
     ])['due'];
 }
 $inrPlain = static fn(float $a): string => 'INR ' . number_format($a, fmod($a, 1.0) !== 0.0 ? 2 : 0);
+/* 19 Nov 2026 (TK-5): a sale the Nepal window took in NPR shows NPR (the rate frozen
+   on the sale) with the INR beside it - Ticket::money, the ticket's own helper. */
+$nprSale = $authed && $booking !== null && Ticket::isNprSale($booking);
+if ($nprSale) {
+    $inrPlain = static fn(float $a): string => Ticket::money($booking, $a, true);
+}
 
 /* ---- Compose what the card shows ---- */
 $state  = 'unknown';       // unknown | valid | pending | cancelled | expired | used
@@ -505,6 +511,7 @@ $company = (string) $issuer['name'];
     <?php if ($paxLine !== ''): ?><div class="row"><span class="k">यात्रु · Passenger</span><span class="v"><?= htmlspecialchars($paxLine, ENT_QUOTES, 'UTF-8') ?></span></div><?php endif; ?>
     <?php if ($routeLine !== ' → '): ?><div class="row"><span class="k">रुट · Route</span><span class="v"><?= htmlspecialchars($routeLine, ENT_QUOTES, 'UTF-8') ?></span></div><?php endif; ?>
     <?php if (trim($dateLine, '·  ') !== ''): ?><div class="row"><span class="k">मिति · समय</span><span class="v"><?= htmlspecialchars($dateLine, ENT_QUOTES, 'UTF-8') ?></span></div><?php endif; ?>
+    <?php if ($nprSale): ?><div class="row"><span class="k">भाडा · Fare</span><span class="v"><?= htmlspecialchars(Ticket::money($booking, (float) ($booking['total_amount'] ?? 0)), ENT_QUOTES, 'UTF-8') ?></span></div><?php endif; ?>
     <?php if ($seatLine !== ''): ?><div class="row"><span class="k">सिट · Seat</span><span class="v"><?= htmlspecialchars($seatLine, ENT_QUOTES, 'UTF-8') ?></span></div><?php endif; ?>
     <div class="row"><span class="k">PNR</span><span class="v pnr"><?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></span></div>
     <?php if ($ticketNoLine !== ''): ?><div class="row"><span class="k">Ticket</span><span class="v pnr"><?= htmlspecialchars($ticketNoLine, ENT_QUOTES, 'UTF-8') ?></span></div><?php endif; ?>

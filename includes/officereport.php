@@ -361,13 +361,253 @@ final class OfficeReport
             return $out;
         }
         foreach ($nums as $n) {
-            try {
-                $ok = Notify::whatsapp($n, $rep['text'], $rep['media'], null, [], null, ['purpose' => 'office_report']);
-                $ok === false ? $out['failed']++ : $out['sent']++;
-            } catch (Throwable $e) {
-                $out['failed']++;
+            /* 19 Nov 2026: only true is a delivery - a wa.me link (string) means it
+               did NOT go (it waits for a human tap), so it counts as failed */
+            self::deliver($n, $rep['text'], $rep['media'], 'office_report') ? $out['sent']++ : $out['failed']++;
+        }
+        $out['email'] = self::emailFallback($out, 'S Hari office report · ' . $slot, $rep['text']);
+        return $out;
+    }
+
+    /* =================================================================
+     *  19 Nov 2026 (WA-6) - the COUNTER-WISE day report: per desk (or per
+     *  seller with no desk) tickets, passengers, cash, online, NPR, still to
+     *  collect, + per bus the chalani's passengers and money, + the day-close
+     *  count against the register. Nepali first, counts and money only -
+     *  never a passenger's name or number. cron/office-report.php sends it at
+     *  counter_day_report_time (default 21:30 IST) while counter_day_report_on
+     *  (default 1), to numbers() + counter_day_report_numbers.
+     * ================================================================= */
+
+    /** Test seams: WhatsApp (phone, text, media, purpose) -> bool|string; mail (to, subject, html, text) -> bool. */
+    public static ?Closure $transport = null;
+    public static ?Closure $mailer = null;
+
+    /**
+     * One WhatsApp; true only when an API delivered it. $metaTpl = an approved
+     * Meta template (WaTplMeta::forPurpose) Notify may use outside the 24 h
+     * window; the free text goes first inside it.
+     */
+    private static function deliver(string $to, string $text, ?string $media, string $purpose, ?array $metaTpl = null): bool
+    {
+        try {
+            if (self::$transport !== null) {
+                return (self::$transport)($to, $text, $media, $purpose, $metaTpl) === true;
+            }
+            require_once INCLUDE_PATH . '/notify.php';
+            return Notify::whatsapp($to, $text, $media, null, [], null, ['purpose' => $purpose] + ($metaTpl !== null ? ['meta_tpl' => $metaTpl] : [])) === true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** The office e-mail list: chalani_mail_to, else admin_email + company_email. @return list<string> */
+    public static function emails(): array
+    {
+        $out = [];
+        $cfg = trim(Settings::getString('chalani_mail_to', ''));
+        foreach ($cfg !== '' ? (preg_split('/[\s,;]+/', $cfg) ?: []) : [Settings::getString('admin_email', ''), Settings::getString('company_email', '')] as $e) {
+            $e = Security::email((string) $e);
+            if ($e !== '' && !in_array(strtolower($e), array_map('strtolower', $out), true)) {
+                $out[] = $e;
             }
         }
+        return $out;
+    }
+
+    /**
+     * When EVERY WhatsApp failed (131070 / outside the window ...), the same text
+     * once by e-mail (office_report_email_fallback, default 1). @return int e-mails sent
+     */
+    private static function emailFallback(array $res, string $subject, string $text): int
+    {
+        if ((int) ($res['sent'] ?? 0) > 0 || (int) ($res['numbers'] ?? 0) === 0 || !Settings::getBool('office_report_email_fallback', true)) {
+            return 0;
+        }
+        $html = '<div style="font-family:Arial,sans-serif;white-space:pre-wrap;font-size:14px">' . Security::e($text)
+              . '<p style="color:#888;font-size:12px">WhatsApp could not deliver this report to any office number, so it came by e-mail.</p></div>';
+        $sent = 0;
+        foreach (self::emails() as $to) {
+            try {
+                if (self::$mailer !== null) {
+                    $ok = (bool) (self::$mailer)($to, $subject, $html, $text);
+                } else {
+                    require_once INCLUDE_PATH . '/notify.php';
+                    $ok = Notify::email($to, $subject, $html, $text);
+                }
+                if ($ok) { $sent++; }
+            } catch (Throwable $e) {
+                Logger::warning('office report e-mail fallback failed', ['err' => $e->getMessage()], 'mail');
+            }
+        }
+        return $sent;
+    }
+
+    /** numbers() + counter_day_report_numbers, one per person. @return list<string> */
+    public static function counterDayNumbers(): array
+    {
+        $out  = self::numbers();
+        $seen = [];
+        foreach ($out as $n) { $seen[normalisePhone($n)] = true; }
+        foreach (preg_split('/[\s,;]+/', Settings::getString('counter_day_report_numbers', '')) ?: [] as $n) {
+            $d = preg_replace('/\D/', '', (string) $n) ?? '';
+            if (strlen($d) < 10) { continue; }
+            $k = normalisePhone($d);
+            if ($k === '' || isset($seen[$k])) { continue; }
+            $seen[$k] = true;
+            $out[] = $d;
+        }
+        return $out;
+    }
+
+    /**
+     * The counter-wise report for $day. Line 1 = the grand total (it survives a
+     * ~600-character template cut); the whole text stays under 4096.
+     *
+     * @return array{text:string, figures:array<string,mixed>}
+     */
+    public static function counterDay(string $day = ''): array
+    {
+        require_once INCLUDE_PATH . '/counterbook.php';
+        require_once INCLUDE_PATH . '/countershift.php';
+        require_once INCLUDE_PATH . '/chalanipng.php';
+        require_once INCLUDE_PATH . '/driverlist.php';
+        $day   = Security::isValidDate($day) ? $day : todayISO();
+        $book  = CounterBook::day($day);
+        $tot   = $book['totals'];
+        $closes = [];
+        foreach (CounterShift::dayCloses($day) as $c) { $closes[(string) $c['desk_key']] = $c; }
+
+        /* per bus: the chalani's own passengers and money (ChalaniPng::departureMoney) */
+        $buses = [];
+        $boardDue = 0.0; $boardDueN = 0; $noDriver = [];
+        foreach (Database::fetchAll(
+            "SELECT s.id, COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.from_city, r.to_city, bu.bus_number
+               FROM schedules s JOIN routes r ON r.id = s.route_id
+               LEFT JOIN buses bu ON bu.id = COALESCE(s.bus_id, r.bus_id)
+              WHERE s.travel_date = :d AND r.is_active = 1 AND s.status <> 'cancelled'
+              ORDER BY dep_time, s.slot", ['d' => $day]) as $s) {
+            $t = ChalaniPng::departureMoney((int) $s['id'])['totals'];
+            if ((int) $t['passengers'] === 0) { continue; }
+            $crew = DriverList::crewFor((int) $s['id']);
+            if ($crew['phone'] === '') { $noDriver[] = substr((string) $s['dep_time'], 0, 5); }
+            $boardDue += (float) $t['boardDue']; $boardDueN += (int) $t['boardDueN'];
+            $buses[] = ['route' => trim((string) $s['from_city']) . '→' . trim((string) $s['to_city']), 'time' => substr((string) $s['dep_time'], 0, 5),
+                'plate' => trim((string) ($s['bus_number'] ?? '')), 'pax' => (int) $t['passengers'], 'cash' => (float) $t['cash'],
+                'online' => (float) $t['online'], 'boardDue' => (float) $t['boardDue'], 'boardDueN' => (int) $t['boardDueN'],
+                'driver' => $crew['phone'] !== ''];
+        }
+
+        $lines   = [];
+        $lines[] = '📊 ' . date('j M', (int) strtotime($day)) . ' जम्मा: ' . (int) $tot['tickets'] . ' टिकट · ' . (int) $tot['pax'] . ' यात्रु · नगद ' . inr((float) $tot['cash'])
+            . ' · अनलाइन ' . inr((float) $tot['online']) . ' · कमिसन ' . inr((float) $tot['commission']) . ' · नेट ' . inr((float) $tot['net'])
+            . ' · बोर्डिङमा बाँकी ' . inr($boardDue) . ' (' . $boardDueN . ')'
+            . ((float) $tot['pending'] > 0 ? ' · आज बेचेको बाँकी ' . inr((float) $tot['pending']) : '')
+            . ((float) $tot['takenNpr'] > 0 ? ' · NPR ' . number_format((float) $tot['takenNpr']) : '');
+        $lines[] = '🧾 काउन्टर हिसाब · Counter-wise (' . $day . ')';
+        $notClosed = [];
+        foreach ($book['rows'] as $key => $r) {
+            $key = (string) $key;
+            $isNp = ($r['currency'] ?? 'INR') === 'NPR';
+            /* an NPR desk: the drawer in NPR (cash + cod, payment by payment - the
+               same figure its day close is checked against) */
+            $drawerNpr = $isNp ? CounterShift::dayDrawer($r) : 0.0;
+            $nprTxt = $isNp && $drawerNpr > 0 ? ' (' . CounterDesk::format($drawerNpr, 'NPR') . ')' : '';
+            $line = ' • ' . (string) $r['label'] . ($r['kind'] === 'desk' ? ' (' . $key . ')' : '') . ': टिकट ' . (int) $r['tickets'] . ' · यात्रु ' . (int) $r['pax']
+                . ' · नगद ' . inr((float) $r['cash']) . $nprTxt . ' · अनलाइन ' . inr((float) $r['online'])
+                . ' · जम्मा ' . inr((float) $r['net']) . ((float) $r['pending'] > 0 ? ' · बाँकी ' . inr((float) $r['pending']) : '');
+            if ($key !== '') {
+                $c = $closes[$key] ?? null;
+                if ($c !== null) {
+                    $v = (float) $c['variance'];
+                    $line .= ' · ✅ बुझायो ' . CounterDesk::format((float) $c['counted_cash'], (string) $c['currency'])
+                        . (abs($v) > 0.004 ? ' फरक ' . ($v > 0 ? '+' : '−') . CounterDesk::format(abs($v), (string) $c['currency']) : '');
+                } elseif ((float) $r['cash'] > 0) {
+                    $line .= ' · ⏳ बाँकी';
+                    $notClosed[] = (string) $r['label'];
+                }
+            }
+            $lines[] = $line;
+        }
+        if ($book['rows'] === []) {
+            $lines[] = ' • आज बिक्री छैन';
+        }
+        if ($buses !== []) {
+            $lines[] = '🚍 बस · चलानी यात्रु';
+            foreach ($buses as $b) {
+                $lines[] = ' • ' . $b['route'] . ' ' . $b['time'] . ($b['plate'] !== '' ? ' ' . $b['plate'] : '') . ': ' . $b['pax'] . ' यात्रु · नगद ' . inr($b['cash'])
+                    . ' · अनलाइन ' . inr($b['online']) . ($b['boardDueN'] > 0 ? ' · बाँकी ' . inr($b['boardDue']) . ' (' . $b['boardDueN'] . ')' : '')
+                    . ($b['driver'] ? '' : ' · ⚠️ चालक नम्बर छैन · driver number missing');
+            }
+        }
+        if ($notClosed !== []) {
+            $lines[] = '⏳ हिसाब नबुझाएका: ' . implode(', ', $notClosed);
+        }
+        $lines[] = '🔗 ' . appUrl('admin/counters.php?from=' . $day . '&to=' . $day);
+        $lines[] = 'EN: ' . (int) $tot['tickets'] . ' tickets · ' . (int) $tot['pax'] . ' pax · cash ' . inr((float) $tot['cash']) . ' · online ' . inr((float) $tot['online'])
+            . ' · net ' . inr((float) $tot['net']) . ' · to collect ' . inr($boardDue) . '.';
+
+        $text = implode("\n", $lines);
+        while (mb_strlen($text) > 4000 && count($lines) > 4) {
+            array_splice($lines, -3, 1);   // drop detail lines from the end, keep the total, link and EN line
+            $text = implode("\n", $lines);
+        }
+        return ['text' => $text, 'figures' => ['book' => $book, 'buses' => $buses, 'closes' => $closes, 'notClosed' => $notClosed,
+            'noDriver' => $noDriver, 'boardDue' => $boardDue, 'boardDueN' => $boardDueN]];
+    }
+
+    /**
+     * The approved shg_daily_collection template for the whole day (purpose
+     * 'counter_day'), so the report can still go outside the 24-hour window;
+     * null while Meta has not approved it (then the generic office alert / the
+     * e-mail fallback carry it). Total = cash + online taken, as the template's
+     * own example adds them; every figure is the book's, nothing invented.
+     *
+     * @param array{text:string, figures:array<string,mixed>} $rep
+     * @return array<string,mixed>|null
+     */
+    public static function counterDayTemplate(string $day, array $rep): ?array
+    {
+        try {
+            require_once INCLUDE_PATH . '/watplmeta.php';
+            if (!class_exists('WaTplMeta') || !method_exists('WaTplMeta', 'forPurpose')) {
+                return null;
+            }
+            $tot = (array) ($rep['figures']['book']['totals'] ?? []);
+            $cash = (float) ($tot['cash'] ?? 0);
+            $online = (float) ($tot['online'] ?? 0);
+            return WaTplMeta::forPurpose('counter_day', [
+                'date' => date('j M Y', (int) strtotime($day)),
+                'counter' => 'सबै काउन्टर · All counters',
+                'tickets' => (string) (int) ($tot['tickets'] ?? 0),
+                'passengers' => (string) (int) ($tot['pax'] ?? 0),
+                'cash' => inr($cash), 'online' => inr($online), 'total' => inr($cash + $online),
+            ]);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Build once and send to every counter-report number. $dry sends nothing.
+     * @return array{slot:string, day:string, numbers:int, sent:int, failed:int, dry:bool, email?:int, text?:string}
+     */
+    public static function sendCounterDay(string $slot, bool $dry = false, string $day = ''): array
+    {
+        $day  = Security::isValidDate($day) ? $day : (Security::isValidDate(substr($slot, 0, 10)) ? substr($slot, 0, 10) : todayISO());
+        $rep  = self::counterDay($day);
+        $nums = self::counterDayNumbers();
+        $out  = ['slot' => $slot, 'day' => $day, 'numbers' => count($nums), 'sent' => 0, 'failed' => 0, 'dry' => $dry];
+        if ($dry) {
+            $out['text'] = $rep['text'];
+            return $out;
+        }
+        $tpl = self::counterDayTemplate($day, $rep);
+        $out['template'] = $tpl !== null ? (string) $tpl['name'] : '';
+        foreach ($nums as $n) {
+            self::deliver($n, $rep['text'], null, 'counter_day', $tpl) ? $out['sent']++ : $out['failed']++;
+        }
+        $out['email'] = self::emailFallback($out, 'S Hari counter-wise report · ' . $day, $rep['text']);
         return $out;
     }
 }

@@ -41,6 +41,25 @@ final class WaBooking
     private const SCOPE = 'wa_book';
 
     /**
+     * The sale this request just made (19 Nov 2026): {pnr, bookingId, status,
+     * seller}, or null when nothing was sold. WaFlow reads it to tell a sold
+     * form from a refused one; sellFromForm() resets it.
+     *
+     * @var array{pnr: string, bookingId: int, status: string, seller: bool}|null
+     */
+    public static ?array $lastSale = null;
+
+    /** The call-to-action sender payCta() uses (a test names its own fake). */
+    public static string $ctaFn = 'sendWhatsAppCtaUrl';
+
+    /**
+     * The channel note written on a chat sale (BookingChannel::markWhatsappPnr's
+     * reason). FbMessenger sets its own for the length of one turn, so a
+     * Messenger sale is never described as "sold by the WhatsApp assistant".
+     */
+    public static string $saleNote = 'sold by the WhatsApp assistant';
+
+    /**
      * Handle one inbound message.
      *
      * @return array{text: string, media: ?string}|null null = not a booking
@@ -280,6 +299,31 @@ final class WaBooking
                 }
                 $slots['custPhone'] = $cust;
                 $text = '';
+            } elseif ($awaiting === 'contact') {
+                /* 19 Nov 2026 (WA-3): the booking form's mobile could not be read -
+                   only that number is asked again. "same" / "yahi" = this chat's
+                   own number. A bare 10-digit number takes the country the form
+                   picked (India and Nepal share 10-digit mobiles). */
+                $t = mb_strtolower(trim($text));
+                if (in_array($t, ['same', 'this', 'yahi', 'yehi', 'yei', 'यही', 'यहि', 'यो', 'આ જ', 'ho', 'हो', 'yes'], true)) {
+                    unset($slots['contact']);
+                    $text = '';
+                } else {
+                    $cust = self::readCustomerPhone($text);
+                    if ($cust === null || $cust === '') {
+                        self::save($phoneDigits, $slots, 'contact', [], $lang);
+                        return self::out(self::say('askContact', $lang));
+                    }
+                    if (strlen($cust) === 10) {
+                        $cust = ((string) ($slots['country'] ?? '') === 'NP' ? '977' : '91') . $cust;
+                    }
+                    if (self::differentContact($cust, $phoneDigits)) {
+                        $slots['contact'] = $cust;
+                    } else {
+                        unset($slots['contact']);
+                    }
+                    $text = '';
+                }
             } elseif ($awaiting === 'name') {
                 /* They answer the name question with "naam Ram", with one
                    name, or — when the party is 3 — with all three at once.
@@ -440,7 +484,8 @@ final class WaBooking
                are not a yes (isYes / payChoice). */
             $pay = self::payChoice($text);
             if ($pay !== '' || self::isYes($text)) {
-                return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, $seller, (string) ($slots['contact'] ?? ''));
+                // 19 Nov 2026 (review): a booking form's "pay by UPI" survives the chat re-ask (_pay); a pay button said here wins.
+                return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay !== '' ? $pay : (string) ($slots['_pay'] ?? ''), $seller, (string) ($slots['contact'] ?? ''));
             }
             /* A question while the summary is up ("kati ghanta lagcha?")
                deserves an answer, not a re-print of the same summary. Hand it
@@ -703,7 +748,7 @@ final class WaBooking
            all = customers too, off = always ask). Only what was SAID counts:
            a default day or the yard pickup never sells by itself. */
         if (self::instantOk($seller, $state === null, $sug, $slots, $combo)) {
-            return self::sell($phoneDigits, $slots, $lang, $senderCountry, '', $seller, (string) ($slots['contact'] ?? ''));
+            return self::sell($phoneDigits, $slots, $lang, $senderCountry, (string) ($slots['_pay'] ?? ''), $seller, (string) ($slots['contact'] ?? ''));
         }
 
         // Everything is known: show what it will cost and wait for a yes.
@@ -909,11 +954,79 @@ final class WaBooking
             $lang = (string) $state['lang'];          // the language the order was opened in
         }
         self::clear($phoneDigits);
+        self::$lastSale = null;
         if ($seller !== null) {
             $slots['custPhone'] = $contact;
             return self::sell($phoneDigits, $slots, $lang, $senderCountry, 'cash', $seller);
         }
-        return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, null, $contact);
+        $reply = self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, null, $contact);
+        /* 19 Nov 2026 (WA-3): a ticket made by the form gets the same ✏️ name /
+           📅 date / ⋯ more buttons as every other free ticket (WaEdit, OTP
+           guarded). Noted for this chat - the sender's open window - and sent
+           by the routing cron within a minute; the same ticket is never offered
+           twice (one row per booking and number, once an hour). */
+        $sold = self::$lastSale;
+        /* Only when the ticket is the SENDER's own: a ticket booked for another
+           typed mobile can be edited only from that number (WaEdit::mayEdit), and
+           Notify's free ticket send already offers that holder the buttons. */
+        if (is_array($sold) && (int) ($sold['bookingId'] ?? 0) > 0 && in_array((string) ($sold['status'] ?? ''), ['confirmed', 'completed'], true)
+            && !self::differentContact($contact, $phoneDigits)) {
+            try {
+                require_once INCLUDE_PATH . '/waedit.php';
+                WaEdit::afterTicket((int) $sold['bookingId'], $phoneDigits, true);
+            } catch (Throwable $e) {
+                Logger::warning('form ticket buttons skipped: ' . $e->getMessage(), [], 'whatsapp');
+            }
+        }
+        return $reply;
+    }
+
+    /**
+     * A submitted form with ONE field that cannot be used (WaFlow::handleReply):
+     * keep everything that was right and ask for just that field, in the chat.
+     * The answer is read by handle() exactly like the guided questions; the
+     * summary and its yes follow as always. $field: name | date | boarding |
+     * direction | contact (the customer's mobile) | custPhone (a seller's customer).
+     *
+     * @return array{text: string, media: ?string, ui: ?array}
+     */
+    public static function formRetry(string $phoneDigits, array $slots, string $field, string $lang, ?array $seller = null): array
+    {
+        $lang = in_array($lang, ['en', 'ne', 'hi', 'gu'], true) ? $lang : 'ne';
+        unset($slots['_combo'], $slots['_guided']);
+        if ($field === 'contact' && $seller !== null) {
+            $field = 'custPhone';
+        }
+        if ($field === 'boarding' && (string) ($slots['direction'] ?? '') === '') {
+            $field = 'direction';
+        }
+        switch ($field) {
+            case 'name':
+                unset($slots['name'], $slots['party'], $slots['namesAsked']);
+                self::save($phoneDigits, $slots, 'name', [], $lang);
+                $paxN = max(1, (int) ($slots['seats'] ?? 1));
+                return self::out($paxN > 1 ? sprintf(self::say('askNames', $lang), $paxN) : self::say('askName', $lang));
+            case 'custPhone':
+                self::save($phoneDigits, $slots, 'custPhone', [], $lang);
+                return self::out(self::say('askCustPhone', $lang));
+            case 'contact':
+                unset($slots['contact']);
+                self::save($phoneDigits, $slots, 'contact', [], $lang);
+                return self::out(self::say('askContact', $lang));
+            default:
+                $field = in_array($field, ['date', 'boarding', 'direction', 'seats'], true) ? $field : 'date';
+                unset($slots[$field]);
+                $q = self::guidedQuestion($field, $lang, null, $seller !== null);
+                self::save($phoneDigits, $slots, $field, $q['options'], $lang);
+                return self::out(self::withOptions($q['question'], $q['options'], $lang), null,
+                    self::choiceUi($q['question'], $q['options'], $lang));
+        }
+    }
+
+    /** The trip this number took last time (its own history), or null - the form's starting values. */
+    public static function lastTripFor(string $who): ?array
+    {
+        return $who === '' ? null : self::lastTrip($who);
     }
 
     /** parseParty() for the form's "other passengers" box. */
@@ -1774,6 +1887,11 @@ final class WaBooking
             require_once INCLUDE_PATH . '/notify.php';
         }
         $journalAt = count(Notify::whatsappJournal());
+        /* The country the SENDER's own number carries (+977 / +91 from the
+           webhook) is the truth about where this ticket goes; a country parsed
+           out of the text only fills in when the transport gave none. */
+        $saleCountry = ($contact !== '' && strlen($contact) >= 12) ? (str_starts_with($contact, '977') ? 'NP' : 'IN')
+                     : ($senderCountry !== '' ? $senderCountry : (string) ($slots['country'] ?? ''));
         try {
             $res = QuickTicket::sellCustomer([
                 'name'      => $paxName,
@@ -1794,8 +1912,7 @@ final class WaBooking
                    the webhook) is the truth about where this ticket goes; a
                    country parsed out of the text only fills in when the
                    transport gave none. */
-                'country'   => ($contact !== '' && strlen($contact) >= 12) ? (str_starts_with($contact, '977') ? 'NP' : 'IN')
-                             : ($senderCountry !== '' ? $senderCountry : (string) ($slots['country'] ?? '')),
+                'country'   => $saleCountry,
                 'seats'     => (int) ($slots['seats'] ?? 1),
                 'direction' => (string) ($slots['direction'] ?? ''),
                 'date'      => (string) ($slots['date'] ?? ''),
@@ -1821,8 +1938,9 @@ final class WaBooking
            through to the menu and the passenger was told to ring the
            office about a ticket we had cut ten seconds earlier. */
         if ($pnr !== '') {
+            self::$lastSale = ['pnr' => $pnr, 'bookingId' => (int) ($res['bookingId'] ?? 0), 'status' => (string) ($res['status'] ?? ''), 'seller' => false];
             // 5 Oct 2026: a sale made inside a WhatsApp chat is a WHATSAPP booking.
-            BookingChannel::markWhatsappPnr($pnr, 'sold by the WhatsApp assistant');
+            BookingChannel::markWhatsappPnr($pnr, self::$saleNote);
             /* The language rides along: after a sale the conversation is
                cleared, so a romanised "naam galat bhayo" would be read as
                English and a Nepali customer would suddenly be answered in
@@ -1875,10 +1993,37 @@ final class WaBooking
                 $lines[] = $l;
             }
         } else {
+            /* 19 Nov 2026 (review): the booking's own "booking received" message
+               (Notify::bookingPlaced: pay QR + Pay button or link, eSewa रू for a
+               Nepal sale) has usually just gone into THIS chat on the Meta number.
+               A second Pay message was the same QR and button twice - the reply
+               now points up to it and asks only for the UTR / screenshot. */
+            if ($pnr !== '' && self::ticketSentAbove($phoneDigits, $journalAt)) {
+                return self::out(sprintf(self::say('payAbove', $lang), $pnr));
+            }
+            $payUrl  = appUrl('pay.php?pnr=' . urlencode($pnr));
+            $media   = appUrl('pay-image.php?pnr=' . urlencode($pnr));
+            // Blueprint: eSewa with the NPR amount (frozen rate) for a Nepal sale - never invented when eSewa is not set up.
+            $esewa = self::esewaLine((int) ($res['bookingId'] ?? 0), (float) ($res['total'] ?? 0), $saleCountry);
+            if ($esewa !== '') {
+                $lines[] = $esewa;
+            }
+            /* 19 Nov 2026 (WA-7 / ON-1 bot part): on the Meta number the unpaid
+               answer is ONE message - the exact-amount UPI QR as its picture, the
+               booking lines, and a "Pay ₹X" button to pay.php. When that cannot go
+               (no CTA sender yet, Meta refused it) the old text + QR answer below
+               goes instead. Nothing here confirms money: the office checks it. */
+            $ctaLines = $lines;
+            if ($seller === null && self::differentContact($contact, $phoneDigits)) {
+                $ctaLines[] = self::label('ticketTo', $lang) . ': ' . $contact;
+            }
+            $cta = self::payCta($phoneDigits, $senderCountry, $ctaLines, $pnr, (float) ($res['total'] ?? 0), $payUrl, $media, $lang);
+            if ($cta !== null) {
+                return $cta;
+            }
             $lines[] = '';
             $lines[] = self::say('payNow', $lang);
-            $lines[] = appUrl('pay.php?pnr=' . urlencode($pnr));
-            $media   = appUrl('pay-image.php?pnr=' . urlencode($pnr));
+            $lines[] = $payUrl;
         }
         // round 2 (passenger sim: "the ticket comes HERE" while it went to the typed number): say where it goes
         if ($seller === null && self::differentContact($contact, $phoneDigits)) {
@@ -1886,6 +2031,89 @@ final class WaBooking
         }
 
         return self::out(implode("\n", $lines), $media);
+    }
+
+    /**
+     * The unpaid answer as ONE Meta call-to-action message (19 Nov 2026): the
+     * exact-amount UPI QR (pay-image.php) as its picture, the booking lines,
+     * and a "Pay ₹X" button that opens pay.php. It is sent HERE because the
+     * chat reply path carries reply buttons only, never a link button; the
+     * reply that follows is one line - after paying, send the UTR or the
+     * screenshot (the office checks it; nothing is confirmed automatically).
+     * Needs sendWhatsAppCtaUrl() (whatsapp/api.php) and the Meta number
+     * (WaFlow::$metaChannel); switch wa_pay_cta_on. null = not sent: the
+     * caller answers with today's text + QR.
+     *
+     * @param list<string> $lines the booking lines already written
+     */
+    private static function payCta(string $to, string $country, array $lines, string $pnr, float $total, string $payUrl, string $qr, string $lang): ?array
+    {
+        if ($pnr === '' || $total <= 0 || !Settings::getBool('wa_pay_cta_on', true)
+            || !class_exists('WaFlow', false) || !WaFlow::$metaChannel || !function_exists(self::$ctaFn)) {
+            return null;
+        }
+        $digits = preg_replace('/\D/', '', $to) ?? '';
+        if (strlen($digits) < 11) {
+            return null;                      // only a full +91 / +977 number - never a guessed country
+        }
+        $c    = strtoupper(trim($country));
+        $hint = in_array($c, ['NP', '977'], true) ? 'NP' : (in_array($c, ['IN', '91'], true) ? 'IN' : (str_starts_with($digits, '977') ? 'NP' : 'IN'));
+        $body = mb_substr(trim(implode("\n", $lines)) . "\n\n" . self::say('payCtaBody', $lang), 0, 1024);
+        $label = mb_substr('Pay ' . inr($total), 0, 20);
+        try {
+            $r = self::callCta($digits, $body, $label, $payUrl, $qr, $hint);
+        } catch (Throwable $e) {
+            Logger::warning('pay button not sent: ' . $e->getMessage(), ['pnr' => $pnr], 'whatsapp');
+            return null;
+        }
+        if (!is_array($r) || empty($r['success'])) {
+            return null;
+        }
+        try {
+            if (class_exists('Notify')) {
+                Notify::logOutbound($digits, $body, 'sent', [
+                    'provider' => 'cloud_api', 'purpose' => 'pay_request', 'sid' => (string) ($r['message_id'] ?? ''),
+                ]);
+            }
+        } catch (Throwable $e) {
+            // the log never costs the reply
+        }
+        return self::out(sprintf(self::say('payCtaAfter', $lang), $pnr));
+    }
+
+    /**
+     * Call sendWhatsAppCtaUrl() whatever order its parameters come in: each
+     * one is matched by its name (phone/to, body/text, button/label, url,
+     * image/header, country/hint). A required one we cannot fill = not called.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function callCta(string $to, string $body, string $label, string $url, string $image, string $hint): ?array
+    {
+        $fn   = new ReflectionFunction(self::$ctaFn);
+        $args = [];
+        foreach ($fn->getParameters() as $p) {
+            $n = strtolower($p->getName());
+            $v = match (true) {
+                str_contains($n, 'country') || str_contains($n, 'hint')                                  => $hint,
+                str_contains($n, 'button') || str_contains($n, 'label') || str_contains($n, 'cta')
+                    || str_contains($n, 'display')                                                       => $label,
+                str_contains($n, 'image') || str_contains($n, 'header') || str_contains($n, 'media')    => $image,
+                str_contains($n, 'url') || str_contains($n, 'link')                                      => $url,
+                str_contains($n, 'phone') || $n === 'to' || str_contains($n, 'recipient')               => $to,
+                str_contains($n, 'body') || str_contains($n, 'text') || str_contains($n, 'message')     => $body,
+                default                                                                                  => null,
+            };
+            if ($v === null) {
+                if (!$p->isOptional()) {
+                    return null;
+                }
+                break;                         // stop at the first parameter we do not know; the rest keep their defaults
+            }
+            $args[] = $v;
+        }
+        $r = $fn->invokeArgs($args);
+        return is_array($r) ? $r : null;
     }
 
     /**
@@ -1941,6 +2169,36 @@ final class WaBooking
         return false;
     }
 
+    /**
+     * "eSewa: <id> · रू <NPR>" for an unpaid Nepal sale (19 Nov 2026, blueprint:
+     * eSewa with the NPR amount), the same rule as Notify::bookingPlaced and
+     * pay.php: the eSewa of the company that issued THIS ticket, रू = the NPR
+     * frozen on the sale when one was frozen, else INR x npr_per_inr. '' when
+     * the sale is not a Nepal one or no eSewa id is set (nothing invented).
+     */
+    private static function esewaLine(int $bookingId, float $total, string $country): string
+    {
+        if ($total <= 0) {
+            return '';
+        }
+        try {
+            $b = $bookingId > 0 ? Database::fetch('SELECT * FROM bookings WHERE id = :b LIMIT 1', ['b' => $bookingId]) : null;
+            $b = is_array($b) ? $b : [];
+            $co     = Settings::companyFor((string) ($b['counter_code'] ?? ''), (string) ($b['entity'] ?? ''));
+            $esewa  = trim((string) ($co['payEsewa'] ?? ''));
+            $frozen = strtoupper((string) ($b['fx_currency'] ?? '')) === 'NPR' && (float) ($b['fx_total'] ?? 0) > 0;
+            $nepal  = ($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP' || $frozen
+                   || in_array(strtoupper(trim($country)), ['NP', '977'], true);
+            if (!$nepal || $esewa === '') {
+                return '';
+            }
+            $npr = $frozen ? round((float) $b['fx_total']) : round($total * Settings::getFloat('npr_per_inr', 1.6));
+            return $npr > 0 ? 'eSewa: ' . $esewa . ' · रू ' . indianNumber((float) $npr) : '';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
     /** One audit row per chat sale: seconds from the first message, messages it took. */
     private static function auditSale(string $pnr, array $slots): void
     {
@@ -1987,6 +2245,7 @@ final class WaBooking
 
         $pnr = (string) ($res['pnr'] ?? '');
         if ($pnr !== '') {
+            self::$lastSale = ['pnr' => $pnr, 'bookingId' => (int) ($res['bookingId'] ?? 0), 'status' => (string) ($res['status'] ?? ''), 'seller' => true];
             BookingChannel::markWhatsappPnr($pnr, 'ordered on WhatsApp by ' . trim((string) ($seller['full_name'] ?? 'staff')));
             Logger::audit('booking.wa_order_seller', 'booking', $pnr, null,
                 ['seller' => (int) ($seller['id'] ?? 0), 'from' => $phoneDigits,
@@ -2288,6 +2547,33 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'hi' => 'ऊपर का QR स्कैन करके भुगतान करें, या यहाँ दबाएँ। भुगतान जाँचते ही टिकट यहीं आ जाएगा।',
                 'ne' => 'माथिको QR स्क्यान गरेर तिर्नुहोस्, वा यहाँ थिच्नुहोस्। भुक्तानी जाँच भएपछि टिकट यहीँ आउँछ।',
                 'gu' => 'ઉપરનો QR સ્કેન કરીને ચૂકવો, કે અહીં દબાવો. ચુકવણી તપાસતાં જ ટિકિટ અહીં આવશે.',
+            ],
+            // 19 Nov 2026: the one-message unpaid answer (payCta) - QR above, Pay button below
+            'payCtaBody' => [
+                'en' => 'Scan the QR above with any UPI app, or tap Pay below - the amount is already filled in. The ticket comes here once the office has checked the payment.',
+                'hi' => 'ऊपर का QR किसी भी UPI ऐप से स्कैन करें, या नीचे Pay दबाएँ - रकम पहले से भरी है। भुगतान जाँचते ही टिकट यहीं आएगा।',
+                'ne' => 'माथिको QR कुनै पनि UPI एपले स्क्यान गर्नुहोस्, वा तल Pay थिच्नुहोस् - रकम भरिएकै छ। भुक्तानी जाँच भएपछि टिकट यहीँ आउँछ।',
+                'gu' => 'ઉપરનો QR કોઈપણ UPI એપથી સ્કેન કરો, અથવા નીચે Pay દબાવો - રકમ ભરેલી છે. ચુકવણી તપાસતાં જ ટિકિટ અહીં આવશે.',
+            ],
+            'payCtaAfter' => [
+                'en' => '%s: after paying, send the UTR (12 digits) or a screenshot of the payment here.',
+                'hi' => '%s: भुगतान के बाद UTR (12 अंक) या भुगतान का screenshot यहीं भेजिए।',
+                'ne' => '%s: तिरेपछि UTR (१२ अंक) वा भुक्तानीको screenshot यहीँ पठाउनुहोस्। · Send the UTR or screenshot here after paying.',
+                'gu' => '%s: ચુકવણી પછી UTR (12 અંક) કે ચુકવણીનો screenshot અહીં મોકલો.',
+            ],
+            // 19 Nov 2026 (review): the pay QR + Pay button already came above (Notify::bookingPlaced) - never twice
+            'payAbove' => [
+                'en' => '%s: the pay QR and Pay button are just above. After paying, send the UTR (12 digits) or a screenshot of the payment here.',
+                'hi' => '%s: भुगतान का QR और Pay बटन ठीक ऊपर है। भुगतान के बाद UTR (12 अंक) या भुगतान का screenshot यहीं भेजिए।',
+                'ne' => '%s: तिर्ने QR र Pay बटन माथि नै छ। तिरेपछि UTR (१२ अंक) वा भुक्तानीको screenshot यहीँ पठाउनुहोस्। · Pay above, then send the UTR or screenshot here.',
+                'gu' => '%s: ચુકવણીનો QR અને Pay બટન ઉપર જ છે. ચુકવણી પછી UTR (12 અંક) કે screenshot અહીં મોકલો.',
+            ],
+            // 19 Nov 2026: the booking form's mobile was not a mobile (formRetry 'contact')
+            'askContact' => [
+                'en' => 'Which WhatsApp number should the ticket go to? Send it with the country code: +91 98XXXXXXXX or +977 98XXXXXXXX. (Write "same" for this number.)',
+                'hi' => 'टिकट किस WhatsApp नंबर पर जाए? देश कोड के साथ भेजिए: +91 98XXXXXXXX या +977 98XXXXXXXX। (इसी नंबर पर हो तो "same" लिखिए।)',
+                'ne' => 'टिकट कुन WhatsApp नम्बरमा पठाउने? देश कोडसहित लेख्नुहोस्: +977 98XXXXXXXX वा +91 98XXXXXXXX। (यही नम्बर भए "same" लेख्नुहोस्।)',
+                'gu' => 'ટિકિટ કયા WhatsApp નંબર પર મોકલવી? દેશ કોડ સાથે મોકલો: +91 98XXXXXXXX કે +977 98XXXXXXXX. (આ જ નંબર હોય તો "same" લખો.)',
             ],
             // round 4 (R1 + R2): under a payment answer while the summary still waits for its yes
             'summaryWaits' => [

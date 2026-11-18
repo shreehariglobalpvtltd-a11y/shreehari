@@ -530,6 +530,198 @@ final class CounterShift
         );
     }
 
+    /* =================================================================
+     *  DAY CLOSE (19 Nov 2026, WA-6 - owner: "admin, agent, staff, counter
+     *  mode bata sajilai aajako hisab bujhauna milos"). One step, no morning
+     *  float: the register's day (CounterBook::day, read-only) is shown, the
+     *  person types what they counted (+ expenses, a note, their name) and
+     *  ONE row per desk + day is written to counter_day_close - a second
+     *  submit the same day corrects it (upsert on day_key, audited with the
+     *  before / after). Writes nothing to bookings, payments or the ledger.
+     *  Switch: counter_day_close_on (default on). Shifts are untouched.
+     * ================================================================= */
+
+    public static function dayCloseOn(): bool
+    {
+        return Settings::getBool('counter_day_close_on', true);
+    }
+
+    public static function dayCloseReady(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW TABLES LIKE 'counter_day_close'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /** The book line a person closes: their desk, else their own sales ('AG:<id>'). */
+    public static function dayKeyFor(int $adminId): string
+    {
+        $code = CounterDesk::forAdmin($adminId)['code'];
+        return $code !== '' ? $code : ($adminId > 0 ? 'AG:' . $adminId : '');
+    }
+
+    /** 'YYYY-MM-DD|MSA' - the upsert key ('' online = ONLINE). */
+    public static function dayKey(string $day, string $deskKey): string
+    {
+        return $day . '|' . ($deskKey === '' ? 'ONLINE' : $deskKey);
+    }
+
+    /**
+     * The cash that should be in ONE book line's drawer, in that line's money
+     * (CounterBook::line()). INR: the rupee cash + cod taken. NPR: cashLocal,
+     * summed payment by payment; a line from an older CounterBook without it
+     * falls back to cash x the desk's rate.
+     *
+     * @param array<string,mixed> $line
+     */
+    public static function dayDrawer(array $line): float
+    {
+        if ((string) ($line['currency'] ?? 'INR') === 'INR') {
+            return (float) ($line['cash'] ?? 0);
+        }
+        if (array_key_exists('cashLocal', $line)) {
+            return (float) $line['cashLocal'];
+        }
+        return (float) round((float) ($line['cash'] ?? 0) * (float) ($line['rate'] ?? 1));
+    }
+
+    /**
+     * File (or correct) the day's count for one book line.
+     *
+     * @param bool $isOffice the office may close any line and any date up to
+     *                       today; anyone else only their own line, today or
+     *                       yesterday (a late close after midnight)
+     * @return array<string,mixed> the saved row
+     */
+    public static function closeDay(int $byAdminId, string $deskKey, string $day, float $counted, float $expenses = 0.0,
+                                    ?float $countedNpr = null, string $note = '', string $signed = '', bool $isOffice = false): array
+    {
+        require_once INCLUDE_PATH . '/counterbook.php';
+        if (!self::dayCloseReady()) {
+            throw new RuntimeException('Day close is not set up yet (database/upgrade-2026-11-19-u10-day-close.sql).');
+        }
+        if ($byAdminId <= 0) {
+            throw new RuntimeException('Sign in again. / फेरि लगइन गर्नुहोस्।');
+        }
+        if (!Security::isValidDate($day) || $day > todayISO()) {
+            throw new RuntimeException('Pick a day up to today. / आज वा अघिको दिन छान्नुहोस्।');
+        }
+        $deskKey = strtoupper(trim($deskKey));
+        if ($deskKey !== '' && preg_match('/^(AG:\d{1,10}|[A-Z0-9_-]{1,16})$/', $deskKey) !== 1) {
+            throw new RuntimeException('Unknown desk.');
+        }
+        if (!$isOffice) {
+            if ($deskKey !== self::dayKeyFor($byAdminId)) {
+                throw new RuntimeException('You can close only your own desk / your own sales. / आफ्नै काउन्टरको हिसाब मात्र।');
+            }
+            if ($day < addDaysISO(todayISO(), -1)) {
+                throw new RuntimeException('Only today or yesterday - ask the office for an older day. / पुरानो दिनको लागि अफिसलाई भन्नुहोस्।');
+            }
+        } elseif ($deskKey !== '' && !str_starts_with($deskKey, 'AG:') && CounterDesk::get($deskKey) === null) {
+            throw new RuntimeException('Unknown desk.');
+        }
+        if ($counted < 0 || $counted > 100000000 || $expenses < 0 || $expenses > 10000000 || ($countedNpr !== null && $countedNpr < 0)) {
+            throw new RuntimeException('Amounts must be zero or more. / रकम ० वा बढी हुनुपर्छ।');
+        }
+        $signed = mb_substr(trim(Security::clean($signed, 120)), 0, 120);
+        if (mb_strlen($signed) < 3) {
+            throw new RuntimeException('Type your full name to sign the count. / गन्ती पुष्टि गर्न आफ्नो पूरा नाम लेख्नुहोस्।');
+        }
+
+        $line = CounterBook::line($day, $deskKey);
+        $cur  = (string) ($line['currency'] ?? 'INR');
+        /* what should be in the drawer, in the drawer's money: an NPR desk counts,
+           payment by payment and cash / cod only, the NPR it physically took
+           (payments.local_amount), else the rupee x the rate frozen on that
+           payment, else x the desk's rate (stated on the card) - so a pay-at-
+           boarding ticket collected with no NPR stamped is never left out
+           (CounterBook 'cashLocal', review fix 19 Nov 2026) */
+        $registerCash = self::dayDrawer($line);
+        $expected = round($registerCash - $expenses, 2);
+        $now = date('Y-m-d H:i:s');
+        $key = self::dayKey($day, $deskKey);
+        $row = [
+            'day_key'        => $key,
+            'business_date'  => $day,
+            'desk_key'       => $deskKey,
+            'currency'       => $cur,
+            'tickets'        => (int) $line['tickets'],
+            'pax'            => (int) $line['pax'],
+            'cash_inr'       => round((float) $line['cash'], 2),
+            'online_inr'     => round((float) $line['online'], 2),
+            'npr_register'   => round((float) $line['takenNpr'], 2),
+            'pending_inr'    => round((float) $line['pending'], 2),
+            'commission_inr' => round((float) $line['commission'], 2),
+            'refund_inr'     => round((float) $line['refund'], 2),
+            'net_inr'        => round((float) $line['net'], 2),
+            'expenses'       => round($expenses, 2),
+            'counted_cash'   => round($counted, 2),
+            'counted_npr'    => $countedNpr !== null ? round($countedNpr, 2) : null,
+            'expected_cash'  => $expected,
+            'variance'       => round($counted - $expected, 2),
+            'note'           => ($n = mb_substr(trim(Security::clean($note, 255)), 0, 255)) !== '' ? $n : null,
+            'signed_name'    => $signed,
+            'closed_by'      => $byAdminId,
+            'updated_at'     => $now,
+        ];
+        $before = Database::fetch('SELECT * FROM counter_day_close WHERE day_key = :k', ['k' => $key]);
+        $cols = array_keys($row);
+        $sql = 'INSERT INTO counter_day_close (' . implode(', ', $cols) . ', created_at) VALUES (:'
+             . implode(', :', $cols) . ', :created_at) ON DUPLICATE KEY UPDATE '
+             . implode(', ', array_map(static fn(string $c): string => $c . ' = VALUES(' . $c . ')', array_diff($cols, ['day_key', 'business_date', 'desk_key'])));
+        Database::run($sql, $row + ['created_at' => $now]);
+        $saved = Database::fetch('SELECT * FROM counter_day_close WHERE day_key = :k', ['k' => $key]) ?? $row;
+        Logger::audit('dayclose.save', 'counter_day_close', $key, $before, $saved,
+            ($before === null ? 'day closed' : 'day close corrected') . ' by admin #' . $byAdminId);
+        return $saved;
+    }
+
+    /** @return list<array<string,mixed>> the day's closes (all, or one line). */
+    public static function dayCloses(string $day, ?string $deskKey = null): array
+    {
+        if (!self::dayCloseReady() || !Security::isValidDate($day)) {
+            return [];
+        }
+        $w = 'business_date = :d';
+        $p = ['d' => $day];
+        if ($deskKey !== null) {
+            $w .= ' AND desk_key = :k';
+            $p['k'] = $deskKey;
+        }
+        try {
+            return Database::fetchAll("SELECT c.*, a.full_name AS by_name FROM counter_day_close c LEFT JOIN admins a ON a.id = c.closed_by WHERE {$w} ORDER BY c.desk_key", $p);
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /** The day-close slip, Nepali first, as the office reads it on WhatsApp. Counts and money only. */
+    public static function dayCloseText(array $row, string $label): string
+    {
+        $cur = strtoupper((string) ($row['currency'] ?? 'INR'));
+        $m   = static fn(float $n, string $c = ''): string => CounterDesk::format($n, $c !== '' ? $c : $cur);
+        $v   = (float) $row['variance'];
+        $ver = self::verdict($v);
+        $tag = $ver === 'ok' ? '✅ मिल्यो' : ($ver === 'short' ? '🔴 कम: ' . $m(abs($v)) : '🟠 बढी: ' . $m($v));
+        return '🧾 आजको हिसाब बुझाइयो · Day close — ' . $label . ' · ' . date('j M', (int) strtotime((string) $row['business_date'])) . "\n"
+            . 'टिकट: ' . (int) $row['tickets'] . ' · यात्रु: ' . (int) $row['pax'] . "\n"
+            . 'नगद: ' . $m((float) $row['cash_inr'], 'INR') . ((float) $row['npr_register'] > 0 ? ' (' . $m((float) $row['npr_register'], 'NPR') . ')' : '')
+            . ' · अनलाइन: ' . $m((float) $row['online_inr'], 'INR') . "\n"
+            . ((float) $row['commission_inr'] != 0.0 ? 'कमिसन: ' . $m((float) $row['commission_inr'], 'INR') . ' · ' : '')
+            . 'जम्मा (नेट): ' . $m((float) $row['net_inr'], 'INR')
+            . ((float) $row['pending_inr'] > 0 ? ' · बाँकी: ' . $m((float) $row['pending_inr'], 'INR') : '') . "\n"
+            . ((float) $row['expenses'] > 0 ? 'खर्च: ' . $m((float) $row['expenses']) . "\n" : '')
+            . 'हुनुपर्ने: ' . $m((float) $row['expected_cash']) . ' · गनेको: ' . $m((float) $row['counted_cash'])
+            . ($row['counted_npr'] !== null && $cur === 'INR' ? ' + ' . $m((float) $row['counted_npr'], 'NPR') : '') . "\n"
+            . $tag . ((string) ($row['signed_name'] ?? '') !== '' ? ' · सही: ' . $row['signed_name'] : '');
+    }
+
     /** The closing summary, as the office reads it on WhatsApp. */
     public static function summaryText(array $shift, string $who): string
     {

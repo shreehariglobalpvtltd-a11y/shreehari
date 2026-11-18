@@ -67,36 +67,13 @@ $selfId   = (int) ($admin['id'] ?? 0);
 $isAgent  = (string) ($admin['role'] ?? '') === 'agent';
 $canComm  = $scope === null && (Auth::isSuperadmin() || (Auth::can('staff.manage') && Auth::canManageSettings()));
 $pctTxt   = static fn(float $p): string => rtrim(rtrim(number_format($p, 2), '0'), '.') . '%';
-$rateOf   = static function (int $aid) use ($pctTxt): array {   // [amount, label, source]
-    $t = TeamFinance::term($aid);
-    if ($t !== null) {
-        $r = (float) $t['rate'];
-        return match ((string) $t['basis']) {
-            'flat'    => [$r, inr($r) . ' / passenger', 'terms'],
-            'booking' => [$r, inr($r) . ' / booking', 'terms'],
-            'percent' => [$r, $pctTxt($r) . ' of fare', 'terms'],
-            default   => [0.0, 'Salary only', 'terms'],
-        };
-    }
-    $ov = AgentWallet::commissionOverrideFor($aid);
-    if ($ov['mode'] === 'flat' || ($ov['mode'] === 'booking')) {
-        $r = (float) ($ov['flat'] ?? AgentWallet::flatRateFor($aid));
-        return [$r, inr($r) . ($ov['mode'] === 'booking' ? ' / booking' : ' / passenger'), 'own'];
-    }
-    if ($ov['mode'] === 'percent' || !AgentWallet::flatMode()) {
-        $p = (float) AgentWallet::commissionPercentFor($aid);
-        return [$p, $pctTxt($p) . ' of fare', $ov['mode'] === 'percent' ? 'own' : 'company'];
-    }
-    $r = AgentWallet::flatRateFor($aid);
-    return [$r, inr($r) . ' / passenger', 'company'];
+/* 19 Nov 2026 (u5 AG-1): the resolver moved to AgentWallet::perHeadRate (one rule for the agent's app,
+   the agents list and this page); the payout check to AgentWallet::payoutVerified (AG-2). */
+$rateOf   = static function (int $aid): array {   // [amount, label, source]
+    $r = AgentWallet::perHeadRate($aid);
+    return [$r['amount'], $r['label'], $r['source']];
 };
-$payoutOk = static function (int $aid): bool {
-    require_once dirname(__DIR__) . '/includes/teamregistry.php';
-    if (!TeamRegistry::ready()) { return true; }
-    return Database::exists(
-        "SELECT 1 FROM team_identity i JOIN agent_applications a ON i.person_key = CONCAT('agent:', a.id)
-          WHERE a.admin_id = :a AND i.payout_verified = 1", ['a' => $aid]);
-};
+$payoutOk = static fn(int $aid): bool => AgentWallet::payoutVerified($aid);
 
 if (Security::isPost()) {
     $back = 'admin/ticket-statement.php' . ((string) ($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . $_SERVER['QUERY_STRING'] : '');
@@ -313,17 +290,17 @@ $agentCard = static function (int $aid, string $name, bool $self) use ($e, $rate
     $due   = AgentWallet::balances($aid)['commission'] ?? 0.0;
     $open  = AgentWallet::openPayoutRequests($aid);
     $okPay = $payoutOk($aid);
-    $srcTx = ['company' => 'company rate', 'own' => 'own rate', 'terms' => 'agreement rate'][$src] ?? '';
+    $srcTx = ['company' => 'company rate', 'own' => 'own rate', 'terms' => 'agreement rate', 'staff' => 'staff · manpower only'][$src] ?? '';
     $h  = '<section class="pc-card ts-day ts-comm"><div class="pc-card-h"><h3>' . ($self ? 'My commission · मेरो कमिसन' : 'Commission · ' . $e($name)) . '</h3>'
         . '<small>' . $e($srcTx) . '</small></div><div class="pc-card-b">';
     $h .= '<div class="pc-kpis" style="margin:0 0 10px">'
-        . '<div class="pc-kpi"><small>Per head · प्रति यात्री</small><b>' . $e($lbl) . '</b><i>new tickets</i></div>'
+        . '<div class="pc-kpi"><small>प्रति यात्रु ₹ · Per head</small><b>' . $e($lbl) . '</b><i>new tickets</i></div>'
         . '<div class="pc-kpi ok"><small>Earned · कमाइ</small><b>' . $e(inr($commBy[$aid] ?? 0)) . '</b><i>' . $e($period) . '</i></div>'
         . '<div class="pc-kpi warn"><small>Can withdraw · निकाल्न मिल्ने</small><b>' . $e(inr(max(0, (float) $due))) . '</b><i>commission due now</i></div></div>';
     if ($canComm && !$self) {
         $h .= '<form method="post" class="pc-form ts-pick">' . Security::csrfField()
             . '<input type="hidden" name="act" value="rate"><input type="hidden" name="id" value="' . $aid . '">'
-            . '<label>₹ per passenger <input class="pc-in" name="rate" inputmode="numeric" style="width:110px" value="' . ($src !== 'company' ? (int) $amt : '') . '" placeholder="' . (int) AgentWallet::flatRateFor($aid) . '"></label>'
+            . '<label>प्रति यात्रु ₹ · per passenger <input class="pc-in" name="rate" inputmode="numeric" style="width:110px" value="' . ($src !== 'company' ? (int) $amt : '') . '" placeholder="' . (int) AgentWallet::flatRateFor($aid) . '"></label>'
             . '<button class="pc-btn sm pri" type="submit">' . pc_icon('check') . 'Save rate</button>'
             . '<small class="pc-note">Blank = company rate. Badhauna / ghatauna jati bela pani — next ticket dekhi lagu.</small></form>';
     }

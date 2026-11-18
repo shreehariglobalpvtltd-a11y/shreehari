@@ -76,6 +76,10 @@ final class CodeLogin
     /** No dashboard without a PIN / pattern (setting login_pin_required, default ON). */
     public static function required(): bool
     {
+        // 19 Nov 2026 (u7, LG-1): with the mobile-first door (login_mobile_first_on) the PIN / pattern is optional
+        if (Settings::getBool('login_mobile_first_on', false) && Auth::oneDoorOn()) {
+            return false;
+        }
         return self::on() && Settings::getBool('login_pin_required', true);
     }
 
@@ -189,12 +193,30 @@ final class CodeLogin
      *  Step 1: the code
      * ================================================================= */
 
-    /** @return array{step: string, error?: string} */
-    public static function enter(string $raw): array
+    /** @return array{step: string, error?: string, classic?: bool} */
+    public static function enter(string $raw, string $cc = '91'): array
     {
         $raw = trim(Security::clean($raw, 60));
         if ($raw === '') {
             return ['step' => 'c_code', 'error' => 'आफ्नो कोड लेख्नुहोस् · Type your code (for example SHG-0008).'];
+        }
+        /* 19 Nov 2026 (u7, blueprint "admin login by phone 9104801507 + password + PIN"): an OFFICE
+           mobile in the code box (one active account on that number, not a field role — field staff keep
+           their printed code, the owner's 15 Nov rule) goes to the one door's mobile step: password,
+           then PIN / pattern and office 2FA exactly as ?classic=1. Any other number keeps the hint below.
+           Office numbers are the public office lines. Setting login_phone_id_on = 0 switches it off. */
+        if (self::looksLikeMobile($raw) && ($u = Auth::usernameForPhone($raw)) !== '') {
+            $role = (string) Database::scalar('SELECT role FROM admins WHERE username = :u', ['u' => $u], '');
+            if ($role !== '' && !in_array($role, Auth::OTP_DOOR_ROLES, true)) {
+                if (!Security::rateLimit('code_login_enter', Security::clientIp(), 40, 600, 600)) {
+                    return ['step' => 'c_code', 'error' => 'धेरै पटक भयो — १० मिनेटपछि · Too many tries, wait 10 minutes.'];
+                }
+                require_once __DIR__ . '/onedoor.php';
+                $w = OneDoor::who($raw, $cc);
+                if ((string) ($w['step'] ?? '') === 'mobile') {
+                    return ['step' => 'mobile', 'classic' => true];
+                }
+            }
         }
         if (self::looksLikeMobile($raw)) {
             return ['step' => 'c_code', 'error' => 'मोबाइल होइन, आफ्नो कोड लेख्नुहोस् (ID कार्डमा छ) · Type your code from your ID card (SHG-0008 / SHG-S-0003), not the mobile number.'];

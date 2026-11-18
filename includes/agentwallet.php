@@ -913,6 +913,11 @@ final class AgentWallet
      */
     public static function commissionForBooking(float $total, int $adminId, int $seats, ?string $at = null): float
     {
+        // 19 Nov 2026 (AG-3, owner: "staff = manpower only, no commission"): an office login / staff
+        // member earns nothing NEW; their passengers are still counted (headcount()). Past rows untouched.
+        if (self::staffCommissionOff($adminId)) {
+            return 0.0;
+        }
         require_once __DIR__.'/teamfinance.php';
         $term=TeamFinance::term($adminId,$at);
         if ($term !== null) { return round(match($term['basis']) { 'percent'=>max(0,$total)*(float)$term['rate']/100, 'booking'=>(float)$term['rate'], 'flat'=>max(0,$seats)*(float)$term['rate'], default=>0.0 },2); }
@@ -942,6 +947,9 @@ final class AgentWallet
     /** Human note for the ledger row, so the agent can see how it was worked out. */
     public static function commissionNoteFor(int $adminId, int $seats, float $total, ?string $at = null): string
     {
+        if (self::staffCommissionOff($adminId)) {
+            return max(1, $seats) . ' passengers · staff — passenger count only, no commission';
+        }
         require_once __DIR__.'/teamfinance.php';$t=TeamFinance::term($adminId,$at);if($t){return match($t['basis']){'percent'=>$t['rate'].'% of eligible fare '.inr($total),'flat'=>$seats.' passengers × '.inr((float)$t['rate']),'booking'=>'1 booking × '.inr((float)$t['rate']),default=>'Salary only'}.' (terms #'.$t['id'].')';}
         // Says what was ACTUALLY paid — an override note must not read like
         // the company tier, or the office can never explain a payout.
@@ -964,6 +972,193 @@ final class AgentWallet
              . ' (' . (self::agentTypeFor($adminId) === 'joint' ? 'team/organisation' : 'direct') . ' agent)';
     }
 
+    /* =================================================================
+     *  19 Nov 2026 (u5: AG-1 / AG-3) — per-head tracking, staff = manpower
+     *
+     *  Owner: "per head kati — agent le kati yatru lyayo, ₹ kati, staff lai
+     *  commission chhaina, manpower matra". One rate resolver (it lived as a
+     *  closure inside ticket-statement.php) and one passenger counter that
+     *  uses Ticket Statement's counting rule, so the agent's own app, the
+     *  agents list, the Agent Portal and Ticket Statement show one number.
+     * ================================================================= */
+
+    /** The admins.role of one login ('' when gone). Cached per request. */
+    public static function roleOf(int $adminId): string
+    {
+        static $cache = [];
+        if ($adminId <= 0) {
+            return '';
+        }
+        if (!array_key_exists($adminId, $cache)) {
+            try {
+                $cache[$adminId] = (string) Database::scalar('SELECT role FROM admins WHERE id = :id', ['id' => $adminId], '');
+            } catch (Throwable $e) {
+                $cache[$adminId] = '';
+            }
+        }
+        return $cache[$adminId];
+    }
+
+    /**
+     * AG-3: true while staff_commission_off (default ON — owner, 19 Nov) says this
+     * seller earns no NEW commission: every office / staff login (superadmin, manager,
+     * accountant, support, operations, scanner crew, a SHG-S staff code credited at
+     * the desk). A role 'agent' keeps their commission exactly as before.
+     *
+     * Fix 19 Nov (review): a role 'counter' login is a desk, but on live every active
+     * counter login is ALSO a SHG-S staff member (ap_members.staff_no) — and the desk
+     * lists (desk picker, quick-ticket) label every SHG-S entry "staff (no commission)".
+     * So a counter login holding a staff number counts as staff too while
+     * staff_commission_counter_staff_off is on (default ON — the owner's "staff =
+     * manpower only"); 0 = counter logins keep earning even with a staff number.
+     * A counter desk WITHOUT a staff number always keeps its commission.
+     * Ledger rows already posted are never touched; cash_due is unaffected.
+     */
+    public static function staffCommissionOff(int $adminId): bool
+    {
+        if ($adminId <= 0 || !Settings::getBool('staff_commission_off', true)) {
+            return false;
+        }
+        $role = self::roleOf($adminId);
+        if ($role === '' || $role === 'agent') {
+            return false;
+        }
+        if ($role === 'counter') {
+            return Settings::getBool('staff_commission_counter_staff_off', true) && self::staffNoOf($adminId) > 0;
+        }
+        return true;
+    }
+
+    /** The SHG-S staff number (ap_members.staff_no) this login holds, 0 = none. Cached per request. */
+    public static function staffNoOf(int $adminId): int
+    {
+        static $cache = [];
+        if ($adminId <= 0) {
+            return 0;
+        }
+        if (isset($cache[$adminId])) {
+            return $cache[$adminId];   // only a held number is cached: one handed out mid-request is seen
+        }
+        try {
+            $n = (int) Database::scalar('SELECT COALESCE(staff_no, 0) FROM ap_members WHERE admin_id = :a', ['a' => $adminId], 0);
+        } catch (Throwable $e) {
+            return 0;   // AgentPro not installed
+        }
+        if ($n > 0) {
+            $cache[$adminId] = $n;
+        }
+        return $n;
+    }
+
+    /**
+     * The per-passenger price this seller earns, as the office set it:
+     * TeamFinance terms > per-agent override > company tier rate.
+     * Moved verbatim from admin/ticket-statement.php ($rateOf, 9 Nov 2026).
+     *
+     * @return array{amount: float, label: string, source: string, basis: string}
+     *         source: terms | own | company | staff; basis: flat | booking | percent | salary | none
+     */
+    public static function perHeadRate(int $adminId): array
+    {
+        $pct = static fn(float $p): string => rtrim(rtrim(number_format($p, 2), '0'), '.') . '%';
+        if (self::staffCommissionOff($adminId)) {
+            return ['amount' => 0.0, 'label' => 'यात्रु गन्ती मात्र · passenger count only', 'source' => 'staff', 'basis' => 'none'];
+        }
+        require_once __DIR__ . '/teamfinance.php';
+        $t = TeamFinance::term($adminId);
+        if ($t !== null) {
+            $r = (float) $t['rate'];
+            return match ((string) $t['basis']) {
+                'flat'    => ['amount' => $r, 'label' => inr($r) . ' / passenger', 'source' => 'terms', 'basis' => 'flat'],
+                'booking' => ['amount' => $r, 'label' => inr($r) . ' / booking', 'source' => 'terms', 'basis' => 'booking'],
+                'percent' => ['amount' => $r, 'label' => $pct($r) . ' of fare', 'source' => 'terms', 'basis' => 'percent'],
+                default   => ['amount' => 0.0, 'label' => 'Salary only', 'source' => 'terms', 'basis' => 'salary'],
+            };
+        }
+        $ov = self::commissionOverrideFor($adminId);
+        if ($ov['mode'] === 'flat' || $ov['mode'] === 'booking') {
+            $r = (float) ($ov['flat'] ?? self::flatRateFor($adminId));
+            return ['amount' => $r, 'label' => inr($r) . ($ov['mode'] === 'booking' ? ' / booking' : ' / passenger'),
+                    'source' => 'own', 'basis' => $ov['mode']];
+        }
+        if ($ov['mode'] === 'percent' || !self::flatMode()) {
+            $p = (float) self::commissionPercentFor($adminId);
+            return ['amount' => $p, 'label' => $pct($p) . ' of fare', 'source' => $ov['mode'] === 'percent' ? 'own' : 'company', 'basis' => 'percent'];
+        }
+        $r = self::flatRateFor($adminId);
+        return ['amount' => $r, 'label' => inr($r) . ' / passenger', 'source' => 'company', 'basis' => 'flat'];
+    }
+
+    /**
+     * Tickets, passengers ("heads"), ticket value (sales) and commission earned on
+     * the sales credited to this seller (sold_by_admin_id) made between $from and
+     * $to (both inclusive, Y-m-d). Same rule as Ticket Statement: a passenger =
+     * one outbound seat; confirmed / completed / desk-pending count, cancelled
+     * are given apart and never in the totals. commission = the net commission
+     * rows (commission + reversals) on exactly those bookings.
+     * 'sales' is the ticket VALUE (total_amount) of those bookings — it includes
+     * pending and unsettled COD, so it is never shown as money "collected"
+     * (review fix 19 Nov). 'collected' is kept as an alias of 'sales' for old callers.
+     *
+     * @return array{tickets: int, heads: int, sales: float, collected: float, commission: float, cancelled: int}
+     */
+    public static function headcount(int $adminId, string $from, string $to): array
+    {
+        $out = ['tickets' => 0, 'heads' => 0, 'sales' => 0.0, 'collected' => 0.0, 'commission' => 0.0, 'cancelled' => 0];
+        $ok = static fn(string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
+        if ($adminId <= 0 || !$ok($from) || !$ok($to)) {
+            return $out;
+        }
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        $p = ['a' => $adminId, 'f' => $from . ' 00:00:00', 't' => date('Y-m-d', strtotime($to . ' +1 day')) . ' 00:00:00'];
+        $seat = "GREATEST(1, COALESCE((SELECT SUM(l.seat_count) FROM booking_legs l WHERE l.booking_id = b.id AND l.leg_type = 'outbound'), 0))";
+        try {
+            $r = Database::fetch(
+                "SELECT SUM(CASE WHEN b.status <> 'cancelled' THEN 1 ELSE 0 END) AS tickets,
+                        SUM(CASE WHEN b.status <> 'cancelled' THEN $seat ELSE 0 END) AS heads,
+                        SUM(CASE WHEN b.status <> 'cancelled' THEN b.total_amount ELSE 0 END) AS collected,
+                        SUM(CASE WHEN b.status = 'cancelled' THEN $seat ELSE 0 END) AS cancelled
+                   FROM bookings b
+                  WHERE b.sold_by_admin_id = :a AND b.created_at >= :f AND b.created_at < :t
+                    AND b.status IN ('confirmed','completed','pending','cancelled')",
+                $p
+            );
+            $c = Database::scalar(
+                "SELECT COALESCE(SUM(l.amount), 0) FROM agent_ledger l JOIN bookings b ON b.id = l.booking_id
+                  WHERE l.agent_admin_id = :a AND l.entry_type IN ('commission','commission_void')
+                    AND b.created_at >= :f AND b.created_at < :t",
+                $p, 0
+            );
+        } catch (Throwable $e) {
+            Logger::warning('AgentWallet::headcount failed: ' . $e->getMessage(), [], 'agent');
+            return $out;
+        }
+        return [
+            'tickets'    => (int) ($r['tickets'] ?? 0),
+            'heads'      => (int) ($r['heads'] ?? 0),
+            'sales'      => round((float) ($r['collected'] ?? 0), 2),
+            'collected'  => round((float) ($r['collected'] ?? 0), 2),   // alias of 'sales' (ticket value, not cash in hand)
+            'commission' => round((float) $c, 2),
+            'cancelled'  => (int) ($r['cancelled'] ?? 0),
+        ];
+    }
+
+    /**
+     * Today / this month / all time, for the agent's app and the office tiles.
+     *
+     * @return array{today: array, month: array, all: array}
+     */
+    public static function headcountSet(int $adminId): array
+    {
+        $today = date('Y-m-d');
+        return [
+            'today' => self::headcount($adminId, $today, $today),
+            'month' => self::headcount($adminId, date('Y-m-01'), $today),
+            'all'   => self::headcount($adminId, '2000-01-01', $today),
+        ];
+    }
 
     /* =================================================================
      *  Profile
@@ -3220,24 +3415,116 @@ final class AgentWallet
      * ================================================================= */
 
     /**
+     * 19 Nov 2026 (u5 AG-2): may this member ASK for a withdrawal? Before, only a
+     * legacy agent_applications + team_identity.payout_verified row passed, which no
+     * AgentPro / quick agent has — so every live agent was refused. Now:
+     *   agent_payout_verify_required = 0 (default): yes — the office's own approval
+     *     (paid with a UTR / reference, or declined) is the check;
+     *   = 1: the office ticked "payout details checked" (ap_members.payout_verified_at,
+     *     cleared again whenever the UPI / bank / QR changes) or the legacy tick.
+     */
+    public static function payoutVerified(int $adminId): bool
+    {
+        if ($adminId <= 0) {
+            return false;
+        }
+        if (!Settings::getBool('agent_payout_verify_required', false)) {
+            return true;
+        }
+        try {
+            if (Database::exists('SELECT 1 FROM ap_members WHERE admin_id = :a AND payout_verified_at IS NOT NULL', ['a' => $adminId])) {
+                return true;
+            }
+        } catch (Throwable $e) {
+            // column not migrated yet: only the legacy tick below can pass
+        }
+        try {
+            return Database::exists(
+                "SELECT 1 FROM team_identity i JOIN agent_applications a ON i.person_key = CONCAT('agent:', a.id)
+                  WHERE a.admin_id = :a AND i.payout_verified = 1", ['a' => $adminId]);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Payout methods a member may name on a request. */
+    public const PAYOUT_METHODS = ['upi', 'bank', 'qr', 'esewa', 'khalti'];
+
+    /**
+     * Where the office should send this member's money, read from their saved
+     * payout details (ap_members): what the request snapshots, so a later edit
+     * cannot silently redirect a payout already asked for.
+     * $method '' = the first one they have (UPI, bank, QR, eSewa, Khalti).
+     *
+     * @return array{method: string, to: string, qr: string} method '' = nothing saved
+     */
+    public static function payoutTarget(int $adminId, string $method = ''): array
+    {
+        $none = ['method' => '', 'to' => '', 'qr' => ''];
+        try {
+            $m = Database::fetch('SELECT * FROM ap_members WHERE admin_id = :a', ['a' => $adminId]);
+        } catch (Throwable $e) {
+            $m = null;
+        }
+        if ($m === null) {
+            return $none;
+        }
+        $have = [
+            'upi'    => trim((string) ($m['upi_id'] ?? '')) !== '' ? 'UPI ' . trim((string) $m['upi_id']) : '',
+            'bank'   => trim((string) ($m['bank_account_last4'] ?? '')) !== ''
+                ? trim(trim((string) ($m['bank_holder'] ?? '')) . ' · ' . trim((string) ($m['bank_name'] ?? '')) . ' ••••' . $m['bank_account_last4']
+                    . ' ' . trim((string) ($m['bank_ifsc'] ?? '')) . (trim((string) ($m['bank_branch'] ?? '')) !== '' ? ' · ' . trim((string) $m['bank_branch']) : ''), ' ·')
+                : '',
+            'qr'     => trim((string) ($m['payout_qr_path'] ?? '')) !== '' ? 'QR (uploaded bank / UPI QR)' : '',
+            'esewa'  => trim((string) ($m['esewa_id'] ?? '')) !== '' ? 'eSewa ' . trim((string) $m['esewa_id']) : '',
+            'khalti' => trim((string) ($m['khalti_id'] ?? '')) !== '' ? 'Khalti ' . trim((string) $m['khalti_id']) : '',
+        ];
+        $method = strtolower(trim($method));
+        if ($method === '') {
+            foreach ($have as $k => $v) {
+                if ($v !== '') { $method = $k; break; }
+            }
+            if ($method === '') {
+                return $none;
+            }
+        }
+        if (!isset($have[$method])) {
+            throw new RuntimeException('Choose how you want to be paid: UPI, bank account or QR.');
+        }
+        if ($have[$method] === '') {
+            throw new RuntimeException(match ($method) {
+                'upi'  => 'Add your UPI ID first (Profile → Payout details) · पहिले UPI ID थप्नुहोस्।',
+                'bank' => 'Add your bank account first (Profile → Payout details) · पहिले बैंक खाता थप्नुहोस्।',
+                'qr'   => 'Upload your bank / UPI QR first · पहिले QR अपलोड गर्नुहोस्।',
+                default => 'Add those payout details first (Profile → Payout details).',
+            });
+        }
+        return ['method' => $method, 'to' => mb_substr($have[$method], 0, 160),
+                'qr' => $method === 'qr' ? (string) $m['payout_qr_path'] : ''];
+    }
+
+    /**
      * An agent asks for a payout. 0 / blank amount = everything due.
      * Refused above the commission due, below agent_payout_min (unless it
      * is the whole balance), or while an earlier request is still open.
+     * 19 Nov 2026 (AG-2): $method ('' | upi | bank | qr | esewa | khalti) is
+     * snapshotted from the saved payout details (payoutTarget()).
      *
      * @return int the agent_payout_requests id (0 on an un-migrated DB —
      *             the audit row is still written)
      */
-    public static function requestPayout(int $adminId, float $amount, string $note = ''): int
+    public static function requestPayout(int $adminId, float $amount, string $note = '', string $method = ''): int
     {
         if ($adminId <= 0 || !is_finite($amount) || $amount < 0) {
             throw new RuntimeException('Choose an agent and a valid withdrawal amount.');
         }
         /* 23 Oct 2026 review: two taps / two tabs at once made two open requests (check-then-insert with no
            lock). The agent's own admins row is the lock: one request at a time per agent. */
-        return Database::transaction(static function () use ($adminId, $amount, $note): int {
+        return Database::transaction(static function () use ($adminId, $amount, $note, $method): int {
         Database::fetchForUpdate('SELECT id FROM admins WHERE id = :i', ['i' => $adminId]);
-        require_once __DIR__.'/teamregistry.php';
-        if (TeamRegistry::ready() && !Database::exists("SELECT 1 FROM team_identity i JOIN agent_applications a ON i.person_key=CONCAT('agent:',a.id) WHERE a.admin_id=:a AND i.payout_verified=1",['a'=>$adminId])) { throw new RuntimeException('Ask the office to verify your payout recipient details before requesting a withdrawal.'); }
+        if (!self::payoutVerified($adminId)) { throw new RuntimeException('Ask the office to verify your payout recipient details before requesting a withdrawal.'); }
+        // 19 Nov 2026 (AG-2): an explicit method must exist; none named = the first saved one (or none: the office asks).
+        $target = self::payoutTarget($adminId, $method);
         $due    = self::balances($adminId)['commission'];
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -3260,20 +3547,25 @@ final class AgentWallet
         }
 
         $id = 0;
+        $row = [
+            'agent_admin_id' => $adminId,
+            'amount'         => $amount,
+            'note'           => $note !== '' ? $note : null,
+            'status'         => 'open',
+        ];
+        if ($target['method'] !== '' && self::payoutRequestHasMethod()) {
+            $row += ['pay_method' => $target['method'], 'pay_to' => $target['to'], 'pay_qr_path' => $target['qr'] !== '' ? $target['qr'] : null];
+        }
         try {
-            $id = Database::insert('agent_payout_requests', [
-                'agent_admin_id' => $adminId,
-                'amount'         => $amount,
-                'note'           => $note !== '' ? $note : null,
-                'status'         => 'open',
-            ]);
+            $id = Database::insert('agent_payout_requests', $row);
         } catch (Throwable $e) {
             throw new RuntimeException('Withdrawal request could not be saved. Please retry.');
         }
 
         // Same audit row as before — new_value.amount is what the panel reads.
         Logger::audit('agent.payout_request', 'admin', (string) $adminId, null,
-            ['amount' => $amount, 'due' => $due, 'note' => $note, 'request_id' => $id],
+            ['amount' => $amount, 'due' => $due, 'note' => $note, 'request_id' => $id,
+             'method' => $target['method'], 'to' => $target['to']],
             'Agent requested a commission payout');
 
         // 9 Oct 2026 (Office chat): a payout conversation the office can answer
@@ -3292,9 +3584,24 @@ final class AgentWallet
         });
     }
 
+    /** agent_payout_requests carries pay_method / pay_to / pay_qr_path (upgrade-2026-11-19-u5-agent-payout.sql). */
+    public static function payoutRequestHasMethod(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM agent_payout_requests LIKE 'pay_method'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
     /**
      * Open requests, oldest first — for one agent or (null) the whole
-     * office. Empty on an un-migrated database.
+     * office. Empty on an un-migrated database. Rows carry pay_method /
+     * pay_to / pay_qr_path once the u5 migration is applied.
      *
      * @return array<int, array<string, mixed>>
      */

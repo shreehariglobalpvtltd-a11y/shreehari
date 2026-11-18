@@ -120,6 +120,22 @@ final class WaAuthOtp
             self::refresh();
             $st = self::status();
         }
+        /* 19 Nov 2026 (WA-2): the hand-set APPROVED (wa_auth_tpl_manual) went
+           stale when the number moved WABA - shg_login_code does not exist in
+           the current one. Once the template registry has read the WABA
+           (includes/watplmeta.php sync) and finds it missing / rejected /
+           paused, that wins: no code is sent on a template Meta cannot find.
+           Switch: wa_auth_trust_sync (default 1). */
+        if ($st === 'APPROVED' && Settings::getBool('wa_auth_trust_sync', true)) {
+            try {
+                require_once __DIR__ . '/watplmeta.php';
+                $seen = WaTplMeta::status(self::NAME);
+                if ($seen !== '' && $seen !== 'APPROVED') {
+                    return false;
+                }
+            } catch (Throwable $e) {
+            }
+        }
         return $st === 'APPROVED';
     }
 

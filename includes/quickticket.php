@@ -155,6 +155,34 @@ final class QuickTicket
      * @return array<string, mixed>
      * @throws RuntimeException with a desk-safe message when nothing can be sold
      */
+    /**
+     * 19 Nov 2026 (NP-3 fix): which sales-clock channel a plan() caller is.
+     * An explicit opts['channel'] wins; a customer is 'online'; a seller id or a
+     * signed-in admin is judged by its role; a staff caller with neither (a
+     * WhatsApp / AI staff path, no web session) is 'staff', never 'online'.
+     *
+     * @param array<string, mixed> $opts
+     */
+    public static function clockChannel(array $opts, bool $customer): string
+    {
+        $explicit = (string) ($opts['channel'] ?? '');
+        if (in_array($explicit, ['online', 'whatsapp', 'ai', 'agent', 'counter', 'staff', 'office'], true)) {
+            return $explicit;
+        }
+        if ($customer) {
+            return 'online';
+        }
+        $sellerId = (int) ($opts['sellerId'] ?? 0);
+        if ($sellerId > 0) {
+            return Boarding::salesChannel($sellerId);
+        }
+        $admin = class_exists('Auth') ? Auth::admin() : null;
+        if ($admin !== null && (string) ($admin['role'] ?? '') !== '') {
+            return Boarding::salesChannel(null);
+        }
+        return 'staff';
+    }
+
     public static function plan(array $opts = []): array
     {
         if (!Settings::getBool('daily_service_on', true)) {
@@ -213,6 +241,14 @@ final class QuickTicket
         if ($routes === []) {
             throw new RuntimeException('No active bus to sell on. / बिक्रीका लागि कुनै बस सक्रिय छैन।');
         }
+        /* 19 Nov 2026 (NP-3): the sales closing clock (Boarding::clockClose) is
+           judged per channel: a passenger is 'online' (a WhatsApp / AI caller may
+           say so), staff by their own role (sellerId, else the session).
+           A staff caller with NEITHER (the WhatsApp agent desk, the AI staff
+           tools, TicketBot on WhatsApp) is a seller, never 'online': it is
+           judged as 'staff' (r7's "all" time applies, r2's online-only time
+           does not) and BookingService::create() still judges the real role. */
+        $channel = self::clockChannel($opts, $customer);
 
         // Every candidate route's next departure, seats included.
         $options = [];
@@ -223,7 +259,7 @@ final class QuickTicket
             }
             try {
                 $opt = self::nextDeparture($route, $wantDate, $wantStop, $count, $gender, $exclude, $customer, $prefer,
-                                           normalisePhone((string) ($opts['phone'] ?? '')));
+                                           normalisePhone((string) ($opts['phone'] ?? '')), $channel);
             } catch (RuntimeException $e) {
                 $why[] = $e->getMessage();
                 continue;
@@ -286,8 +322,9 @@ final class QuickTicket
     /* 16 Nov 2026 (P4-5d): $phone is the passenger's mobile, so the plan's fare is priced
        exactly like the sale (fareFor's per-passenger rules: offer limits, the return-journey
        discount). It was read from an $opts this function never had, so it was always ''. */
-    private static function nextDeparture(array $route, string $wantDate, string $wantStop, int $count, ?string $gender, array $exclude, bool $customer = false, array $prefer = [], string $phone = ''): ?array
+    private static function nextDeparture(array $route, string $wantDate, string $wantStop, int $count, ?string $gender, array $exclude, bool $customer = false, array $prefer = [], string $phone = '', string $channel = ''): ?array
     {
+        $clockNote = null;   // why today's bus was skipped by the sales closing clock
         $routeId  = (int) $route['id'];
         $today    = todayISO();
         $now      = time();
@@ -322,6 +359,18 @@ final class QuickTicket
                     throw new RuntimeException('This bus is not running on ' . formatDate($date) . ' (cancelled / OFF). / ' . formatDate($date) . ' मा यो बस चल्दैन।');
                 }
                 continue;
+            }
+            /* 19 Nov 2026 (NP-3): today's bus closed by the clock for this channel -
+               'बुकिङ बन्द · Booking closed 17:00' up front, never a failure at pay. */
+            if ($channel !== '') {
+                $clock = Boarding::clockClose($route, $date, $channel);
+                if ($clock !== null && $clock['closed']) {
+                    if ($wantDate !== '') {
+                        throw new RuntimeException($clock['reason']);
+                    }
+                    $clockNote = ['label' => $clock['label'], 'at' => $clock['at'], 'tz' => $clock['tz'], 'reason' => $clock['reason']];
+                    continue;
+                }
             }
             $depTime = !empty($schedule['dep_time_override'])
                 ? (string) $schedule['dep_time_override']
@@ -458,6 +507,7 @@ final class QuickTicket
                 'boardingTs'     => $chosen['ts'],
                 'departsInMin'   => $chosen['ts'] !== null ? (int) floor(($chosen['ts'] - $now) / 60) : null,
                 'matchedDesk'    => $matchedDesk,
+                'clockNote'      => $clockNote,   // set when today's bus was closed by the clock and this is a later day
                 'seats'          => $seatPick['seats'],
                 'seatCount'      => count($seatPick['seats']),
                 'seatsLeft'      => $seatPick['seatsLeft'],
@@ -802,8 +852,12 @@ final class QuickTicket
             'gender'    => $gender,
             'prefer'    => (array) ($input['prefer'] ?? []),
             'phone'     => $phone,      // priced like the sale: per-passenger offer limits
+            // 19 Nov 2026 (NP-3): the sales closing clock judges the seller's own role
+            'sellerId'  => (int) ($staff['id'] ?? 0),
         ];
         $seller = [
+            // 19 Nov 2026: "पैसा कहिले?" on a cash sale (a note only; create() cleans it)
+            'cashNote'      => $input['cashNote'] ?? null,
             'adminId'       => (int) ($staff['id'] ?? 0),
             /* Read the SELLER ROW first, and only then the session (20 Sep 2026).
                The row is already in hand and is the truth about who is selling;

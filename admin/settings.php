@@ -97,6 +97,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                and a ratio change silently moved sold passengers off the berth on
                their ticket. Check the shape, then refuse a change that re-seats
                any live future booking - naming the PNRs. */
+            /* 19 Nov 2026 (u3 / u4): the per-route closing clock is JSON - refuse a
+               broken box instead of storing text every booking would then misread. */
+            if (isset($pairs['sales_close_clock']) && trim((string) $pairs['sales_close_clock']) !== '') {
+                if (!is_array(json_decode((string) $pairs['sales_close_clock'], true))) {
+                    throw new InvalidArgumentException('sales_close_clock is not valid JSON (example: {"r7":{"all":"17:00","tz":"Asia/Kathmandu"}})');
+                }
+            }
+            /* 19 Nov 2026 (TK-2): a map pin box takes a maps link or "lat,lng" - nothing else. */
+            foreach (['nepal_office_map', 'india_hub_map'] as $mk) {
+                if (isset($pairs[$mk]) && trim((string) $pairs[$mk]) !== ''
+                    && preg_match('#^\s*(https?://\S+|-?\d{1,2}(\.\d+)?\s*[,; ]\s*-?\d{1,3}(\.\d+)?)\s*$#i', (string) $pairs[$mk]) !== 1) {
+                    throw new InvalidArgumentException($mk . ': paste a Google Maps link or type "lat, lng" (example 28.0507, 81.6159)');
+                }
+                /* review 19 Nov: the value must give a printable QR - a long link is
+                   shortened to its pin; a long link with no pin in it is refused. */
+                if (isset($pairs[$mk]) && trim((string) $pairs[$mk]) !== '') {
+                    if (!class_exists('Ticket')) {
+                        require_once INCLUDE_PATH . '/ticket.php';
+                    }
+                    if (Ticket::mapLink(trim((string) $pairs[$mk])) === '') {
+                        throw new InvalidArgumentException($mk . ': this link has no map pin in it and is too long for a QR. Open it in Google Maps, copy the long link from the address bar (it has @lat,lng in it), or type "lat, lng".');
+                    }
+                }
+            }
             if (isset($pairs['seat_mode_map'])) {
                 $smNew = json_decode(trim((string) $pairs['seat_mode_map']) === '' ? '{}' : (string) $pairs['seat_mode_map'], true);
                 if (!is_array($smNew)) {
@@ -229,6 +253,7 @@ $groupInfo = [
     'booking'    => ['Booking rules', 'Seat holds, limits and the discount switches every sale uses.'],
     'seat_ai'    => ['🪑 Seat AI', 'Automatic seat recommendation: on/off, rear-to-front or front-first, which deck first, groups kept together. Women-only and cabin gender rules always apply on top and cannot be switched off here.'],
     'buttons'    => ['🔘 Website buttons', 'Switch each customer-site button or pop-up ON or OFF. OFF hides it for every visitor at the next page load; nothing else changes. The office panel is not affected.'],
+    'tickets'    => ['🎫 What the ticket carries', 'The QR codes on the ticket PNG / PDF (ticket check, pickup map, pay with the exact amount), the map pins they open and NPR on a Nepal sale.'],
     'gps'        => ['📍 Near-me pickup & maps', '"Use my location" on the seat page suggests the nearest pickup that has coordinates (Routes → Pickup points). The position is used once in the browser and never stored. The ticket can carry a Google Maps QR of the pickup.'],
     'marketing'  => ['📣 Marketing campaigns', 'Campaign limits and consent. With "opted in only" ON, campaigns reach only numbers recorded as opted in.'],
     'payment'    => ['Payment', 'How customers pay: UPI, eSewa, payment links and pay at boarding.'],
@@ -308,7 +333,10 @@ $catOf = static function (string $key, string $group): string {
              'push_vapid_subject', 'ai_local_url', 'ai_local_endpoint', 'nav_engine_url', 'whatsapp_api_version'];
     if (Settings::isSecretKey($key) || in_array($key, $conn, true)) { return 'keys'; }
     $exact = [
-        'tickets'  => ['whatsapp_send_pdf', 'border_card_hours', 'travel_checklist', 'ticket_maps_qr', 'email_attach_pdf', 'email_attach_ics', 'wa_ticket_number', 'border_point_name'],
+        'tickets'  => ['whatsapp_send_pdf', 'border_card_hours', 'travel_checklist', 'ticket_maps_qr', 'email_attach_pdf', 'email_attach_ics', 'wa_ticket_number', 'border_point_name',
+                       // 19 Nov 2026 (TK-1 / TK-2 / TK-5 / TK-6)
+                       'ticket_pay_qr_upi', 'ticket_verify_qr', 'ticket_npr_primary', 'india_hub_map', 'nepal_office_map'],
+        'booking'  => ['sales_close_clock'],
         'fares'    => ['group_discount_on', 'group_discount_percent', 'group_discount_min_seats', 'online_discount_pct', 'tax_percent', 'booking_fee',
                        'sharing_short_run_on', 'loyalty_tier_discount_on', 'loyalty_trips'],
         'agents'   => ['counter_max_discount_pct', 'counter_max_seats_per_booking', 'agent_daily_summary_enabled', 'agent_notify_enabled', 'offline_queue_on',
@@ -660,7 +688,7 @@ $subTitle = [
     'fares'    => ['booking' => 'Discounts, tax & booking fee', 'pricing' => 'Offers & fare tables'],
     'ai'       => ['booking' => 'Bot answers & Passive Brain'],
     'agents'   => ['booking' => 'Counter caps', 'automation' => 'Agent messages', 'pricing' => 'Commission & targets', 'agent' => 'Agent & counter rules'],
-    'tickets'  => ['notify' => 'Ticket delivery', 'automation' => 'Ticket e-mail', 'whatsapp' => 'Ticket on WhatsApp', 'site' => 'Travel checklist', 'booking' => 'Border card', 'gps' => 'Pickup map on the ticket'],
+    'tickets'  => ['tickets' => 'QR codes, map pins & NPR on the ticket', 'notify' => 'Ticket delivery', 'automation' => 'Ticket e-mail', 'whatsapp' => 'Ticket on WhatsApp', 'site' => 'Travel checklist', 'booking' => 'Border card', 'gps' => 'Pickup map on the ticket'],
     'notify'   => ['automation' => 'Automation & alerts', 'reports' => 'Office reports', 'helpdesk' => 'Help desk'],
     'company'  => ['site' => 'Company WhatsApp', 'trust' => 'Women helpline'],
     'security' => ['automation' => 'Data checks & off-site backup', 'booking' => 'Sessions'],
@@ -1113,6 +1141,14 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
      Help text only — the keys come from database/upgrade-2026-09-wa-templates.sql. */
   $waTplHelp = 'A business-initiated message (the office writes first) only reaches WhatsApp through an approved Twilio Content template — one per purpose, its HX… SID pasted here. Blank = free text, which WhatsApp delivers only inside the 24-hour window after this number last wrote to us; outside it the button hands the message to the staff phone (wa.me) instead of burning a send that would fail.';
   $waHelp = [
+      // 19 Nov 2026 (TK-1 / TK-2 / TK-5 / TK-6, u3)
+      'ticket_pay_qr_upi'  => 'On: a CONFIRMED ticket that still owes money (not pay-at-boarding, no UTR or screenshot already waiting) gets a pay QR that is a UPI code with the EXACT amount and the PNR as the note - any UPI app’s own scanner pays it. It stays payable on a forwarded or printed copy, so check the Payments page before approving (a second payment is a manual refund). Pay-at-boarding and pending online bookings always keep the live pay link (it takes the UTR, so the crew does not collect twice). Off: every pay QR is the live pay link that closes after approval. A paid ticket has no pay QR; a Nepal (NPR) sale never gets a UPI amount.',
+      'ticket_verify_qr'   => 'The ticket’s own QR (opens verify-ticket.php for this PNR) beside the PNR on the PNG and in the PDF footer. The barcode on the stub stays for USB scanners. Off = barcode only (the 6 Nov rule).',
+      'ticket_maps_qr'     => 'A Google Maps QR of the passenger’s boarding point (the pin in Routes -> stops), and for a Nepal-issued ticket or a Nepal -> India passenger also the Nepal office (Pushpalal Chowk, Nepalgunj). A stop without a pin gets no map QR.',
+      'nepal_office_map'   => 'Where the Nepal office QR points: paste a Google Maps link or type "lat, lng". Blank = a Google Maps search for Hotel Darbar, Pushpalal Chowk, Nepalgunj (the office is about 10 m before Hotel Darbar).',
+      'india_hub_map'      => 'Where the S Hari Parking (Nana Chiloda, Ahmedabad) pickup QR points: a Google Maps link or "lat, lng". Blank = the pin of that stop in Routes -> stops.',
+      'ticket_npr_primary' => 'A sale the Nepal window took in NPR prints NPR as the big amount (at the rate frozen on the sale) with the INR small beside it. The books stay INR.',
+      'sales_close_clock'  => 'Sales closing clock for TODAY’s bus, per route code, JSON. Example: {"r7":{"all":"17:00","tz":"Asia/Kathmandu"},"r2":{"online":"19:00","tz":"Asia/Kolkata"}} - keys all / online / agent / counter / staff / whatsapp / ai; superadmin + manager are never blocked. {} = off. A broken JSON is refused on Save.',
       'wa_admin_tools_enabled'              => 'Shows the "Send on WhatsApp" buttons on the agent, booking, manifest and dashboard pages. Every press previews first, then sends through the WhatsApp API (Twilio / Cloud API) or opens wa.me on the staff phone; each attempt is logged under Messages with its purpose.',
       'twilio_content_sid_agent_statement'  => $waTplHelp . ' Used for agent statements, booking history, commission, advance / loan balance and the daily / monthly summaries.',
       'twilio_content_sid_payment_reminder' => $waTplHelp . ' Used for agent and customer payment reminders and the outstanding-balance message.',

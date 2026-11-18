@@ -77,6 +77,66 @@
     else if (CTR.pay === 'bank' && pay.bank) line = '🏦 ' + esc(pay.bank);
     box.innerHTML = line;
     box.hidden = line === '';
+    // 19 Nov 2026: "पैसा कहिले?" belongs to a cash sale only
+    var cn = document.getElementById('ctrCashNote'); if (cn) cn.hidden = CTR.pay !== 'cash';
+  }
+  /* 19 Nov 2026 (blueprint): an optional "पैसा कहिले? · When will they pay" on a
+     cash sale - paid in full / part paid ₹ / later + date + note. Stored on the
+     booking as a note only; it never confirms or changes a payment. */
+  function cashNoteHtml() {
+    return '<div class="ctr-row" id="ctrCashNote"' + (CTR.pay === 'cash' ? '' : ' hidden') + '>'
+      + '<label style="font-size:12px;font-weight:700" for="ctrCnWhen">पैसा कहिले? · When will they pay</label>'
+      + '<select id="ctrCnWhen"><option value="">— (optional) —</option>'
+      + '<option value="full">पूरा तिर्यो · Paid in full</option>'
+      + '<option value="partial">आंशिक · Part paid ₹</option>'
+      + '<option value="later">पछि तिर्ने · Pays later</option></select>'
+      + '<input type="number" id="ctrCnAmt" min="1" step="1" inputmode="numeric" placeholder="₹ paid now" hidden>'
+      + '<input type="date" id="ctrCnDate" aria-label="Pay by date" hidden>'
+      + '<input type="text" id="ctrCnNote" maxlength="80" placeholder="Note · नोट (optional)" hidden></div>';
+  }
+  function cashNoteSync() {
+    var w = (($q('#ctrCnWhen') || {}).value) || '';
+    var a = $q('#ctrCnAmt'), d = $q('#ctrCnDate'), n = $q('#ctrCnNote');
+    if (a) a.hidden = w !== 'partial';
+    if (d) d.hidden = !(w === 'partial' || w === 'later');
+    if (n) n.hidden = w === '';
+  }
+  function cashNoteValue() {
+    if (CTR.pay !== 'cash') return null;
+    var w = (($q('#ctrCnWhen') || {}).value) || '';
+    if (!w) return null;
+    var o = { when: w };
+    if (w === 'partial') o.amount = parseFloat(($q('#ctrCnAmt') || {}).value) || 0;
+    if (w !== 'full') o.date = (($q('#ctrCnDate') || {}).value) || '';
+    o.note = ((($q('#ctrCnNote') || {}).value) || '').trim();
+    return o;
+  }
+  /* NP-3 (19 Nov 2026): the sales closing clock. index.php ships, for THIS
+     seller, today's closing time per route code (STAFF.salesClock); when the
+     bus on the checkout is today's and that time has passed, say so before
+     Confirm - 'बुकिङ बन्द · Booking closed 17:00'. Display only: the server
+     (BookingService::create) is what refuses the sale. */
+  function clockClosedFor(leg) {
+    var sc = STAFF.salesClock;
+    if (!leg || !sc || typeof sc !== 'object') return null;
+    var c = sc[leg.routeId];
+    if (!c || !c.closesAt || String(leg.date || '') !== String(c.date || '')) return null;
+    return Date.now() >= Number(c.closesAt) * 1000 ? c : null;
+  }
+  function clockCheck() {
+    var box = document.getElementById('ctrClock'); if (!box) return;
+    var leg = null;
+    try { leg = (typeof Flow !== 'undefined' && Flow && Flow.legs && Flow.legs[0]) || null; } catch (e) { leg = null; }
+    var c = clockClosedFor(leg);
+    box.innerHTML = c ? '⛔ ' + esc(c.label || '') + (c.reason ? '<br><small style="font-weight:500">' + esc(c.reason) + '</small>' : '') : '';
+    box.hidden = !c;
+  }
+  /* AG-3 (19 Nov 2026): one label for an agent / staff entry in every desk list.
+     With staff_commission_off on, a staff entry says it earns no commission. */
+  function agentLabel(a) {
+    var staffNo = a.type === 'staff' && STAFF.staffNoComm;
+    return (a.co ? '🏢 ' : (a.type === 'staff' ? '🧑‍💼 ' : '👤 ')) + esc(a.code) + ' · ' + esc(a.name)
+      + (staffNo ? ' · स्टाफ · staff (no commission)' : '');
   }
   var PAY_LBL = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' };
   function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
@@ -506,6 +566,7 @@
         + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
         + '<select id="ctrDiscType"><option value="flat">₹ off</option><option value="percent">% off</option></select>'
         + '<input type="text" id="ctrNote" maxlength="255" placeholder="Note (optional) · receipt no, remarks"></div>'
+        + cashNoteHtml()
         + '<div class="ctr-note">Max discount ' + esc(maxPct) + '% of the fare (server re-checks). The booking is <b>confirmed immediately</b>, the ticket goes to the passenger\'s WhatsApp and the sale is credited to the <b>agent chosen above</b> (Other = company code). Cash stays with <b>' + esc(WHO) + '</b>.</div>';
       // One screen (17 Sep 2026): the panel lives on step 1, right above the
       // Confirm button — the desk never has to open the customer's payment step.
@@ -527,7 +588,14 @@
         ctrSummary();
       });
       $q('#ctrDiscType').addEventListener('change', ctrSummary);
+      var cnw = $q('#ctrCnWhen'); if (cnw) cnw.addEventListener('change', cashNoteSync);
+      var ck = document.createElement('div');
+      ck.id = 'ctrClock'; ck.className = 'ctr-note'; ck.hidden = true;
+      ck.setAttribute('role', 'alert');
+      ck.style.cssText = 'background:#FFF4E5;border:1px solid #F5A623;color:#7A4100;font-weight:600;padding:8px 10px;border-radius:8px';
+      el.insertBefore(ck, el.firstChild);
     }
+    clockCheck();
     oneScreen();
 
     // Agent selection is MANDATORY at the counter / admin desk, and sits in
@@ -567,7 +635,7 @@
         sel.innerHTML = '<option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>'
           + agents.map(function (a) {
             var selected = (want && a.code === want) ? ' selected' : '';
-            return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+            return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + selected + '>' + agentLabel(a) + '</option>';
           }).join('');
         ac.parentNode.replaceChild(sel, ac);
         agentPickerOn(sel);
@@ -689,7 +757,9 @@
     if (agSel && agSel.value && agSel.value !== 'OTHER' && seats > 0 && STAFF.commFlat) {
       var selAgent = (STAFF.agents || []).find(function (a) { return a.code === agSel.value; });
       var rate = (selAgent && selAgent.type === 'joint') ? Number(STAFF.commJoint || 400) : Number(STAFF.commDirect || 200);
-      commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
+      commLine = (selAgent && selAgent.type === 'staff' && STAFF.staffNoComm)
+        ? '<span>·</span><small>🧑‍💼 ' + esc(agSel.value) + ' · स्टाफ · staff (no commission) · ' + seats + ' जना</small>'
+        : '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
     }
     var due = off > 0 ? Math.max(1, total - off) : total;
     var npr = showNpr() ? nprText(due) : '';
@@ -815,7 +885,7 @@
     return '<div class="ctr-q-row" style="margin-top:8px"><select id="ctrQuickAgent" aria-label="Agent (required)" style="flex:1;min-width:0;font-size:15px;padding:9px 10px;border:1.5px solid var(--line,#dde3ee);border-radius:10px;background:var(--card,#fff);color:inherit">'
       + '<option value="">— एजेन्ट छान्नुहोस् / Select Agent (अनिवार्य) —</option>'
       + agents.map(function (a) {
-        return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + (want && a.code === want ? ' selected' : '') + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+        return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + (want && a.code === want ? ' selected' : '') + '>' + agentLabel(a) + '</option>';
       }).join('') + '</select></div>';
   }
   /* 5 Oct 2026 (owner: "agent lai list bata search garera select") - the agent
@@ -939,6 +1009,7 @@
           discountType: dv > 0 ? (($q('#ctrDiscType') || {}).value || 'flat') : '',
           discountValue: dv,
           note: (($q('#ctrNote') || {}).value || '').trim(),
+          cashNote: cashNoteValue(),
           couponCode: '', pointsRequested: 0, isCod: false
         });
       }

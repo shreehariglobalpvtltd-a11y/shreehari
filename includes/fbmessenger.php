@@ -27,9 +27,20 @@
  *  switches fb_msgr_sell on) a ticket issued here, picture in Messenger and
  *  on their WhatsApp. "number change" forgets it.
  *
+ *  THE GUIDED BOOKING (19 Nov 2026, WA-3 - switch fb_msgr_form_on, default OFF)
+ *  ---------------------------------------------------------------------------
+ *  "ticket" / "book" here walks the SAME conversation as WhatsApp (WaBooking:
+ *  name, pickup, day, seats → summary → an explicit yes → QuickTicket's sale
+ *  with every rule), keyed by the proven number, its tappable answers as
+ *  Messenger quick replies. Before the number is proven the person is asked
+ *  for it (the WhatsApp code below) and the order starts by itself once the
+ *  code is right - the ticket goes to that number's WhatsApp.
+ *
  *  Switches (all OFF until the office pastes the Page token):
  *    fb_msgr_on       the Page answers at all
  *    fb_msgr_sell     the assistant may ISSUE tickets here (quote → ho)
+ *    fb_msgr_form_on  the guided WhatsApp-style booking above (needs
+ *                     fb_msgr_sell on too: it never sells on its own)
  *    fb_page_token    Page access token (pages_messaging)        — secret
  *    fb_app_secret    the Meta app's secret, checks every webhook — secret
  *    fb_verify_token  what the webhook answers Meta's set-up check with
@@ -69,6 +80,7 @@ final class FbMessenger
     public static ?Closure $checkCode = null;   // fn(string $phone, string $code): array{ok, error}
     public static ?array   $memStore  = null;   // per-person state in memory instead of kv_store
     public static ?array   $memLog    = null;   // conversation rows in memory instead of fb_inbound
+    public static ?Closure $booker    = null;   // fn(string $intl, string $text, string $country): ?array  (WaBooking::handle shape)
 
     /** Meta's free-reply window after the person's last message. */
     public const WINDOW_HOURS = 24;
@@ -287,6 +299,10 @@ final class FbMessenger
         if ($text === '' && $payload !== '') {
             $text = $payload;
         }
+        // A tapped booking answer ("shg:2", "shg:ho") says exactly what the button meant - not its title.
+        if (str_starts_with($payload, 'shg:') && trim(substr($payload, 4)) !== '') {
+            $text = trim(substr($payload, 4));
+        }
 
         self::typing($psid);
 
@@ -312,6 +328,15 @@ final class FbMessenger
                 self::sendText($psid, "✅ नम्बर " . maskPhone($pending) . " पक्का भयो। अब यहीँबाट आफ्नो टिकट हेर्न"
                     . (Settings::getBool('fb_msgr_sell', false) ? ' र नयाँ टिकट काट्न' : '')
                     . " सकिन्छ। भन्नुहोस्, के गरौँ? 🙏");
+                // They asked to book before the number was proven: the order starts now.
+                if (self::formOn() && (int) ($st['book_after_proof'] ?? 0) >= time() - 1800) {
+                    unset($st['book_after_proof']);
+                    self::save($psid, $st);
+                    $r = self::book(self::intlOf($st), 'ticket', (string) ($st['country'] ?? ''));
+                    if ($r !== null) {
+                        self::sendBooking($psid, $r);
+                    }
+                }
             } else {
                 self::sendText($psid, "⚠️ कोड मिलेन: " . (string) ($r['error'] ?? 'try again') . "\nफेरि लेख्नुहोस्, वा नयाँ कोडका लागि नम्बर फेरि पठाउनुहोस्।");
             }
@@ -336,6 +361,11 @@ final class FbMessenger
             } else {
                 self::sendText($psid, "⚠️ कोड पठाउन सकिएन: " . (string) ($r['error'] ?? '') . "\n" . appUrl('') . " मा सिधै बुक गर्न सकिन्छ।");
             }
+            return;
+        }
+
+        // 19 Nov 2026 (WA-3): the guided booking - the same engine as WhatsApp (fb_msgr_form_on).
+        if (self::bookingTurn($psid, $st, $text)) {
             return;
         }
 
@@ -365,6 +395,129 @@ final class FbMessenger
             return;
         }
         self::reply($psid, $answer);
+    }
+
+    /* =================================================================
+     *  The guided booking (19 Nov 2026, WA-3 - fb_msgr_form_on)
+     * ================================================================= */
+
+    /**
+     * One turn of the WhatsApp booking conversation, here. true = answered.
+     * Unproven person + "ticket" → asked for the mobile first (the ticket goes
+     * to that WhatsApp). Proven → WaBooking answers whatever is a booking line
+     * or an answer to its own question; anything else (null) goes on to the
+     * assistant as before.
+     *
+     * @param array<string, mixed> $st
+     */
+    /**
+     * The guided booking runs only when BOTH switches are on (19 Nov 2026
+     * review): fb_msgr_form_on (the guided conversation) AND fb_msgr_sell (the
+     * owner's "Messenger may issue tickets"). The form switch alone never
+     * overrides a "no selling here" decision.
+     */
+    public static function formOn(): bool
+    {
+        return Settings::getBool('fb_msgr_form_on', false) && Settings::getBool('fb_msgr_sell', false);
+    }
+
+    private static function bookingTurn(string $psid, array $st, string $text): bool
+    {
+        if (!self::formOn() || trim($text) === '') {
+            return false;
+        }
+        if ((string) ($st['phone'] ?? '') === '') {
+            if (!self::isBookWord($text)) {
+                return false;
+            }
+            $st['book_after_proof'] = time();
+            self::save($psid, $st);
+            self::sendText($psid, "🎫 टिकट बुक गर्न पहिले आफ्नो मोबाइल नम्बर यहीँ पठाउनुहोस् (नेपालको भए +977 सहित)। त्यो नम्बरको WhatsApp मा कोड आउँछ, कोड यहाँ लेखेपछि बुकिङ सुरु हुन्छ — टिकट पनि त्यही WhatsApp मा जान्छ।\n"
+                . "To book, send your mobile number here first (+977 for Nepal). A code comes on its WhatsApp; type it here and the booking starts — the ticket goes to that WhatsApp.");
+            return true;
+        }
+        $r = self::book(self::intlOf($st), $text, (string) ($st['country'] ?? ''));
+        if ($r === null || trim((string) ($r['text'] ?? '')) === '') {
+            return false;
+        }
+        self::sendBooking($psid, $r);
+        return true;
+    }
+
+    /** "ticket", "book", "टिकट"… - somebody asking to book (before the number is proven). */
+    public static function isBookWord(string $text): bool
+    {
+        $t = mb_strtolower(trim((string) preg_replace('/[\s.!🎫]+/u', ' ', $text)));
+        return $t !== '' && mb_strlen($t) <= 40
+            && preg_match('/^(?:(?:book|booking|new|order)\s*)?(?:ticket|tickets|tiket|tikat|book|booking|टिकट|बुक|ટિકિટ)(?:\s+(?:book|booking|chahiyo|chaiyo|chahiye|katnu|katne|kat|garnu|garne|karo|बुक|चाहियो|चाहिए|काट्ने|काट्नु|गर्ने|गर्नु))*$/u', $t) === 1;
+    }
+
+    /** The proven number with its country code (+977 kept: never sent as +91). */
+    private static function intlOf(array $st): string
+    {
+        $phone = (string) ($st['phone'] ?? '');
+        return $phone !== '' ? (((string) ($st['country'] ?? '') === 'NP' ? '977' : '91') . $phone) : '';
+    }
+
+    /**
+     * WaBooking::handle() for this proven number (or the test seam).
+     *
+     * @return array{text: string, media?: ?string, ui?: ?array}|null
+     */
+    private static function book(string $intl, string $text, string $country): ?array
+    {
+        if ($intl === '') {
+            return null;
+        }
+        $country = $country === 'NP' ? 'NP' : 'IN';
+        try {
+            if (self::$booker !== null) {
+                return (self::$booker)($intl, $text, $country);
+            }
+            require_once __DIR__ . '/ticketbot.php';
+            require_once __DIR__ . '/quickticket.php';
+            require_once __DIR__ . '/wabooking.php';
+            // A sale made here says so on its channel note (not "the WhatsApp assistant").
+            $note = WaBooking::$saleNote;
+            WaBooking::$saleNote = 'sold by the Facebook Messenger assistant';
+            try {
+                return WaBooking::handle($intl, $text, $country, null);
+            } finally {
+                WaBooking::$saleNote = $note;
+            }
+        } catch (Throwable $e) {
+            Logger::error('Facebook booking turn failed: ' . $e->getMessage(), [], 'facebook');
+            return null;
+        }
+    }
+
+    /**
+     * A booking answer on Messenger: the picture (ticket / pay QR / seat map)
+     * first, then the words, the last part carrying the tappable answers as
+     * quick replies - so the buttons sit under the question.
+     *
+     * @param array{text: string, media?: ?string, ui?: ?array} $r
+     */
+    public static function sendBooking(string $psid, array $r): void
+    {
+        $media = trim((string) ($r['media'] ?? ''));
+        if ($media !== '') {
+            $url = self::absolute($media);
+            if (!self::sendImage($psid, $url)) {
+                self::sendText($psid, "🔗 " . $url);
+            }
+        }
+        require_once __DIR__ . '/messenger.php';
+        $quick = Messenger::quickReplies(is_array($r['ui'] ?? null) ? $r['ui'] : null);
+        $parts = self::chunks(self::plain(str_replace('*', '', (string) ($r['text'] ?? ''))));
+        $last  = count($parts) - 1;
+        foreach ($parts as $i => $part) {
+            if ($i === $last && $quick !== []) {
+                self::send($psid, ['text' => mb_substr($part, 0, 2000), 'quick_replies' => $quick]);
+            } else {
+                self::sendText($psid, $part);
+            }
+        }
     }
 
     /* =================================================================

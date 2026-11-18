@@ -33,6 +33,34 @@ $money = static function (mixed $v): float {
     return $s === '' ? 0.0 : round((float) $s, 2);
 };
 
+/* 19 Nov 2026 (WA-6): a closing slip goes to BOTH office numbers - admin_whatsapp
+   9104801507 and ceo_whatsapp 9726401507 (+ office_report_numbers), one message
+   per person (OfficeReport::numbers). It used to reach admin_whatsapp only. */
+$toOffice = static function (string $text, string $purpose): int {
+    $sent = 0;
+    try {
+        require_once INCLUDE_PATH . '/notify.php';
+        require_once INCLUDE_PATH . '/officereport.php';
+        $nums = OfficeReport::numbers();
+        if ($nums === [] && ($one = Settings::getString('admin_whatsapp', Settings::officePhone())) !== '') {
+            $nums = [$one];
+        }
+        foreach ($nums as $n) {
+            try {
+                $ok = Notify::whatsapp($n, $text, null, null, [], null, ['purpose' => $purpose]);
+                if ($ok === true) { $sent++; }
+            } catch (Throwable $e) {
+                Logger::error('office slip not sent', ['e' => $e->getMessage(), 'purpose' => $purpose]);
+            }
+        }
+    } catch (Throwable $e) {
+        Logger::error('office slip not sent', ['e' => $e->getMessage()]);   // never fail a close on a message
+    }
+    return $sent;
+};
+$dayFlash = null;
+$dayOn    = CounterShift::dayCloseOn() && CounterShift::dayCloseReady();
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again. / फेरि प्रयास गर्नुहोस्।'];
@@ -46,6 +74,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Settings::set('counter_shift_on', $act === 'enable' ? '1' : '0', 'bool', 'agent');
                 Logger::audit('shift.switch', 'setting', 'counter_shift_on', null, ['on' => $act === 'enable'], 'by admin #' . $me);
                 $flash = ['ok', $act === 'enable' ? 'Shift and cash count is ON for every counter.' : 'Shift and cash count is OFF.'];
+            } elseif ($act === 'day_close') {
+                /* 19 Nov 2026 (WA-6): "आजको हिसाब बुझाउने · Day close" - works with or
+                   without shifts; own desk / own sales, the office any desk and date. */
+                if (!$dayOn) {
+                    throw new RuntimeException('Day close is switched off.');
+                }
+                $dcKey = $isOffice ? (string) ($_POST['dc_desk'] ?? '') : CounterShift::dayKeyFor($me);
+                $dcDay = (string) ($_POST['dc_day'] ?? todayISO());
+                $nprIn = trim((string) ($_POST['dc_npr'] ?? ''));
+                $dcRow = CounterShift::closeDay($me, $dcKey, $dcDay, $money($_POST['dc_counted'] ?? ''), $money($_POST['dc_exp'] ?? 0),
+                    $nprIn !== '' ? $money($nprIn) : null, (string) ($_POST['dc_note'] ?? ''), (string) ($_POST['dc_sign'] ?? ''), $isOffice);
+                $dcSent = 0;
+                if (Settings::getBool('counter_shift_notify', true)) {
+                    require_once INCLUDE_PATH . '/counterbook.php';
+                    $dcLabel = (string) (CounterBook::line($dcDay, (string) $dcRow['desk_key'])['label'] ?? $dcRow['desk_key']);
+                    $dcSent  = $toOffice(CounterShift::dayCloseText($dcRow, $dcLabel !== '' ? $dcLabel : 'अनलाइन'), 'shift_close');
+                }
+                $dayFlash = ['ok', 'हिसाब बुझाइयो · Day close saved' . ($dcSent > 0 ? ' — sent to the office on WhatsApp (' . $dcSent . ').' : '.')];
             } elseif (!CounterShift::enabled()) {
                 throw new RuntimeException('Shift and cash count is switched off.');
             } elseif ($act === 'open') {
@@ -106,16 +152,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ], 'closed by admin #' . $me);
 
                 if (Settings::getBool('counter_shift_notify', true)) {
-                    try {
-                        require_once INCLUDE_PATH . '/notify.php';
-                        $office = Settings::getString('admin_whatsapp', Settings::officePhone());
-                        $who    = (string) (Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => (int) $closed['admin_id']], '') ?: ('#' . $closed['admin_id']));
-                        if ($office !== '') {
-                            Notify::whatsapp($office, CounterShift::summaryText($closed, $who), null, null, [], null, ['purpose' => 'shift_close']);
-                        }
-                    } catch (Throwable $e) {
-                        Logger::error('shift summary not sent', ['e' => $e->getMessage()]);   // never fail a close on a message
-                    }
+                    $who = (string) (Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => (int) $closed['admin_id']], '') ?: ('#' . $closed['admin_id']));
+                    $toOffice(CounterShift::summaryText($closed, $who), 'shift_close');   // both office numbers (19 Nov 2026)
                 }
             } else {
                 throw new RuntimeException('Unknown action.');
@@ -308,6 +346,88 @@ admin_header('Shift & Cash', 'shift');
 <div class="sh-wrap">
 <?php if ($flash !== null): ?>
   <p class="pill" style="display:block;padding:10px 12px;background:<?= $flash[0] === 'ok' ? 'var(--ok-bg)' : 'var(--bad-bg)' ?>;color:<?= $flash[0] === 'ok' ? 'var(--ok)' : 'var(--bad)' ?>"><?= Security::e($flash[1]) ?></p>
+<?php endif; ?>
+
+<?php
+/* =====================================================================
+ *  19 Nov 2026 (WA-6): "आजको हिसाब बुझाउने · Day close" - one step, for a
+ *  counter, an agent, staff or the office. The register's day for the line
+ *  (CounterBook, read-only) and one form: counted cash, expenses, a note, a
+ *  name. Saving again the same day corrects it. The office picks any desk
+ *  and any date up to today.
+ * ===================================================================== */
+if ($dayOn):
+    require_once INCLUDE_PATH . '/counterbook.php';
+    $dcDayV = Security::isValidDate((string) ($_GET['dcday'] ?? '')) ? (string) $_GET['dcday'] : todayISO();
+    if ($dcDayV > todayISO()) { $dcDayV = todayISO(); }
+    if (!$isOffice && $dcDayV < addDaysISO(todayISO(), -1)) { $dcDayV = todayISO(); }
+    $dcBook = CounterBook::day($dcDayV);
+    $dcKeyV = CounterShift::dayKeyFor($me);
+    if ($isOffice) {
+        $want = strtoupper(trim((string) ($_GET['dcdesk'] ?? $dcKeyV)));
+        $dcKeyV = ($want === '' || isset($dcBook['rows'][$want]) || CounterDesk::get($want) !== null) ? $want : $dcKeyV;
+    }
+    $dcLine  = CounterBook::line($dcDayV, $dcKeyV);
+    $dcCur   = (string) ($dcLine['currency'] ?? 'INR');
+    $dcDone  = CounterShift::dayCloses($dcDayV, $dcKeyV)[0] ?? null;
+    /* one rule with CounterShift::closeDay(): cash + cod only, payment by payment */
+    $dcExpect = CounterShift::dayDrawer($dcLine);
+    $dcM = static fn(float $v, string $c = 'INR'): string => CounterDesk::format($v, $c);
+?>
+  <div class="panel sh-noprint" id="dayClose">
+    <h2>आजको हिसाब बुझाउने · Day close
+      <span class="muted" style="font-size:12.5px;font-weight:500"> · <?= Security::e((string) ($dcLine['label'] ?? '') !== '' ? (string) $dcLine['label'] : ($dcKeyV === '' ? 'अनलाइन · Online' : $dcKeyV)) ?> · <?= Security::e(formatDate($dcDayV)) ?></span></h2>
+    <?php if ($dayFlash !== null): ?><p class="pill" style="display:block;padding:8px 12px;background:var(--ok-bg);color:var(--ok)"><?= Security::e($dayFlash[1]) ?></p><?php endif; ?>
+    <?php if ($isOffice): ?>
+      <form method="get" class="sh-histf" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:0 0 8px">
+        <label class="muted" style="font-size:11px">Desk · काउन्टर
+          <select name="dcdesk" style="display:block;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
+            <?php
+              $dcOpts = [];
+              foreach (CounterDesk::all() as $dc => $dd) { $dcOpts[(string) $dc] = CounterDesk::label((string) $dc); }
+              foreach ($dcBook['rows'] as $rk => $rr) { if (!isset($dcOpts[(string) $rk])) { $dcOpts[(string) $rk] = (string) $rr['label']; } }
+              foreach ($dcOpts as $ok => $ol): ?>
+              <option value="<?= Security::e($ok) ?>" <?= $ok === $dcKeyV ? 'selected' : '' ?>><?= Security::e($ol !== '' ? $ol : 'अनलाइन · Online') ?></option>
+            <?php endforeach; ?>
+          </select></label>
+        <label class="muted" style="font-size:11px">Date<input type="date" name="dcday" max="<?= Security::e(todayISO()) ?>" value="<?= Security::e($dcDayV) ?>" style="display:block;padding:7px 9px;border:1px solid var(--line);border-radius:8px"></label>
+        <button class="btn ghost" type="submit">Show</button>
+      </form>
+    <?php endif; ?>
+    <div class="sh-sum">
+      <div><small>टिकट · यात्रु</small><b><?= (int) $dcLine['tickets'] ?> · <?= (int) $dcLine['pax'] ?></b></div>
+      <div><small>नगद · Cash (register)</small><b><?= Security::e($dcM((float) $dcLine['cash'])) ?></b><?php if ($dcCur !== 'INR'): ?><small><?= Security::e($dcM($dcExpect, $dcCur)) ?></small><?php endif; ?></div>
+      <div><small>अनलाइन · Online (verified)</small><b><?= Security::e($dcM((float) $dcLine['online'])) ?></b></div>
+      <div><small>कमिसन · Commission</small><b><?= Security::e($dcM((float) $dcLine['commission'])) ?></b></div>
+      <div><small>बाँकी · Pending (pay at boarding)</small><b><?= Security::e($dcM((float) $dcLine['pending'])) ?></b></div>
+      <div><small>जम्मा (नेट) · Net</small><b><?= Security::e($dcM((float) $dcLine['net'])) ?></b></div>
+    </div>
+    <?php if ($dcDone !== null): ?>
+      <p class="muted" style="font-size:13px">✅ बुझाइसकियो <?= Security::e(substr((string) $dcDone['updated_at'], 0, 16)) ?> · <?= Security::e((string) ($dcDone['signed_name'] ?? '')) ?> · गनेको <?= Security::e($dcM((float) $dcDone['counted_cash'], (string) $dcDone['currency'])) ?> · फरक <?= Security::e($dcM((float) $dcDone['variance'], (string) $dcDone['currency'])) ?> — saving again corrects it.</p>
+    <?php endif; ?>
+    <form method="post">
+      <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= Security::csrfToken() ?>">
+      <input type="hidden" name="action" value="day_close">
+      <input type="hidden" name="dc_desk" value="<?= Security::e($dcKeyV) ?>">
+      <input type="hidden" name="dc_day" value="<?= Security::e($dcDayV) ?>">
+      <div class="sh-big">
+        <label>गनेको नगद · Counted cash (<?= Security::e(CounterDesk::SYMBOL[$dcCur] ?? $dcCur) ?>) — हुनुपर्ने <?= Security::e($dcM($dcExpect, $dcCur)) ?>
+          <input type="text" name="dc_counted" inputmode="decimal" autocomplete="off" required value="<?= $dcDone !== null ? Security::e(number_format((float) $dcDone['counted_cash'], 2, '.', '')) : '' ?>"></label>
+        <label>खर्च · Expenses paid from it
+          <input type="text" name="dc_exp" inputmode="decimal" autocomplete="off" value="<?= $dcDone !== null && (float) $dcDone['expenses'] > 0 ? Security::e(number_format((float) $dcDone['expenses'], 2, '.', '')) : '' ?>"></label>
+        <?php if ($dcCur === 'INR'): ?>
+        <label>NPR गनेको (optional)
+          <input type="text" name="dc_npr" inputmode="decimal" autocomplete="off" value="<?= $dcDone !== null && $dcDone['counted_npr'] !== null ? Security::e(number_format((float) $dcDone['counted_npr'], 2, '.', '')) : '' ?>"></label>
+        <?php endif; ?>
+      </div>
+      <div class="sh-note"><input type="text" name="dc_note" maxlength="255" placeholder="Note (optional) · टिप्पणी" value="<?= $dcDone !== null ? Security::e((string) ($dcDone['note'] ?? '')) : '' ?>"></div>
+      <div class="sh-big" style="margin-top:10px">
+        <label>सही: आफ्नो पूरा नाम · Sign: your full name
+          <input type="text" name="dc_sign" maxlength="120" minlength="3" required autocomplete="name" placeholder="<?= Security::e((string) ($admin['full_name'] ?? '')) ?>" style="font-size:16px;font-weight:600"></label>
+        <button type="submit" class="btn sh-go green">✔ हिसाब बुझाउने · Close the day</button>
+      </div>
+    </form>
+  </div>
 <?php endif; ?>
 
 <?php if (!$on): ?>

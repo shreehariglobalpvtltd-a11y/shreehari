@@ -294,7 +294,42 @@ if ($staffRow !== null) {
         'nprRate'        => Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6),
     ];
     // One agent list for every desk picker (counter mode, QuickBot, SmartBook) — 15 Oct 2026.
-    $boot['staff']['agents'] = AgentWallet::sellableAgents();
+    /* AG-4 (19 Nov 2026): an AGENT sells on its own code only - it gets no list
+       (14-counter.js then shows its own code, read-only); the server refuses
+       another code anyway. Staff, counter and office keep the full list. */
+    $boot['staff']['agents'] = Auth::isCounterAgent() ? [] : AgentWallet::sellableAgents();
+    // AG-3 (19 Nov 2026): staff_commission_off on = staff entries earn no commission (label only here)
+    $boot['staff']['staffNoComm'] = Settings::getBool('staff_commission_off', false);
+    // NP-1: the run this desk opens on ('toIndia' for a Nepal desk / Nepal agent branch)
+    $boot['staff']['desk']['direction'] = CounterDesk::direction($deskCode);
+    /* NP-3 (19 Nov 2026): the sales closing clock for THIS seller, today only,
+       so counter mode says 'बुकिङ बन्द · Booking closed 17:00' on the checkout
+       before Confirm (the server still judges every sale). route_code =>
+       {date, closesAt (unix s), label, reason}; empty when nothing applies. */
+    $boot['staff']['salesClock'] = (static function () use ($staffId): array {
+        $out = [];
+        try {
+            $channel = Boarding::salesChannel($staffId);
+            if ($channel === 'office') {
+                return [];
+            }
+            $today = todayISO();
+            $rows  = Database::fetchAll('SELECT id, route_code, from_city, to_city FROM routes WHERE is_active = 1');
+            foreach ($rows as $r) {
+                $code = (string) ($r['route_code'] ?? '');
+                if ($code === '') {
+                    continue;
+                }
+                $c = Boarding::clockClose($r, $today, $channel);
+                if ($c !== null) {
+                    $out[$code] = ['date' => $today, 'closesAt' => (int) $c['closesAt'], 'label' => (string) $c['label'], 'reason' => (string) $c['reason']];
+                }
+            }
+        } catch (Throwable $e) {
+            return [];
+        }
+        return $out;
+    })();
 }
 
 /* Home page (12 Sep 2026): the QuickBot card shows how many tickets the

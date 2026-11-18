@@ -39,7 +39,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $flash = ['bad', 'Changing the AI needs the Settings permission.'];
     } else {
         $before = ['budget' => AiMeter::budget(), 'cache' => Settings::getBool('ai_claude_cache_on', true),
-            'web' => Settings::getBool('ai_web_research_on', false), 'webMax' => Settings::getInt('ai_web_research_max_uses', 3)];
+            'web' => Settings::getBool('ai_web_research_on', false), 'webMax' => Settings::getInt('ai_web_research_max_uses', 3),
+            'staff' => Settings::getString('ai_staff_provider', 'anthropic'), 'staffModel' => Settings::getString('ai_staff_model', 'claude-haiku-5-5'),
+            'review' => Settings::getBool('ai_review_on', true), 'reviewUsd' => Settings::getString('ai_review_usd', '1.50'),
+            'reviewMonth' => Settings::getString('ai_review_month_usd', '45'), 'autolearn' => Settings::getBool('ai_review_autolearn', false)];
         $budget = round(max(0.0, min(500.0, (float) ($_POST['ai_daily_budget_usd'] ?? 0))), 2);
         $cache  = isset($_POST['ai_claude_cache_on']);
         // 14 Nov 2026: web research for the office and staff (never a customer).
@@ -49,8 +52,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         Settings::set('ai_claude_cache_on', $cache ? '1' : '0', 'bool', 'ai');
         Settings::set('ai_web_research_on', $web ? '1' : '0', 'bool', 'ai');
         Settings::set('ai_web_research_max_uses', (string) $webMax, 'int', 'ai');
+        /* 19 Nov 2026 (u8 AI-1): which brain answers office / agent turns first, and the
+           Claude night review switch + caps. Model ids are checked by shape only. */
+        $staff = in_array((string) ($_POST['ai_staff_provider'] ?? ''), ['anthropic', 'off'], true) ? (string) $_POST['ai_staff_provider'] : 'anthropic';
+        $staffModel = trim((string) ($_POST['ai_staff_model'] ?? ''));
+        $staffModel = preg_match('/^claude-[a-z0-9.\-]{3,50}$/', $staffModel) === 1 ? $staffModel : 'claude-haiku-5-5';
+        $review = isset($_POST['ai_review_on']);
+        $reviewUsd = round(max(0.0, min(10.0, (float) ($_POST['ai_review_usd'] ?? 1.5))), 2);
+        $reviewMonth = round(max(0.0, min(300.0, (float) ($_POST['ai_review_month_usd'] ?? 45))), 2);
+        $autolearn = isset($_POST['ai_review_autolearn']);
+        Settings::set('ai_staff_provider', $staff, 'string', 'ai');
+        Settings::set('ai_staff_model', $staffModel, 'string', 'ai');
+        Settings::set('ai_review_on', $review ? '1' : '0', 'bool', 'ai');
+        Settings::set('ai_review_usd', (string) $reviewUsd, 'string', 'ai');
+        Settings::set('ai_review_month_usd', (string) $reviewMonth, 'string', 'ai');
+        Settings::set('ai_review_autolearn', $autolearn ? '1' : '0', 'bool', 'ai');
         Logger::audit('ai.center_saved', 'settings', 'ai', $before,
-            ['budget' => $budget, 'cache' => $cache, 'web' => $web, 'webMax' => $webMax], 'AI Control Center');
+            ['budget' => $budget, 'cache' => $cache, 'web' => $web, 'webMax' => $webMax, 'staff' => $staff, 'staffModel' => $staffModel,
+             'review' => $review, 'reviewUsd' => $reviewUsd, 'reviewMonth' => $reviewMonth, 'autolearn' => $autolearn], 'AI Control Center');
         AiMeter::reset();
         $flash = ['ok', 'Saved. Daily ceiling: ' . ($budget > 0 ? '$' . number_format($budget, 2) : 'none')
             . ' · prompt cache ' . ($cache ? 'on' : 'off')
@@ -83,6 +102,24 @@ $budget  = AiMeter::budget();
 $cacheOn = Settings::getBool('ai_claude_cache_on', true);
 $webOn   = Settings::getBool('ai_web_research_on', false);
 $webMax  = max(1, min(10, Settings::getInt('ai_web_research_max_uses', 3)));
+
+/* 19 Nov 2026 (u8 AI-1): office / agent brain + Claude's night review of the closed day */
+require_once INCLUDE_PATH . '/aireview.php';
+$staffProv   = Settings::getString('ai_staff_provider', 'anthropic') === 'off' ? 'off' : 'anthropic';
+$staffModel  = Settings::getString('ai_staff_model', 'claude-haiku-5-5');
+$reviewOn    = AiReview::enabled();
+$reviewUsd   = AiReview::nightUsd();
+$reviewMonth = AiReview::monthUsd();
+$autolearn   = Settings::getBool('ai_review_autolearn', false);
+$reviews     = $q(static fn() => AiReview::history(14), []);
+$reviewSpent = $q(static fn() => AiReview::monthSpent(), 0.0);
+$lastReview  = null;
+foreach ($reviews as $rv) {
+    if ((string) $rv['status'] === 'ok' && is_array($rv['review'])) { $lastReview = $rv; break; }
+}
+$whoLabel = static fn(string $w): string => match ($w) {
+    'agents' => 'एजेन्ट · Agents', 'bot' => 'बोट · Bot', 'owner' => 'मालिक · Owner', default => 'अफिस · Office',
+};
 
 $byModel = $haveUsage ? $q(static fn() => Database::fetchAll(
     'SELECT provider, model, COUNT(*) AS n, SUM(ok) AS oks, SUM(in_tokens) AS tin, SUM(out_tokens) AS tout,
@@ -311,6 +348,31 @@ admin_header('AI Control Center', 'ai-center');
                value="<?= $e($webMax) ?>" <?= $canEdit ? '' : 'disabled' ?>>
         <span class="ac-note" style="margin:0;font-weight:400">1 to 10. Three is enough for most questions.</span>
       </label>
+      <label>अफिस र एजेन्टको AI · Brain for office &amp; agent turns
+        <select name="ai_staff_provider" <?= $canEdit ? '' : 'disabled' ?> style="font-size:16px;padding:9px 10px;border:1px solid var(--line,#e5e9f0);border-radius:10px;max-width:320px;background:var(--card,#fff);color:inherit">
+          <option value="anthropic" <?= $staffProv === 'anthropic' ? 'selected' : '' ?>>Claude first (paid, counted in the ceiling)</option>
+          <option value="off" <?= $staffProv === 'off' ? 'selected' : '' ?>>Same order as customers</option>
+        </select>
+        <span class="ac-note" style="margin:0;font-weight:400">Office, agent and counter turns use the selling and lookup tools. With Claude first they
+          get the model below; when the daily ceiling is reached the next brain (Gemini) answers. Customers keep their own order.</span>
+      </label>
+      <label>Claude model for office &amp; agents
+        <input type="text" name="ai_staff_model" value="<?= $e($staffModel) ?>" <?= $canEdit ? '' : 'disabled' ?>
+               style="font-size:16px;padding:10px 12px;border:1px solid var(--line,#e5e9f0);border-radius:10px;width:100%;max-width:260px;background:var(--card,#fff);color:inherit">
+      </label>
+      <label class="chk"><input type="checkbox" name="ai_review_on" <?= $reviewOn ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
+        <span>राति समीक्षा · Claude night review<br><span class="ac-note" style="margin:0">At 00:00 Claude reads the closed day's figures
+          (no passenger names, phones or chats) and writes what went wrong, what the bot should learn and advice for the office.</span></span></label>
+      <label>Most for one night's review (US dollars)
+        <input type="number" name="ai_review_usd" min="0" max="10" step="0.1" inputmode="decimal" value="<?= $e(rtrim(rtrim(number_format($reviewUsd, 2, '.', ''), '0'), '.')) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+      </label>
+      <label>Most for the reviews in one month (US dollars)
+        <input type="number" name="ai_review_month_usd" min="0" max="300" step="1" inputmode="decimal" value="<?= $e(rtrim(rtrim(number_format($reviewMonth, 2, '.', ''), '0'), '.')) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+        <span class="ac-note" style="margin:0;font-weight:400">Spent this month: <?= $money((float) $reviewSpent) ?>. A night that would go over is skipped and says so.</span>
+      </label>
+      <label class="chk"><input type="checkbox" name="ai_review_autolearn" <?= $autolearn ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
+        <span>Publish the review's answers at once<br><span class="ac-note" style="margin:0">Off: they wait as drafts on
+          <a href="/admin/ai-knowledge.php">Knowledge</a> until the office publishes them. Answers with a fare, time or count are never kept.</span></span></label>
       <?php if ($canEdit): ?><div><button class="btn btn-primary" type="submit">Save</button></div>
       <?php else: ?><p class="ac-note">Changing these needs the Settings permission.</p><?php endif; ?>
     </form>
@@ -321,6 +383,58 @@ admin_header('AI Control Center', 'ai-center');
       <a href="/admin/wa-inbox.php">Conversations</a>
       <a href="/admin/ledger-check.php">Ledger check</a>
     </div>
+  </div>
+
+  <div class="panel wide" id="acReview">
+    <h2>🌙 हिजोको समीक्षा · Last night's review</h2>
+    <?php if ($lastReview === null): ?>
+      <p class="ac-note"><?= $reviewOn
+          ? 'No review yet. Claude reviews each closed day at 00:00 IST (cron/ai-review.php) once an Anthropic key is set.'
+          : 'The night review is switched off.' ?></p>
+    <?php else: $rv = $lastReview['review']; ?>
+      <p class="ac-note"><?= $e(date('l j M Y', (int) strtotime((string) $lastReview['day']))) ?> · <?= $e($lastReview['model']) ?>
+        · <?= $money((float) $lastReview['cost_usd']) ?> · <?= (int) $lastReview['kb_saved'] ?> knowledge answers
+        <?= (int) $lastReview['kb_published'] > 0 ? '(' . (int) $lastReview['kb_published'] . ' published)' : '(drafts — publish on Knowledge)' ?></p>
+      <?php foreach (preg_split('/\R/u', (string) ($rv['summary_ne'] ?? '')) ?: [] as $l): if (trim($l) === '') { continue; } ?>
+        <div class="ac-log"><b><?= $e(trim($l)) ?></b></div>
+      <?php endforeach; ?>
+      <?php if ((string) ($rv['summary_en'] ?? '') !== ''): ?><p class="ac-note" style="margin-top:6px"><?= $e($rv['summary_en']) ?></p><?php endif; ?>
+      <?php if (!empty($rv['went_wrong'])): ?>
+        <p class="ac-role">के बिग्रियो · What went wrong</p>
+        <?php foreach ($rv['went_wrong'] as $w): ?>
+          <div class="ac-log"><span class="lv"><?= $e(ucfirst((string) $w['severity'])) ?></span><?= $e($w['what_ne']) ?>
+            <small style="display:block;color:var(--mut,#6b7688)"><?= $e($w['what_en']) ?> — <?= $e($w['evidence']) ?></small></div>
+        <?php endforeach; ?>
+      <?php endif; ?>
+      <?php if (!empty($rv['recommendations'])): ?>
+        <p class="ac-role">सुझाव · Recommendations</p>
+        <?php foreach ($rv['recommendations'] as $r): ?>
+          <div class="ac-log"><b><?= $e($whoLabel((string) $r['who'])) ?>:</b> <?= $e($r['ne']) ?>
+            <small style="display:block;color:var(--mut,#6b7688)"><?= $e($r['en']) ?></small></div>
+        <?php endforeach; ?>
+      <?php endif; ?>
+      <?php if (!empty($rv['anomalies'])): ?>
+        <p class="ac-role">अनौठो · Anomalies</p>
+        <?php foreach ($rv['anomalies'] as $a): ?>
+          <div class="ac-log"><?= $e($a['what_ne']) ?> <small style="display:block;color:var(--mut,#6b7688)"><?= $e($a['what_en']) ?> — <?= $e($a['evidence']) ?></small></div>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    <?php endif; ?>
+    <?php if ($reviews !== []): ?>
+      <p class="ac-role">इतिहास · History <em>· 14 nights</em></p>
+      <div class="dt-wrap"><table class="dt card-table" data-ac="review-history">
+        <thead><tr><th>दिन · Day</th><th>अवस्था · Status</th><th class="num">Cost</th><th class="num">KB</th><th>Note</th></tr></thead>
+        <tbody>
+        <?php foreach ($reviews as $rv): ?>
+          <tr><td data-label="Day"><?= $e(date('D j M', (int) strtotime((string) $rv['day']))) ?></td>
+            <td data-label="Status"><?= $e($rv['status']) ?></td>
+            <td data-label="Cost" class="num"><?= $money((float) $rv['cost_usd']) ?></td>
+            <td data-label="KB" class="num"><?= (int) $rv['kb_saved'] ?></td>
+            <td data-label="Note" class="wrap" style="overflow-wrap:anywhere"><?= $e((string) $rv['note']) ?></td></tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table></div>
+    <?php endif; ?>
   </div>
 
   <div class="panel wide">

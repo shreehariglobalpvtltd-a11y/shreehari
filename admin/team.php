@@ -97,7 +97,9 @@ $payWithdrawal = static function (int $reqId, int $by, string $ref, string $note
         AgentWallet::decidePayoutRequest($reqId, 'paid', $by, $note, $lid);
         return $lid;
     }, 1);
-    AgentPro::tellMember($aid, '💸 ' . inr((float) $req['amount']) . ' पठाइयो / paid to you. Ref ' . AgentWallet::voucherFor($lid));
+    // 19 Nov 2026 (u5 AG-2): the approved template shg_withdraw_update when it exists, else the same WhatsApp line
+    AgentPro::tellPayout($aid, 'paid', (float) $req['amount'], $ref,
+        '💸 ' . inr((float) $req['amount']) . ' पठाइयो / paid to you. Ref ' . $ref . ' · ' . AgentWallet::voucherFor($lid));
     return $lid;
 };
 
@@ -740,7 +742,13 @@ $tabLabel = ['approvals' => ['Approvals', $counts['applications']], 'agents' => 
         <div class="tp-req" style="flex-wrap:wrap">
           <span class="amt"><?= $e(inr((float) $w['amount'])) ?></span>
           <span class="who"><b><?= $e($w['agent_name']) ?> <span class="code ap-mono" style="font-size:12px"><?= $e(AgentWallet::agentCodeLabel((int) $w['agent_admin_id'])) ?></span></b>
-            <small>To: <?= $e(trim(($pf['payout_method'] ?? '') . ' ' . ($pf['payout_account'] ?? '')) ?: 'no payout details') ?> · due <?= $e(inr($due)) ?> · <?= $e(timeAgo((string) $w['created_at'])) ?></small></span>
+            <?php /* 19 Nov 2026 (u5 AG-2): where the member ASKED to be paid (snapshot on the request), the QR they sent, and whether the office checked the details */
+                  $wTo = trim((string) ($w['pay_to'] ?? '')); $wM = (string) ($w['pay_method'] ?? ''); $wQr = trim((string) ($w['pay_qr_path'] ?? '')) !== ''; ?>
+            <small>Pay to · पठाउने: <b><?= $e($wTo !== '' ? $wTo : (trim(($pf['payout_method'] ?? '') . ' ' . ($pf['payout_account'] ?? '')) ?: 'no payout details — ask the member')) ?></b>
+              <?php if ($wQr): ?> · <a href="/api/agentpro.php?a=payout_qr&amp;req=<?= (int) $w['id'] ?>" target="_blank" rel="noopener">🖼 QR</a><?php endif; ?>
+              <?php if ($wM === 'bank' && $canPay): ?> · <a href="/admin/team-member.php?id=<?= (int) $w['agent_admin_id'] ?>#bank">full account no.</a><?php endif; ?>
+              · <?= AgentWallet::payoutVerified((int) $w['agent_admin_id']) && Settings::getBool('agent_payout_verify_required', false) ? '✅ details checked' : (Settings::getBool('agent_payout_verify_required', false) ? '⚠ details not checked' : 'check the details before paying') ?>
+              · due <?= $e(inr($due)) ?> · <?= $e(timeAgo((string) $w['created_at'])) ?></small></span>
           <?php if ($canPay): ?>
           <form method="post"><?= Security::csrfField() ?><input type="hidden" name="req" value="<?= (int) $w['id'] ?>">
             <input type="text" name="ref" placeholder="UPI / bank ref (needed)" minlength="5" maxlength="60"><button class="btn ok sm" name="action" value="pay" type="submit" onclick="var r=this.form.ref;if(r.value.trim().length<5){r.focus();alert('Type the payment reference first (UPI / bank ref).');return false;}return confirm('Mark this withdrawal as PAID? It is written to the ledger at once.')">✓ Paid</button>

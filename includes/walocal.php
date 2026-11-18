@@ -1621,6 +1621,18 @@ final class WaLocal
             $lines[] = '🚌 ' . trim((string) $s['from_city']) . ' → ' . trim((string) $s['to_city']) . ' ' . self::clock((string) $s['dep_time']) . ': '
                      . self::t($lang, $pax . ' यात्रु · ' . count($rows) . ' बुकिङ', $pax . ' यात्री · ' . count($rows) . ' बुकिंग', $pax . ' passengers · ' . count($rows) . ' bookings');
             if ($scope === null) {
+                /* 19 Nov 2026 (AI-3): cash / online / still to collect on this bus,
+                   from the chalani's own rule (ChalaniPng::departureMoney) */
+                try {
+                    require_once __DIR__ . '/chalanipng.php';
+                    $dmT = ChalaniPng::departureMoney($sid)['totals'];
+                    if ((int) $dmT['passengers'] > 0) {
+                        $lines[] = '   💰 नगद ' . inr((float) $dmT['cash']) . ' · अनलाइन ' . inr((float) $dmT['online'])
+                                 . ' · बोर्डिङमा उठाउनु ' . (int) $dmT['boardDueN'] . ' जना ' . inr((float) $dmT['boardDue']);
+                    }
+                } catch (Throwable $e) {
+                    // the count above still answers
+                }
                 // The office: the chalani picture of the first bus asked for, keyed links for the rest.
                 $exp = time() + 2 * 86400;
                 $url = appUrl('download-chalan.php?' . http_build_query([
@@ -1694,6 +1706,20 @@ final class WaLocal
     /** @return array{name:string, phone:string} the driver on the schedule, else the route's crew. */
     private static function crewFor(int $scheduleId, int $driverId, string $crewName, string $crewPhone): array
     {
+        /* 19 Nov 2026 (WA-5): one answer for "who drives this bus" - the trip's
+           driver, else the bus's default driver (buses.default_driver_id), else
+           the route crew - DriverList::crewFor, as the automatic list uses. */
+        if ($scheduleId > 0) {
+            try {
+                require_once __DIR__ . '/driverlist.php';
+                $c = DriverList::crewFor($scheduleId);
+                if ((string) $c['phone'] !== '' || (string) $c['name'] !== '') {
+                    return ['name' => trim((string) $c['name']), 'phone' => self::prettyPhone((string) $c['phone'])];
+                }
+            } catch (Throwable $e) {
+                // fall through to the old lookup
+            }
+        }
         if ($driverId > 0) {
             $d = Database::fetch('SELECT full_name, phone FROM drivers WHERE id = :i', ['i' => $driverId]);
             if ($d !== null) {

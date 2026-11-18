@@ -13,6 +13,15 @@
  *                                           (same access as a card side; signed side = 'pdf')
  *
  *   &dl=1  download instead of showing
+ *
+ *   19 Nov 2026 (CD-1) — the same, with long names and the three designs:
+ *   ?member=<id>&kind=id|vc&side=front|back&variant=royal|modern|heritage|portrait
+ *       &format=png|svg|pdf  (&dpi=300 or &print=1 = exactly 300 dpi)
+ *       &sheet=a4            A4 print sheet: 4 ID cards (kind=id) or 10 visiting
+ *                            cards (kind=vc), fronts then mirrored backs, crop marks
+ *                            (signed side = 'sheet-id' / 'sheet-vc')
+ *   PNGs come from a cache (ApCard::cachedPng) keyed on member + side + design + a
+ *   hash of what is drawn; after the answer the member's other designs are drawn.
  */
 declare(strict_types=1);
 define('SHG_APP', true);
@@ -35,11 +44,26 @@ if (!AgentPro::available()) {
     $deny(404, 'Not installed.');
 }
 
-$side = (string) ($_GET['s'] ?? 'id-front');
-$fmt  = ($_GET['f'] ?? 'png') === 'svg' ? 'svg' : 'png';
-$id   = (int) ($_GET['m'] ?? 0);
-$exp  = (int) ($_GET['e'] ?? 0);
-$key  = (string) ($_GET['k'] ?? '');
+/* 19 Nov 2026 (CD-1): the long names too — ?member=&kind=id|vc&side=front|back
+   &variant=royal|modern|heritage|portrait&format=png|pdf|svg&sheet=a4 (A4 print sheet:
+   4 ID cards / 10 visiting cards, fronts then mirrored backs, crop marks). */
+$kindQ = (string) ($_GET['kind'] ?? '');
+$faceQ = (string) ($_GET['side'] ?? '');
+$side  = (string) ($_GET['s'] ?? (in_array($kindQ, ['id', 'vc'], true) ? $kindQ . '-' . ($faceQ === 'back' ? 'back' : 'front') : 'id-front'));
+$fmtQ  = strtolower((string) ($_GET['format'] ?? ($_GET['f'] ?? 'png')));
+$fmt   = $fmtQ === 'svg' ? 'svg' : 'png';
+$id    = (int) ($_GET['m'] ?? ($_GET['member'] ?? 0));
+$exp   = (int) ($_GET['e'] ?? 0);
+$key   = (string) ($_GET['k'] ?? '');
+$variant = strtolower(trim((string) ($_GET['variant'] ?? '')));
+if (!isset(ApCard::ID_STYLES[$variant])) {
+    $variant = '';                                       // '' = the office's default design
+}
+$sheet = strtolower((string) ($_GET['sheet'] ?? '')) === 'a4'
+    ? ((str_starts_with($side, 'vc-') || $kindQ === 'vc') ? 'sheet-vc' : 'sheet-id') : '';
+if ($sheet === '' && $fmtQ === 'pdf' && !isset($_GET['pdf'])) {
+    $_GET['pdf'] = '1';                                  // format=pdf = the one-page PDF with all four faces
+}
 
 /* ---- the pay-in QR ---- */
 if (isset($_GET['pay'])) {
@@ -71,8 +95,10 @@ if (isset($_GET['pay'])) {
     exit;
 }
 
-$wantPdf = !empty($_GET['pdf']);
-if ($wantPdf) {
+$wantPdf = !empty($_GET['pdf']) || $sheet !== '';
+if ($sheet !== '') {
+    $side = $sheet;                                     // 'sheet-id' / 'sheet-vc'
+} elseif ($wantPdf) {
     $side = 'pdf';                                      // what a signed link was signed for
 } elseif (!in_array($side, ApCard::SIDES, true)) {
     $deny(404, 'Unknown card side.');
@@ -112,7 +138,35 @@ if ($member === null) {
     $deny(404, 'No such member.');
 }
 
-$name  = 'shg-' . strtolower(preg_replace('/[^A-Za-z0-9]+/', '-', (string) ($member['idNo'] ?: $member['name'])) ?? 'card') . '-' . ($wantPdf ? 'cards' : $side);
+$name  = 'shg-' . strtolower(preg_replace('/[^A-Za-z0-9]+/', '-', (string) ($member['idNo'] ?: $member['name'])) ?? 'card') . '-'
+    . ($sheet !== '' ? ($sheet === 'sheet-vc' ? 'visiting-cards-a4' : 'id-cards-a4') : ($wantPdf ? 'cards' : $side))
+    . ($variant !== '' ? '-' . $variant : '');
+
+/* After the answer has gone out: draw the member's other designs into the cache,
+   so the office's next print / download is instant (19 Nov 2026). */
+$warm = static function () use ($member): void {
+    if (!Settings::getBool('ap_card_prerender', true)) {
+        return;
+    }
+    if (!function_exists('fastcgi_finish_request')) {
+        return;                                         // CLI / dev server: never make the viewer wait
+    }
+    // Free the session lock BEFORE the slow part: bootstrap starts a file session on
+    // every request, and a held lock would stall this browser's other card images and
+    // admin pages for the whole warm-up (fix pass, 19 Nov 2026).
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+    ignore_user_abort(true);
+    fastcgi_finish_request();
+    @set_time_limit(120);
+    try {
+        ApCard::prerender($member);
+    } catch (Throwable $e) {
+        // a cache warm-up never fails a request
+    }
+};
+
 if ($wantPdf) {
     try {
         Security::requireRateLimit('apcard_pdf', Security::clientIp(), 20, 300);     // four 300 dpi renders each
@@ -120,16 +174,16 @@ if ($wantPdf) {
         $deny(429, 'Too many requests.');
     }
     @set_time_limit(60);
-    $bin = ApCard::pdf($member);
+    $bin = $sheet !== '' ? ApCard::sheetPdf($member, $sheet === 'sheet-vc' ? 'vc' : 'id', $variant) : ApCard::pdf($member, $variant);
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, no-store');
     header('Content-Type: application/pdf');
     header('Content-Disposition: ' . (!empty($_GET['dl']) ? 'attachment' : 'inline') . '; filename="' . $name . '.pdf"');
     header('Content-Length: ' . strlen($bin));
     echo $bin;
+    $warm();
     exit;
 }
-$scene = ApCard::scene($member, $side);
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=300');
 if (!empty($_GET['dl'])) {
@@ -137,9 +191,10 @@ if (!empty($_GET['dl'])) {
 }
 if ($fmt === 'svg') {
     header('Content-Type: image/svg+xml; charset=utf-8');
-    echo ApCard::svg($scene, true, rtrim(APP_URL, '/'));
+    echo ApCard::svg(ApCard::scene($member, $side, $variant), true, rtrim(APP_URL, '/'));
     exit;
 }
 header('Content-Type: image/png');
-$scale = isset($_GET['print']) ? 300 / 25.4 / 10 : 2.0;     // print = exactly 300 dpi
-echo ApCard::png($scene, $scale);
+$scale = (isset($_GET['print']) || (int) ($_GET['dpi'] ?? 0) === 300) ? 300 / 25.4 / 10 : 2.0;     // print = exactly 300 dpi
+echo ApCard::cachedPng($member, $side, $variant, $scale);
+$warm();

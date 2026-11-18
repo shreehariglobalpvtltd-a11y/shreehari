@@ -37,7 +37,9 @@ declare(strict_types=1);
 
 defined('SHG_APP') || define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
-require_once __DIR__ . '/config.php';
+if (is_file(__DIR__ . '/config.php')) {      // the server's own file; api.php defaults the constants without it
+    require_once __DIR__ . '/config.php';
+}
 require_once __DIR__ . '/api.php';
 
 /* 15 Oct 2026 (2F-queue): cron/wa-inbound.php loads this file only for its
@@ -557,43 +559,7 @@ function wh_process_inbound(array $msg): void
         $reply['text'] = $heard . "\n" . $reply['text'];
     }
 
-    $media = $reply['media'];
-    /* Tappable choices first (5 Oct 2026). $reply['text'] always carries the
-       same question with numbered answers, so when Meta refuses the buttons
-       the plain path below still asks it. */
-    $ui = is_array($reply['ui'] ?? null) ? $reply['ui'] : null;
-    $r  = null;
-    if ($ui !== null && Settings::getBool('wa_buttons_on', true)) {
-        $uiBody = trim((string) ($ui['body'] ?? '')) !== '' ? (string) $ui['body'] : $reply['text'];
-        if ($heard !== '') {
-            $uiBody = $heard . "\n" . $uiBody;
-        }
-        $isList = ($ui['kind'] ?? '') === 'list';
-        if (mb_strlen($uiBody) <= 1024) {
-            if ($isList && $media !== null && $media !== '') {
-                sendWhatsAppImage($from, $media);          // a list cannot carry a picture
-            }
-            $r = sendWhatsAppInteractive($from, $uiBody, $ui, $isList ? null : $media);
-            if (!$r['success'] && !$isList && $media !== null && $media !== '') {
-                $r = sendWhatsAppInteractive($from, $uiBody, $ui);   // the picture was the problem
-            }
-        }
-    }
-    if ($r !== null && $r['success']) {
-        // sent with buttons
-    } elseif ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {
-        $r = sendWhatsAppImage($from, $media, $reply['text']);
-        if (!$r['success']) {
-            // The image could not go (e.g. URL not reachable by Meta) — the
-            // text still carries every fact the passenger asked for.
-            $r = sendWhatsAppText($from, $reply['text']);
-        }
-    } else {
-        $r = sendWhatsAppText($from, $reply['text']);
-        if ($media !== null && $media !== '' && $r['success']) {
-            sendWhatsAppImage($from, $media);
-        }
-    }
+    $r = wh_send_reply($from, $reply, $heard);
 
     Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
         'provider' => 'cloud_api',
@@ -622,6 +588,96 @@ function wh_process_inbound(array $msg): void
     } catch (Throwable $e) {
         Logger::exception($e, 'whatsapp');
     }
+}
+
+/**
+ * Send one bot reply on the Meta number: buttons / list first, a PDF as a
+ * WhatsApp DOCUMENT (WA-4), a picture with the words as caption, else text.
+ * Split out of wh_process_inbound (19 Nov 2026) so tests can drive it with
+ * $GLOBALS['WA_GRAPH_HOOK']. Returns the main send's result.
+ *
+ * @param array{text: string, media?: ?string, ui?: mixed} $reply
+ * @return array{success: bool, message_id: string, error: string}
+ */
+function wh_send_reply(string $from, array $reply, string $heard = ''): array
+{
+    $reply['media'] = $reply['media'] ?? null;
+    $media = $reply['media'];
+    /* WA-4: the agent statement's PDF travels beside the reply (ApWa::$lastDocument),
+       never as its 'media' - other reply paths would send it as a picture. */
+    if (class_exists('ApWa', false)) {
+        $apDoc = ApWa::$lastDocument;
+        ApWa::$lastDocument = null;
+        if (($media === null || $media === '') && is_string($apDoc) && $apDoc !== ''
+            && Settings::getBool('wa_reply_pdf_doc_on', true)) {
+            $media = $apDoc;
+        }
+    }
+    /* Tappable choices first (5 Oct 2026). $reply['text'] always carries the
+       same question with numbered answers, so when Meta refuses the buttons
+       the plain path below still asks it. */
+    /* 19 Nov 2026 (WA-4): a PDF (the agent's statement, download-statement.php,
+       a chalani) arrives as a WhatsApp DOCUMENT - the picture path below
+       cannot carry a PDF, so it only ever went as a link. */
+    $isPdf = $media !== null && $media !== '' && Settings::getBool('wa_reply_pdf_doc_on', true)
+          && preg_match('#\.pdf(\?|$)|[?&]f=[^&]*\.pdf|download-statement\.php#i', $media) === 1;
+    $fn = 'statement.pdf';
+    if ($isPdf) {
+        $fn = basename((string) parse_url($media, PHP_URL_PATH));
+        parse_str((string) parse_url($media, PHP_URL_QUERY), $mq);
+        if (isset($mq['f']) && is_string($mq['f']) && preg_match('/\.pdf$/i', $mq['f']) === 1) {
+            $fn = basename($mq['f']);
+        }
+        if (preg_match('/\.pdf$/i', $fn) !== 1) {
+            $fn = 'statement.pdf';
+        }
+    }
+    $ui = is_array($reply['ui'] ?? null) ? $reply['ui'] : null;
+    $r  = null;
+    if ($ui !== null && Settings::getBool('wa_buttons_on', true)) {
+        $uiBody = trim((string) ($ui['body'] ?? '')) !== '' ? (string) $ui['body'] : $reply['text'];
+        if ($heard !== '') {
+            $uiBody = $heard . "\n" . $uiBody;
+        }
+        $isList = ($ui['kind'] ?? '') === 'list';
+        if (mb_strlen($uiBody) <= 1024) {
+            if ($isList && $media !== null && $media !== '' && !$isPdf) {
+                sendWhatsAppImage($from, $media);          // a list cannot carry a picture
+            }
+            $r = sendWhatsAppInteractive($from, $uiBody, $ui, $isList || $isPdf ? null : $media);
+            if ($r['success'] && $isPdf) {
+                sendWhatsAppDocument($from, $media, $fn);
+            }
+            if (!$r['success'] && !$isList && !$isPdf && $media !== null && $media !== '') {
+                $r = sendWhatsAppInteractive($from, $uiBody, $ui);   // the picture was the problem
+            }
+        }
+    }
+    if ($r !== null && $r['success']) {
+        // sent with buttons
+    } elseif ($isPdf) {
+        /* The words (with the PDF link) go first as their own message, the
+           document after it: if Meta later cannot fetch the PDF (an async
+           failure), the agent still has the figures and the link - a caption
+           would have failed together with the document. */
+        $r = sendWhatsAppText($from, $reply['text']);
+        if ($r['success']) {
+            sendWhatsAppDocument($from, $media, $fn);
+        }
+    } elseif ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {
+        $r = sendWhatsAppImage($from, $media, $reply['text']);
+        if (!$r['success']) {
+            // The image could not go (e.g. URL not reachable by Meta) — the
+            // text still carries every fact the passenger asked for.
+            $r = sendWhatsAppText($from, $reply['text']);
+        }
+    } else {
+        $r = sendWhatsAppText($from, $reply['text']);
+        if ($media !== null && $media !== '' && $r['success']) {
+            sendWhatsAppImage($from, $media);
+        }
+    }
+    return $r;
 }
 
 try {

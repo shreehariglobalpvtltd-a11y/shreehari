@@ -41,6 +41,7 @@ try {
        number's session. This ends the server session too. No number needed. */
     if ($action === 'logout') {
         unset($_SESSION['shg_cust_otp']);   // CustomerProfile's "code proven" mark
+        // 19 Nov 2026 (u7): Auth::logoutUser() below also ends this phone's "stay signed in" (CustomerProfile::forget)
         Auth::forgetOwnPnrs();              // "Not you?" — this browser's own tickets go too (8 Oct 2026)
         Auth::logoutUser();
         Response::success(['signedOut' => true], 'Signed out.');

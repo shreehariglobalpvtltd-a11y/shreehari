@@ -341,6 +341,8 @@ $rows = Database::fetchAll(
             (SELECT ref FROM agent_applications ap WHERE ap.admin_id = a.id ORDER BY ap.id DESC LIMIT 1) AS app_ref,
             (SELECT COUNT(*) FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS sales,
             (SELECT COUNT(*) FROM bookings b WHERE b.sold_by_admin_id = a.id) AS sales_all,
+            (SELECT COALESCE(SUM(GREATEST(1, COALESCE((SELECT SUM(l.seat_count) FROM booking_legs l WHERE l.booking_id = b.id AND l.leg_type = 'outbound'), 0))), 0)
+               FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS pax,
             (SELECT COALESCE(SUM(b.total_amount), 0) FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS revenue,
             (SELECT MAX(b.created_at) FROM bookings b WHERE b.sold_by_admin_id = a.id) AS last_sale
        FROM admins a
@@ -554,7 +556,7 @@ admin_header('Agents & Organization Hub', 'agents');
     <thead><tr>
       <th style="width:34px;text-align:center"><input type="checkbox" id="bulkAllAgents" title="Select all" style="width:16px;height:16px;cursor:pointer"></th>
       <th data-type="num">#</th><th>Type</th><th>Code</th><th>Name / Affiliation</th><th>Contact</th><th>WhatsApp</th>
-      <th data-type="num">Wallet ₹</th><th data-type="num">Commission</th><th data-type="num">Sales</th><th>Status</th><th data-nosort>Actions</th>
+      <th data-type="num">Wallet ₹</th><th data-type="num">प्रति यात्रु ₹</th><th data-type="num">Sales · जना</th><th>Status</th><th data-nosort>Actions</th>
     </tr></thead>
     <tbody>
     <?php if ($tableRows === []): ?>
@@ -590,7 +592,7 @@ admin_header('Agents & Organization Hub', 'agents');
         <td class="mono"><?= $waDigits !== '' ? '<a href="https://wa.me/' . $e($waDigits) . '" target="_blank" rel="noopener" title="Open WhatsApp chat">💬 ' . $e($r['wa']) . '</a>' : '<span class="muted">—</span>' ?></td>
         <td class="num" data-sort="<?= $r['comm_due'] ?>"><b>₹<?= number_format($r['comm_due']) ?></b><div class="muted" style="font-size:11px">cash ₹<?= number_format($r['cash_bal']) ?></div></td>
         <td class="num" data-sort="<?= (float) $r['rate_sort'] ?>"><b><?= $e($r['rate']) ?></b><div class="muted" style="font-size:11px"><?= $e($r['rate_note']) ?></div></td>
-        <td class="num" data-sort="<?= (int) $r['sales'] ?>"><b><?= (int) $r['sales'] ?></b><div class="muted" style="font-size:11px">₹<?= number_format((float) $r['revenue']) ?></div></td>
+        <td class="num" data-sort="<?= (int) ($r['pax'] ?? 0) ?>"><b><?= (int) ($r['pax'] ?? 0) ?> जना</b><div class="muted" style="font-size:11px"><?= (int) $r['sales'] ?> tickets · ₹<?= number_format((float) $r['revenue']) ?></div></td>
         <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?></td>
         <td><span class="dt-acts">
           <button type="button" class="btn ghost" onclick="openIdModal('<?= $e($appRef) ?>','<?= $e($r['full_name'] ?: $r['username']) ?>','<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>','<?= $e($r['code']) ?>','<?= $e($r['phone']) ?>','<?= $e($waDigits) ?>','<?= $e($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>')" title="One-Tap ID Card &amp; Agreement Preview">🪪 ID Card</button>
@@ -619,7 +621,7 @@ admin_header('Agents & Organization Hub', 'agents');
           <div class="kv"><label>City / Counter · Address</label><b><?= $e($r['counter_name'] ?: '—') ?><br><?= $e($r['address'] ?: '—') ?></b></div>
           <div class="kv"><label>Document</label><b><?= $doc !== '' ? $e($doc) : '—' ?></b></div>
           <div class="kv"><label>Commission Rate</label><b><?= $e($r['rate']) ?> <span class="muted">(<?= $e($r['rate_note']) ?>)</span></b></div>
-          <div class="kv"><label>Sales &amp; Revenue</label><b><?= (int) $r['sales'] ?> / <?= (int) $r['sales_all'] ?> sold · ₹<?= number_format((float) $r['revenue']) ?></b></div>
+          <div class="kv"><label>Sales &amp; Revenue</label><b><?= (int) $r['sales'] ?> / <?= (int) $r['sales_all'] ?> sold · <?= (int) ($r['pax'] ?? 0) ?> जना · ₹<?= number_format((float) $r['revenue']) ?></b></div>
           <div class="kv"><label>Wallet Balances</label><b>Commission Due: ₹<?= number_format($r['comm_due']) ?> · Cash Held: ₹<?= number_format($r['cash_bal']) ?></b></div>
           <div class="kv"><label>Daily Quota · Cash Limit</label><b><?= (int) ($r['daily_booking_limit'] ?? 0) ? (int)$r['daily_booking_limit'] . ' seats/day' : 'Unlimited seats' ?> · ₹<?= number_format((float) ($r['cash_limit'] ?? 0)) ?></b></div>
           <div class="kv"><label>Joined Date</label><b><?= $e($r['joined_on'] ?: substr((string) $r['created_at'], 0, 10)) ?></b></div>

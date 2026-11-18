@@ -87,6 +87,15 @@ final class WaPayProof
                 . "कुन बुकिङको लागि हो? बुकिङ नं. (जस्तै SHG-2026-00123) पठाउनुहोस्।\n"
                 . 'Which booking is this for? Please send the booking number.';
         }
+        /* 19 Nov 2026 (u9, owner's blueprint "duplicate UTR detection"): a screenshot whose UTR is already on
+           ANOTHER booking is refused here - it never reaches the verify queue as fresh proof (where it would also
+           stop the seat's expiry). The office gets a bell with both PNRs; the passenger is told without the other
+           PNR. wa_pay_dup_utr_block = 0 lets it through as before (the Payments page still flags "UTR also on"). */
+        $other = self::dupBlockOn() ? self::utrUsedElsewhere($read['utr'], (int) $match['id']) : '';
+        if ($other !== '') {
+            self::noteDuplicate((string) $match['pnr'], (int) $match['id'], $read['utr'], $other, 'whatsapp_screenshot');
+            return self::duplicateReply($tail, 'ne');
+        }
 
         try {
             if (!class_exists('BookingService')) {
@@ -347,6 +356,13 @@ final class WaPayProof
         $pnr = $match !== null ? (string) $match['pnr'] : (string) $recent['pnr'];
         $total = $match !== null ? (float) $match['total'] : (float) $recent['total_amount'];
         $kind = $match !== null ? 'waiting' : ((int) $recent['is_cod'] === 1 ? 'cod' : 'notwaiting');
+        // 19 Nov 2026 (u9): a typed reference already used on ANOTHER booking is refused before the preview
+        $bidDup = $match !== null ? (int) $match['id'] : (int) $recent['id'];
+        $other = self::dupBlockOn() ? self::utrUsedElsewhere($utr, $bidDup) : '';
+        if ($other !== '') {
+            self::noteDuplicate($pnr, $bidDup, $utr, $other, 'whatsapp_text');
+            return self::duplicateReply($tail, $lang);
+        }
         self::savePending($local, ['pnr' => $pnr, 'utr' => $utr, 'amount' => $amount, 'total' => $total, 'kind' => $kind, 'lang' => $lang, 'text' => mb_substr($text, 0, 300)]);
         $what = $pnr . ' · UTR …' . $tail . ($amount !== null ? ' · ' . inr($amount) : '') . ' (' . inr($total) . ')';
         return $t("🧾 " . $what . "\nयो भुक्तानी नम्बर अफिसलाई जाँच्न पठाउने? *ho* लेख्नुहोस् (नभए *no*)।\nअहिले केही पक्का / दर्ता भएको छैन।",
@@ -471,6 +487,82 @@ final class WaPayProof
             ['p' => $local10]
         );
         return array_map(static fn(array $r): array => ['id' => (int) $r['id'], 'pnr' => (string) $r['pnr'], 'total' => (float) $r['total_amount']], $rows);
+    }
+
+    /* ---------------- duplicate UTR (19 Nov 2026, u9 - owner's blueprint) ---------------- */
+
+    public static function dupBlockOn(): bool
+    {
+        return Settings::getBool('wa_pay_dup_utr_block', true);
+    }
+
+    /**
+     * The PNR of ANOTHER booking that already carries this UTR - on a payments row (typed with or without
+     * spaces / dashes, the same match CodPayClaim::submit uses) or a split-pay share - else ''.
+     * "na" / "cash" / short junk is never a UTR (fewer than 6 letters or digits).
+     */
+    public static function utrUsedElsewhere(string $utr, int $bookingId = 0): string
+    {
+        $u = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', self::asciiDigits($utr)));
+        if (strlen($u) < 6) {
+            return '';
+        }
+        try {
+            $pnr = (string) Database::scalar(
+                "SELECT b.pnr FROM payments p JOIN bookings b ON b.id = p.booking_id
+                  WHERE (p.utr_number = :u OR REPLACE(REPLACE(TRIM(p.utr_number), ' ', ''), '-', '') = :u2)
+                    AND p.booking_id <> :b
+                  ORDER BY p.id DESC LIMIT 1",
+                ['u' => $u, 'u2' => $u, 'b' => $bookingId], '');
+            if ($pnr !== '') {
+                return $pnr;
+            }
+            return (string) Database::scalar(
+                "SELECT b.pnr FROM payment_shares s JOIN bookings b ON b.id = s.booking_id
+                  WHERE (s.utr = :u OR REPLACE(REPLACE(TRIM(s.utr), ' ', ''), '-', '') = :u2)
+                    AND s.booking_id <> :b
+                  ORDER BY s.id DESC LIMIT 1",
+                ['u' => $u, 'u2' => $u, 'b' => $bookingId], '');
+        } catch (Throwable $e) {
+            Logger::warning('Duplicate UTR check failed: ' . $e->getMessage(), [], 'whatsapp');
+            return '';                                        // the office's "UTR also on" pill still catches it
+        }
+    }
+
+    /** The office sees every refused duplicate: an audit row and a bell with both PNRs. */
+    private static function noteDuplicate(string $pnr, int $bookingId, string $utr, string $otherPnr, string $via): void
+    {
+        $tail = substr($utr, -4);
+        Logger::audit('payment.dup_utr_refused', 'booking', $pnr, null, ['utr_tail' => $tail, 'also_on' => $otherPnr, 'via' => $via],
+            'A payment reference already used on another booking was refused on WhatsApp (nothing stored on the booking)');
+        try {
+            Database::insert('notifications', [
+                'audience'   => 'admin',
+                'booking_id' => $bookingId > 0 ? $bookingId : null,
+                'icon'       => '⚠️',
+                'title'      => Security::clean('Duplicate UTR refused · ' . $pnr, 191),
+                'body'       => Security::clean('दोहोरो UTR: ' . $pnr . ' को लागि WhatsApp मा आएको UTR …' . $tail . ' पहिले नै ' . $otherPnr
+                    . ' मा छ — स्वीकार गरिएन। · Duplicate UTR: the UTR …' . $tail . ' sent on WhatsApp for ' . $pnr . ' is already on ' . $otherPnr
+                    . '. It was refused; nothing changed on the booking. Check with the passenger.', 500),
+                'link'       => appUrl('admin/payments.php?q=' . rawurlencode($pnr)),
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('Duplicate UTR bell not written: ' . $e->getMessage(), ['pnr' => $pnr], 'whatsapp');
+        }
+    }
+
+    /** What the passenger is told - never the other booking's number. */
+    public static function duplicateReply(string $tail, string $lang): string
+    {
+        $office = Settings::officePhone();
+        $ne = '⚠️ यो UTR (…' . $tail . ") पहिले नै अर्को बुकिङमा प्रयोग भइसकेको छ — त्यसैले पठाइएन।\n"
+            . 'सही UTR वा भुक्तानीको screenshot पठाउनुहोस्, वा अफिसमा सम्पर्क गर्नुहोस्: ' . $office . "\n"
+            . 'This UTR was already used for another booking, so it was not sent. Send the right UTR or the payment screenshot, or call the office.';
+        $hi = '⚠️ यह UTR (…' . $tail . ") पहले ही दूसरी बुकिंग में इस्तेमाल हो चुका है — इसलिए नहीं भेजा।\n"
+            . 'सही UTR या भुगतान का screenshot भेजिए, या ऑफिस से बात कीजिए: ' . $office;
+        $en = '⚠️ This UTR (…' . $tail . ") was already used for another booking, so it was not sent.\n"
+            . 'Send the right UTR or the payment screenshot, or call the office: ' . $office;
+        return match ($lang) { 'hi', 'gu' => $hi, 'en' => $en, default => $ne };
     }
 
     /**

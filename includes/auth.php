@@ -113,6 +113,34 @@ final class Auth
         return Security::clean($id, 60);
     }
 
+    /**
+     * 19 Nov 2026 (u7, blueprint "admin login by phone"): a typed mobile (9104801507,
+     * +91 91048 01507, 977…) -> the username of the ONE active account whose registered
+     * mobile it is; '' when it is not a mobile, names no account or names several (those
+     * keep the "which ID?" doors). Setting login_phone_id_on (default ON) switches it off.
+     * Read-only; the caller's rate limits and generic failure message apply unchanged.
+     */
+    public static function usernameForPhone(string $raw): string
+    {
+        $raw = trim($raw);
+        if (preg_match('/^\+?[0-9][0-9\s\-().]{8,20}$/', $raw) !== 1) {
+            return '';
+        }
+        try {
+            if (!Settings::getBool('login_phone_id_on', true)) {
+                return '';
+            }
+            $p = normalisePhone($raw);
+            if (strlen($p) !== 10 || isPlaceholderPhone($p)) {
+                return '';
+            }
+            $hits = self::adminsByPhone($p);
+            return count($hits) === 1 ? (string) $hits[0]['username'] : '';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
     private const ROLE_PERMISSIONS = [
         'manager' => [
             'dashboard.view', 'bookings.view', 'bookings.edit', 'bookings.cancel',
@@ -554,6 +582,21 @@ final class Auth
               LIMIT 1',
             ['u' => $username]
         );
+        /* 19 Nov 2026 (u7, blueprint: "admin login by phone 9104801507 + password + PIN"): the
+           office may type its mobile instead of the username. Only when no account has that
+           username, and only when the number names exactly ONE active account; anything else
+           fails exactly like an unknown username (same message, same rate limit above). */
+        if ($admin === null && ($byPhone = self::usernameForPhone($username)) !== '') {
+            $admin = Database::fetch(
+                'SELECT id, username, password_hash, full_name, phone, role, permissions,
+                        is_active, locked_until, failed_logins, must_change_pw
+                   FROM admins WHERE username = :u LIMIT 1',
+                ['u' => $byPhone]
+            );
+            if ($admin !== null) {
+                $username = (string) $admin['username'];
+            }
+        }
 
         // Same message whether the user exists or not — no account enumeration.
         $genericFailure = ['ok' => false, 'error' => 'Incorrect username or password.'];
@@ -651,7 +694,8 @@ final class Auth
                     $text = Settings::getString('company_name', APP_NAME)
                           . ' एडमिन लगइन कोड: ' . $otp['code'] . "\n"
                           . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
-                    Notify::whatsapp($phone, $text);
+                    // 19 Nov 2026 (u7): tagged as an OTP, so Notify can fall back to the WhatsApp auth template
+                    Notify::whatsapp($phone, $text, null, null, [], null, ['purpose' => 'otp']);
                     if (Settings::getBool('sms_send_otp', false)) { Notify::sms($phone, $text); }
 
                     // Hold at the pending step. NOTHING that opens a session has
@@ -815,7 +859,7 @@ final class Auth
         $text = Settings::getString('company_name', APP_NAME)
               . ' एडमिन लगइन कोड: ' . $otp['code'] . "\n"
               . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
-        Notify::whatsapp($phone, $text);
+        Notify::whatsapp($phone, $text, null, null, [], null, ['purpose' => 'otp']);   // 19 Nov 2026 (u7): an OTP
         if (Settings::getBool('sms_send_otp', false)) { Notify::sms($phone, $text); }
         return ['ok' => true, 'resend' => OTP_RESEND_SECONDS];
     }
@@ -1012,6 +1056,17 @@ final class Auth
         // device cookie the row records. '' (no registry) changes nothing.
         $_SESSION[ADMIN_SESSION_KEY]['sk'] = AdminSessions::open((int) $admin['id'], $via);
 
+        /* 19 Nov 2026 (u7, LG-1): stay signed in on this device (AdminSessions::remember —
+           field roles login_remember_days, office / 2FA login_remember_office_hours). Only
+           when the password the door checked is still the one on file. */
+        $rmUntil = hash_equals($current, $stamp)
+            ? AdminSessions::remember($admin, (string) $_SESSION[ADMIN_SESSION_KEY]['sk'], $current) : 0;
+        if ($rmUntil > 0) {
+            $_SESSION[ADMIN_SESSION_KEY]['rm'] = $rmUntil;
+            // 19 Nov 2026 (u7 review): only a FIELD account skips the idle timeout (see admin())
+            $_SESSION[ADMIN_SESSION_KEY]['rmf'] = AdminSessions::rememberIsField($admin);
+        }
+
         Logger::audit('admin.login', 'admin', (string) $admin['id'], null, null,
             'Signed in from ' . $ip . ($via === 'password' ? '' : ' (' . ($via === 'otp' ? 'agent OTP' : str_replace('_', ' ', $via)) . ')'));
 
@@ -1021,6 +1076,150 @@ final class Auth
                 'First sign-in from this device');
         }
         return true;
+    }
+
+    /**
+     * 19 Nov 2026 (u7, LG-1): re-open the session of a REMEMBERED device
+     * (AdminSessions::resume has checked the token, the device, the account,
+     * its password stamp and its role, and rotated the token). Builds the same
+     * session array as finishAdminSession, but it is not a new sign-in: no new
+     * registry row, no device-limit step, no failed-login reset, and
+     * logged_in_at stays the original sign-in (pin-setup.php treats only a
+     * FRESH sign-in as proof). via_otp is false: a password change asks the
+     * current password.
+     *
+     * @param array<string, mixed> $admin admins row
+     * @param array<string, mixed> $row   the admin_sessions row
+     * 19 Nov 2026 (u7 review): 'rm' is exactly the row's remember_until as resume() set it — an
+     * office / 2FA account's fixed cap is never stretched here. 'rmf' marks a FIELD account (only
+     * those skip the idle timeout); 'rmid' names the remembered row (stillOpen() checks it when this
+     * session has no key of its own); 'locked' opens it behind the PIN / pattern relock.
+     *
+     * @param string $sk the rotated session key ('' = a sibling tab owns the row's key)
+     * @param int    $until  the remember time resume() settled on (0 = the row's)
+     * @param bool   $field  AdminSessions::rememberIsField()
+     * @param bool   $lock   open behind the relock (AdminSessions::relockDue())
+     */
+    public static function resumeSession(array $admin, array $row, string $sk, int $until = 0, bool $field = false, bool $lock = false): void
+    {
+        self::clearDoorState();
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
+        $stamp = self::pwStamp((string) $admin['password_hash']);
+        if ($until <= 0) {
+            $until = strtotime((string) ($row['remember_until'] ?? '')) ?: 0;
+        }
+        $_SESSION[ADMIN_SESSION_KEY] = [
+            'id'             => (int) $admin['id'],
+            'username'       => (string) $admin['username'],
+            'full_name'      => (string) $admin['full_name'],
+            'role'           => (string) $admin['role'],
+            'permissions'    => jsonColumn($admin['permissions']),
+            'must_change_pw' => (int) $admin['must_change_pw'] === 1,
+            'via_otp'        => false,
+            'via'            => 'remember',
+            'logged_in_at'   => (int) (strtotime((string) ($row['created_at'] ?? '')) ?: time() - 86400),
+            'last_seen'      => time(),
+            'checked_at'     => time(),
+            'pw'             => $stamp,
+            'sk'             => $sk,
+            'rm'             => $until,
+            'rmf'            => $field,
+            'rmid'           => (int) ($row['id'] ?? 0),
+            'new_device'     => false,
+        ];
+        if ($lock) {
+            $_SESSION[ADMIN_SESSION_KEY]['locked'] = time();
+        }
+        LoginLog::record((string) $admin['username'], 'success', (int) $admin['id'], 'remember');
+        Logger::audit('admin.login.resume', 'admin', (string) $admin['id'], null,
+            ['device' => LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')), 'row' => (int) ($row['id'] ?? 0)],
+            'Stay signed in: this device was let back in (token rotated)');
+    }
+
+    /* =================================================================
+     *  19 Nov 2026 (u7 review): THE RELOCK. The spec: on a device that stays
+     *  signed in, the idle lock "may ask PIN but must NOT destroy the
+     *  session". A remembered FIELD session (rmf) whose account has a PIN /
+     *  pattern is locked — not signed out — when the page's idle timer
+     *  (staff_idle_lock_min, admin/_guard.php) fires, and when it comes back
+     *  through the remember cookie after longer than that. While locked,
+     *  admin() answers null (no page, no API), the session itself stays; the
+     *  person's own PIN / pattern on admin/login.php opens it again
+     *  (QuickUnlock::match — same budget and lockout as the lock screen), and
+     *  Sign out stays one tap away. Office roles never get here: their idle
+     *  timer still signs them out (and ends their remember).
+     * ================================================================= */
+
+    /** The signed-in session when it is locked behind the relock, else null. */
+    public static function lockedSession(): ?array
+    {
+        $s = $_SESSION[ADMIN_SESSION_KEY] ?? null;
+        return is_array($s) && !empty($s['id']) && !empty($s['locked']) ? $s : null;
+    }
+
+    /** May this (open) session be relocked instead of signed out? */
+    public static function relockable(): bool
+    {
+        $s = $_SESSION[ADMIN_SESSION_KEY] ?? null;
+        if (!is_array($s) || empty($s['id']) || empty($s['rmf']) || (int) ($s['rm'] ?? 0) <= time()) {
+            return false;
+        }
+        try {
+            require_once INCLUDE_PATH . '/quickunlock.php';
+            if (!QuickUnlock::on()) {
+                return false;
+            }
+            $st = QuickUnlock::status((int) $s['id']);
+            return $st['pin'] || $st['pattern'];
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Lock this session (the idle timer). Only a signed-in, relockable session; returns whether it is locked now. */
+    public static function relock(): bool
+    {
+        if (self::lockedSession() !== null) {
+            return true;
+        }
+        if (self::admin() === null || !self::relockable()) {
+            return false;
+        }
+        $_SESSION[ADMIN_SESSION_KEY]['locked'] = time();
+        return true;
+    }
+
+    /**
+     * The person's own PIN / pattern opens a locked session again.
+     *
+     * @return array{ok: bool, error?: string, gone?: bool}
+     */
+    public static function unlockSession(string $kind, string $value): array
+    {
+        $s = self::lockedSession();
+        if ($s === null) {
+            return ['ok' => self::admin() !== null];
+        }
+        require_once INCLUDE_PATH . '/quickunlock.php';
+        $id = (int) $s['id'];
+        $m  = QuickUnlock::match([$id], $kind, $value);
+        if (empty($m['ok']) || (int) ($m['admin']['id'] ?? 0) !== $id) {
+            Logger::audit('admin.relock.fail', 'admin', (string) $id, null, ['kind' => $kind], 'Locked screen: wrong PIN / pattern');
+            return ['ok' => false, 'error' => (string) ($m['error'] ?? 'PIN / pattern मिलेन · PIN or pattern did not match.')];
+        }
+        unset($_SESSION[ADMIN_SESSION_KEY]['locked']);
+        $_SESSION[ADMIN_SESSION_KEY]['last_seen']  = time();
+        $_SESSION[ADMIN_SESSION_KEY]['checked_at'] = 0;   // re-check the account and the registry row right now
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
+        if (self::admin() === null) {
+            return ['ok' => false, 'gone' => true, 'error' => 'फेरि लगइन गर्नुहोस् · Please sign in again.'];
+        }
+        Logger::audit('admin.relock.unlock', 'admin', (string) $id, null, ['kind' => $kind], 'Locked screen opened with PIN / pattern');
+        return ['ok' => true];
     }
 
     /* =================================================================
@@ -1259,6 +1458,9 @@ final class Auth
             return;
         }
         $_SESSION[ADMIN_SESSION_KEY]['pw'] = self::adminPwStamp($adminId);
+        // 19 Nov 2026 (u7): this device stays remembered with the new password; the others are refused
+        AdminSessions::restamp((string) ($_SESSION[ADMIN_SESSION_KEY]['sk'] ?? ''), (string) $_SESSION[ADMIN_SESSION_KEY]['pw'],
+            (int) ($_SESSION[ADMIN_SESSION_KEY]['rmid'] ?? 0), $adminId);
     }
 
     /**
@@ -1388,7 +1590,7 @@ final class Auth
         $text = Settings::getString('company_name', APP_NAME)
               . ' एजेन्ट लगइन कोड: ' . $otp['code'] . "\n"
               . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
-        Notify::whatsapp($intl, $text);
+        Notify::whatsapp($intl, $text, null, null, [], null, ['purpose' => 'otp']);   // 19 Nov 2026 (u7): an OTP
         if (Settings::getBool('sms_send_otp', false)) {
             Notify::sms($intl, $text);
         }
@@ -1951,6 +2153,8 @@ final class Auth
             );
             AdminSessions::close((string) ($_SESSION[ADMIN_SESSION_KEY]['sk'] ?? ''));
         }
+        // 19 Nov 2026 (u7): Sign out on this device ends its "stay signed in" too (row + cookie)
+        AdminSessions::closeRemembered();
 
         unset($_SESSION[ADMIN_SESSION_KEY]);
         self::clearDoorState();   // 30-31 Oct 2026: no half-done door step (pick, reset, 2FA) for the next person
@@ -1970,9 +2174,20 @@ final class Auth
             return null;
         }
 
-        // Idle timeout.
+        /* 19 Nov 2026 (u7 review): a remembered field device that went idle is LOCKED, not signed
+           out — the session is kept, but nothing opens with it until its own PIN / pattern is
+           given again on admin/login.php (Auth::unlockSession). Sign out still works. */
+        if (!empty($admin['locked'])) {
+            return null;
+        }
+
+        // Idle timeout. 19 Nov 2026 (u7): not for a FIELD device that stays signed in
+        // (AdminSessions::remember) while its remember window runs — the office
+        // End, a password change and Sign out still end it. Office roles and 2FA
+        // accounts keep the idle timeout even when remembered (u7 review).
         $idleLimit = Settings::getInt('session_timeout_min', 45) * 60;
-        if ($idleLimit > 0 && (time() - (int) ($admin['last_seen'] ?? 0)) > $idleLimit) {
+        $remembered = !empty($admin['rmf']) && (int) ($admin['rm'] ?? 0) > time();
+        if (!$remembered && $idleLimit > 0 && (time() - (int) ($admin['last_seen'] ?? 0)) > $idleLimit) {
             self::adminLogout();
             return null;
         }
@@ -2030,6 +2245,7 @@ final class Auth
                     // in the person's name and regenerates the session id,
                     // which has no session to regenerate under the CLI.
                     unset($_SESSION[ADMIN_SESSION_KEY]);
+                    AdminSessions::forgetCookie();   // 19 Nov 2026 (u7): its "stay signed in" goes too (resume would refuse it anyway)
                     if (session_status() === PHP_SESSION_ACTIVE) {
                         session_regenerate_id(true);
                     }
@@ -2583,6 +2799,16 @@ final class Auth
             // A vault row is worth less than a customer being able to log in.
         }
 
+        /* 19 Nov 2026 (u7, LG-2): this phone remembered ANOTHER passenger — that
+           remember ends now, so it can never sign the earlier person back in. */
+        try {
+            if (!class_exists('CustomerProfile')) {
+                require_once __DIR__ . '/customerprofile.php';
+            }
+            CustomerProfile::forgetIfOther((int) $user['id']);
+        } catch (Throwable $ignored) {
+        }
+
         session_regenerate_id(true);
 
         $_SESSION[USER_SESSION_KEY] = [
@@ -2600,6 +2826,15 @@ final class Auth
 
     public static function logoutUser(): void
     {
+        // 19 Nov 2026 (u7, LG-2): signing out on this phone ends its "stay signed in" (row + cookie)
+        try {
+            if (!class_exists('CustomerProfile')) {
+                require_once __DIR__ . '/customerprofile.php';
+            }
+            CustomerProfile::forget('signed out');
+        } catch (Throwable $e) {
+            // never the reason a sign-out fails
+        }
         unset($_SESSION[USER_SESSION_KEY]);
         session_regenerate_id(true);
     }
@@ -2618,8 +2853,14 @@ final class Auth
         }
 
         $idleLimit = Settings::getInt('session_timeout_min', 45) * 60;
-        if ($idleLimit > 0 && (time() - (int) ($user['last_seen'] ?? 0)) > $idleLimit) {
-            self::logoutUser();
+        // 19 Nov 2026 (u7, LG-2): a passenger who proved the number and stays signed in on this phone
+        // (CustomerProfile::remember) is not timed out while that window runs.
+        $remembered = (int) ($user['rm'] ?? 0) > time();
+        if (!$remembered && $idleLimit > 0 && (time() - (int) ($user['last_seen'] ?? 0)) > $idleLimit) {
+            unset($_SESSION[USER_SESSION_KEY]);   // not logoutUser(): an idle session is not "sign out on this phone"
+            if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                session_regenerate_id(true);
+            }
             return null;
         }
 

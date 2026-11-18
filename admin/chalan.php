@@ -128,7 +128,10 @@ if ($trip !== null) {
 }
 
 $q = static fn(array $extra): string => Security::e(http_build_query(array_filter($extra, static fn($v) => $v !== null && $v !== '')));
-$manifestQs  = $trip !== null ? ['sid' => $sid, 'date' => $date, 'route' => (int) $trip['route_id']] : [];
+/* 19 Nov 2026 (NP-2): one desk's copy of the chalani (a Nepal desk prints NPR) -
+   validated against CounterDesk::all(); '' = the whole bus, as before */
+$deskF       = ChalaniPng::deskCode((string) ($_GET['desk'] ?? ''));
+$manifestQs  = $trip !== null ? ['sid' => $sid, 'date' => $date, 'route' => (int) $trip['route_id'], 'desk' => $deskF] : [];
 $hrefChalaniPdf = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalanipdf']);
 $hrefChalaniPng = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalanipng']);
 $hrefChalaniP1  = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalanipng', 'page' => 1]);
@@ -217,6 +220,16 @@ admin_page_head(
                   . ($d['bus_number'] ? ' · ' . $d['bus_number'] : '')
                   . ((string) $d['status'] === 'cancelled' ? ' · CANCELLED' : '')) ?>
             </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <?php endif; ?>
+      <?php if (CounterDesk::stampColumn()): ?>
+      <label>Desk copy · काउन्टर प्रति
+        <select name="desk" onchange="this.form.submit()">
+          <option value="">Whole bus · पूरै बस</option>
+          <?php foreach (CounterDesk::all() as $dc => $dd): ?>
+            <option value="<?= Security::e((string) $dc) ?>" <?= $deskF === (string) $dc ? 'selected' : '' ?>><?= Security::e(CounterDesk::label((string) $dc) . ((string) ($dd['currency'] ?? 'INR') === 'NPR' ? ' · NPR' : '')) ?></option>
           <?php endforeach; ?>
         </select>
       </label>

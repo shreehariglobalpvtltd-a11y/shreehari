@@ -263,6 +263,14 @@ final class QuickUnlock
         'dob'    => 'तपाईंको जन्म मिति? · Your date of birth?',
     ];
 
+    /** 19 Nov 2026 (u7, owner: no name / DOB style factors): what a NEW setup may choose.
+     *  'dob' stays in SEC_QUESTIONS so an answer saved before keeps working (recover.php, secCheck). */
+    public const SEC_QUESTIONS_OFFERED = [
+        'mother' => self::SEC_QUESTIONS['mother'],
+        'school' => self::SEC_QUESTIONS['school'],
+        'place'  => self::SEC_QUESTIONS['place'],
+    ];
+
     private static ?bool $secReady = null;
 
     /** The 12 Nov 2026 migration ran (the columns exist). */

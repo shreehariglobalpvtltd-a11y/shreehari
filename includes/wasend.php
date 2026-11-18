@@ -82,7 +82,11 @@ final class WaSend
     public const TICKET_FAMILY = ['ticket', 'ticket_update', 'ticket_resend'];
 
     /** Office alerts the generic utility template (wa_cloud_tpl_message) may carry outside the window. */
-    public const GENERIC_OK = ['admin_note', 'office_note', 'staff_note', 'office_report', 'support_alert', 'shift_close', 'seat_status', 'agreement_renewal'];
+    /* 19 Nov 2026 (WA-1): the driver's passenger list and the counter's day
+       report are office/crew messages too - the generic office template may
+       carry them outside the window (drivers never open one themselves). */
+    public const GENERIC_OK = ['admin_note', 'office_note', 'staff_note', 'office_report', 'support_alert', 'shift_close', 'seat_status', 'agreement_renewal',
+                               'driver_list', 'counter_day'];
     public const GENERIC_OK_PREFIX = ['payment_', 'booking_', 'trip_'];
 
     /** A body that carries a one-time code / PIN or a password (any language the senders use). */
@@ -242,6 +246,17 @@ final class WaSend
     /** @return array{name:string, lang:string} the approved ticket template on the bot number */
     public static function ticketTemplate(): array
     {
+        /* 19 Nov 2026 (WA-2): the first READY of [whatsapp_template_name,
+           shg_ticket_v2] (includes/watplmeta.php) - a duplicate ticket
+           template takes over while Meta keeps answering 132001 for the old one. */
+        try {
+            require_once __DIR__ . '/watplmeta.php';
+            $t = WaTplMeta::ticketTemplate();
+            if ($t['name'] !== '') {
+                return ['name' => $t['name'], 'lang' => $t['lang']];
+            }
+        } catch (Throwable $e) {
+        }
         return [
             'name' => trim(Settings::getString('whatsapp_template_name', '')),
             'lang' => trim(Settings::getString('whatsapp_template_lang', 'en')) ?: 'en',
@@ -1096,7 +1111,21 @@ final class WaSend
     {
         $components = [];
         if ($tpl['header'] !== '') {
-            $components[] = ['type' => 'header', 'parameters' => [['type' => 'image', 'image' => ['link' => $tpl['header']]]]];
+            /* 19 Nov 2026 (WA-4): a PDF header (agent statement, driver's
+               chalani) is a DOCUMENT header - the image shape is refused. */
+            if (self::mediaKind($tpl['header']) === 'document') {
+                $fn = basename((string) parse_url($tpl['header'], PHP_URL_PATH));
+                parse_str((string) parse_url($tpl['header'], PHP_URL_QUERY), $hq);
+                if (isset($hq['f']) && is_string($hq['f']) && preg_match('/\.pdf$/i', $hq['f']) === 1) {
+                    $fn = basename($hq['f']);
+                }
+                if (preg_match('/\.pdf$/i', $fn) !== 1) {
+                    $fn = 'document.pdf';
+                }
+                $components[] = ['type' => 'header', 'parameters' => [['type' => 'document', 'document' => ['link' => $tpl['header'], 'filename' => mb_substr($fn, 0, 120)]]]];
+            } else {
+                $components[] = ['type' => 'header', 'parameters' => [['type' => 'image', 'image' => ['link' => $tpl['header']]]]];
+            }
         }
         if ($tpl['vars'] !== []) {
             $components[] = ['type' => 'body', 'parameters' => array_map(static fn(string $v): array => ['type' => 'text', 'text' => $v !== '' ? $v : '-'], $tpl['vars'])];

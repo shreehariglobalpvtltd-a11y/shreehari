@@ -183,6 +183,7 @@ $viaLabel = static fn($v): string => match ((string) $v) {
     'otp', 'whatsapp_otp' => '📲 WhatsApp कोड · code',
     'whatsapp_hi'         => '💬 WhatsApp hi',
     'passkey'             => '👆 Passkey',
+    'remember'            => '📌 यन्त्रमा लगइन रह्यो · stayed signed in',   // 19 Nov 2026 (u7)
     'earlier'             => 'पहिलेको · earlier',
     default               => str_replace('_', ' ', (string) $v),
 };
@@ -301,7 +302,7 @@ form.ss-inline{display:inline}
         <td data-label="Role"><span class="ss-role"><?= $e($s['role']) ?></span></td>
         <td data-label="Device"><?= $e($s['label'] ?? '') ?></td>
         <td data-label="IP"><?= $e($s['ip'] ?? '') ?></td>
-        <td data-label="How"><?= $e($viaLabel($s['via'] ?? '')) ?></td>
+        <td data-label="How"><?= $e($viaLabel($s['via'] ?? '')) ?><?php $rmU = AdminSessions::rememberedUntil($s); if ($rmU !== ''): /* 19 Nov 2026 (u7) */ ?><br><small class="ss-mut">📌 लगइन रहन्छ · stays signed in till <?= $e(substr($rmU, 0, 16)) ?></small><?php endif; ?></td>
         <td data-label="Signed in" data-sort="<?= $e($s['created_at']) ?>"><?= $e(substr((string) $s['created_at'], 0, 16)) ?></td>
         <td data-label="Last used" data-sort="<?= $e($s['last_seen']) ?>"><?= $e($ago((string) $s['last_seen'])) ?></td>
         <td data-label="">
@@ -449,7 +450,7 @@ form.ss-inline{display:inline}
         <td data-label="Device"><?= $e($s['label'] ?? '') ?><?= $here ? '<span class="ss-here">this browser</span>' : '' ?></td>
         <td data-label="IP"><?= $e($s['ip'] ?? '') ?></td>
         <td data-label="Signed in"><?= $e(substr((string) $s['created_at'], 0, 16)) ?></td>
-        <td data-label="Last used"><?= $e($ago((string) $s['last_seen'])) ?></td>
+        <td data-label="Last used"><?= $e($ago((string) $s['last_seen'])) ?><?php $rmU = AdminSessions::rememberedUntil($s); if ($rmU !== ''): ?><br><small class="ss-mut">📌 stays signed in till <?= $e(substr($rmU, 0, 16)) ?></small><?php endif; ?></td>
         <td data-label=""><?php if (!$here && $mayTouch($person)): ?>
           <form method="post" class="ss-inline"><?= $csrf ?><input type="hidden" name="act" value="end"><input type="hidden" name="sid" value="<?= (int) $s['id'] ?>">
             <button class="btn btn-sm danger">End</button></form><?php endif; ?></td>

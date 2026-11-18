@@ -206,6 +206,47 @@ final class BookingService
         return mb_substr(Security::clean($one, 100), 0, 80);
     }
 
+    /**
+     * 19 Nov 2026 (blueprint "पैसा कहिले? · When will they pay"): a desk's
+     * optional cash note, cleaned to {when: full|partial|later, amount?, date?, note?}.
+     * Null when nothing usable was sent. Never invents a value: a partial
+     * without a positive amount, or a date that is not a real Y-m-d, is dropped.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function cashNoteClean(mixed $raw): ?array
+    {
+        if (is_string($raw) && $raw !== '') {
+            $raw = json_decode($raw, true);
+        }
+        if (!is_array($raw)) {
+            return null;
+        }
+        $when = strtolower(trim((string) ($raw['when'] ?? '')));
+        if (!in_array($when, ['full', 'partial', 'later'], true)) {
+            return null;
+        }
+        $out = ['when' => $when];
+        if ($when === 'partial') {
+            $amt = is_numeric($raw['amount'] ?? null) ? round((float) $raw['amount'], 2) : 0.0;
+            if ($amt <= 0 || $amt > 1000000) {
+                return null;   // "part paid" with no amount says nothing
+            }
+            $out['amount'] = $amt;
+        }
+        if ($when !== 'full') {
+            $d = trim((string) ($raw['date'] ?? ''));
+            if ($d !== '' && Security::isValidDate($d)) {
+                $out['date'] = $d;
+            }
+        }
+        $note = self::ticketNoteClean((string) ($raw['note'] ?? ''));
+        if ($note !== '') {
+            $out['note'] = $note;
+        }
+        return $out;
+    }
+
     /** Most extra luggage pieces / lap infants one desk ticket may carry (P8-3f / P4-4d). */
     public const LUGGAGE_MAX = 5;
     public const INFANT_MAX  = 4;
@@ -329,6 +370,22 @@ final class BookingService
         $soldByAdminId     = $referralCodeClean !== ''
             ? AgentWallet::resolveAgentCodeFromString($referralCodeClean)
             : null;
+        /* AG-4 (19 Nov 2026, owner: "agent le aafno naam ma matra ticket katna
+           paune"): an AGENT session sells on its own code only. A different
+           agent / staff code from an agent - a stale page, a picked list item,
+           a crafted request - is refused, never silently re-credited. Staff,
+           counter clerks and the office keep choosing any agent. */
+        $agentSelf = $seller !== null
+            ? (AgentWallet::isAgentRow((int) ($seller['adminId'] ?? 0)) ? (int) $seller['adminId'] : 0)
+            : (Auth::isCounterAgent() ? (int) (Auth::admin()['id'] ?? 0) : 0);
+        if ($agentSelf > 0 && $referralCodeClean !== '') {
+            $codeOwner = AgentWallet::resolveDeskCode($referralCodeClean);
+            if ($codeOwner !== null && $codeOwner !== $agentSelf) {
+                Logger::warning('Agent tried to sell on another code', ['agent' => $agentSelf, 'code' => $referralCodeClean]);
+                throw new RuntimeException('आफ्नै कोडमा मात्र टिकट काट्न मिल्छ — ' . $referralCodeClean
+                    . ' अर्को एजेन्टको कोड हो। / You can sell only on your own agent code.', 403);
+            }
+        }
         // SmartBook v5 D1 (15 Oct 2026): a code typed or carried by a CUSTOMER
         // still credits the agent, but only a signed-in selling-staff session
         // may book a bus that has already left (agent mode on the .network door).
@@ -535,6 +592,25 @@ final class BookingService
             throw new RuntimeException($cutoff['reason']);
         }
 
+        /* ---- Sales closing clock (19 Nov 2026, NP-3) ------------------
+           Today's r7 closes 17:00 Nepal time for every non-office channel;
+           today's r2 closes 19:00 IST for ONLINE customers (setting
+           sales_close_clock). superadmin / manager are never blocked. It is
+           a ceiling on top of the pickup cut-off above, so it also ends the
+           agent's after-departure grace for that day. An extra bus (slot 2+)
+           with its own departure keeps its own rule. */
+        if (!($chosenSchedule !== null && (int) ($chosenSchedule['slot'] ?? 1) > 1)) {
+            $clockChannel = $seller !== null
+                ? Boarding::salesChannel($sellerId)
+                : (Auth::admin() !== null
+                    ? Boarding::salesChannel(null)
+                    : (in_array($request['salesChannel'] ?? '', ['whatsapp', 'ai'], true) ? (string) $request['salesChannel'] : 'online'));
+            $clock = Boarding::clockClose($route, $travelDate, $clockChannel);
+            if ($clock !== null && $clock['closed']) {
+                throw new RuntimeException($clock['reason']);
+            }
+        }
+
         $bookingMode = in_array($request['bookingMode'] ?? '', ['sharing', 'private'], true)
             ? (string) $request['bookingMode'] : null;
         $isCod = !empty($request['isCod']) && Settings::getBool('allow_cod', true) && $seller === null;
@@ -695,8 +771,26 @@ final class BookingService
             $altRaw = substr(preg_replace('/\D/', '', (string) ($contact['altPhone'] ?? '')) ?? '', -10);
             if (strlen($altRaw) === 10 && preg_match('/^[6-9]/', $altRaw) && $altRaw !== $phone
                 && CounterDesk::hasColumn('bookings', 'alt_phone')) {
-                $altStamp = ['alt_phone' => $altRaw,
-                             'alt_country_code' => countryDialCode(strtoupper((string) ($contact['altCountry'] ?? '')) === 'IN' ? 'IN' : 'NP')];
+                /* 19 Nov 2026: the second number's own country ('IN'/'NP', or 91/977).
+                   Left blank, it is the OTHER country of the main number (that is
+                   what a second SIM is here) - before, blank always meant Nepal,
+                   so an Indian second number on an Indian booking went to +977. */
+                $altCc = strtoupper(trim((string) ($contact['altCountry'] ?? '')));
+                $altCc = in_array($altCc, ['IN', '91'], true) ? 'IN'
+                    : (in_array($altCc, ['NP', '977'], true) ? 'NP' : ($contactCountryCode === '977' ? 'IN' : 'NP'));
+                $altStamp = ['alt_phone' => $altRaw, 'alt_country_code' => countryDialCode($altCc)];
+            }
+
+            /* 19 Nov 2026 (blueprint): on a desk / agent CASH sale the seller may
+               note when the money comes - paid in full, part paid (₹) or later
+               (date + note). A note only: it never changes the payment's status
+               (a person still confirms every payment). Stored where the column
+               exists (database/upgrade-2026-11-19-u4-desk.sql). */
+            if ($seller !== null && $counterMethod === 'cash' && CounterDesk::hasColumn('bookings', 'cash_note')) {
+                $cn = self::cashNoteClean($seller['cashNote'] ?? null);
+                if ($cn !== null) {
+                    $altStamp['cash_note'] = json_encode($cn, JSON_UNESCAPED_UNICODE);
+                }
             }
 
             /* 15 Nov 2026 (owner: "customer lai discount / note ticket ma lekhna milos"): a short

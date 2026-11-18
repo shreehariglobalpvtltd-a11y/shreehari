@@ -516,6 +516,217 @@ final class CustomerDirectory
         return true;
     }
 
+    /* =================================================================
+     *  Language per contact (19 Nov 2026, unit u8 / AI-2)
+     *
+     *  contact_lang keeps one row per E.164 number: the language the person
+     *  CHOSE (the portal's language switch, api/lang.php) or, failing that,
+     *  the majority of the languages their WhatsApp lines were written in
+     *  (TicketBot::detectLang). Only codes and counters are stored, never
+     *  the words. Country is never used to guess: many +91 numbers are
+     *  Nepali workers. Unknown → mk_default_lang ('ne').
+     * ================================================================= */
+
+    public const LANGS = ['ne', 'hi', 'en'];
+
+    /** The fallback language: mk_default_lang, else the old global mk_auto_lang, else 'ne'. */
+    public static function defaultLang(): string
+    {
+        $d = strtolower(trim(Settings::getString('mk_default_lang', Settings::getString('mk_auto_lang', 'ne'))));
+        return in_array($d, self::LANGS, true) ? $d : 'ne';
+    }
+
+    /** E.164 digits (11-15, country code first) or '' — a bare 10-digit number is not guessed. */
+    public static function e164(string $phone): string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        $d = ltrim($d, '0');
+        return strlen($d) >= 11 && strlen($d) <= 15 ? $d : '';
+    }
+
+    /**
+     * The language to write to this number in: ne | hi | en.
+     * chosen → that; 2+ chat samples → the majority (ties: ne, then hi); else the default.
+     */
+    public static function lang(string $intl): string
+    {
+        $p = self::e164($intl);
+        if ($p === '') {
+            return self::defaultLang();
+        }
+        try {
+            $r = Database::fetch('SELECT lang, source, ne_n, hi_n, en_n FROM contact_lang WHERE phone = :p', ['p' => $p]);
+        } catch (Throwable $e) {
+            return self::defaultLang();
+        }
+        if ($r === null) {
+            return self::defaultLang();
+        }
+        if ((string) $r['source'] === 'chosen') {
+            return (string) $r['lang'];
+        }
+        $n = ['ne' => (int) $r['ne_n'], 'hi' => (int) $r['hi_n'], 'en' => (int) $r['en_n']];
+        if (array_sum($n) < 2) {
+            return self::defaultLang();
+        }
+        return self::majority($n);
+    }
+
+    /**
+     * Languages of many numbers at once (marketing lists). Keys are the
+     * given intl strings.
+     *
+     * @param list<string> $intls
+     * @return array<string,string>
+     */
+    public static function langs(array $intls): array
+    {
+        $out = [];
+        $want = [];
+        foreach ($intls as $i) {
+            $out[$i] = self::defaultLang();
+            $p = self::e164($i);
+            if ($p !== '') {
+                $want[$p][] = $i;
+            }
+        }
+        foreach (array_chunk(array_keys($want), 500) as $chunk) {
+            $ph = [];
+            $par = [];
+            foreach ($chunk as $k => $p) {
+                $ph[] = ':p' . $k;
+                $par['p' . $k] = (string) $p;
+            }
+            try {
+                $rows = Database::fetchAll('SELECT phone, lang, source, ne_n, hi_n, en_n FROM contact_lang WHERE phone IN (' . implode(',', $ph) . ')', $par);
+            } catch (Throwable $e) {
+                return $out;
+            }
+            foreach ($rows as $r) {
+                $n = ['ne' => (int) $r['ne_n'], 'hi' => (int) $r['hi_n'], 'en' => (int) $r['en_n']];
+                $l = (string) $r['source'] === 'chosen' ? (string) $r['lang'] : (array_sum($n) >= 2 ? self::majority($n) : self::defaultLang());
+                foreach ($want[(string) $r['phone']] ?? [] as $i) {
+                    $out[$i] = $l;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** @param array{ne:int,hi:int,en:int} $n */
+    private static function majority(array $n): string
+    {
+        if ($n['ne'] >= $n['hi'] && $n['ne'] >= $n['en']) {
+            return 'ne';
+        }
+        return $n['hi'] >= $n['en'] ? 'hi' : 'en';
+    }
+
+    /**
+     * Which language one customer line votes for, or '' for no vote
+     * (too short, Gujarati, a code / number, an English line under 3 words).
+     */
+    public static function voteFor(string $text): string
+    {
+        $t = trim($text);
+        if (mb_strlen($t) < 4 || preg_match('/\p{L}/u', $t) !== 1) {
+            return '';
+        }
+        if (!class_exists('TicketBot')) {
+            require_once __DIR__ . '/ticketbot.php';
+        }
+        $l = TicketBot::detectLang($t);
+        if ($l === 'en' && preg_match_all('/[A-Za-z]{2,}/', $t) < 3) {
+            return '';
+        }
+        return in_array($l, self::LANGS, true) ? $l : '';
+    }
+
+    /**
+     * Count one line a contact wrote. Returns the vote ('' = none / not
+     * stored). A 'chosen' language keeps its value; only counters move.
+     *
+     * $source 'chat' = the live hook (WhatsApp bot); 'backfill' = the
+     * one-off tools/contact-lang-backfill.php (stored as 'chat' too).
+     * Fix of 19 Nov (review): the first LIVE call records the newest
+     * wa_inbound id in kv_store (contact_lang / hook_start_id); the backfill
+     * stops below it, so a line the hook already counted is never counted
+     * again, whichever of the two runs first.
+     */
+    public static function noteLang(string $intl, string $text, string $source = 'chat'): string
+    {
+        if ($source === 'chat') {
+            self::markHookStart();
+        }
+        $p = self::e164($intl);
+        $v = $p !== '' ? self::voteFor($text) : '';
+        if ($v === '') {
+            return '';
+        }
+        $col = $v . '_n';
+        try {
+            Database::run(
+                'INSERT INTO contact_lang (phone, lang, source, ' . $col . ') VALUES (:p, :l, :s, 1)
+                 ON DUPLICATE KEY UPDATE ' . $col . ' = LEAST(' . $col . ' + 1, 65000)',
+                ['p' => $p, 'l' => $v, 's' => $source === 'chosen' ? 'chosen' : 'chat']   // 'backfill' is stored as 'chat'
+            );
+            Database::run(
+                "UPDATE contact_lang SET lang = CASE
+                    WHEN ne_n >= hi_n AND ne_n >= en_n THEN 'ne' WHEN hi_n >= en_n THEN 'hi' ELSE 'en' END
+                  WHERE phone = :p AND source <> 'chosen'",
+                ['p' => $p]
+            );
+        } catch (Throwable $e) {
+            return '';   // table not installed yet: the default language still works
+        }
+        return $v;
+    }
+
+    private static bool $hookMarked = false;
+
+    /** Once ever (INSERT IGNORE): the wa_inbound id the live hook started at. */
+    private static function markHookStart(): void
+    {
+        if (self::$hookMarked) {
+            return;
+        }
+        self::$hookMarked = true;
+        try {
+            Database::run(
+                "INSERT IGNORE INTO kv_store (kscope, kkey, kvalue, updated_by)
+                 SELECT 'contact_lang', 'hook_start_id', CAST(GREATEST(COALESCE(MAX(id), 0), 1) AS CHAR), 'hook' FROM wa_inbound"
+            );
+        } catch (Throwable $e) {
+            // no kv_store / wa_inbound here: nothing to guard
+        }
+    }
+
+    /** For tests: let the next live noteLang() check the hook mark again. */
+    public static function resetHookMark(): void
+    {
+        self::$hookMarked = false;
+    }
+
+    /** The person picked a language themselves (portal switch): it wins over chat votes. */
+    public static function setLang(string $intl, string $lang): bool
+    {
+        $p = self::e164($intl);
+        $lang = strtolower(trim($lang));
+        if ($p === '' || !in_array($lang, self::LANGS, true)) {
+            return false;
+        }
+        try {
+            Database::run(
+                "INSERT INTO contact_lang (phone, lang, source) VALUES (:p, :l, 'chosen')
+                 ON DUPLICATE KEY UPDATE lang = VALUES(lang), source = 'chosen'",
+                ['p' => $p, 'l' => $lang]
+            );
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     /** vCard 3.0 file for a phone's contacts app (WhatsApp broadcast lists need saved contacts). */
     public static function vcards(array $list, string $prefix = 'SHG'): string
     {

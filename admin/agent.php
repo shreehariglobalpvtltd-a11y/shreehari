@@ -332,7 +332,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                    Withdrawals: the agent row locked, the payout written with request_id
                    and the request marked paid against it in ONE transaction - both or
                    neither. A payout smaller than the request leaves it open (and held). */
-                $ledgerId = Database::transaction(static function () use ($targetId, $action, $setAmt, $setMeta, $selfId): int {
+                $settledReq = 0;   // 19 Nov 2026 (u5 AG-2): the request this payout settled, if any
+                $ledgerId = Database::transaction(static function () use ($targetId, $action, $setAmt, $setMeta, $selfId, &$settledReq): int {
                     if ($action !== 'payout') {
                         return AgentWallet::record($targetId, $action, $setAmt, $setMeta);
                     }
@@ -352,11 +353,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     }
                     $lid = AgentWallet::record($targetId, 'payout', $setAmt, $setMeta + ['request_id' => (int) $oreq['id']]);
                     AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $selfId, 'Settled by payout ' . AgentWallet::voucherFor($lid), $lid);
+                    $settledReq = (int) $oreq['id'];
                     return $lid;
                 }, 1);
                 $voucher = AgentWallet::voucherFor($ledgerId);
                 // 16 Nov 2026 (F2): tell the agent, like Agent 360 does (agent_notify_settlement).
-                $waLink  = agent_settlement_notify($targetId, $action, $setAmt, $ledgerId);
+                // 19 Nov 2026 (u5 AG-2): a payout that settled a withdrawal request tries the approved
+                // shg_withdraw_update template first; only when it is not sent does the usual text go.
+                $waLink = '';
+                $tplSent = false;
+                if ($settledReq > 0 && Settings::getBool('agent_notify_settlement', true)) {
+                    try {
+                        require_once INCLUDE_PATH . '/agentpro.php';
+                        $tplSent = AgentPro::payoutTemplate($targetId, 'paid', $setAmt,
+                            trim((string) ($setMeta['ref'] ?? '')) !== '' ? trim((string) $setMeta['ref']) : $voucher);
+                    } catch (Throwable $e) {
+                        $tplSent = false;
+                    }
+                }
+                if (!$tplSent) {
+                    $waLink = agent_settlement_notify($targetId, $action, $setAmt, $ledgerId);
+                }
 
                 $flash = ['ok', ($action === 'payout' ? 'Commission payout of ' : 'Cash handover of ') . inr($setAmt)
                     . ' recorded' . ($voucher !== '' ? ' — voucher ' . $voucher : '') . '.', $waLink];
@@ -656,6 +673,22 @@ $balances = AgentWallet::balances($viewId);
    Statement shows here too. */
 $payoutReq    = AgentWallet::openPayoutRequests($viewId)[0] ?? null;
 $payoutReqAmt = $payoutReq !== null ? (float) $payoutReq['amount'] : 0.0;
+/* 19 Nov 2026 (u5 AG-2, review): where the member asked to be paid — the request's own snapshot
+   (pay_method / pay_to / pay_qr_path), like Team → Money and Agent 360 show it. Empty parts are left out. */
+$payoutReqTo = '';
+if ($payoutReq !== null) {
+    $prTo  = trim((string) ($payoutReq['pay_to'] ?? ''));
+    $prM   = strtolower(trim((string) ($payoutReq['pay_method'] ?? '')));
+    $prQr  = trim((string) ($payoutReq['pay_qr_path'] ?? '')) !== '';
+    $prMap = ['upi' => 'UPI', 'bank' => 'Bank', 'qr' => 'QR', 'esewa' => 'eSewa', 'khalti' => 'Khalti'];
+    if ($prTo !== '' || $prQr) {
+        $payoutReqTo = 'पठाउने · Pay to: ' . ($prM !== '' && isset($prMap[$prM]) && !str_starts_with($prTo, $prMap[$prM]) ? '<b>' . Security::e($prMap[$prM]) . '</b> ' : '')
+            . ($prTo !== '' ? '<b>' . Security::e($prTo) . '</b>' : '')
+            . ($prQr ? ' · <a href="/api/agentpro.php?a=payout_qr&amp;req=' . (int) $payoutReq['id'] . '" target="_blank" rel="noopener">🖼 QR</a>' : '');
+    } else {
+        $payoutReqTo = 'पठाउने · Pay to: <i>no payout details on the request — ask the agent for UPI / bank / QR</i>';
+    }
+}
 
 $summary  = AgentWallet::summary($viewId);
 $pct      = AgentWallet::commissionPercentFor($viewId);
@@ -703,6 +736,9 @@ $stats = [
     'monthCount' => (int) agent_stat('COUNT(*)', $viewId, $monthStart, $monthEnd),
     'monthMoney' => agent_stat('SUM(total_amount)', $viewId, $monthStart, $monthEnd, "AND status = 'confirmed'"),
 ];
+/* 19 Nov 2026 (u5 AG-1): passengers ("जना") beside the ticket counts - Ticket Statement's rule. */
+$heads = AgentWallet::headcountSet($viewId);
+$perHead = AgentWallet::perHeadRate($viewId);
 
 /* 7-day bookings sparkline for THIS agent (admin/index.php $spark pattern —
    range predicates on created_at, never DATE() wrapping, so the index is used). */
@@ -927,6 +963,27 @@ if ($flash !== null) {
         . (str_starts_with($flashWa, 'https://wa.me/') ? ' <a class="btn ok" href="' . Security::e($flashWa) . '" target="_blank" rel="noopener">📲 एजेन्टलाई WhatsApp · Send to the agent</a>' : '')
         . '</div>';
 }
+/* 19 Nov 2026 (u5 AG-5): 'मद्दत · Help' strip on the agent's own panel - call / WhatsApp the office
+   (a Nepal member: the Nepal office when its number is set) and share the new-agent register link. */
+if ($isOwn) {
+    $hlpCall = Settings::officePhone();
+    $hlpWa   = Settings::officeWhatsApp();
+    if ((string) ($profile['country_code'] ?? '') === '977') {
+        $npPh = trim(Settings::getString('nepal_phone', ''));
+        if ($npPh !== '') { $hlpCall = trim((string) (preg_split('#\s*/\s*#', $npPh)[0] ?? $npPh)); }
+        $npWa = preg_replace('/\D/', '', Settings::getString('nepal_whatsapp', '')) ?? '';
+        if (strlen($npWa) === 10) { $npWa = '977' . $npWa; }
+        if (preg_match('/^[1-9]\d{9,14}$/', $npWa) === 1) { $hlpWa = $npWa; }
+    }
+    $hlpJoin = appUrl('join.php');
+    echo '<div class="panel" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;margin-bottom:12px">'
+        . '<b style="margin-right:4px">🆘 मद्दत · Help</b>'
+        . '<a class="btn sm" href="tel:' . Security::e(preg_replace('/[^0-9+]/', '', $hlpCall) ?? '') . '">📞 ' . Security::e($hlpCall) . '</a>'
+        . '<a class="btn ok sm" href="https://wa.me/' . Security::e($hlpWa) . '" target="_blank" rel="noopener">💬 WhatsApp office</a>'
+        . '<a class="btn ghost sm" href="https://wa.me/?text=' . rawurlencode('S Hari Global को एजेन्ट बन्नुहोस् · Become an agent: ' . $hlpJoin) . '" target="_blank" rel="noopener"'
+        . ' onclick="if(navigator.share){navigator.share({title:\'नयाँ एजेन्ट दर्ता · Register\',url:' . Security::e(json_encode($hlpJoin, JSON_UNESCAPED_SLASHES)) . '}).catch(function(){});return false;}">🔗 नयाँ एजेन्ट दर्ता · Register</a>'
+        . '</div>';
+}
 ?>
 <?php if ($isSupervisor && $agentList !== []): ?>
 <form method="get" class="toolbar">
@@ -1125,10 +1182,10 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
 <div class="ck-stats">
   <div class="ck-stat"><div class="k">Today · आज</div>
     <div class="v"><?= Security::e(inr($stats['todayMoney'])) ?></div>
-    <div class="s"><?= (int) $stats['todayCount'] ?> ticket<?= (int) $stats['todayCount'] === 1 ? '' : 's' ?> sold</div></div>
+    <div class="s"><?= (int) $heads['today']['tickets'] ?> ticket<?= (int) $heads['today']['tickets'] === 1 ? '' : 's' ?> · <b><?= (int) $heads['today']['heads'] ?> जना</b></div></div>
   <div class="ck-stat"><div class="k">This month · यो महिना</div>
     <div class="v"><?= Security::e(inr($tgt['sales']['money'])) ?></div>
-    <div class="s"><?= (int) $tgt['sales']['confirmed'] ?> confirmed · <?= Security::e(inr($summary['earnedMonth'])) ?> commission</div></div>
+    <div class="s"><?= (int) $tgt['sales']['confirmed'] ?> confirmed · <b><?= (int) $heads['month']['heads'] ?> जना</b> · <?= Security::e(inr($summary['earnedMonth'])) ?> commission</div></div>
   <div class="ck-stat"><div class="k">Target · लक्ष्य</div>
     <?php if ($ckTgtAmt > 0):
       $ckTc = $tgt['pct'] >= 100 ? '#0a8b4b' : ($tgt['pct'] >= 60 ? '#d68910' : '#c0392b'); ?>
@@ -1315,6 +1372,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
 </div>
 <?php elseif ($payoutReq !== null && $canSettle): ?>
 <div class="flash" data-pane="balance wallet" style="background:#fff3e0;color:#7a3e00">💸 Pending payout request: <strong><?= Security::e(inr($payoutReqAmt)) ?></strong> asked on <?= Security::e(formatDate(substr((string) $payoutReq['created_at'], 0, 10))) ?> — the amount is held for it. A payout of at least that much in Wallet → Settle pays it; to decline it, use Agent 360 → Requests.
+  <?php if ($payoutReqTo !== ''): ?><div style="margin-top:4px;overflow-wrap:anywhere"><?= $payoutReqTo ?></div><?php endif; ?>
   <?php if ($ckCan360): ?><a class="btn ghost" href="/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=requests" style="margin-left:6px">अनुरोध · Requests →</a><?php endif; ?></div>
 <?php endif; ?>
 
@@ -1579,10 +1637,11 @@ $ckHave = array_column($badges, 'label');
 <div class="panel" data-pane="commission">
   <h2>💰 Commission · कमिसन</h2>
   <div class="ck-kv" style="padding:0 18px">
-    <div><span>Pay rate</span><b><?= Security::e($payLabel) ?></b><div class="muted" style="font-size:11.5px"><?= Security::e($paySub) ?></div></div>
+    <div><span>प्रति यात्रु ₹ · Pay rate</span><b><?= Security::e($perHead['source'] === 'staff' ? $perHead['label'] : $payLabel) ?></b><div class="muted" style="font-size:11.5px"><?= Security::e($perHead['source'] === 'staff' ? 'स्टाफ — यात्रु गन्ती मात्र, कमिसन छैन · staff: passengers counted, no commission' : $paySub) ?></div></div>
     <div><span>Earned this month</span><b><?= Security::e(inr($summary['earnedMonth'])) ?></b></div>
     <div><span>Commission due</span><b><?= Security::e(inr($balances['commission'])) ?></b></div>
     <div><span>This week</span><b><?= (int) $stats['weekCount'] ?> tickets</b></div>
+    <div><span>Passengers · यात्रु (all time)</span><b><?= (int) $heads['all']['heads'] ?> जना</b><div class="muted" style="font-size:11.5px"><?= (int) $heads['all']['tickets'] ?> tickets · बिक्री · ticket value <?= Security::e(inr($heads['all']['sales'] ?? $heads['all']['collected'])) ?></div></div>
   </div>
   <div class="tbl-scroll" style="overflow-x:auto">
     <table>
@@ -1688,7 +1747,8 @@ $ckHave = array_column($badges, 'label');
       <input type="hidden" name="action" value="payout">
       <strong style="font-size:13px">Pay commission to the agent</strong>
       <div class="muted" style="font-size:12px;margin:4px 0 8px"><?= Security::e(inr($balances['commission'])) ?> currently owed<?php if ($payoutReq !== null): ?>
-        · the agent asked for <?= Security::e(inr($payoutReqAmt)) ?> — paying at least that settles the request<?php endif; ?></div>
+        · the agent asked for <?= Security::e(inr($payoutReqAmt)) ?> — paying at least that settles the request
+        <?php if ($payoutReqTo !== ''): ?><br><span style="overflow-wrap:anywhere"><?= $payoutReqTo ?></span><?php endif; ?><?php endif; ?></div>
       <div class="row-actions">
         <input type="number" name="amount" step="0.01" min="0.01" max="<?= Security::e(number_format($balances['commission'], 2, '.', '')) ?>"
                <?= $payoutReq !== null ? 'value="' . Security::e(number_format($payoutReqAmt, 2, '.', '')) . '"' : '' ?>
@@ -1986,7 +2046,7 @@ $ckHave = array_column($badges, 'label');
                 ? 'Prints as <b>' . Security::e(AgentWallet::agentCodeLabel($viewId)) . '</b> on their tickets.'
                 : 'Blank = no number yet. Each number can belong to only one agent.' ?>
           </span></label>
-        <label style="font-size:12px;color:var(--mut)">Commission tier <span class="muted">(per passenger)</span>
+        <label style="font-size:12px;color:var(--mut)">प्रति यात्रु ₹ · Commission tier <span class="muted">(per passenger)</span>
           <select name="agent_type"
                   style="width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
             <option value="direct" <?= $agentType === 'direct' ? 'selected' : '' ?>>Direct agent — <?= Security::e(inr($rateDirect)) ?> / passenger</option>
@@ -2020,7 +2080,7 @@ $ckHave = array_column($badges, 'label');
               None — this agent follows the company tier above. Flat 0–10000, percent uses the Commission % field.
             <?php endif; ?>
           </span></label>
-        <div style="font-size:12px;color:var(--mut)">Tier rates <span class="muted">(company-wide ₹ per passenger)</span>
+        <div style="font-size:12px;color:var(--mut)">प्रति यात्रु ₹ · Tier rates <span class="muted">(company-wide ₹ per passenger)</span>
           <div style="display:flex;gap:6px;margin-top:4px;align-items:center">
             <input form="tierRatesForm" type="number" name="rate_direct" min="0" max="10000" step="1" required
                    value="<?= (int) round($rateDirect) ?>" title="Direct agent — ₹ per passenger"

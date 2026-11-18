@@ -51,6 +51,27 @@ function retry_stop(array $result): never
     exit;
 }
 
+/* 19 Nov 2026 (WA-2): the Meta template registry (includes/watplmeta.php)
+   reads every template's status from the WABA once every
+   wa_tpl_sync_minutes (default 60, 0 = never; a GET, free), so a template
+   Meta approves overnight is used by the next send without anyone opening
+   the admin page. Asking Meta for missing templates stays office-only
+   unless wa_tpl_auto_submit = 1 (default 0). Never stops this job. */
+try {
+    require_once INCLUDE_PATH . '/watplmeta.php';
+    $tplEvery = max(0, Settings::getInt('wa_tpl_sync_minutes', 60));
+    if ($tplEvery > 0 && WaTplMeta::configured() && WaTplMeta::lastSync() < time() - $tplEvery * 60) {
+        $tplSync = WaTplMeta::sync();
+        if (!$tplSync['ok']) {
+            Logger::warning('wa template sync failed: ' . $tplSync['error'], [], 'whatsapp');
+        } elseif (Settings::getBool('wa_tpl_auto_submit', false)) {
+            WaTplMeta::submitMissing(false);
+        }
+    }
+} catch (Throwable $e) {
+    Logger::exception($e, 'whatsapp');
+}
+
 // Activate each direct-Meta template only after the sending WABA approves it.
 if (Settings::getBool('wa_direct_meta_review', false)) {
     require_once ROOT_PATH . '/whatsapp/config.php';

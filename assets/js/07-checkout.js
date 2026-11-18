@@ -1800,6 +1800,14 @@ async function submitBooking() {
   Flow.sharingTier = null; Flow.tierManual = false; Flow.patient = false;
   Flow.paxIndividual = false;   // the next party starts under one name again
   location.hash = '#/ticket/' + id;
+  /* 19 Nov 2026 (u7, LG-2): an app booking by a passenger whose number is not proven yet gets
+     ONE "Verify on WhatsApp" card, prefilled (08-signin.js shgVerifyNudge). Never for a staff sale. */
+  try {
+    if (!staffSale && typeof window.shgVerifyNudge === 'function') {
+      window.shgVerifyNudge({ pnr: id, phone: phoneVal, name: (passengers[0] && passengers[0].name) || '',
+        country: (typeof contactCountry === 'function' ? contactCountry() : '') });
+    }
+  } catch (e) {}
   /* One honest message (D4-06 / D4-M1): cash at the counter for COD, the
      proof-not-received warning when the upload failed, else "verifying". */
   if (!isCod && !proofOk) { toast(t('proofFailToast')); SFX.error(); shgHaptic('error'); }

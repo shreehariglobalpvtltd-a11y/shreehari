@@ -109,7 +109,10 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             Logger::audit('admin.login.activation_issued', 'admin', (string) $aid, null, ['request' => $rid ?: null], 'Office issued a one-time PIN activation code (24 h)');
             $issued = [substr($code, 0, 4) . '-' . substr($code, 4), CodeLogin::codeFor($aid) . ' · ' . (string) ($acct['full_name'] ?? '')];
         }
-    } elseif (($act === 'auth_tpl_create' || $act === 'auth_tpl_check') && $isSa) {
+    } elseif (in_array($act, ['auth_tpl_create', 'auth_tpl_check', 'auth_tpl_manual', 'auth_tpl_test'], true) && $isSa) {
+        /* 19 Nov 2026 (u7): 'auth_tpl_manual' and 'auth_tpl_test' were missing from this condition, so the
+           "approved by hand" switch and "Test code to my number" buttons silently did nothing. The test
+           send is what has to pass (one +91 and one +977 number) before login_mobile_first_on. */
         // 15 Nov 2026: our own Meta AUTHENTICATION template for WhatsApp login codes
         if ($act === 'auth_tpl_manual') {
             WaAuthOtp::markManual(!empty($_POST['on']), $me);
@@ -123,6 +126,9 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $r = WaAuthOtp::send($intl, (string) random_int(100000, 999999));
                 $flash = $r['success'] ? ['ok', '✅ Meta ले स्वीकार्यो — तपाईंको WhatsApp (' . maskPhone($intl) . ') हेर्नुहोस् · Accepted by Meta, check your WhatsApp.']
                                        : ['bad', 'Meta: ' . $r['error']];
+                // 19 Nov 2026 (u7): keep the last result on screen (no code, masked number) — the mobile-first gate
+                Settings::set('wa_auth_tpl_last_test', date('Y-m-d H:i') . ' · ' . maskPhone($intl) . ' · '
+                    . ($r['success'] ? 'accepted by Meta' : 'refused: ' . mb_substr((string) $r['error'], 0, 120)), 'string', 'whatsapp', false);
             }
         } elseif ($act === 'auth_tpl_create') {
             $r = WaAuthOtp::create();
@@ -251,6 +257,10 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
       <form method="post"><?= Security::csrfField() ?><input type="hidden" name="act" value="auth_tpl_test"><button class="btn ok" type="submit">📩 मेरो नम्बरमा test code · Test code to my number</button></form>
       <?php endif; ?>
     </div>
+    <?php /* 19 Nov 2026 (u7, LG-1): the gate for the mobile-first door */ $atLast = Settings::getString('wa_auth_tpl_last_test', ''); ?>
+    <p class="muted" style="margin-top:8px">अन्तिम test · Last test: <b><?= $e($atLast !== '' ? $atLast : 'कहिल्यै भएन · never') ?></b><br>
+      मोबाइलबाट पहिलो लगइन (<code>login_mobile_first_on</code>): <b class="<?= Settings::getBool('login_mobile_first_on', false) ? 'lr-ok' : 'lr-no' ?>"><?= Settings::getBool('login_mobile_first_on', false) ? 'ON' : 'OFF' ?></b>
+      — +91 र +977 दुवै नम्बरमा test code आएपछि मात्र खोल्नुहोस् · Switch it on only after a test code reached one +91 and one +977 WhatsApp (SMS is off, so this template is the only way a first-time code arrives).</p>
     <details style="margin-top:10px"<?= $atSt !== 'APPROVED' ? ' open' : '' ?>><summary><b>Meta ले API बाट बनाउन दिएन भने (हातैले, ५ मिनेट) · If Meta refuses the API (by hand)</b></summary>
       <ol style="font-size:14px;line-height:1.6;margin:8px 0">
         <li>business.facebook.com → <b>WhatsApp Manager</b> → <b>Message templates</b> → <b>Create template</b></li>

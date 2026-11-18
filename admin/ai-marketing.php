@@ -51,6 +51,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Settings::set('mk_auto_nepal', isset($_POST['mk_auto_nepal']), 'bool', 'marketing');
                 Settings::set('mk_auto_ai_copy', isset($_POST['mk_auto_ai_copy']), 'bool', 'marketing');
                 Settings::set('mk_auto_lang', ($_POST['mk_auto_lang'] ?? '') === 'hi' ? 'hi' : 'ne', 'string', 'marketing');
+                /* 19 Nov 2026 (u8 AI-2): the default language (contacts we know nothing about) and
+                   the languages a line is written in; each person gets their own (contact_lang). */
+                $defLang = in_array($_POST['mk_auto_lang'] ?? '', ['ne', 'hi', 'en'], true) ? (string) $_POST['mk_auto_lang'] : 'ne';
+                Settings::set('mk_default_lang', $defLang, 'string', 'marketing');
+                $langsIn = array_values(array_intersect(['ne', 'hi', 'en'], (array) ($_POST['mk_auto_langs'] ?? [])));
+                Settings::set('mk_auto_langs', implode(',', $langsIn !== [] ? $langsIn : [$defLang]), 'string', 'marketing');
                 Settings::set('mk_auto_offer', mb_substr(trim(preg_replace('/\s+/u', ' ', (string) ($_POST['mk_auto_offer'] ?? '')) ?? ''), 0, 160), 'string', 'marketing');
                 $link = trim((string) ($_POST['mk_auto_link'] ?? ''));
                 Settings::set('mk_auto_link', preg_match('#^https?://\S+$#i', $link) === 1 ? mb_substr($link, 0, 500) : '', 'string', 'marketing');
@@ -237,7 +243,15 @@ admin_page_head('The AI picks who to message (festival, return trip, long-gone c
       <label>Same person again after (days)<input type="number" name="mk_auto_gap_days" min="3" max="90" value="<?= Settings::getInt('mk_auto_gap_days', 10) ?>"></label>
       <label>Always keep in wallet for tickets (₹)<input type="number" name="mk_auto_reserve" min="0" value="<?= Settings::getInt('mk_auto_reserve', 25) ?>"></label>
       <label>Start sending at (hour)<input type="number" name="mk_auto_hour" min="8" max="20" value="<?= Settings::getInt('mk_auto_hour', 10) ?>"></label>
-      <label>Language of the AI line<select name="mk_auto_lang"><option value="ne" <?= Settings::getString('mk_auto_lang', 'ne') !== 'hi' ? 'selected' : '' ?>>नेपाली</option><option value="hi" <?= Settings::getString('mk_auto_lang', 'ne') === 'hi' ? 'selected' : '' ?>>हिन्दी</option></select></label>
+      <?php $defLangNow = CustomerDirectory::defaultLang(); $langsNow = MkAutopilot::langs(); ?>
+      <label>भाषा थाहा नभएकालाई · Language when unknown<select name="mk_auto_lang"><option value="ne" <?= $defLangNow === 'ne' ? 'selected' : '' ?>>नेपाली</option><option value="hi" <?= $defLangNow === 'hi' ? 'selected' : '' ?>>हिन्दी</option><option value="en" <?= $defLangNow === 'en' ? 'selected' : '' ?>>English</option></select></label>
+      <label>एकएकको भाषामा लेख्ने · Write each person's line in
+        <span style="display:flex;gap:12px;flex-wrap:wrap;font-weight:500">
+          <?php foreach (['ne' => 'नेपाली', 'hi' => 'हिन्दी', 'en' => 'English'] as $lc => $ll): ?>
+            <span style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" name="mk_auto_langs[]" value="<?= $lc ?>" <?= in_array($lc, $langsNow, true) ? 'checked' : '' ?>><?= $ll ?></span>
+          <?php endforeach; ?>
+        </span>
+        <small style="color:var(--mut);font-weight:400">The language each person writes to us on WhatsApp (or picked on the website). Others get the line above.</small></label>
       <label>Link in the message (blank = website)<input name="mk_auto_link" value="<?= $e(Settings::getString('mk_auto_link', '')) ?>" placeholder="<?= $e(appUrl('/')) ?>"></label>
     </div>
     <label class="am-full">Your real offer (AI may mention ONLY this — leave blank if there is no offer)
@@ -274,7 +288,7 @@ admin_page_head('The AI picks who to message (festival, return trip, long-gone c
     <?php endforeach; ?>
   </table></div>
   <?php foreach ($plan['campaigns'] as $c): ?>
-    <h3 style="margin:14px 0 4px;font-size:14px"><?= $e(MkAutopilot::SEGMENTS[$c['segment']]) ?><?= $c['dir'] !== '' ? ' · ' . $e($c['dir'] === 'toNepal' ? 'घर जाने' : 'फर्कने') : '' ?> — <?= (int) $c['people'] ?> people
+    <h3 style="margin:14px 0 4px;font-size:14px"><?= $e(MkAutopilot::SEGMENTS[$c['segment']]) ?><?= $c['dir'] !== '' ? ' · ' . $e($c['dir'] === 'toNepal' ? 'घर जाने' : 'फर्कने') : '' ?><?= ($c['lang'] ?? '') !== '' ? ' · ' . $e(['ne' => 'नेपाली', 'hi' => 'हिन्दी', 'en' => 'English'][$c['lang']] ?? $c['lang']) : '' ?> — <?= (int) $c['people'] ?> people
       <span class="am-by"><?= $e($c['by'] === 'fixed' ? 'fixed line' . ($c['why'] !== '' ? ' — ' . $c['why'] : '') : 'written by ' . $c['by']) ?></span>
       <?php if ($c['id'] > 0): ?> · <a href="/admin/campaigns.php?id=<?= (int) $c['id'] ?>">campaign #<?= (int) $c['id'] ?></a><?php endif; ?></h3>
     <?php if (!empty($c['photo'])): ?><img src="<?= $e($c['photo']) ?>" alt="Offer photo" style="width:200px;border-radius:10px;display:block;margin:4px 0"><?php else: ?><p class="am-note" style="margin:2px 0">Text template (the photo template is not approved yet, or no offer runs).</p><?php endif; ?>

@@ -39,6 +39,8 @@ $cfg = [
     'ready'  => AgentPro::available(),
     'company'=> $company,
     'office' => Settings::officePhone(),
+    'officeWa' => Settings::officeWhatsApp(),      // 19 Nov 2026 (AG-5): the help card (a Nepal member's own office comes with ?a=me)
+    'joinUrl' => appUrl('join.php'),
     'staffLogin' => '/admin/login.php',
     'join'   => '/join.php',
     'admin'  => $admin !== null && Auth::can('dashboard.view') ? '/admin/index.php' : '',

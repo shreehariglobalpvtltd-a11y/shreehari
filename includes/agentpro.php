@@ -353,6 +353,43 @@ final class AgentPro
      *
      * @return array<string, mixed>|null
      */
+    /**
+     * 19 Nov 2026 (NP-4 member): the company block a member's card and /me/ print.
+     * A Nepal member (+977) gets the Nepal company first (Settings::companyForCountry,
+     * else companyFor(null, 'NP')) while ap_card_nepal_first is on (default ON);
+     * everyone else the India company exactly as before. Blank Nepal fields stay
+     * blank — the India contact numbers are kept only where Nepal has none.
+     *
+     * @return array<string, mixed>
+     */
+    public static function companyForMember(string $countryCode): array
+    {
+        $india = Settings::company();
+        if ($countryCode !== '977' || !Settings::getBool('ap_card_nepal_first', true)) {
+            return $india + ['flagFirst' => 'IN'];
+        }
+        try {
+            $np = method_exists('Settings', 'companyForCountry')
+                ? Settings::companyForCountry('NP')
+                : Settings::companyFor(null, 'NP');
+        } catch (Throwable $e) {
+            Logger::warning('Nepal company for card failed: ' . $e->getMessage(), [], 'agent');
+            return $india + ['flagFirst' => 'IN'];
+        }
+        if (($np['entity'] ?? 'IN') !== 'NP') {
+            // Nepal company not filled in yet: India letterhead, Nepal flag first only
+            return $india + ['flagFirst' => 'NP'];
+        }
+        $out = array_merge($india, $np);
+        foreach (['phone', 'whatsapp', 'email', 'phone247'] as $k) {
+            if (trim((string) ($out[$k] ?? '')) === '' && trim((string) ($india[$k] ?? '')) !== '') {
+                $out[$k] = $india[$k];   // the India office still answers a Nepal member
+            }
+        }
+        $out['flagFirst'] = 'NP';
+        return $out;
+    }
+
     public static function member(int $adminId, bool $ensure = true): ?array
     {
         if ($adminId <= 0) {
@@ -417,7 +454,7 @@ final class AgentPro
             default                                                  => 'valid',
         };
 
-        $company = array_map(static fn($v) => is_string($v) ? self::fixMojibake($v) : $v, Settings::company());
+        $company = array_map(static fn($v) => is_string($v) ? self::fixMojibake($v) : $v, self::companyForMember($cc));
         $greeting = trim((string) ($m['vc_greeting'] ?? ''));
         if ($greeting === '') {
             $greeting = Settings::getString('ap_vc_greeting', 'Namaste! SHG card');
@@ -486,6 +523,9 @@ final class AgentPro
             ],
             'lang'          => (string) ($m['lang'] ?? 'ne'),
             'company'       => $company,
+            'flagFirst'     => (string) ($company['flagFirst'] ?? 'IN'),   // NP-4: 'NP' = Nepal flag / company first
+            'payoutQr'      => trim((string) ($m['payout_qr_path'] ?? '')) !== '',
+            'payoutVerified'=> !empty($m['payout_verified_at']),
             'joined'        => substr((string) ($a['created_at'] ?? ''), 0, 10),
             'lastLogin'     => (string) ($a['last_login_at'] ?? ''),
         ];
@@ -993,6 +1033,24 @@ final class AgentPro
         if ($u === []) {
             return;
         }
+        /* 19 Nov 2026 (AG-2, anti-fraud): a changed UPI / account / IFSC / holder / wallet id
+           takes the office's "payout details checked" tick away — a payout can never be
+           silently redirected to new details nobody looked at. */
+        $old = Database::fetch('SELECT * FROM ap_members WHERE admin_id = :a', ['a' => $adminId]) ?? [];
+        $changed = false;
+        // review fix 19 Nov: bank name and branch are part of "where the money goes" too
+        foreach (['upi_id', 'bank_account_enc', 'bank_ifsc', 'bank_holder', 'bank_name', 'bank_branch', 'esewa_id', 'khalti_id'] as $k) {
+            if (array_key_exists($k, $u) && $k === 'bank_account_enc') {
+                $changed = $changed || ($u['bank_account_last4'] ?? null) !== ($old['bank_account_last4'] ?? null)
+                    || self::decrypt((string) ($old['bank_account_enc'] ?? '')) !== self::decrypt((string) $u[$k]);
+            } elseif (array_key_exists($k, $u)) {
+                $changed = $changed || (string) ($u[$k] ?? '') !== (string) ($old[$k] ?? '');
+            }
+        }
+        if ($changed && !empty($old['payout_verified_at']) && self::memberHas('payout_verified_at')) {
+            $u['payout_verified_at'] = null;
+            $u['payout_verified_by'] = null;
+        }
         Database::update('ap_members', $u, 'admin_id = :a', ['a' => $adminId]);
         // The office's payout screens read admin_profiles.payout_method / account.
         $method = !empty($u['upi_id']) ? 'upi' : (!empty($u['bank_account_enc']) ? 'bank' : (!empty($u['esewa_id']) ? 'esewa' : ''));
@@ -1082,6 +1140,115 @@ final class AgentPro
     {
         $enc = (string) Database::scalar('SELECT bank_account_enc FROM ap_members WHERE admin_id = :a', ['a' => $adminId], '');
         return self::decrypt($enc);
+    }
+
+    /* 19 Nov 2026 (u5 AG-2): a member's own bank / UPI QR, to be paid on. KYC-grade
+       private data: re-encoded JPEG in uploads/agents-kyc/ (nginx denies that folder),
+       served only by api/agentpro.php?a=payout_qr to the member and to the office. */
+    public const PAYOUT_QR_MAX_BYTES = 3 * 1024 * 1024;
+
+    /**
+     * @param array<string, mixed> $file a $_FILES entry
+     * @return string the stored relative path
+     */
+    public static function savePayoutQr(int $adminId, array $file, int $by = 0): string
+    {
+        if (!self::memberHas('payout_qr_path')) {
+            throw new RuntimeException('QR upload is not set up yet — run database/upgrade-2026-11-19-u5-agent-payout.sql.');
+        }
+        $admin = Database::fetch('SELECT role FROM admins WHERE id = :a', ['a' => $adminId]);
+        if ($admin === null) {
+            throw new RuntimeException('No such member.');
+        }
+        if ((int) ($file['size'] ?? 0) > self::PAYOUT_QR_MAX_BYTES) {
+            throw new RuntimeException('The QR photo is too large (3 MB at most) · QR फोटो ३ MB भन्दा सानो पठाउनुहोस्।');
+        }
+        self::ensureMember($adminId, (string) $admin['role']);
+        $saved = self::storePrivate($file, true);   // image only, re-encoded, EXIF stripped
+        $u = ['payout_qr_path' => $saved['path']];
+        if (self::memberHas('payout_verified_at')) {
+            $u['payout_verified_at'] = null;   // new details: the office checks them again
+            $u['payout_verified_by'] = null;
+        }
+        Database::update('ap_members', $u, 'admin_id = :a', ['a' => $adminId]);
+        // an open request keeps the QR it was made with (its own pay_qr_path); the old file stays for it
+        if (trim((string) (AgentWallet::profile($adminId)['payout_method'] ?? '')) === '') {
+            AgentWallet::saveProfile($adminId, ['payout_method' => 'qr', 'payout_account' => 'QR (uploaded)']);
+        }
+        Logger::audit('agentpro.payout_qr_saved', 'admin', (string) $adminId, null, ['path' => basename($saved['path'])],
+            'Payout QR uploaded' . ($by > 0 && $by !== $adminId ? ' by admin #' . $by : ' by the member'));
+        return $saved['path'];
+    }
+
+    /** Absolute path of the member's current payout QR, or null. */
+    public static function payoutQrAbs(int $adminId): ?string
+    {
+        if (!self::memberHas('payout_qr_path')) {
+            return null;
+        }
+        return self::privateAbs((string) Database::scalar('SELECT payout_qr_path FROM ap_members WHERE admin_id = :a', ['a' => $adminId], ''));
+    }
+
+    /**
+     * The office ticks (or clears) "payout details checked against the originals".
+     * Needs commissions.pay, staff.manage or a super-admin; never one's own.
+     */
+    public static function setPayoutVerified(int $adminId, bool $on, int $by): void
+    {
+        if (!self::memberHas('payout_verified_at')) {
+            throw new RuntimeException('Run database/upgrade-2026-11-19-u5-agent-payout.sql first.');
+        }
+        if ($by > 0 && $by === $adminId) {
+            throw new RuntimeException('Someone else must check your own payout details.');
+        }
+        $admin = Database::fetch('SELECT role FROM admins WHERE id = :a', ['a' => $adminId]);
+        if ($admin === null) {
+            throw new RuntimeException('No such member.');
+        }
+        self::ensureMember($adminId, (string) $admin['role']);
+        $old = Database::fetch('SELECT payout_verified_at FROM ap_members WHERE admin_id = :a', ['a' => $adminId]);
+        Database::update('ap_members', [
+            'payout_verified_at' => $on ? date('Y-m-d H:i:s') : null,
+            'payout_verified_by' => $on && $by > 0 ? $by : null,
+        ], 'admin_id = :a', ['a' => $adminId]);
+        Logger::audit($on ? 'agentpro.payout_verified' : 'agentpro.payout_unverified', 'admin', (string) $adminId,
+            ['payout_verified_at' => $old['payout_verified_at'] ?? null], ['payout_verified' => $on],
+            'Payout details ' . ($on ? 'checked' : 'un-checked') . ' by admin #' . $by);
+    }
+
+    /**
+     * Tell a member their withdrawal was paid / declined: the approved Meta template
+     * shg_withdraw_update when the template sender exists (guarded — WaTplMeta comes
+     * from another unit), else the plain WhatsApp line through tellMember().
+     */
+    public static function tellPayout(int $adminId, string $status, float $amount, string $detail, string $text): void
+    {
+        if (self::payoutTemplate($adminId, $status, $amount, $detail)) {
+            return;
+        }
+        self::tellMember($adminId, $text);
+    }
+
+    /**
+     * The shg_withdraw_update template ALONE (no text fallback): true = sent. For the
+     * doors that keep their own text message (admin/agent.php Settle, Agent 360 paid /
+     * declined) — they try this first and send their usual text only when it is false,
+     * so a member never gets both. False while WaTplMeta::sendNamed does not exist.
+     */
+    public static function payoutTemplate(int $adminId, string $status, float $amount, string $detail): bool
+    {
+        try {
+            if (class_exists('WaTplMeta') && is_callable(['WaTplMeta', 'sendNamed'])) {
+                $m = self::member($adminId, false);
+                if ($m !== null && $m['phone'] !== '') {
+                    return (bool) call_user_func(['WaTplMeta', 'sendNamed'], (string) $m['phone'], 'shg_withdraw_update',
+                        [(string) $m['name'], inr($amount), $status, $detail !== '' ? $detail : '-'], $m['countryCode'] === '977' ? 'NP' : 'IN');
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Withdraw template failed, sending text: ' . $e->getMessage(), [], 'agent');
+        }
+        return false;
     }
 
     /**
@@ -2435,6 +2602,18 @@ final class AgentPro
                 }
             }
             $code = AgentWallet::agentCodeLabel($adminId);
+            /* 19 Nov 2026 (NP-1): a Nepal (+977) agent sells from a Nepal counter desk, so their
+               sales print the Nepal letterhead and NPR. Behind np_agent_desk_on (OFF); the desk is an
+               EXISTING one (np_agent_default_desk, e.g. NPJ) — approve never opens a new branch. */
+            if (Settings::getBool('np_agent_desk_on', false) && method_exists('CounterDesk', 'openNepalBranch')
+                && (string) (AgentWallet::profile($adminId)['country_code'] ?? '') === '977') {
+                try {
+                    $desk = trim(Settings::getString('np_agent_default_desk', 'NPJ'));
+                    CounterDesk::openNepalBranch($adminId, (string) ($app['city'] ?? ''), $desk !== '' ? $desk : null, false);
+                } catch (Throwable $e) {
+                    Logger::warning('Approve: Nepal desk not attached: ' . $e->getMessage(), [], 'agent');
+                }
+            }
         }
         // $kycVerified: null = the one-tap approve (the office looked at the ID photos) → verified;
         // the office form passes its "saw the original ID" tick — unticked leaves KYC "submitted".
@@ -2810,7 +2989,9 @@ final class AgentPro
         ]);
         AgentWallet::decidePayoutRequest($requestId, 'paid', $by, $note, $ledgerId);
         $voucher = AgentWallet::voucherFor($ledgerId);
-        self::tellMember($adminId, '💸 ' . inr($amount) . ' पठाइयो / paid to you. Ref ' . $voucher);
+        $ref = trim($ref) !== '' ? trim($ref) : $voucher;
+        self::tellPayout($adminId, 'paid', $amount, $ref,
+            '💸 ' . inr($amount) . ' पठाइयो / paid to you. Ref ' . $ref . ($voucher !== '' && $voucher !== $ref ? ' · ' . $voucher : ''));
         return $ledgerId;
     }
 
@@ -2819,7 +3000,8 @@ final class AgentPro
         $req = Database::fetch('SELECT * FROM agent_payout_requests WHERE id = :i', ['i' => $requestId]);
         AgentWallet::decidePayoutRequest($requestId, 'declined', $by, $note);
         if ($req !== null) {
-            self::tellMember((int) $req['agent_admin_id'], '⚠️ ' . inr((float) $req['amount']) . ' withdrawal: ' . $note);
+            self::tellPayout((int) $req['agent_admin_id'], 'declined', (float) $req['amount'], $note,
+                '⚠️ ' . inr((float) $req['amount']) . ' निकाल्ने अनुरोध अस्वीकृत / withdrawal declined: ' . $note);
         }
     }
 

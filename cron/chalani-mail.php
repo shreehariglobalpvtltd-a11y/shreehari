@@ -123,7 +123,18 @@ foreach ($deps as $d) {
         } catch (Throwable $e) {
             Logger::warning('chalani-mail: seat chart render failed', ['sid' => $sid, 'err' => $e->getMessage()], 'mail');
         }
-        $html = $head('Full passenger list', count($rows)) . ($rows !== [] ? $table($rows) : '<p>No confirmed passengers yet.</p>')
+        /* 19 Nov 2026 (AI-3): the office copy carries the bus's money from the
+           chalani's own rule (ChalaniPng::departureMoney) - one count everywhere */
+        $moneyP = '';
+        try {
+            require_once INCLUDE_PATH . '/chalanipng.php';
+            $dmT = ChalaniPng::departureMoney($sid)['totals'];
+            $moneyP = '<p style="margin:0 0 10px">नगद · Cash ' . e(inr((float) $dmT['cash'])) . ' · अनलाइन · Online ' . e(inr((float) $dmT['online']))
+                    . ' · बोर्डिङमा उठाउनु · To collect on boarding ' . (int) $dmT['boardDueN'] . ' जना ' . e(inr((float) $dmT['boardDue'])) . '</p>';
+        } catch (Throwable $e) {
+            $moneyP = '';
+        }
+        $html = $head('Full passenger list', count($rows)) . $moneyP . ($rows !== [] ? $table($rows) : '<p>No confirmed passengers yet.</p>')
               . '<p style="color:#888;font-size:12px">Seat chart attached. यो इमेल बस छुट्नु अघि आफैँ आउँछ।</p></div>';
         foreach ($testTo !== '' ? [$testTo] : $office as $to) {
             Notify::email($to, 'Chalani · ' . $title, $html, '', $attach) ? $out['office']++ : $out['failed']++;

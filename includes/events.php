@@ -267,6 +267,7 @@ final class EventBus
                 return;
             }
             $notify();
+            $journalFrom = count(Notify::whatsappJournal());
             Notify::bookingConfirmed($booking);
             // 3 Oct 2026: AiSensy ticket confirmation (whatsapp/aisensy.php).
             // Default mode 'fallback' = only when the main driver missed the
@@ -276,6 +277,17 @@ final class EventBus
                 AiSensyAPI::onBookingConfirmed($booking);
             } catch (Throwable $e) {
                 Logger::warning('AiSensy hook failed', ['err' => $e->getMessage()], 'whatsapp');
+            }
+            /* 19 Nov 2026 (WA-1): with AiSensy off nothing queued a ticket the
+               Meta number could not deliver, so a Nepal customer who wrote "hi"
+               a minute later still got nothing. The "hi" queue now gets a row
+               for every number on the booking the send did not reach
+               (wa_queue_meta_on). Never breaks the fan-out. */
+            try {
+                require_once __DIR__ . '/waqueue.php';
+                WaQueue::afterNotify($booking, $journalFrom);
+            } catch (Throwable $e) {
+                Logger::warning('wa queue after-notify hook failed', ['err' => $e->getMessage()], 'whatsapp');
             }
             // 10 Oct 2026: watch that the passenger really gets it; if not, the
             // route agent hands it over (includes/waagentroute.php, free only).

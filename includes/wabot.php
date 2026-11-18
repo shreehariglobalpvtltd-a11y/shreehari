@@ -55,6 +55,24 @@ final class WaBot
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+        /* 19 Nov 2026 (u9): the language this person writes in, for the customer directory (unit u8
+           adds CustomerDirectory::noteLang). Best effort, only when that method exists. */
+        if ($kind === 'text' && $body !== '' && $senderDigits !== '') {
+            try {
+                if (!class_exists('CustomerDirectory') && is_file(INCLUDE_PATH . '/customerdirectory.php')) {
+                    require_once INCLUDE_PATH . '/customerdirectory.php';
+                }
+                if (class_exists('CustomerDirectory') && method_exists('CustomerDirectory', 'noteLang')) {
+                    $intl = preg_replace('/\D/', '', $from) ?? '';
+                    if (str_starts_with($intl, '00')) {
+                        $intl = substr($intl, 2);
+                    }
+                    CustomerDirectory::noteLang(strlen($intl) >= 11 ? $intl : $senderDigits, $body, 'chat');
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
         /* 14 Nov 2026: the owner's and the CEO's own papers (includes/wavault.php).
            Answers only those two numbers and only vault words / "save" attachments;
            null for everything else, which carries on below exactly as before. */
@@ -158,6 +176,22 @@ final class WaBot
                     self::$lastRole = 'staff';        // review: WaAgentRoute answers only agent / counter logins (whoIs calls them staff)
                 }
                 return self::out((string) $early['text'], $early['media'] ?? null, $early['ui'] ?? null);
+            }
+        }
+
+        /* 19 Nov 2026 (u9, owner's blueprint bot words): exact one-line words only -
+           office numbers: report / agents / revenue; anyone else: status / track, and
+           "resend <name> <mobile>" (a resend word is required - the bare "<name> <mobile>"
+           line stays WaBooking's quick order) finds a ticket and resends it. Null otherwise. */
+        if ($senderDigits !== '' && $body !== '' && $kind === 'text') {
+            try {
+                $word = self::blueprintWords($from, $senderDigits, $body);
+                if ($word !== null) {
+                    self::$lastRouter = 'u9words';
+                    return self::out($word['text'], $word['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
             }
         }
 
@@ -522,6 +556,7 @@ final class WaBot
                 } catch (Throwable $e) {
                     Logger::exception($e);
                 }
+                $booking['text'] = self::withBookingLink((string) $booking['text'], $body, $isStaff);
                 self::$lastRouter = 'wabooking';
                 return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
             }
@@ -599,6 +634,7 @@ final class WaBot
             if (!$localFirst && !$staffToAssistant) {
                 $booking = $tryLocalBooking();
                 if ($booking !== null) {
+                    $booking['text'] = self::withBookingLink((string) $booking['text'], $body, $isStaff);
                     self::$lastRouter = 'wabooking';
                     return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
                 }
@@ -958,6 +994,420 @@ final class WaBot
         }
         $text = trim((string) ($saved['text'] ?? ''));
         return $text !== '' ? $text : null;
+    }
+
+    /* =================================================================
+     *  BLUEPRINT BOT WORDS (19 Nov 2026, u9 - owner's 16 Nov blueprint)
+     *
+     *  Exact one-line words, answered from the tables (no AI, no send
+     *  beyond the resend path that already exists):
+     *    office numbers (admin_whatsapp, ceo_whatsapp, office_report_numbers)
+     *      report  -> OfficeReport::build() text (the scheduled report, now)
+     *      agents  -> today's top sellers
+     *      revenue -> today and this month
+     *    everyone else (never staff - the staff desk has its own words)
+     *      status  -> the latest ticket on this number
+     *      track   -> the live link for the next trip (a trip today / tomorrow
+     *                 stays with WaLocal, which also shows where the bus is)
+     *      "resend <name> <mobile>" / "ticket pathau <name> <mobile>" / "find …"
+     *                 (an explicit resend word is REQUIRED - a bare "<name>
+     *                 <mobile>" line stays WaBooking's quick order) -> a
+     *                 confirmed ticket travelling today or later with that
+     *                 passenger on that number: its picture here when the
+     *                 sender IS that number, else re-sent to the booking's own
+     *                 number only (one resend per booking per 6 h, 5 tries per
+     *                 sender per hour, the same reply on hit and miss).
+     *  "ticket" / "टिकट" keeps the existing chat booking (WaBooking) and the
+     *  reply gets the website booking link (withBookingLink).
+     *  Switches: wa_office_words_on, wa_customer_words_on, wa_find_resend_on.
+     * ================================================================= */
+
+    /** Tests replace the resend: fn(array $booking): array{ok: bool} (the live path is Notify::resendTicketWhatsApp). */
+    public static ?Closure $resendHook = null;
+
+    private const OFFICE_REPORT  = ['report', 'reports', 'aaja ko report', 'today report', 'office report', 'रिपोर्ट', 'आजको रिपोर्ट'];
+    private const OFFICE_AGENTS  = ['agents', 'agent', 'top agents', 'top agent', 'एजेन्ट', 'एजेंट', 'एजेन्टहरू', 'एजेन्ट रिपोर्ट'];
+    private const OFFICE_REVENUE = ['revenue', 'income', 'kamai', 'aamdani', 'आम्दानी', 'कमाइ', 'कमाई', 'आमदनी'];
+    private const WORD_STATUS    = ['status', 'my status', 'mero status', 'ticket status', 'booking status', 'स्थिति', 'मेरो स्थिति', 'टिकट स्थिति', 'स्टेटस', 'स्टेटस?'];
+    private const WORD_TRACK     = ['track', 'tracking', 'track bus', 'bus track', 'track my bus', 'ट्र्याक', 'ट्रैक', 'बस ट्र्याक', 'ट्र्याकिङ'];
+
+    /**
+     * @return array{text: string, media: ?string}|null
+     */
+    public static function blueprintWords(string $from, string $senderDigits, string $body): ?array
+    {
+        $w = mb_strtolower(trim((string) preg_replace('/[\s.!?।,]+/u', ' ', $body)));
+        if ($w === '' || mb_strlen($w) > 60) {
+            return null;
+        }
+        $isOfficeWord = in_array($w, self::OFFICE_REPORT, true) || in_array($w, self::OFFICE_AGENTS, true) || in_array($w, self::OFFICE_REVENUE, true);
+        if ($isOfficeWord && Settings::getBool('wa_office_words_on', true) && self::isOfficeNumber($from !== '' ? $from : $senderDigits)) {
+            require_once INCLUDE_PATH . '/officereport.php';
+            if (in_array($w, self::OFFICE_REPORT, true)) {
+                $r = OfficeReport::build(todayISO());
+                return ['text' => (string) $r['text'], 'media' => $r['media'] ?? null];
+            }
+            if (in_array($w, self::OFFICE_AGENTS, true)) {
+                return ['text' => self::topAgentsText(todayISO()), 'media' => null];
+            }
+            return ['text' => self::revenueText(todayISO()), 'media' => null];
+        }
+
+        $isStatus = in_array($w, self::WORD_STATUS, true);
+        $isTrack  = in_array($w, self::WORD_TRACK, true);
+        $nameFind = !$isStatus && !$isTrack ? self::resendRequest($body) : null;
+        if (!$isStatus && !$isTrack && $nameFind === null) {
+            return null;
+        }
+        // staff and the office keep their own desk words (ApWa, WaLocal, WaOrder)
+        try {
+            require_once INCLUDE_PATH . '/aitools.php';
+            $who = AiTools::whoIs($from);
+            if (in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true)) {
+                return null;
+            }
+        } catch (Throwable $e) {
+            // unknown = a customer
+        }
+        if ($isStatus) {
+            return Settings::getBool('wa_customer_words_on', true) ? self::statusAnswer($senderDigits) : null;
+        }
+        if ($isTrack) {
+            return Settings::getBool('wa_customer_words_on', true) ? self::trackAnswer($senderDigits) : null;
+        }
+        return Settings::getBool('wa_find_resend_on', true) ? self::findAndResend($senderDigits, $nameFind[0], $nameFind[1]) : null;
+    }
+
+    /**
+     * admin_whatsapp / ceo_whatsapp / office_report_numbers - the numbers the office report goes to.
+     * The WaVault::ownerKey rule: the FULL number when the setting carries a country code (India and
+     * Nepal share ten-digit mobiles, so +977 98… never matches a +91 98… setting), the last ten
+     * digits only for a bare ten-digit setting.
+     */
+    public static function isOfficeNumber(string $from): bool
+    {
+        $d = (string) preg_replace('/\D/', '', $from);
+        if (str_starts_with($d, '00')) {
+            $d = substr($d, 2);
+        }
+        if (strlen($d) < 10) {
+            return false;
+        }
+        require_once INCLUDE_PATH . '/officereport.php';
+        foreach (OfficeReport::numbers() as $n) {
+            $own = (string) preg_replace('/\D/', '', (string) $n);
+            if (str_starts_with($own, '00')) {
+                $own = substr($own, 2);
+            }
+            if (strlen($own) < 10) {
+                continue;
+            }
+            $match = strlen($own) > 10
+                ? ($d === $own || (strlen($d) === 10 && substr($own, -10) === $d))
+                : substr($d, -10) === $own;
+            if ($match) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Today's sellers by tickets: name, role, tickets, seats, rupees; online sales on their own line. */
+    public static function topAgentsText(string $day): string
+    {
+        $s = $day . ' 00:00:00';
+        $e = addDaysISO($day, 1) . ' 00:00:00';
+        $rows = Database::fetchAll(
+            "SELECT a.full_name, a.role, COUNT(*) AS tickets, COALESCE(SUM(b.total_amount), 0) AS amt,
+                    COALESCE(SUM((SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL)), 0) AS seats
+               FROM bookings b JOIN admins a ON a.id = b.sold_by_admin_id
+              WHERE b.created_at >= :s AND b.created_at < :e AND b.status IN ('confirmed', 'completed')
+              GROUP BY a.id, a.full_name, a.role
+              ORDER BY tickets DESC, amt DESC LIMIT 8",
+            ['s' => $s, 'e' => $e]
+        );
+        $online = Database::fetch(
+            "SELECT COUNT(*) AS tickets, COALESCE(SUM(total_amount), 0) AS amt FROM bookings
+              WHERE created_at >= :s AND created_at < :e AND status IN ('confirmed', 'completed')
+                AND (sold_by_admin_id IS NULL OR sold_by_admin_id = 0)",
+            ['s' => $s, 'e' => $e]
+        ) ?? ['tickets' => 0, 'amt' => 0];
+        $lines = ['👥 आजका शीर्ष बिक्रेता · Top sellers today (' . date('j M', (int) strtotime($day)) . ')'];
+        if ($rows === []) {
+            $lines[] = 'आज एजेन्ट / काउन्टरबाट कुनै टिकट बिक्री भएको छैन। · No agent / counter sales yet today.';
+        }
+        foreach ($rows as $i => $r) {
+            $lines[] = ($i + 1) . '. ' . trim((string) $r['full_name']) . ' (' . (string) $r['role'] . ') — '
+                . (int) $r['tickets'] . ' टिकट · ' . (int) $r['seats'] . ' सिट · ' . inr((float) $r['amt']);
+        }
+        if ((int) $online['tickets'] > 0) {
+            $lines[] = '🌐 अनलाइन · Online — ' . (int) $online['tickets'] . ' टिकट · ' . inr((float) $online['amt']);
+        }
+        $lines[] = '"agent report mahina" = यो महिनाको पूरा हिसाब · this month in full';
+        return implode("\n", $lines);
+    }
+
+    /** Sales today and this month (the ReportChart rule: created that day, confirmed / completed) + money verified today. */
+    public static function revenueText(string $day): string
+    {
+        $sum = static function (string $from, string $to): array {
+            $r = Database::fetch(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(total_amount), 0) AS amt FROM bookings
+                  WHERE created_at >= :s AND created_at < :e AND status IN ('confirmed', 'completed')",
+                ['s' => $from . ' 00:00:00', 'e' => $to . ' 00:00:00']
+            ) ?? ['n' => 0, 'amt' => 0];
+            return [(int) $r['n'], (float) $r['amt']];
+        };
+        $month = substr($day, 0, 7) . '-01';
+        [$tn, $ta] = $sum($day, addDaysISO($day, 1));
+        [$mn, $ma] = $sum($month, addDaysISO($day, 1));
+        $lines = ['💰 आम्दानी · Revenue (' . date('j M', (int) strtotime($day)) . ')',
+            'आज · Today: ' . $tn . ' टिकट · ' . inr($ta),
+            'यो महिना · This month (' . date('M Y', (int) strtotime($day)) . '): ' . $mn . ' टिकट · ' . inr($ma)];
+        try {
+            require_once INCLUDE_PATH . '/officereport.php';
+            $c = OfficeReport::collected($day);
+            $lines[] = 'आज प्रमाणित भुक्तानी · Verified today: ' . inr((float) $c['inr'])
+                . ((float) $c['npr'] > 0 ? ' (नेपाल काउन्टर: रू ' . number_format((float) $c['npr'], 0) . ')' : '');
+        } catch (Throwable $e) {
+            // the sales lines stand on their own
+        }
+        return implode("\n", $lines);
+    }
+
+    /** The latest booking on this number, with what it waits on and the one link that helps. */
+    private static function statusAnswer(string $senderDigits): array
+    {
+        $b = Database::fetch(
+            "SELECT b.id, b.pnr, b.status, b.is_cod, b.total_amount, bl.travel_date, r.from_city, r.to_city
+               FROM bookings b
+               LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+               LEFT JOIN schedules s ON s.id = bl.schedule_id
+               LEFT JOIN routes r ON r.id = s.route_id
+              WHERE b.contact_phone = :p OR b.alt_phone = :p2
+              ORDER BY b.id DESC LIMIT 1",
+            ['p' => $senderDigits, 'p2' => $senderDigits]
+        );
+        if ($b === null) {
+            return ['text' => "🔎 यो नम्बरमा कुनै बुकिङ भेटिएन।\nPNR (जस्तै SHG-2026-00123) पठाउनुहोस्, वा बुक गर्न \"ticket\" लेख्नुहोस्।\n"
+                . 'No booking on this number. Send your PNR, or write "ticket" to book.', 'media' => null];
+        }
+        $st = (string) $b['status'];
+        $due = 0.0;
+        if (in_array($st, ['pending', 'rejected', 'confirmed'], true)) {
+            $paid = (float) Database::scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'", ['b' => (int) $b['id']], 0);
+            $due = round(max(0, (float) $b['total_amount'] - $paid), 2);
+        }
+        $label = match ($st) {
+            'pending'   => '⏳ भुक्तानी बाँकी / जाँचमा · Payment pending',
+            'confirmed' => (int) $b['is_cod'] === 1 && $due > 0 ? '✅ पक्का — बसमा तिर्ने · Confirmed, pay on boarding' : '✅ पक्का · Confirmed',
+            'completed' => '🏁 यात्रा सकियो · Completed',
+            'cancelled' => '❌ रद्द · Cancelled',
+            'rejected'  => '⚠️ भुक्तानी अस्वीकृत · Payment rejected',
+            'expired'   => '⌛ म्याद सकियो · Expired',
+            default     => strtoupper($st),
+        };
+        $lines = ['🎫 PNR: ' . $b['pnr']];
+        if ((string) ($b['from_city'] ?? '') !== '') {
+            $lines[] = '🚌 ' . trim((string) $b['from_city']) . ' → ' . trim((string) $b['to_city'])
+                . ((string) ($b['travel_date'] ?? '') !== '' ? ' · ' . formatDate((string) $b['travel_date'], 'D, j M') : '');
+        }
+        $lines[] = 'स्थिति · Status: ' . $label;
+        if ($due > 0 && in_array($st, ['pending', 'rejected'], true) || ($st === 'confirmed' && (int) $b['is_cod'] === 1 && $due > 0)) {
+            $lines[] = '💳 तिर्न · Pay ' . inr($due) . ': ' . appUrl('pay.php?pnr=' . rawurlencode((string) $b['pnr']));
+        }
+        if (in_array($st, ['confirmed', 'completed'], true)) {
+            $lines[] = '🎟 टिकट फेरि चाहियो? "ticket pathau" लेख्नुहोस् · Need the ticket again? write "send ticket"';
+            if ((string) ($b['travel_date'] ?? '') !== '' && (string) $b['travel_date'] >= addDaysISO(todayISO(), -1)) {
+                $lines[] = '🗺 ' . Ticket::trackUrl((string) $b['pnr']);
+            }
+        }
+        return ['text' => implode("\n", $lines), 'media' => null];
+    }
+
+    /** The next trip's live link; a trip today / yesterday / tomorrow is WaLocal's (null). */
+    private static function trackAnswer(string $senderDigits): ?array
+    {
+        $b = Database::fetch(
+            "SELECT b.pnr, MIN(bl.travel_date) AS travel_date
+               FROM bookings b JOIN booking_legs bl ON bl.booking_id = b.id
+              WHERE (b.contact_phone = :p OR b.alt_phone = :p2) AND b.status IN ('confirmed', 'completed')
+                AND bl.travel_date >= :d
+              GROUP BY b.id, b.pnr ORDER BY travel_date ASC, b.id DESC LIMIT 1",
+            ['p' => $senderDigits, 'p2' => $senderDigits, 'd' => addDaysISO(todayISO(), -1)]
+        );
+        if ($b === null) {
+            return null;                                   // WaLocal says which buses are on the road
+        }
+        $soon = (string) $b['travel_date'] <= addDaysISO(todayISO(), 1);
+        if ($soon && Settings::getBool('wa_local_brain_on', true)) {
+            return null;                                   // WaLocal: where the bus is now + the same link
+        }
+        return ['text' => '🚌 ' . $b['pnr'] . ' · ' . formatDate((string) $b['travel_date'], 'D, j M') . "\n"
+            . "यात्राको दिन यो लिंकमा बस कहाँ छ लाइभ देखिन्छ: \n" . Ticket::trackUrl((string) $b['pnr']) . "\n"
+            . 'On the day of travel this link shows the bus live.', 'media' => null];
+    }
+
+    /**
+     * "Ram Thapa 9812345678" (only a name and a mobile, nothing else) -> [name, 10-digit mobile], else null.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    public static function nameAndPhone(string $body): ?array
+    {
+        $t = trim((string) preg_replace('/\s+/u', ' ', $body));
+        if (preg_match('/^([\p{L}\p{M}][\p{L}\p{M}.\']*(?:\s[\p{L}\p{M}][\p{L}\p{M}.\']*){0,3})\s*[,:\-]?\s*(\+?(?:91|977)?[\s-]?[6-9]\d{9})$/u', $t, $m) !== 1
+            && preg_match('/^(\+?(?:91|977)?[\s-]?[6-9]\d{9})\s*[,:\-]?\s*([\p{L}\p{M}][\p{L}\p{M}.\']*(?:\s[\p{L}\p{M}][\p{L}\p{M}.\']*){0,3})$/u', $t, $m2) !== 1) {
+            return null;
+        }
+        [$name, $phone] = isset($m[1]) ? [$m[1], $m[2]] : [$m2[2], $m2[1]];
+        $name  = trim($name);
+        $phone = substr((string) preg_replace('/\D/', '', $phone), -10);
+        $words = preg_split('/\s+/u', mb_strtolower($name)) ?: [];
+        // booking / payment words are never a passenger name ("ticket 98…", "utr 98…", "seat 98…")
+        foreach ($words as $wd) {
+            if (in_array($wd, ['ticket', 'tiket', 'टिकट', 'seat', 'sit', 'सिट', 'utr', 'ref', 'pnr', 'mobile', 'number', 'phone', 'no', 'mero', 'my',
+                'bholi', 'aaja', 'bus', 'book', 'call', 'whatsapp', 'नम्बर', 'मोबाइल'], true)) {
+                return null;
+            }
+        }
+        return mb_strlen($name) >= 2 && strlen($phone) === 10 ? [$name, $phone] : null;
+    }
+
+    /** The explicit resend words (before or after "<name> <mobile>"): resend / find / ticket pathau / send ticket / टिकट पठाउ … */
+    private const RESEND_WORDS = '(?:re-?send(?:\s+ticket)?|find(?:\s+ticket)?|khoj(?:nu)?(?:\s+ticket)?|send\s+(?:my\s+)?ticket'
+        . '|(?:ticket|tiket|tikat)\s+(?:pathau\w*|pathai\w*|pathae\w*|patha|bhej\w*|re-?send|again|feri|pheri|khoj\w*|find)'
+        . '|(?:टिकट|टिकेट)\s*(?:पठाउ\S*|पठाइ\S*|भेज\S*|खोज\S*|फेरि\S*))';
+
+    /**
+     * "resend Ram Thapa 9812345678", "ticket pathau: Ram Thapa 98…", "Ram Thapa 98… ticket pathau"
+     * -> [name, 10-digit mobile]; null without a resend word. A bare "<name> <mobile>" is NEVER
+     * a resend: that line is WaBooking's quick order ("naam + mobile = ticket done", wabooking.php).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    public static function resendRequest(string $body): ?array
+    {
+        $t = trim((string) preg_replace('/\s+/u', ' ', $body));
+        $t = trim((string) preg_replace('/^[\s.!?।]+|[\s.!?।]+$/u', '', $t));   // never byte-trim '।' (it eats Devanagari lead bytes)
+        if ($t === '' || mb_strlen($t) > 80) {
+            return null;
+        }
+        $w = self::RESEND_WORDS;
+        if (preg_match('/^' . $w . '\s*[:,\-]?\s*(.+)$/iu', $t, $m) === 1) {
+            return self::nameAndPhone($m[1]);
+        }
+        if (preg_match('/^(.+?)\s*[:,\-]?\s*' . $w . '$/iu', $t, $m) === 1) {
+            return self::nameAndPhone($m[1]);
+        }
+        return null;
+    }
+
+    /**
+     * A confirmed ticket travelling today or later with that passenger on that number: here when it
+     * is the sender's own number, else to that number only.
+     *
+     * Abuse guards (review, 19 Nov): every try counts against the sender (5 per hour, hits AND
+     * misses); one resend per booking per 6 h whoever asks; past / completed trips are never
+     * searched; and a sender who is NOT the booking's number gets the same words on a hit, a miss,
+     * a capped or a failed send - so the reply never tells a stranger whether that person travels.
+     */
+    private static function findAndResend(string $senderDigits, string $name, string $phone): ?array
+    {
+        try {
+            require_once INCLUDE_PATH . '/wabooking.php';
+            if (WaBooking::isOpen($senderDigits)) {
+                return null;                               // a booking chat is answering its own question
+            }
+        } catch (Throwable $e) {
+            return null;
+        }
+        $tokens = array_values(array_filter(preg_split('/\s+/u', mb_strtolower($name)) ?: [], static fn(string $x): bool => mb_strlen($x) >= 2));
+        if ($tokens === []) {
+            return null;
+        }
+        $own  = $phone === $senderDigits;
+        $tail = substr($phone, -2);
+        if (!Security::rateLimit('wa_find_resend', $senderDigits, 5, 3600)) {
+            return ['text' => '⏳ धेरै पटक सोधियो — केही बेरपछि फेरि लेख्नुहोस्। · Too many tries - please write again later.', 'media' => null];
+        }
+        $same = ['text' => 'ℹ️ त्यो नाम र नम्बरमा आउँदो यात्राको पक्का टिकट भए, टिकट बुकिङकै WhatsApp नम्बर (••' . $tail . ") मा पठाइन्छ।\n"
+            . 'If there is a confirmed ticket for an upcoming trip with that name and number, it is sent to the booking\'s own WhatsApp number (ending '
+            . $tail . ').' . "\n" . '📞 ' . Settings::officePhone(), 'media' => null];
+        $rows = Database::fetchAll(
+            "SELECT b.*, (SELECT GROUP_CONCAT(bp.full_name SEPARATOR '|') FROM booking_passengers bp WHERE bp.booking_id = b.id) AS pax_names
+               FROM bookings b
+              WHERE (b.contact_phone = :p OR b.alt_phone = :p2) AND b.status = 'confirmed'
+                AND EXISTS (SELECT 1 FROM booking_legs bl WHERE bl.booking_id = b.id AND bl.travel_date >= :d)
+              ORDER BY b.id DESC LIMIT 10",
+            ['p' => $phone, 'p2' => $phone, 'd' => todayISO()]
+        );
+        $hit = null;
+        foreach ($rows as $r) {
+            foreach (explode('|', mb_strtolower((string) ($r['pax_names'] ?? ''))) as $pax) {
+                $all = true;
+                foreach ($tokens as $tk) {
+                    if (!str_contains($pax, $tk)) {
+                        $all = false;
+                        break;
+                    }
+                }
+                if ($all) {
+                    $hit = $r;
+                    break 2;
+                }
+            }
+        }
+        if ($hit === null) {
+            if ($own) {                                    // the sender's own number: saying "none" leaks nothing
+                return ['text' => "🔎 यो नम्बरमा त्यो नामको आउँदो यात्राको पक्का टिकट भेटिएन।\nPNR पठाउनुहोस् वा \"mero ticket\" लेख्नुहोस्।\n"
+                    . 'No confirmed upcoming ticket with that name on this number. Send the PNR, or write "my ticket".', 'media' => null];
+            }
+            return $same;
+        }
+        $pnr = (string) $hit['pnr'];
+        if ($own) {
+            Logger::audit('ticket.wa_find_resend', 'booking', $pnr, null, ['own' => true], 'Ticket found by passenger name + mobile on WhatsApp');
+            return ['text' => '🎫 ' . $pnr . " — तपाईंको टिकट।\nYour ticket.\n🗺 " . Ticket::trackUrl($pnr), 'media' => Ticket::imageUrl($pnr)];
+        }
+        if (!Security::rateLimit('wa_find_resend_to', 'b' . (int) $hit['id'], 1, 6 * 3600)) {
+            return $same;                                  // already re-sent in the last 6 h: no second paid send
+        }
+        $res = ['ok' => false];
+        try {
+            if (self::$resendHook !== null) {
+                $res = (self::$resendHook)($hit);
+            } else {
+                require_once INCLUDE_PATH . '/notify.php';
+                $res = Notify::resendTicketWhatsApp($hit);
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Find + resend failed: ' . $e->getMessage(), ['pnr' => $pnr], 'whatsapp');
+        }
+        Logger::audit('ticket.wa_find_resend', 'booking', $pnr, null, ['own' => false, 'sent' => !empty($res['ok']), 'by_tail' => substr($senderDigits, -4)],
+            'Ticket found by passenger name + mobile on WhatsApp from another number; re-sent to the booking\'s own number only');
+        return $same;
+    }
+
+    /** "ticket" / "टिकट" (the order word) from a customer: the chat booking reply + the website booking link. */
+    private static function withBookingLink(string $text, string $body, bool $isStaff): string
+    {
+        if ($isStaff || !Settings::getBool('wa_ticket_word_link_on', true)) {
+            return $text;
+        }
+        try {
+            require_once INCLUDE_PATH . '/wabooking.php';
+            if (WaBooking::orderCommand($body) === null) {
+                return $text;
+            }
+        } catch (Throwable $e) {
+            return $text;
+        }
+        $site = appUrl('');
+        if (str_contains($text, rtrim($site, '/'))) {
+            return $text;
+        }
+        return $text . "\n\n🌐 वेबसाइटबाट बुक · Book online: " . $site;
     }
 
     /** Post-deploy probe B4: the language of a fallback line — the writer's (Nepali when unsure); Gujarati reads English. */

@@ -991,65 +991,17 @@ final class TeamPortal
         return ['ok' => true, 'kind' => 'staff'];
     }
 
+    /* 19 Nov 2026 (u7, owner: no face / birth-date / ID-number sign-in): both doors are closed for
+       good. The unreachable bodies that followed these refusals were removed (git history has them);
+       the signatures stay so an old caller gets the refusal, not a fatal error. */
     public static function faceLogin(string $phone10, string $cc, array $frames): array
     {
         return ['ok'=>false,'error'=>'Use a registered Passkey, password or verified WhatsApp recovery. Selfie and document details are for KYC review only.'];
-
-        require_once __DIR__ . '/facecheck.php';
-        $no = ['ok' => false, 'error' => 'अनुहार मिलेन — उज्यालोमा फेरि गर्नुहोस्, वा जन्म मिति + ID नम्बर / पासवर्ड प्रयोग गर्नुहोस् · Face not recognised: try again in good light, or use birth date + ID / the password.'];
-        $cands = array_values(array_filter(self::candidates($phone10, $cc), static fn(array $c): bool => $c['photo'] !== null));
-        if ($cands === []) {
-            Logger::warning('Team portal: face login with no photo on file', ['phone' => maskPhone($phone10)]);
-            return $no;
-        }
-        $best = null;
-        foreach (array_slice($cands, 0, 2) as $c) {
-            $ref = FaceCheck::decode($c['photo'], 900_000);
-            if ($ref === null) {
-                continue;
-            }
-            $r = FaceCheck::check($frames, $ref, 'photo');
-            if ($r['status'] === 'unavailable') {
-                return ['ok' => false, 'error' => 'अहिले अनुहार जाँच हुन सकेन — जन्म मिति + ID नम्बर वा पासवर्ड प्रयोग गर्नुहोस् · Face check is not available right now; use birth date + ID or the password.'];
-            }
-            Logger::info('Team portal: face login', ['live' => $r['live'], 'match' => $r['match'], 'score' => $r['score'], 'phone' => maskPhone($phone10)], 'kyc');
-            if ($r['live'] === true && $r['match'] === 'yes' && $r['score'] >= self::FACE_MIN_SCORE) {
-                $best = $c;
-                break;
-            }
-        }
-        if ($best === null) {
-            return $no;
-        }
-        return self::openCandidate($best, 'face');
     }
 
     public static function factsLogin(string $phone10, string $cc, string $dob, string $idno): array
     {
         return ['ok'=>false,'error'=>'Use a registered Passkey, password or verified WhatsApp recovery. Selfie and document details are for KYC review only.'];
-
-        require_once __DIR__ . '/docverify.php';
-        $no   = ['ok' => false, 'error' => 'मोबाइल, जन्म मिति वा ID नम्बर मिलेन · Mobile, birth date or ID number did not match.'];
-        $want = DocVerify::fold(DocVerify::normNumber($idno));
-        $dob  = trim($dob);
-        if (strlen($want) < 5) {
-            return ['ok' => false, 'error' => 'ID / नागरिकता / आधार नम्बर पूरै लेख्नुहोस् · Enter the whole ID number.'];
-        }
-        foreach (self::candidates($phone10, $cc) as $c) {
-            $have = DocVerify::fold(DocVerify::normNumber($c['idno']));
-            if ($have === '' || !hash_equals($have, $want)) {
-                continue;
-            }
-            $recDob = substr((string) $c['dob'], 0, 10);
-            if ($recDob !== '' && $recDob !== '0000-00-00') {
-                if ($dob === '' || !hash_equals($recDob, $dob)) {
-                    continue;
-                }
-            }
-            return self::openCandidate($c, 'facts');
-        }
-        Logger::warning('Team portal: facts login failed', ['phone' => maskPhone($phone10)]);
-        return $no;
     }
 
     public static function passkeyLogin(array $row): array

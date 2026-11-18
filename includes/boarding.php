@@ -1016,6 +1016,151 @@ final class Boarding
     }
 
     /* =================================================================
+     *  SALES CLOSING CLOCK (19 Nov 2026, NP-3, owner)
+     *
+     *  On top of the per-pickup cut-off: a fixed clock after which TODAY's
+     *  bus of a route is no longer sold through some channels.
+     *    r7 (Rupaidiha 18:00 -> Surat): every non-office channel closes at
+     *       17:00 Nepal time (online, agent, counter, staff, WhatsApp, AI).
+     *    r2 (Surat 13:00 -> Rupaidiha): ONLINE customers close at 19:00 IST;
+     *       agents / counter / staff keep the per-stop cut-off.
+     *  superadmin and manager ("office") are never blocked, so the office can
+     *  still record a late passenger. Only the travel date = today counts; a
+     *  past paper ticket or a future date is untouched. The clock is a
+     *  CEILING: it never reopens a pickup whose own cut-off has passed.
+     *
+     *  Setting sales_close_clock (json): {"<route_code>": {"all"|"online"|
+     *  "agent"|"counter"|"staff"|"whatsapp"|"ai": "HH:MM", "tz": "Asia/..."}}.
+     *  '{}' switches it off. Absent row = the owner's default below.
+     * ================================================================= */
+
+    public const SALES_CLOSE_DEFAULT = '{"r7":{"all":"17:00","tz":"Asia/Kathmandu"},"r2":{"online":"19:00","tz":"Asia/Kolkata"}}';
+
+    /** Roles the clock never blocks. */
+    public const CLOCK_OFFICE_ROLES = ['superadmin', 'manager'];
+
+    /** @return array<string, array<string, string>> route_code => rule */
+    public static function salesCloseClock(): array
+    {
+        $raw = Settings::get('sales_close_clock', null);
+        if ($raw === null) {
+            $raw = self::SALES_CLOSE_DEFAULT;
+        }
+        if (is_string($raw)) {
+            $raw = trim($raw) === '' ? [] : json_decode($raw, true);
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $code => $rule) {
+            if (!is_array($rule)) {
+                continue;
+            }
+            $clean = [];
+            foreach ($rule as $k => $v) {
+                $k = strtolower((string) $k);
+                if ($k === 'tz') {
+                    $clean['tz'] = (string) $v;
+                } elseif (is_string($v) && preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', trim($v)) === 1) {
+                    $clean[$k] = str_pad(trim($v), 5, '0', STR_PAD_LEFT);
+                }
+            }
+            if (count($clean) > (isset($clean['tz']) ? 1 : 0)) {
+                $out[strtolower((string) $code)] = $clean;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Which sales channel a seller is, for the clock: 'office' (superadmin /
+     * manager - never blocked), 'agent', 'counter', 'staff' (any other office
+     * login) or 'online' (no staff). $adminId null = the signed-in session.
+     */
+    public static function salesChannel(?int $adminId = null): string
+    {
+        $role = '';
+        if ($adminId !== null && $adminId > 0) {
+            try {
+                $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :a', ['a' => $adminId], '');
+            } catch (Throwable $e) {
+                $role = '';
+            }
+        } elseif ($adminId === null) {
+            $role = (string) (Auth::admin()['role'] ?? '');
+        }
+        if ($role === '') {
+            return 'online';
+        }
+        if (in_array($role, self::CLOCK_OFFICE_ROLES, true)) {
+            return 'office';
+        }
+        return in_array($role, ['agent', 'counter'], true) ? $role : 'staff';
+    }
+
+    /**
+     * Is today's bus of this route closed for this channel by the clock?
+     *
+     * @param array<string,mixed>      $route     routes row (route_code)
+     * @param string                   $channel   online|agent|counter|staff|whatsapp|ai|office
+     * @param array<string,mixed>|null $sellerCtx optional ['role' => ...]: an office role is never blocked
+     * @return array{closed: bool, at: string, tz: string, closesAt: int, label: string, reason: string}|null
+     *         null when no clock applies (other day, office, no rule for the channel)
+     */
+    public static function clockClose(array $route, string $travelDate, string $channel, ?array $sellerCtx = null, ?int $now = null): ?array
+    {
+        $channel = strtolower(trim($channel)) ?: 'online';
+        $role    = (string) ($sellerCtx['role'] ?? '');
+        if ($channel === 'office' || in_array($role, self::CLOCK_OFFICE_ROLES, true)) {
+            return null;
+        }
+        if ($travelDate !== todayISO()) {
+            return null;
+        }
+        $rules = self::salesCloseClock();
+        $rule  = $rules[strtolower((string) ($route['route_code'] ?? ''))] ?? null;
+        if ($rule === null) {
+            return null;
+        }
+        // the channel's own time, then (a WhatsApp / AI customer is an online customer) online, then all
+        $at = $rule[$channel] ?? null;
+        if ($at === null && in_array($channel, ['whatsapp', 'ai'], true)) {
+            $at = $rule['online'] ?? null;
+        }
+        $at ??= $rule['all'] ?? null;
+        if ($at === null) {
+            return null;
+        }
+        try {
+            $tz = new DateTimeZone((string) ($rule['tz'] ?? '') !== '' ? (string) $rule['tz'] : date_default_timezone_get());
+        } catch (Throwable $e) {
+            $tz = new DateTimeZone(date_default_timezone_get());
+        }
+        try {
+            $closesAt = (new DateTimeImmutable($travelDate . ' ' . $at . ':00', $tz))->getTimestamp();
+        } catch (Throwable $e) {
+            return null;
+        }
+        $zone  = $tz->getName() === 'Asia/Kathmandu' ? 'नेपाल समय · Nepal time'
+               : ($tz->getName() === 'Asia/Kolkata' ? 'भारत समय · India time' : $tz->getName());
+        $label = 'बुकिङ बन्द · Booking closed ' . $at;
+        $from  = trim((string) ($route['from_city'] ?? ''));
+        $to    = trim((string) ($route['to_city'] ?? ''));
+        $run   = $from !== '' && $to !== '' ? ' (' . $from . ' → ' . $to . ')' : '';
+
+        return [
+            'closed'   => ($now ?? time()) >= $closesAt,
+            'at'       => $at,
+            'tz'       => $tz->getName(),
+            'closesAt' => $closesAt,
+            'label'    => $label,
+            'reason'   => $label . ' ' . $zone . ' — आजको बस' . $run . ' को बिक्री बन्द भयो, भोलिको बस छान्नुहोस्। / '
+                        . "Sales for today's bus" . $run . ' closed at ' . $at . ' — please choose tomorrow\'s bus.',
+        ];
+    }
+
+    /* =================================================================
      *  ROUTE FACTS (9 Oct 2026, owner ask #11/#12) — road km per stop,
      *  en-route halts, and the ONE ordered "journey line" every screen
      *  draws: the home route rail (22-routeline.js via api/timetable.php),

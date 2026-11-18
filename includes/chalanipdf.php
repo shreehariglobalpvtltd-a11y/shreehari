@@ -156,6 +156,9 @@ final class ChalaniPdf
         $bookedBy  = $fmt['bookedBy'];
         $stopsLine = (string) ($fmt['stopsLine'] ?? '');
         $chalaniNo = (string) ($totals['chalaniNo'] ?? '');
+        /* 19 Nov 2026 (NP-2): a Nepal desk copy prints रू (NPR), the rupees beside the net */
+        $cs        = (string) ($fmt['cur']['sym'] ?? '₹');
+        $inrNote   = static fn(string $k): string => isset($totals['inr'][$k]) ? ' (₹' . number_format((float) $totals['inr'][$k]) . ')' : '';
         /* The letterhead from ONE place (10 Sep 2026) — the address, the
            operator's name, the email, the CIN and the counter numbers were
            typed into this function, into the HTML sheet and into the PNG
@@ -172,7 +175,7 @@ final class ChalaniPdf
         $cx    = [];
         $x     = $M;
         foreach ($cw as $i => $w) { $cx[$i] = $x; $x += $w; }
-        $heads  = ['#', 'सिट', 'यात्रुको नाम', 'मोबाइल नं.', 'चढ्ने', 'ओर्लिने', 'टिकट ₹', 'नगद ₹', 'अनलाइन ₹', 'प्रा.लि.', 'कैफियत'];
+        $heads  = ['#', 'सिट', 'यात्रुको नाम', 'मोबाइल नं.', 'चढ्ने', 'ओर्लिने', 'टिकट ' . $cs, 'नगद ' . $cs, 'अनलाइन ' . $cs, 'प्रा.लि.', 'कैफियत'];
         $align  = ['c', 'c', 'l', 'l', 'l', 'l', 'r', 'r', 'r', 'c', 'l'];
         $rowH   = 12.5;
         $headH  = 14.0;
@@ -256,7 +259,7 @@ final class ChalaniPdf
         /* 16 Nov 2026 (owner: "pay at boarding vane option ... cash ho ki online ho"): how the
            row pays - ['mode', 'amt', 'first', 'ne'] from ChalaniPng::payMode via the caller */
         $payMark   = isset($fmt['payMark']) && is_callable($fmt['payMark']) ? $fmt['payMark'] : static fn(array $r): array => [];
-        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $width, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe, $payMark): void {
+        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $width, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe, $payMark, $cs): void {
             $ws = $r !== null && $womanSingle($r);
             if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
@@ -281,7 +284,7 @@ final class ChalaniPdf
             $txtR($cx[6] + $cw[6] - 3, $ty, number_format($m['ticket']), 7.6, false, self::INK);
             if ($m['cash']   > 0) { $txtR($cx[7] + $cw[7] - 3, $ty, number_format($m['cash']),   7.6, false, self::INK); }
             if ($m['online'] > 0) { $txtR($cx[8] + $cw[8] - 3, $ty, number_format($m['online']), 7.6, false, self::INK); }
-            $xTxt = (float) ($m['extra'] ?? 0) > 0 ? ' · थप ₹' . number_format((float) $m['extra']) . ' ' . $stateNe($rowState($r)) : '';
+            $xTxt = (float) ($m['extra'] ?? 0) > 0 ? ' · थप ' . $cs . number_format((float) $m['extra']) . ' ' . $stateNe($rowState($r)) : '';
             /* 16 Nov 2026: the pay mark leads the remarks ("बसमा ₹2,200", "नगद ✓", "अनलाइन ✓"),
                in its own colour; the font has no ✓, so the tick is drawn. */
             $kx = $cx[10] + 3;
@@ -426,9 +429,9 @@ final class ChalaniPdf
         };
         $xItems = [];
         foreach ($xLines as $xl) {
-            $what = ((int) $xl['lug'] > 0 ? 'थप सामान ' . $neDigits((string) (int) $xl['lug']) . ' थान ₹' . number_format((float) $xl['lugFee']) : '')
+            $what = ((int) $xl['lug'] > 0 ? 'थप सामान ' . $neDigits((string) (int) $xl['lug']) . ' थान ' . $cs . number_format((float) $xl['lugFee']) : '')
                   . (((int) $xl['lug'] > 0 && (int) $xl['inf'] > 0) ? ' · ' : '')
-                  . ((int) $xl['inf'] > 0 ? 'शिशु ' . $neDigits((string) (int) $xl['inf']) . ' ' . ((float) $xl['infFee'] > 0 ? '₹' . number_format((float) $xl['infFee']) : '(निःशुल्क)') : '');
+                  . ((int) $xl['inf'] > 0 ? 'शिशु ' . $neDigits((string) (int) $xl['inf']) . ' ' . ((float) $xl['infFee'] > 0 ? $cs . number_format((float) $xl['infFee']) : '(निःशुल्क)') : '');
             $st = (string) $xl['state'];
             $xItems[] = [[(string) $xl['pnr'], (string) $xl['lead'], (string) ($xl['seatsLbl'] ?? ''), $what, number_format((float) $xl['amt']), $stateNe($st)],
                 $st === 'due' ? self::RED : ($st === 'free' ? self::MUTE : [21, 128, 61])];
@@ -446,7 +449,7 @@ final class ChalaniPdf
             $pdf->roundedRect($M, $y, $inner, $bh2, 4, self::NAVY, false);
             $txt($M + 8, $y + 11, 'विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन' . ($xCont ? ' (क्रमशः)' : ''), 7.8, true, self::NAVY);
             $xy = $y + 16;
-            $xCell($xy, ['PNR', 'यात्रु', 'सिट', 'विवरण', 'रकम ₹', 'भयो / भएन'], true);
+            $xCell($xy, ['PNR', 'यात्रु', 'सिट', 'विवरण', 'रकम ' . $cs, 'भयो / भएन'], true);
             $xy += $xRowH;
             for ($j = 0; $j < $take; $j++) {
                 $xCell($xy, $xItems[$xk + $j][0], false, $xItems[$xk + $j][1]);
@@ -466,24 +469,24 @@ final class ChalaniPdf
         // Payment summary
         $pdf->roundedRect($M, $y, $halfW, $boxesH, 4, self::NAVY, false);
         self::$drawn['maxBottom'] = max(self::$drawn['maxBottom'], $y + $boxesH);
-        $txt($M + 8, $y + 11, 'भुक्तानी सारांश', 7.8, true, self::NAVY);
+        $txt($M + 8, $y + 11, 'भुक्तानी सारांश' . (isset($fmt['cur']['desk']) ? ' · ' . (string) $fmt['cur']['desk'] . ' नेपाल काउन्टर प्रति (' . (string) ($fmt['cur']['code'] ?? 'NPR') . ')' : ''), 7.8, true, self::NAVY);
         $sum = [
             ['जम्मा यात्रु',            $neDigits((string) ($totals['passengers'] ?? 0))],
-            ['जम्मा टिकट रकम',          '₹ ' . number_format((float) ($totals['ticket'] ?? 0))],
-            ['नगद संकलन',               '₹ ' . number_format((float) ($totals['cash'] ?? 0))],
-            ['अनलाइन / UPI प्राप्ति',     '₹ ' . number_format((float) ($totals['online'] ?? 0))],
+            ['जम्मा टिकट रकम',          $cs . ' ' . number_format((float) ($totals['ticket'] ?? 0))],
+            ['नगद संकलन',               $cs . ' ' . number_format((float) ($totals['cash'] ?? 0)) . $inrNote('cash')],
+            ['अनलाइन / UPI प्राप्ति',     $cs . ' ' . number_format((float) ($totals['online'] ?? 0)) . $inrNote('online')],
             // 16 Nov 2026: pay-at-boarding money still to collect (never also counted above)
-            ['बसमा उठाउनु पर्ने',          $neDigits((string) (int) ($totals['boardDueN'] ?? 0)) . ' जना · ₹ ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
-            ['छुट / सहुलियत',            '₹ ' . number_format((float) ($totals['discount'] ?? 0))],
+            ['बसमा उठाउनु पर्ने',          $neDigits((string) (int) ($totals['boardDueN'] ?? 0)) . ' जना · ' . $cs . ' ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
+            ['छुट / सहुलियत',            $cs . ' ' . number_format((float) ($totals['discount'] ?? 0))],
         ];
         if ($hasX) {
-            $sum[] = ['विशेष भुक्तानी (थप सामान / शिशु)', '₹ ' . number_format((float) ($totals['extras'] ?? 0))];
-            $sum[] = ['   भयो / बाँकी', '₹ ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))];
+            $sum[] = ['विशेष भुक्तानी (थप सामान / शिशु)', $cs . ' ' . number_format((float) ($totals['extras'] ?? 0))];
+            $sum[] = ['   भयो / बाँकी', $cs . ' ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))];
         } else {
             // no extras on this bus: the blank special-payment lines for the road, here
             for ($p = 0; $p < min(2, $xPen); $p++) { $sum[] = ['विशेष भुक्तानी', 'भयो [  ]  भएन [  ]', 'pen']; }
         }
-        $sum[] = ['खुद जम्मा संकलन', '₹ ' . number_format((float) ($totals['net'] ?? 0))];
+        $sum[] = ['खुद जम्मा संकलन', $cs . ' ' . number_format((float) ($totals['net'] ?? 0)) . $inrNote('net')];
         $sy = $y + 21.5;
         // 16 Nov 2026: 9 lines now (+ बसमा उठाउनु पर्ने) - the pitch shrinks to keep the same box
         $sumGap = min($sumGap, ($boxesH - 21.5 - 6) / max(1, count($sum) - 1));

@@ -35,8 +35,8 @@ final class TeamFinance {
   $r=Database::fetch("SELECT * FROM agent_payout_requests WHERE id=:i AND status='open'",['i'=>$id]);
   if (!$r) { throw new RuntimeException('Open request not found.'); }
   if ((int)$r['agent_admin_id']===$by) { throw new RuntimeException('Another administrator must approve your withdrawal.'); }
-  $meta=Database::fetch('SELECT i.payout_verified FROM team_identity i JOIN agent_applications a ON i.person_key=CONCAT(\'agent:\',a.id) WHERE a.admin_id=:a LIMIT 1',['a'=>$r['agent_admin_id']]);
-  if (empty($meta['payout_verified'])) { throw new RuntimeException('Verify the recipient payout details on their profile first.'); }
+  // 19 Nov 2026 (u5 AG-2): one rule for every door — AgentWallet::payoutVerified (setting + ap_members tick + legacy tick).
+  if (!AgentWallet::payoutVerified((int)$r['agent_admin_id'])) { throw new RuntimeException('Verify the recipient payout details on their profile first.'); }
   Database::run('INSERT IGNORE INTO team_withdrawal_approvals(request_id,approved_by) VALUES(:i,:b)',['i'=>$id,'b'=>$by]);
   Logger::audit('team.withdrawal_approved','withdrawal',(string)$id,null,null,'Approved only; no payment recorded');
  }

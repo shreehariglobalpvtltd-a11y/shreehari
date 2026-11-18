@@ -589,6 +589,166 @@ final class CounterDesk
     }
 
     /**
+     * The Nepal-side desks (country NP), code => row, in list order.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public static function nepalDesks(bool $activeOnly = true): array
+    {
+        return array_filter(self::all($activeOnly), static fn(array $d): bool => (string) ($d['country'] ?? '') === 'NP');
+    }
+
+    /**
+     * 19 Nov 2026 (NP-1, owner: a Nepal agent sells from a Nepal counter
+     * branch): give this person a Nepal desk and return its code.
+     *
+     * Idempotent, in this order:
+     *   1. $useCode names an active Nepal desk  -> that desk is assigned.
+     *   2. the person already sits at a Nepal desk -> kept, nothing written.
+     *   3. an active Nepal desk in the same town ("Nepalgunj" -> NPJ) -> reused.
+     *   4. otherwise a new desk 'NP' + first 3 letters of the town + n
+     *      (NPBAI1 ...): country NP, entity NP, NPR, opens on Nepal -> India,
+     *      language ne, address = the Nepal office setting (blank stays blank,
+     *      nothing is invented). Only when $mayCreate (the caller checks the
+     *      superadmin / settings right, as admin/counters.php does).
+     *
+     * The bus still boards at Rupaidiha (route r7), so default_from stays
+     * 'Rupaidiha' - no route stop is added or changed here. Every later sale
+     * of this person is stamped with the desk (booking.php deskStamp), so it
+     * prints the Nepal letterhead and records NPR at the frozen rate.
+     */
+    public static function openNepalBranch(int $adminId, string $town = 'Nepalgunj', ?string $useCode = null, bool $mayCreate = true): string
+    {
+        if ($adminId <= 0) {
+            throw new InvalidArgumentException('Choose the person first. / पहिले व्यक्ति छान्नुहोस्।');
+        }
+        if (!self::hasTable()) {
+            throw new RuntimeException('Counter desks need database/upgrade-2026-10-04-counter-desks.sql applied first.');
+        }
+        $np = self::nepalDesks(true);
+
+        $use = self::normaliseCode((string) $useCode);
+        if ($use !== '') {
+            if (!isset($np[$use])) {
+                throw new InvalidArgumentException('शाखा ' . $use . ' नेपालको सक्रिय काउन्टर होइन · ' . $use . ' is not an active Nepal desk.');
+            }
+            self::assignDesk($adminId, $use, 'chosen');
+            return $use;
+        }
+
+        $mine = self::forAdmin($adminId)['code'];
+        if ($mine !== '' && isset($np[$mine])) {
+            return $mine;   // already at a Nepal desk: nothing to do
+        }
+
+        $town    = trim(Security::clean($town, 60));
+        $townKey = mb_strtolower(preg_replace('/[^A-Za-z]/', '', $town) ?? '');
+        if ($townKey !== '') {
+            foreach ($np as $code => $d) {
+                /* 19 Nov 2026 (review): match the desk's TOWN only - the part of
+                   its name before the dash ("Nepalgunj — Puspalal Chowk"), as a
+                   whole or its first word ("Kohalpur Chowk"). Never default_from
+                   (every Nepal desk boards at 'Rupaidiha') and never a substring,
+                   so 'Rupaidiha' / 'Nepal' / 'Gunj' no longer land on NPJ. */
+                if (self::deskTownMatches((string) ($d['name'] ?? ''), $townKey)) {
+                    self::assignDesk($adminId, (string) $code, 'reused');
+                    return (string) $code;
+                }
+            }
+        }
+
+        if (!$mayCreate) {
+            throw new RuntimeException('नयाँ नेपाल शाखा सुपर एडमिनले मात्र खोल्न मिल्छ · Only a super-admin may open a new Nepal branch — pick an existing one.');
+        }
+        $stem = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $town) ?? '', 0, 3));
+        if ($stem === '') {
+            $stem = 'BR';
+        }
+        $code = '';
+        for ($n = 1; $n < 100; $n++) {
+            $try = 'NP' . $stem . $n;
+            if (self::get($try) === null
+                && Database::scalar('SELECT COUNT(*) FROM counter_locations WHERE code = :c', ['c' => $try], 0) == 0) {
+                $code = $try;
+                break;
+            }
+        }
+        if ($code === '') {
+            throw new RuntimeException('Could not find a free desk code for ' . $town . '.');
+        }
+        $office = trim(Settings::getString('nepal_office', ''));
+        $phone  = '';
+        try {
+            $phone = (string) Database::scalar('SELECT phone FROM admins WHERE id = :a', ['a' => $adminId], '');
+        } catch (Throwable $e) {
+            $phone = '';
+        }
+        $row = [
+            'code'              => $code,
+            'name'              => ($town !== '' ? $town : 'Nepal') . ' — Nepal branch',
+            'country'           => 'NP',
+            'entity'            => 'NP',
+            'currency'          => 'NPR',
+            'fx_rate'           => null,                // the npr_per_inr setting
+            'allowed_methods'   => ['cash', 'esewa'],
+            'default_direction' => 'toIndia',
+            'default_from'      => 'Rupaidiha',         // the bus boards at the Rupaidiha pump (r7)
+            'lang'              => 'ne',
+            'phone'             => $phone,
+            'address'           => $office,
+            'is_active'         => 1,
+            'sort_order'        => 90,
+            'note'              => 'Opened for admin #' . $adminId . ' (Nepal branch, ' . date('Y-m-d') . ')',
+        ];
+        if (self::hasColumn('counter_locations', 'show_public')) {
+            $row['show_public'] = 0;          // not on the website until the office lists it
+            $row['office_kind'] = 'partner';
+        }
+        $code = self::save($row);
+        self::assignDesk($adminId, $code, 'created');
+
+        return $code;
+    }
+
+    /**
+     * Does a desk name belong to this town? $townKey = lowercase letters only.
+     * The town part is the name before an em/en dash or ' - ' / '(' / ','; it
+     * matches when it equals the key as a whole or its first word does.
+     */
+    public static function deskTownMatches(string $deskName, string $townKey): bool
+    {
+        $townKey = strtolower(preg_replace('/[^A-Za-z]/', '', $townKey) ?? '');
+        if ($townKey === '') {
+            return false;
+        }
+        $part  = (string) (preg_split('/\s*(?:—|–|\s-\s|\(|,)\s*/u', trim($deskName), 2)[0] ?? '');
+        $whole = strtolower(preg_replace('/[^A-Za-z]/', '', $part) ?? '');
+        if ($whole !== '' && $whole === $townKey) {
+            return true;
+        }
+        $words = preg_split('/[^A-Za-z]+/', $part, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        return $words !== [] && strtolower((string) $words[0]) === $townKey;
+    }
+
+    /** Link a person to a desk (admin_profiles.counter_code / counter_name) + audit. */
+    private static function assignDesk(int $adminId, string $code, string $how): void
+    {
+        $code   = self::normaliseCode($code);
+        $name   = (string) (self::get($code)['name'] ?? $code);
+        $before = self::forAdmin($adminId)['code'];
+        Database::query(
+            'INSERT INTO admin_profiles (admin_id, counter_code, counter_name) VALUES (:a, :c, :n)
+             ON DUPLICATE KEY UPDATE counter_code = VALUES(counter_code), counter_name = VALUES(counter_name)',
+            ['a' => $adminId, 'c' => $code, 'n' => mb_substr($name, 0, 120)]
+        );
+        if (class_exists('Logger')) {
+            Logger::audit('counter.np_branch', 'admin', (string) $adminId,
+                ['counter_code' => $before], ['counter_code' => $code, 'how' => $how],
+                'Nepal branch ' . $code . ' (' . $how . ')');
+        }
+    }
+
+    /**
      * Did anything that prints on a ticket change between two desk rows?
      * A new desk (no "before") always counts.
      *

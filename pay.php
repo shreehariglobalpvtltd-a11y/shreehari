@@ -61,8 +61,10 @@ if (!Security::rateLimit('pay_open', Security::clientIp(), 30, 300)) {
     exit('Too many requests. Please wait a few minutes and try again.');
 }
 
+/* 19 Nov 2026 (u9, blueprint): SELECT * so the sale's company (counter_code / entity) and the
+   NPR frozen at a Nepal desk (fx_currency / fx_total) reach the eSewa box when those columns exist. */
 $booking = Database::fetch(
-    'SELECT id, pnr, total_amount, status, is_cod, contact_phone, user_id FROM bookings WHERE pnr = :p LIMIT 1',
+    'SELECT * FROM bookings WHERE pnr = :p LIMIT 1',
     ['p' => $pnr]
 );
 if ($booking === null) {
@@ -198,6 +200,42 @@ $total  = $due;   // ask only for what is still owed
 $upiUri = upiLink($upiId, $upiName, $total, $pnr);
 $e      = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
 
+/* 19 Nov 2026 (u9, owner's blueprint "direct UPI only, deep links with the exact amount"):
+   one big button per UPI app - Google Pay, PhonePe, Paytm - each with the SAME pa / pn / am /
+   cu / tn=PNR as the upi:// link, so the app opens with the amount and the PNR filled in. The
+   green upi:// button below stays the "BHIM / any UPI app" one. pay_upi_app_buttons = 0 hides
+   the three. pay_app_chooser_on = 1 also shows this page (apps + the exact-amount QR + eSewa)
+   to a pending online booking instead of the straight 302 into the UPI app (default 0 = the
+   302 stays exactly as it is). Nothing here confirms money: the office does, after the bank. */
+$upiQuery   = (string) substr($upiUri, strlen('upi://pay?'));
+$appButtons = Settings::getBool('pay_upi_app_buttons', true);
+$upiApps    = $appButtons ? [
+    ['gpay',    'Google Pay', 'tez://upi/pay?' . $upiQuery],
+    ['phonepe', 'PhonePe',    'phonepe://pay?' . $upiQuery],
+    ['paytm',   'Paytm',      'paytmmp://pay?' . $upiQuery],
+] : [];
+/* 19 Nov 2026 (u9): eSewa of the company that issued THIS ticket (Settings::companyFor: the
+   Nepal company's own eSewa once the office typed it, else the India one - the checkout's
+   rule), in रू: the NPR frozen on the sale at a Nepal desk when there is one (scaled to what
+   is still due), else the INR due x npr_per_inr. The eSewa QR picture only when the site
+   has one (the same files the checkout looks for) - never a made-up one. Worked out before
+   the page / 302 choice: a Nepal sale's passenger may have no UPI app at all. */
+if (is_file(INCLUDE_PATH . '/counterdesk.php')) {
+    require_once INCLUDE_PATH . '/counterdesk.php';   // companyFor reads the desk's own entity
+}
+$co        = Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''));
+$esewaId   = trim((string) ($co['payEsewa'] ?? ''));
+$frozenNpr = strtoupper((string) ($booking['fx_currency'] ?? '')) === 'NPR'
+    && (float) ($booking['fx_total'] ?? 0) > 0 && (float) ($booking['total_amount'] ?? 0) > 0;
+$nepalSale = $esewaId !== '' && (($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP' || $frozenNpr);
+
+/* The page (not the 302) for a pending / rejected online booking: when the office turned the
+   chooser on for everyone (pay_app_chooser_on, default off), or - spec gap fix - for a NEPAL
+   sale with an eSewa to show (pay_nepal_chooser_on, default on): eSewa in रू comes first there. */
+$pendingNow = in_array($bStatus, ['pending', 'rejected'], true) && !$boardPay;
+$chooser    = $boardPay || ($pendingNow && (Settings::getBool('pay_app_chooser_on', false)
+    || ($nepalSale && Settings::getBool('pay_nepal_chooser_on', true))));
+
 /* 16 Nov 2026 (P1): the pay-at-boarding page - free ways + the UTR box. */
 $claim    = null;    // the UTR already sent for this ticket (CodPayClaim::current)
 $claimErr = '';
@@ -206,6 +244,144 @@ $esewa    = null;
 $upiQr    = '';
 $key      = '';
 $isPost   = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+$shotOn   = Settings::getBool('pay_claim_screenshot_on', true);
+
+/* 19 Nov 2026 (u9 review): the pay-at-boarding claim's screenshot is stored WITHOUT the
+   'booking.payment_uploaded' event. BookingService::attachScreenshot emits it, and its
+   listener WhatsApps the CUSTOMER "we will confirm your ticket soon" (on a ticket that is
+   already confirmed) plus a second office message - CodPayClaim promises no customer message
+   and pings the office once itself. Same checks as attachScreenshot (Security::validateUpload,
+   sha256, the PaymentRisk look-alike fingerprint) on the claim's own cod_pending money row;
+   payments.mode stays 'utr'. Returns the stored path, or '' when nothing was stored. */
+$storeClaimShot = static function (array $booking, array $file): string {
+    $check = Security::validateUpload($file);
+    if (empty($check['ok'])) {
+        throw new RuntimeException((string) ($check['error'] ?? 'Upload failed.'));
+    }
+    $p = CodPayClaim::row((int) $booking['id']);
+    if ($p === null) {
+        return '';
+    }
+    $subDir = UPLOAD_PATH . '/' . date('Y') . '/' . date('m');
+    ensureDir($subDir);
+    $filename = Security::safeFilename((string) $check['ext']);
+    $absolute = $subDir . '/' . $filename;
+    $relative = date('Y') . '/' . date('m') . '/' . $filename;
+    if (!move_uploaded_file((string) $file['tmp_name'], $absolute)) {
+        throw new RuntimeException('Could not save the uploaded file.');
+    }
+    $row = [
+        'payment_id'    => (int) $p['id'],
+        'booking_id'    => (int) $booking['id'],
+        'file_path'     => $relative,
+        'original_name' => Security::clean((string) ($file['name'] ?? ''), 191),
+        'mime_type'     => (string) $check['mime'],
+        'file_size'     => (int) $check['size'],
+        'sha256'        => hash_file('sha256', $absolute) ?: null,
+        'uploaded_ip'   => Security::clientIp(),
+    ];
+    try {
+        require_once INCLUDE_PATH . '/paymentrisk.php';
+        $fp = PaymentRisk::fingerprint($absolute, (string) $check['mime']);
+        if ($fp['phash'] !== null && PaymentRisk::hasCol('payment_screenshots', 'phash')) {
+            $row['phash'] = $fp['phash'];
+        }
+        if ($fp['editTool'] !== null && PaymentRisk::hasCol('payment_screenshots', 'edit_tool')) {
+            $row['edit_tool'] = $fp['editTool'];
+        }
+    } catch (Throwable $ex) {
+        // the proof matters more than its fingerprint
+    }
+    Database::insert('payment_screenshots', $row);
+    Logger::audit('payment.cod_claim_screenshot', 'booking', (string) $booking['pnr'], null, ['file' => $relative],
+        'Pay-at-boarding online claim: payment screenshot attached (no message sent; nothing confirmed)');
+    return $relative;
+};
+
+/* 19 Nov 2026 (u9, spec gap): a pending / rejected online booking that gets the page also gets
+   the website's own proof box - UTR and/or screenshot - through the SAME calls api/payment.php
+   makes (BookingService::attachScreenshot + submitPaymentProof: the verify queue, the hold on
+   the expiry clock, the "proof received" note). The same ownership rule (this browser's PNR,
+   the account, the ticket key k, or the booking's mobile typed), the UTR shape rule and a UTR
+   already on ANOTHER booking refused. Never a confirmation. pay_pending_proof_on = 0 keeps the
+   older "send it on WhatsApp" note. */
+$pendProof = $chooser && $pendingNow && Settings::getBool('pay_pending_proof_on', true);
+$proofErr  = '';
+$proofIn   = false;   // proof already waiting for the office on this pending booking
+if ($pendProof) {
+    require_once INCLUDE_PATH . '/payadapter.php';
+    require_once INCLUDE_PATH . '/booking.php';
+    header('Cache-Control: no-store');
+    $key  = Security::clean((string) ($_GET['k'] ?? ''), 64);
+    $self = 'pay.php?pnr=' . rawurlencode($pnr) . ($key !== '' ? '&k=' . rawurlencode($key) : '');
+    if ($isPost) {
+        $code = 200;
+        if (!Security::rateLimit('payment_proof', Security::clientIp(), 20, 300)) {
+            $code     = 429;
+            $proofErr = 'धेरै पटक पठाइयो — केही मिनेटपछि फेरि प्रयास गर्नुहोस् · Too many tries - please wait a few minutes.';
+        } elseif (!Security::verifyCsrf()) {
+            $code     = 419;
+            $proofErr = 'पेज पुरानो भयो — पेज फेरि खोलेर पठाउनुहोस् · This page expired - open it again and send.';
+        } else {
+            try {
+                if (!CodPayClaim::owns($booking, $key, Security::clean((string) ($_POST['phone'] ?? ''), 20))) {
+                    throw new RuntimeException('बुकिङ गर्दा दिएको मोबाइल नम्बर हाल्नुहोस् · Enter the mobile number used for this booking.', 403);
+                }
+                $method  = strtolower((string) ($_POST['method'] ?? 'upi')) === 'esewa' ? 'esewa' : 'upi';
+                $utr     = CodPayClaim::normaliseUtr((string) ($_POST['utr'] ?? ''));
+                $shot    = $_FILES['shot'] ?? null;
+                $hasShot = $shotOn && is_array($shot) && (int) ($shot['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK
+                    && is_uploaded_file((string) ($shot['tmp_name'] ?? ''));
+                if ($utr === '' && !$hasShot) {
+                    throw new RuntimeException('UTR लेख्नुहोस् वा screenshot राख्नुहोस् · Type the UTR or attach the payment screenshot.', 422);
+                }
+                if ($utr !== '') {
+                    require_once INCLUDE_PATH . '/paymentrisk.php';
+                    $bad = PaymentRisk::utrLooksWrong($utr, $method);
+                    if ($bad !== null) {
+                        throw new RuntimeException(($method === 'upi'
+                            ? 'UPI को UTR १२ अङ्कको हुन्छ — भुक्तानी एपमा हेरेर फेरि लेख्नुहोस् · '
+                            : 'eSewa को कारोबार कोड ६-२० अक्षर/अङ्कको हुन्छ · ') . $bad . '.', 422);
+                    }
+                    require_once INCLUDE_PATH . '/wapayproof.php';
+                    $other = WaPayProof::utrUsedElsewhere($utr, (int) $booking['id']);
+                    if ($other !== '') {
+                        Logger::audit('payment.dup_utr_refused', 'booking', $pnr, null, ['utr_tail' => substr($utr, -4), 'also_on' => $other, 'via' => 'pay_page'],
+                            'A payment reference already used on another booking was refused on the pay page (nothing stored)');
+                        throw new RuntimeException('यो UTR पहिले नै प्रयोग भइसकेको छ · This UTR has already been used.', 409);
+                    }
+                }
+                if ($hasShot) {
+                    BookingService::attachScreenshot($pnr, $shot);
+                }
+                BookingService::submitPaymentProof($pnr, [
+                    'utr'           => $utr,
+                    'payerName'     => '',
+                    'method'        => $method,
+                    'hasScreenshot' => $hasShot,
+                ]);
+                header('Location: ' . $self . '&sent=1', true, 303);
+                exit;
+            } catch (RuntimeException $ex) {
+                $c        = $ex->getCode();
+                $code     = is_int($c) && in_array($c, [403, 404, 409, 422], true) ? $c : 400;
+                $proofErr = $ex->getMessage();
+            } catch (Throwable $ex) {
+                Logger::error('pay.php pending proof failed: ' . $ex->getMessage(), ['pnr' => $pnr]);
+                $code     = 500;
+                $proofErr = 'केही गडबड भयो — कार्यालयमा सम्पर्क गर्नुहोस् · Something went wrong - please contact the office.';
+            }
+        }
+        http_response_code($code);
+    }
+    $ownsNow = CodPayClaim::owns($booking, $key);
+    if ($bStatus === 'pending') {
+        $lastPay = Database::fetch('SELECT id, utr_number, status FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => (int) $booking['id']]);
+        $proofIn = $lastPay !== null && (string) $lastPay['status'] === 'pending' && (trim((string) ($lastPay['utr_number'] ?? '')) !== ''
+            || Database::exists('SELECT 1 FROM payment_screenshots WHERE payment_id = :p LIMIT 1', ['p' => (int) $lastPay['id']]));
+    }
+}
+
 if ($boardPay) {
     require_once INCLUDE_PATH . '/payadapter.php';
     header('Cache-Control: no-store');
@@ -223,6 +399,20 @@ if ($boardPay) {
             try {
                 CodPayClaim::submit($booking, (string) ($_POST['utr'] ?? ''), (string) ($_POST['method'] ?? 'upi'),
                     Security::clean((string) ($_POST['phone'] ?? ''), 20), $key);
+                /* 19 Nov 2026 (u9): the payment screenshot, when one came with the UTR, goes on the
+                   same money row ($storeClaimShot above - validated, hashed, fingerprinted, NO
+                   customer message; the office sees it on Payments -> COD with the "Screenshot
+                   also on" duplicate check). Only after the claim was accepted, so a refused UTR
+                   never leaves a file behind. A failed upload never undoes the claim. */
+                $shot = $_FILES['shot'] ?? null;
+                if ($shotOn && is_array($shot)
+                    && (int) ($shot['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file((string) ($shot['tmp_name'] ?? ''))) {
+                    try {
+                        $storeClaimShot($booking, $shot);
+                    } catch (Throwable $ex) {
+                        Logger::warning('pay.php claim screenshot not saved: ' . $ex->getMessage(), ['pnr' => $pnr]);
+                    }
+                }
                 header('Location: ' . $self . '&sent=1', true, 303);
                 exit;
             } catch (RuntimeException $ex) {
@@ -239,14 +429,36 @@ if ($boardPay) {
     }
     $claim   = CodPayClaim::current((int) $booking['id']);
     $ownsNow = CodPayClaim::owns($booking, $key);
-    if ($claim === null) {
-        require_once INCLUDE_PATH . '/qr.php';
-        try {
-            $upiQr = QrCode::dataUri($upiUri, 7, 3);
-        } catch (Throwable $ex) {
-            $upiQr = '';   // the button and the UPI ID still work
+}
+if ($chooser && $claim === null && !$proofIn) {
+    header('Cache-Control: no-store');
+    require_once INCLUDE_PATH . '/qr.php';
+    try {
+        $upiQr = QrCode::dataUri($upiUri, 7, 3);
+    } catch (Throwable $ex) {
+        $upiQr = '';   // the button and the UPI ID still work
+    }
+    if ($esewaId !== '') {
+        $npr = $frozenNpr
+            ? round((float) $booking['fx_total'] * $due / (float) $booking['total_amount'])
+            : round($due * Settings::getFloat('npr_per_inr', 1.6));
+        $esewaQr = '';
+        foreach (['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'] as $f) {
+            if (is_file(ROOT_PATH . '/' . $f)) {
+                $esewaQr = '/' . $f;
+                break;
+            }
         }
-        $esewa = (new ManualQrAdapter())->start($booking, $due)['esewa'] ?? null;   // the checkout's eSewa ID / QR image
+        /* review fix: the holder name belongs to the wallet shown. The Nepal company's own eSewa
+           shows nepal_esewa_name (or no name); India's esewa_name only beside India's esewa_id. */
+        $npOwnEsewa = ($co['saleEntity'] ?? 'IN') === 'NP' && trim(Settings::getString('nepal_esewa_id', '')) !== ''
+            && $esewaId === trim(Settings::getString('nepal_esewa_id', ''));
+        $esewa = [
+            'id'   => $esewaId,
+            'name' => $npOwnEsewa ? trim((string) ($co['payEsewaName'] ?? '')) : trim(Settings::getString('esewa_name', '')),
+            'npr'  => $npr,
+            'qr'   => $esewaQr,
+        ];
     }
 }
 
@@ -254,15 +466,16 @@ if ($boardPay) {
    never reports back, so this is the last thing we can see. (A pay-at-boarding
    page that only shows "being checked", or a UTR post, is not a pay tap.) */
 require_once INCLUDE_PATH . '/payevents.php';
-if (!$isPost && $claim === null) {
+if (!$isPost && $claim === null && !$proofIn) {
     PayEvents::log((int) ($booking['id'] ?? 0), $pnr, 'pay_open');
 }
 
 // Prefer a direct 302 to the upi:// scheme so the UPI app opens the
 // moment the customer taps in WhatsApp. HTML fallback follows for the
 // rare browser that ignores an unknown-scheme Location header.
-// A pay-at-boarding ticket stays on this page (cash on the bus, or online here).
-if (!$boardPay) {
+// A pay-at-boarding ticket stays on this page (cash on the bus, or online here),
+// and so does a pending one while the office has pay_app_chooser_on (19 Nov 2026, u9).
+if (!$chooser) {
     header('Location: ' . $upiUri, true, 302);
 }
 $bizWa = Settings::officeWhatsApp();
@@ -287,13 +500,25 @@ $bizWa = Settings::officeWhatsApp();
          padding:14px 20px; border-radius:12px; text-decoration:none;
          font-weight:600; margin:16px 0 8px; }
   code { background:#eef1f5; padding:2px 6px; border-radius:4px; font-size:14px; }
-<?php if ($boardPay): /* 16 Nov 2026 (P1): pay-at-boarding page, 360 px and dark included */ ?>
+<?php if ($upiApps !== []): /* 19 Nov 2026 (u9): one big button per UPI app, the green any-UPI button stays below */ ?>
+  .apps { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; margin:16px 0 0; }
+  .apps a { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:56px; padding:8px 4px;
+        border-radius:12px; text-decoration:none; font-weight:700; font-size:14px; color:#fff; text-align:center; box-sizing:border-box; }
+  .apps a small { font-weight:600; font-size:11px; opacity:.9; }
+  .apps .gpay { background:#1a73e8; } .apps .phonepe { background:#5f259f; } .apps .paytm { background:#00a2e8; }
+  .anyupi { font-size:12px; color:#555; text-align:center; margin:-4px 0 8px; }
+  :root[data-theme="dark"] .anyupi { color:#a9b6c9; }
+<?php endif; ?>
+<?php if ($chooser): /* 16 Nov 2026 (P1): pay-at-boarding page, 360 px and dark included (19 Nov: also the pending chooser) */ ?>
   .card { box-sizing:border-box; }
+  @media (max-width: 380px) { .card { padding:18px 14px; } }
   .row { line-height:1.5; overflow-wrap:anywhere; }
   .bp { display:inline-block; background:#fff4d6; color:#7a4a00; border:1px solid #f0c674; border-radius:999px;
         padding:4px 12px; font-weight:700; font-size:14px; margin:6px 0 0; }
   .qrbox { text-align:center; margin:14px 0 4px; }
-  .qr { width:220px; max-width:100%; height:auto; background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:8px; box-sizing:border-box; }
+  .qr { width:300px; max-width:100%; height:auto; background:#fff; border:1px solid #e3e8ef; border-radius:12px; padding:8px; box-sizing:border-box; }
+  .npr { font-size:24px; font-weight:800; color:#0a7c2f; }
+  :root[data-theme="dark"] .npr { color:#4ade80; }
   .cap, .note { font-size:13px; color:#555; line-height:1.5; margin:6px 0; }
   .es { margin:16px 0 8px; padding:12px 14px; border:1px solid #e3e8ef; border-radius:12px; }
   .es h2, .claim h2 { font-size:16px; margin:0 0 6px; }
@@ -334,11 +559,21 @@ $bizWa = Settings::officeWhatsApp();
     <div class="bp">🚌 बसमा तिर्ने टिकट · Pay on boarding</div>
 <?php endif; ?>
     <div class="amt">₹<?= number_format($total, 2) ?></div>
-<?php if (!$boardPay || $claim === null): ?>
+<?php if ((!$boardPay || $claim === null) && !$proofIn): ?>
 <?php if ($boardPay): ?>
     <div class="row">बसमा चढ्दा नगद दिन सक्नुहुन्छ, वा अहिले नै अनलाइन तिर्नुहोस् — UPI / eSewa, कुनै शुल्क लाग्दैन। · Pay cash when you board, or online now — UPI / eSewa, no fee.</div>
 <?php endif; ?>
+<?php if ($upiApps !== []): ?>
+    <div class="apps" role="group" aria-label="UPI app छान्नुहोस् · Pick your UPI app">
+<?php foreach ($upiApps as [$appKey, $appName, $appUri]): ?>
+      <a class="<?= $e($appKey) ?>" href="<?= $e($appUri) ?>" rel="nofollow"><?= $e($appName) ?><small>₹<?= $e(number_format($total, 2)) ?></small></a>
+<?php endforeach; ?>
+    </div>
+<?php endif; ?>
     <a class="btn" href="<?= htmlspecialchars($upiUri, ENT_QUOTES, 'UTF-8') ?>">UPI app मा खोल्नुहोस्</a>
+<?php if ($upiApps !== []): ?>
+    <div class="anyupi">BHIM वा जुनसुकै UPI app · BHIM or any UPI app — रकम र PNR भरिएर आउँछ · amount and PNR filled in</div>
+<?php endif; ?>
     <div class="row">UPI ID: <code><?= htmlspecialchars($upiId, ENT_QUOTES, 'UTF-8') ?></code></div>
 <?php endif; ?>
 <?php if ($boardPay && $claim !== null): ?>
@@ -351,26 +586,48 @@ $bizWa = Settings::officeWhatsApp();
       अफिसले बैंकमा मिलाएपछि टिकटमा "भुक्तानी भयो" देखिन्छ — त्यतिन्जेल फेरि नतिर्नुहोस्। भेटिएन भने बसमा नगद तिर्नुहोस्।
       · Once the office matches it with the bank, the ticket shows PAID. Please do not pay again meanwhile; if it is not found, pay cash on the bus.
     </div>
-<?php elseif ($boardPay): ?>
+<?php elseif ($proofIn): /* 19 Nov 2026 (u9): a pending booking whose proof already waits for the office */ ?>
+<?php if (isset($_GET['sent'])): ?>
+    <div class="sent" role="status">✅ पठाइयो · Sent</div>
+<?php endif; ?>
+    <div class="chk" role="status">
+      <b>⏳ तपाईंको भुक्तानी जाँचमा छ · Your payment is being checked</b>
+      अफिसले बैंक जाँचेपछि टिकट पक्का हुन्छ र WhatsApp मा आउँछ — त्यतिन्जेल फेरि नतिर्नुहोस्।
+      · The office confirms the ticket after checking the bank and sends it on WhatsApp. Please do not pay again meanwhile.
+    </div>
+<?php elseif ($chooser): ?>
+<?php
+    /* 19 Nov 2026 (u9): the eSewa box in रू (frozen NPR, else INR due x npr_per_inr) - first on a
+       Nepal sale, after the UPI QR otherwise. Built once, printed in one of the two places. */
+    $esewaHtml = '';
+    if (is_array($esewa) && ($esewa['id'] ?? '') !== '') {
+        $esewaHtml = '    <div class="es">' . "\n" . '      <h2>🇳🇵 eSewa</h2>' . "\n"
+            . (($esewa['qr'] ?? '') !== '' ? '      <div class="qrbox"><img class="qr" src="' . $e($esewa['qr']) . '" alt="eSewa QR" width="300" height="300"></div>' . "\n" : '')
+            . '      <div class="row">eSewa ID: <code>' . $e($esewa['id']) . '</code>' . (($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '') . '</div>' . "\n"
+            . '      <div class="row">रकम · Amount: <b class="npr">रू ' . $e(number_format((float) ($esewa['npr'] ?? 0))) . '</b> (₹' . $e(number_format($total, 2)) . ')</div>' . "\n"
+            . '      <div class="note">eSewa एपबाट पठाउँदा remarks मा ' . $e($pnr) . ' लेख्नुहोस्। · Put ' . $e($pnr) . ' in the eSewa remarks.</div>' . "\n"
+            . '    </div>' . "\n";
+    }
+    if ($nepalSale) {
+        echo $esewaHtml;
+    }
+?>
 <?php if ($upiQr !== ''): ?>
     <div class="qrbox">
-      <img class="qr" src="<?= $e($upiQr) ?>" alt="UPI QR · ₹<?= $e(number_format($total, 2)) ?>" width="220" height="220">
+      <img class="qr" src="<?= $e($upiQr) ?>" alt="UPI QR · ₹<?= $e(number_format($total, 2)) ?>" width="300" height="300">
       <div class="cap">QR स्क्यान गर्नुहोस् — रकम र PNR भरिएर आउँछ · Scan with any UPI app — amount and PNR filled in</div>
     </div>
 <?php endif; ?>
-<?php if (is_array($esewa) && ($esewa['id'] ?? '') !== ''): ?>
-    <div class="es">
-      <h2>🇳🇵 eSewa</h2>
-<?php if (($esewa['qr'] ?? '') !== ''): ?>
-      <div class="qrbox"><img class="qr" src="<?= $e($esewa['qr']) ?>" alt="eSewa QR" width="220" height="220"></div>
-<?php endif; ?>
-      <div class="row">eSewa ID: <code><?= $e($esewa['id']) ?></code><?= ($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '' ?></div>
-      <div class="row">रकम · Amount: <b>NPR <?= $e(number_format((float) ($esewa['npr'] ?? 0))) ?></b></div>
-      <div class="note">eSewa एपबाट पठाउँदा remarks मा <?= $e($pnr) ?> लेख्नुहोस्। · Put <?= $e($pnr) ?> in the eSewa remarks.</div>
-    </div>
-<?php endif; ?>
-    <form class="claim" method="post" action="<?= $e($self) ?>" autocomplete="off">
+<?php if (!$nepalSale) { echo $esewaHtml; } ?>
+<?php if (!$boardPay && !$pendProof): ?>
+    <div class="note">तिरेपछि UTR (१२ अङ्क) वा screenshot तलको WhatsApp मा पठाउनुहोस् — अफिसले बैंक जाँचेर टिकट पक्का गर्छ। · After paying, send the UTR or the screenshot on WhatsApp below — the office confirms after checking the bank.</div>
+<?php else: $formErr = $boardPay ? $claimErr : $proofErr; ?>
+    <form class="claim" method="post" action="<?= $e($self) ?>" autocomplete="off"<?= $shotOn ? ' enctype="multipart/form-data"' : '' ?>>
+<?php if ($boardPay): ?>
       <h2>तिर्नुभयो? UTR पठाउनुहोस् · Paid? Send the UTR</h2>
+<?php else: ?>
+      <h2>तिर्नुभयो? UTR वा screenshot पठाउनुहोस् · Paid? Send the UTR or the screenshot</h2>
+<?php endif; ?>
       <div class="f" id="paidBy">कसरी तिर्नुभयो · Paid by</div>
       <div class="seg" role="radiogroup" aria-labelledby="paidBy">
         <label><input type="radio" name="method" value="upi"<?= ($_POST['method'] ?? 'upi') !== 'esewa' ? ' checked' : '' ?>> UPI</label>
@@ -379,32 +636,38 @@ $bizWa = Settings::officeWhatsApp();
 <?php endif; ?>
       </div>
       <label class="f" for="utr">UTR / कारोबार नम्बर · Transaction no.</label>
-      <input type="text" id="utr" name="utr" maxlength="40" required inputmode="text" autocapitalize="characters" spellcheck="false"
+      <input type="text" id="utr" name="utr" maxlength="40"<?= $boardPay ? ' required' : '' ?> inputmode="text" autocapitalize="characters" spellcheck="false"
              placeholder="UPI: १२ अङ्क · 12 digits" value="<?= $e($isPost ? (string) ($_POST['utr'] ?? '') : '') ?>">
 <?php if (!$ownsNow): ?>
       <label class="f" for="phone">बुकिङको मोबाइल नम्बर · Booking mobile</label>
       <input type="tel" id="phone" name="phone" maxlength="15" required inputmode="numeric" autocomplete="tel"
              value="<?= $e($isPost ? (string) ($_POST['phone'] ?? '') : '') ?>">
 <?php endif; ?>
+<?php if ($shotOn): ?>
+      <label class="f" for="shot">भुक्तानीको screenshot (ऐच्छिक) · Payment screenshot (optional)</label>
+      <input type="file" id="shot" name="shot" accept="image/jpeg,image/png,image/webp">
+<?php endif; ?>
       <input type="hidden" name="<?= $e(CSRF_TOKEN_NAME) ?>" value="<?= $e(Security::csrfToken()) ?>">
-<?php if ($claimErr !== ''): ?>
-      <p class="err" role="alert"><?= $e($claimErr) ?></p>
+<?php if ($formErr !== ''): ?>
+      <p class="err" role="alert"><?= $e($formErr) ?></p>
 <?php endif; ?>
       <button class="btn2" type="submit">जाँचका लागि पठाउनुहोस् · Send for checking</button>
       <div class="note">अफिसले बैंक जाँचेपछि मात्र भुक्तानी पक्का हुन्छ — यो पेजले आफैं केही पक्का गर्दैन। · Only the office confirms it, after checking the bank.</div>
     </form>
+<?php endif; ?>
 <?php endif; ?>
 <?php
   /* One tap opens our WhatsApp with the PNR already typed. That inbound
      message opens the 24 h service window, which is what lets the ticket
      and every later update reach this customer without Meta billing. */
   if ($bizWa !== ''):
-      $waText = rawurlencode($boardPay ? 'मेरो बुकिङ ' . $pnr . ' को भुक्तानी बारे सोध्नु छ।' : 'मेरो बुकिङ ' . $pnr . ' को टिकट पठाउनुहोस्।');
+      $waText = rawurlencode($boardPay ? 'मेरो बुकिङ ' . $pnr . ' को भुक्तानी बारे सोध्नु छ।'
+          : ($chooser ? 'मेरो बुकिङ ' . $pnr . ' को भुक्तानी गरें। UTR: ' : 'मेरो बुकिङ ' . $pnr . ' को टिकट पठाउनुहोस्।'));
 ?>
     <a class="btn" style="background:#128C7E" href="https://wa.me/<?= htmlspecialchars($bizWa, ENT_QUOTES, 'UTF-8') ?>?text=<?= $waText ?>"><?= $boardPay ? 'WhatsApp मा कार्यालयसँग कुरा गर्नुहोस्' : 'WhatsApp मा टिकट पाउनुहोस्' ?></a>
 <?php endif; ?>
     <div class="row">प्राप्तकर्ता: <?= htmlspecialchars($upiName, ENT_QUOTES, 'UTF-8') ?></div>
-<?php if (!$boardPay): ?>
+<?php if (!$chooser): ?>
     <script>
       // In case the header redirect was blocked, try once more from JS.
       setTimeout(function(){ location.href = <?= json_encode($upiUri) ?>; }, 400);

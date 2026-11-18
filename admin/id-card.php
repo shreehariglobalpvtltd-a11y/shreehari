@@ -107,6 +107,35 @@ try {
 }
 $verify = IdCard::verifyUrl($p['ref']);
 $waPersonal = IdCard::waQrUrl($p);
+
+/* 19 Nov 2026 (CD-1): when this record has a login (an AgentPro member), its cards in
+   the three new designs (big photo on top) from api/agentpro-card.php - the same
+   cards the member and the office get everywhere else. */
+$apId = 0;
+$apStyles = [];
+$apPick = 'royal';
+// Only for a viewer the card API will serve (it allows the member himself, a
+// super-admin, staff.manage or commissions.view): a manager without those would
+// otherwise get six broken images and 403 links.
+$apCanView = $owner !== null && $owner[0] === 'admin' && $owner[1] > 0
+    && (Auth::isSuperadmin() || Auth::can('staff.manage') || Auth::can('commissions.view') || (int) ($admin['id'] ?? 0) === (int) $owner[1]);
+if ($apCanView) {
+    try {
+        require_once INCLUDE_PATH . '/agentpro-card.php';
+        require_once INCLUDE_PATH . '/carddesign.php';
+        if (AgentPro::available() && Database::scalar('SELECT COUNT(*) FROM admins WHERE id = :a', ['a' => $owner[1]], 0) > 0) {
+            $apId = (int) $owner[1];
+            $apStyles = CardDesign::apStyles();
+            $apPick = ApCard::idStyle((string) ($_GET['design'] ?? ''));
+            if (!isset($apStyles[$apPick])) {
+                $apPick = !empty($p['studio']['preset']) ? CardDesign::apStyle((string) $p['studio']['preset']) : 'royal';
+            }
+        }
+    } catch (Throwable $e) {
+        $apId = 0;
+    }
+}
+$ap = static fn(array $x): string => '/api/agentpro-card.php?' . http_build_query(['member' => $apId] + $x);
 ?><!doctype html>
 <html lang="ne">
 <head>
@@ -176,6 +205,31 @@ th{color:var(--mut);font-weight:700;font-size:12px}
 
 <div class="wrap">
   <?php if ($flash !== null): ?><div class="flash <?= $h($flash[0]) ?>"><?= $h($flash[1]) ?></div><?php endif; ?>
+
+  <?php if ($apId > 0): ?>
+  <!-- 19 Nov 2026 (CD-1): the three new designs, from the member's AgentPro record -->
+  <div class="box">
+    <h2><span>🪪 New ID card · तीन डिजाइन (Royal Gold · Modern Blue · Nepal-India Heritage)</span></h2>
+    <div class="cards">
+      <?php foreach ($apStyles as $k => $label): ?>
+        <figure><a href="<?= $h($ap(['kind' => 'id', 'side' => 'front', 'variant' => $k, 'format' => 'png', 'dpi' => 300])) ?>" target="_blank" rel="noopener"><img class="id" loading="lazy" src="<?= $h($ap(['kind' => 'id', 'side' => 'front', 'variant' => $k])) ?>" alt="<?= $h($label) ?> front"></a><figcaption><?= $h($label) ?><?= $k === $apPick ? ' ✓' : '' ?></figcaption></figure>
+      <?php endforeach; ?>
+      <figure><img class="id" loading="lazy" src="<?= $h($ap(['kind' => 'id', 'side' => 'back', 'variant' => $apPick])) ?>" alt="Back"><figcaption>Back · पछाडि (<?= $h($apStyles[$apPick] ?? $apPick) ?>)</figcaption></figure>
+    </div>
+    <div class="cards" style="margin-top:14px">
+      <figure><img class="vc" loading="lazy" src="<?= $h($ap(['kind' => 'vc', 'side' => 'front', 'variant' => $apPick])) ?>" alt="Visiting card front"><figcaption>Visiting card · front</figcaption></figure>
+      <figure><img class="vc" loading="lazy" src="<?= $h($ap(['kind' => 'vc', 'side' => 'back', 'variant' => $apPick])) ?>" alt="Visiting card back"><figcaption>Visiting card · back (QR → <?= $h(match (Settings::getString('ap_vc_back_qr', 'web')) { 'wa' => 'WhatsApp', 'webref' => 'website + agent code', default => 'website' }) ?>)</figcaption></figure>
+    </div>
+    <div class="dl">
+      <?php foreach ($apStyles as $k => $label): ?>
+        <a href="<?= $h($ap(['kind' => 'id', 'sheet' => 'a4', 'format' => 'pdf', 'variant' => $k])) ?>" target="_blank" rel="noopener">🖨 A4 · 4 ID cards · <?= $h($label) ?></a>
+      <?php endforeach; ?>
+      <a href="<?= $h($ap(['kind' => 'vc', 'sheet' => 'a4', 'format' => 'pdf', 'variant' => $apPick])) ?>" target="_blank" rel="noopener">🖨 A4 · 10 visiting cards</a>
+      <a href="<?= $h($ap(['format' => 'pdf', 'variant' => $apPick, 'dl' => 1])) ?>">📄 PDF · all 4 faces</a>
+    </div>
+    <p class="note">Print at 100 % (Actual size). The A4 sheets put the backs on page 2, mirrored for double-sided printing (flip on the long edge). The design for WhatsApp and the member's own portal is the office default (Easy Settings: <code>ap_id_front_style</code>).</p>
+  </div>
+  <?php endif; ?>
 
   <!-- Identity Card Section -->
   <div class="box">

@@ -49,7 +49,7 @@ try {
             'email'    => (string) Response::field('email', ''),
             'idType'   => (string) Response::field('idType', ''),
             'idNumber' => Security::clean((string) Response::field('idNumber', ''), 60),
-        ]);
+        ], $how);   // 19 Nov 2026 (u7): a proven door — this phone stays signed in (customer_remember_days)
         Logger::audit('customer.login.' . $how, 'user', (string) $user['id'], null, null, 'Passenger signed in: ' . $how);
         Response::success([
             'status' => 'verified', 'signedIn' => true, 'verified' => true, 'needsOtp' => false,

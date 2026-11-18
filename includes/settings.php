@@ -289,7 +289,7 @@ final class Settings
         $mask = static function (string $key, $value): string {
             // isSecretKey() is the rule the Settings form uses; the older, broader
             // pattern stays beside it so nothing that was masked stops being masked.
-            $sensitive = self::isSecretKey($key) || preg_match('/(token|password|secret|auth|key|api)/i', $key) === 1;
+            $sensitive = self::isSecretKey($key) || preg_match('/(token|password|secret|auth|key|api|private)/i', $key) === 1;   // 19 Nov 2026: + private (push_vapid_private & co.)
             $str       = is_scalar($value) ? (string) $value : json_encode($value);
             if ($str === '' || $str === false || $str === null) { return ''; }
             if (!$sensitive) {
@@ -570,6 +570,11 @@ final class Settings
             'saleEntity' => $sale,
             'regLabel'   => $india['cin'] !== '' ? 'CIN' : '',
             'regNo'      => $india['cin'],
+            /* 19 Nov 2026 (TK-5): the registration line as it prints - 'CIN X' for the
+               India company, 'PAN X  ·  Reg. Y' for the Nepal one (each only when set). */
+            'regLine'    => $india['cin'] !== '' ? 'CIN ' . $india['cin'] : '',
+            'pan'        => '',
+            'reg'        => '',
             'gstin'      => $g('company_gstin'),
             'logo'       => $g('company_logo'),
             'tz'         => 'IST',
@@ -598,6 +603,11 @@ final class Settings
                 'cin'       => '',
                 'regLabel'  => $pan !== '' ? 'PAN' : ($reg !== '' ? 'Reg.' : ''),
                 'regNo'     => $pan !== '' ? $pan : $reg,
+                /* 19 Nov 2026 (TK-5): BOTH numbers when both are set - "PAN 612454076
+                   ·  Reg. 12345/080" - never one hiding the other. */
+                'regLine'   => implode('  ·  ', array_filter([$pan !== '' ? 'PAN ' . $pan : '', $reg !== '' ? 'Reg. ' . $reg : ''])),
+                'pan'       => $pan,
+                'reg'       => $reg,
                 'gstin'     => '',
                 'logo'      => $g('nepal_logo') !== '' ? $g('nepal_logo') : $g('company_logo'),
                 'tz'        => 'NPT',
@@ -630,6 +640,78 @@ final class Settings
         ];
 
         return $out;
+    }
+
+    /**
+     * The company a PERSON belongs to by country (19 Nov 2026, NP-4 / TK-5):
+     * 'NP' (or '977') gives the Nepal company - companyFor(null, 'NP') with its
+     * PAN / Reg. line, the Nepal office, the Nepal phone as the 24x7 line and the
+     * active Nepal desks' phones first in 'counters', then the India head office;
+     * anything else gives the India company exactly as companyFor(null, 'IN').
+     * Cards (ID / visiting) read this; tickets keep companyFor() per sale.
+     *
+     * NOTHING IS INVENTED: while nepal_company is blank the NP answer is the India
+     * letterhead (as companyFor does) and only 'country' / 'flagFirst' say Nepal;
+     * a blank Nepal phone leaves phone247 at the Nepal office line, else ''.
+     *
+     * @return array<string,mixed> companyFor() keys + country, flagFirst, phone247, counters
+     */
+    public static function companyForCountry(string $cc): array
+    {
+        $c  = strtoupper(trim($cc));
+        $np = in_array($c, ['NP', 'NPL', '977', '+977', 'NEPAL'], true);
+        $co = self::companyFor(null, $np ? 'NP' : 'IN');
+        $co['country']   = $np ? 'NP' : 'IN';
+        $co['flagFirst'] = $np ? 'NP' : 'IN';
+        if (!$np || ($co['entity'] ?? 'IN') !== 'NP') {
+            /* 19 Nov 2026 (review): the documented keys are always there - the India
+               head office's 24x7 line and counters (a Nepal person on the India
+               letterhead still gets the Nepal phone as the 24x7 line when one is set). */
+            $india  = self::company();
+            $npLine = $np ? trim(self::getString('nepal_phone', '')) : '';
+            $co['phone247'] = $npLine !== '' ? $npLine : (string) ($co['phone247'] ?? $india['phone247'] ?? '');
+            $co['counters'] = (string) ($co['counters'] ?? $india['counters'] ?? '');
+            return $co;
+        }
+
+        $phone = trim(self::getString('nepal_phone', ''));
+        if ($phone === '') {
+            $phone = trim(self::getString('np_office_phone', ''));
+        }
+        $co['phone247'] = $phone;
+
+        /* Nepal desks that carry a phone first, then the India head office's own
+           first entry of company_counters (the passenger may still ring India). */
+        $parts = [];
+        $seen  = [];
+        $short = static fn(string $name): string => trim((string) (preg_split('/\s+[\x{2014}\x{2013}-]\s+/u', $name)[0] ?? $name));
+        if (class_exists('CounterDesk', false)) {
+            try {
+                foreach (CounterDesk::all(true) as $d) {
+                    $ph = trim((string) ($d['phone'] ?? ''));
+                    $k  = preg_replace('/\D/', '', $ph) ?? '';
+                    if ((string) ($d['country'] ?? 'IN') !== 'NP' || strlen($k) < 8 || isset($seen[$k])) {
+                        continue;
+                    }
+                    $seen[$k] = true;
+                    $parts[]  = $short((string) $d['name']) . ' ' . $ph;
+                }
+            } catch (Throwable $e) {
+                // no desk table: the Nepal phone and the India line below still print
+            }
+        }
+        if ($parts === [] && $phone !== '') {
+            $bits    = explode(',', self::nepalOfficePlace());   // "Pushpalal Chowk, Nepalgunj" -> Nepalgunj
+            $place   = trim((string) end($bits));
+            $parts[] = ($place !== '' ? $place : 'Nepal') . ' ' . $phone;
+        }
+        $india = self::company();
+        $first = trim((string) (preg_split('/\s*[\x{00B7}|;]\s*/u', (string) ($india['counters'] ?? ''))[0] ?? ''));
+        if ($first !== '') {
+            $parts[] = $first;
+        }
+        $co['counters'] = implode(' · ', $parts);
+        return $co;
     }
 
     /**

@@ -475,6 +475,7 @@ final class Notify
            applies does the paid AiSensy template below go out. Never allowed
            to break a send: any exception falls through to the old ladder. */
         $freeTried = false;   // the Meta number's free reply was tried (and did not go) - the Cloud fallback skips it
+        $tplTried  = '';      // 19 Nov 2026 (WA-1): the Meta template already sent (and refused) for this message
         try {
             require_once __DIR__ . '/waroute.php';
             $purpose = (string) ($meta['purpose'] ?? 'message');
@@ -497,16 +498,39 @@ final class Notify
                 }
                 return true;
             }
-            if (WaRoute::metaTemplatesOn() && $templateVars !== [] && in_array($purpose, ['ticket', 'ticket_update', 'ticket_resend'], true)) {
-                $hdr = (string) ($templateVars['7'] ?? ($mediaUrl ?? ''));
-                $bv  = $templateVars;
-                unset($bv['7']);
-                $mt = WaRoute::metaTemplate($number, Settings::getString('whatsapp_template_name', ''), Settings::getString('whatsapp_template_lang', 'en'),
-                    $bv, $hdr !== '' ? $hdr : null, $purpose, ['bookingId' => $bookingId]);
+            /* 19 Nov 2026 (WA-2): the template comes from the registry
+               (includes/watplmeta.php). A caller may hand the exact one in
+               $meta['meta_tpl'] (WaTplMeta::forPurpose: pay request, trip
+               reminder, ticket changed, ...); a ticket uses the first READY
+               of [whatsapp_template_name, shg_ticket_v2]. */
+            $spec = null;
+            if (WaRoute::metaTemplatesOn()) {
+                require_once __DIR__ . '/watplmeta.php';
+                if (isset($meta['meta_tpl']) && is_array($meta['meta_tpl']) && (string) ($meta['meta_tpl']['name'] ?? '') !== '') {
+                    $spec = $meta['meta_tpl'];
+                } elseif ($templateVars !== [] && in_array($purpose, ['ticket', 'ticket_update', 'ticket_resend', 'ticket_alt'], true)) {
+                    $tv = $templateVars;
+                    if (!isset($tv['7']) && $mediaUrl !== null && $mediaUrl !== '') {
+                        $tv['7'] = $mediaUrl;
+                    }
+                    $spec = WaTplMeta::forPurpose($purpose, ['vars' => $tv]);
+                }
+            }
+            if ($spec !== null) {
+                WaRoute::$lastTemplate = null;
+                $hdrArr = (array) ($spec['header'] ?? []);
+                $mt = WaRoute::metaTemplate($number, (string) $spec['name'], (string) ($spec['lang'] ?? 'en'),
+                    array_values(array_map('strval', (array) ($spec['vars'] ?? []))), isset($hdrArr['image']) ? (string) $hdrArr['image'] : null, $purpose,
+                    ['bookingId' => $bookingId, 'header' => $hdrArr, 'buttons' => (array) ($spec['buttons'] ?? [])]);
                 if ($mt !== null) {
                     self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_template', 'ref' => $mt['message_id']];
                     self::metaTicketRecorded($bookingId, $purpose, $number, 'meta template', (string) $mt['message_id']);
                     return true;
+                }
+                /* WA-1: it went to Meta and was refused - the Cloud API driver
+                   below must not build and send the same template again. */
+                if (WaRoute::$lastTemplate !== null) {
+                    $tplTried = (string) $spec['name'];
                 }
             }
         } catch (Throwable $e) {
@@ -591,8 +615,9 @@ final class Notify
 
             if ($token !== '' && $phoneId !== '') {
                 self::$lastProviderError = '';
-                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref, (string) ($meta['template_name'] ?? ''), (string) ($meta['template_lang'] ?? 'en'))) {
-                    self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => ''];
+                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref, (string) ($meta['template_name'] ?? ''), (string) ($meta['template_lang'] ?? 'en'), $tplTried !== '')) {
+                    // 'ref' = the wamid: WaQueue::afterNotify stores it, so a later webhook failure (131047) finds the row.
+                    self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => '', 'ref' => (string) $ref];
                     // provider_ref = Meta's wamid, the key whatsapp/webhook.php
                     // matches delivery statuses on (same role as the Twilio SID).
                     self::logMessage('whatsapp', $number, $message, 'sent', [
@@ -1051,7 +1076,15 @@ final class Notify
         $pnr     = (string) ($booking['pnr'] ?? '');
         $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
 
-        if (Settings::getString('whatsapp_template_name', '') === 'shg_ticket_image') {
+        /* 19 Nov 2026 (WA-2): shg_ticket_v2 (the duplicate, includes/watplmeta.php)
+           has the same 6 variables as shg_ticket_image. */
+        $tplNow = Settings::getString('whatsapp_template_name', '');
+        try {
+            require_once __DIR__ . '/watplmeta.php';
+            $tplNow = WaTplMeta::ticketTemplate()['name'] ?: $tplNow;
+        } catch (Throwable $ignored) {
+        }
+        if (in_array($tplNow, ['shg_ticket_image', 'shg_ticket_v2'], true)) {
             $name = trim((string) Database::scalar(
                 'SELECT full_name FROM booking_passengers WHERE booking_id = :id ORDER BY id LIMIT 1',
                 ['id' => (int) ($booking['id'] ?? 0)], ''
@@ -1205,6 +1238,14 @@ final class Notify
             'detail' => 'WhatsApp send failed. Use Settings → "Test WhatsApp" to see the exact Twilio error, or check logs/ (channel: whatsapp).'];
     }
 
+    /** 19 Nov 2026: the {{3}} "Change:" line of shg_ticket_changed (one short English line per kind). */
+    private const CHANGE_EN = [
+        'reschedule' => 'travel date changed', 'missed_rebook' => 'rebooked after the missed bus', 'seat' => 'seat changed',
+        'seat_cancelled' => 'a seat was cancelled', 'passenger' => 'passenger details updated', 'contact' => 'contact details updated',
+        'payment' => 'payment details updated', 'paid' => 'payment details updated', 'agent' => 'ticket re-issued',
+        'stops' => 'boarding or drop point updated', 'trip_change' => 'bus or time changed', 'reconfirm' => 'confirmed again',
+    ];
+
     /**
      * Tell the passenger WHAT changed on their ticket (17 Sep 2026).
      *
@@ -1242,12 +1283,37 @@ final class Notify
             return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
         }
 
+        /* 19 Nov 2026 (WA-2): once shg_ticket_changed is APPROVED the change
+           note itself rides on a template (new ticket picture as its header),
+           so the shortcut below (plain resend) is not needed. */
+        $changedTpl = null;
+        try {
+            require_once __DIR__ . '/watplmeta.php';
+            if (WaTplMeta::ready('shg_ticket_changed')) {
+                $facts0 = self::ticketFacts($booking);
+                $pname  = trim((string) Database::scalar(
+                    'SELECT full_name FROM booking_passengers WHERE booking_id = :id ORDER BY id LIMIT 1',
+                    ['id' => (int) ($booking['id'] ?? 0)], ''
+                ));
+                $changedTpl = WaTplMeta::forPurpose('ticket_update', [
+                    'name'   => $pname,
+                    'pnr'    => $pnr,
+                    'change' => self::CHANGE_EN[$what] ?? 'ticket updated',
+                    'date'   => $facts0['date'] !== '' ? formatDate($facts0['date'], 'j M Y') : '',
+                    'seat'   => $facts0['seats'],
+                    'header' => Ticket::imageUrl($pnr),
+                ]);
+            }
+        } catch (Throwable $ignored) {
+            $changedTpl = null;
+        }
+
         $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
-        $templateInForce = $driver === 'aisensy'
+        $templateInForce = $changedTpl === null && ($driver === 'aisensy'
             || ($driver === 'twilio' && Settings::getString('twilio_content_sid', '') !== '')
             || ($driver === 'cloud_api' && Settings::getString('whatsapp_template_name', '') !== '')
             || ($driver === 'gupshup' && (Settings::getString('whatsapp_template_name_gupshup', '') !== ''
-                                           || Settings::getString('whatsapp_template_name', '') !== ''));
+                                           || Settings::getString('whatsapp_template_name', '') !== '')));
         if ($templateInForce) {
             $res = self::resendTicketWhatsApp($booking);
             $res['detail'] = (string) ($res['detail'] ?? '')
@@ -1341,7 +1407,7 @@ final class Notify
             self::countryHint($booking),
             self::ticketTemplateVars($booking),
             isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null,
-            ['purpose' => 'ticket_update']
+            ['purpose' => 'ticket_update'] + ($changedTpl !== null ? ['meta_tpl' => $changedTpl] : [])
         );
         if (self::lastSendSuppressed()) {
             return ['ok' => false, 'detail' => 'suppressed (idempotent) — the change notice was not sent.'];
@@ -1507,7 +1573,7 @@ final class Notify
      * PNG becomes the template's IMAGE header (carried as var 7 by
      * bookingConfirmed(), or as $mediaUrl).
      */
-    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = '', ?string &$providerRef = null, string $templateName = '', string $templateLang = 'en'): bool
+    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = '', ?string &$providerRef = null, string $templateName = '', string $templateLang = 'en', bool $skipTemplate = false): bool
     {
         // 18 Sep 2026: the HTTP call (Graph API version, retry-once, per-day
         // log, message id) lives in whatsapp/api.php — one path for every
@@ -1517,9 +1583,28 @@ final class Notify
         // The ticket image: explicit media wins, else template var 7.
         $image = ($mediaUrl !== null && $mediaUrl !== '') ? $mediaUrl : (string) ($templateVars['7'] ?? '');
         /* A caller that names its own template (booking received, payment
-           rejected, ...) wins over the ticket template in Settings. */
-        $template = $templateName !== '' ? $templateName : Settings::getString('whatsapp_template_name', '');
-        $lang     = $templateName !== '' ? $templateLang : Settings::getString('whatsapp_template_lang', 'en');
+           rejected, ...) wins over the ticket template in Settings.
+           19 Nov 2026 (WA-2): the ticket template is the registry's first
+           READY of [whatsapp_template_name, shg_ticket_v2]. */
+        $template = $templateName;
+        $lang     = $templateLang;
+        if ($templateName === '') {
+            $template = Settings::getString('whatsapp_template_name', '');
+            $lang     = Settings::getString('whatsapp_template_lang', 'en');
+            try {
+                require_once __DIR__ . '/watplmeta.php';
+                $tt       = WaTplMeta::ticketTemplate();
+                $template = $tt['name'];
+                $lang     = $tt['lang'];
+            } catch (Throwable $ignored) {
+            }
+        }
+        /* 19 Nov 2026 (WA-1): WaRoute::metaTemplate() already sent this
+           message's template and Meta refused it - never send it a second
+           time; the free picture / text below is the only other try. */
+        if ($skipTemplate) {
+            $template = '';
+        }
 
         if ($template !== '' && $templateVars !== []) {
             $bodyVars = $templateVars;
@@ -1598,6 +1683,13 @@ final class Notify
            free text/image: inside a 24 h window it still reaches the
            customer, and the moment Meta approves the template this retry
            stops happening on its own. */
+        if (!$r['success'] && $wasTemplate) {
+            try {
+                require_once __DIR__ . '/watplmeta.php';
+                WaTplMeta::noteRefused((string) $template, (int) ($r['code'] ?? 0));
+            } catch (Throwable $ignored) {
+            }
+        }
         if (!$r['success'] && $wasTemplate
             && in_array((int) ($r['code'] ?? 0), [132000, 132001, 132005, 132007, 132012, 132015, 132016, 132068, 132069], true)) {
             $alt = $image !== ''
@@ -2455,6 +2547,9 @@ final class Notify
             // lets admin/messages-log.php name the customer who missed their
             // ticket and lets cron/whatsapp-retry.php find it again later.
             self::whatsapp((string) $booking['contact_phone'], $text, $mediaUrl, self::countryHint($booking), $templateVars, $bid > 0 ? $bid : null, ['purpose' => 'ticket']);
+
+            // 19 Nov 2026 (WA-1): the booking's second number (India <-> Nepal) gets the same ticket.
+            self::ticketToAltNumber($booking, $text, $mediaUrl, $templateVars, $bid);
         }
 
         $office = Settings::getString('admin_whatsapp', Settings::officePhone());
@@ -2473,6 +2568,49 @@ final class Notify
                  . ($facts['date']  !== '' ? ' ' . $when . '.' : '')
                  . ' Ticket: ' . $ticketUrl;
             self::sms((string) $booking['contact_phone'], $sms, self::countryHint($booking), $bid);
+        }
+    }
+
+    /**
+     * The ticket to the booking's SECOND number (bookings.alt_phone, 19 Nov
+     * 2026, WA-1): a Nepal family often gives an Indian and a Nepali mobile.
+     * Its own country (alt_country_code, else the booking's), the same
+     * ladder as the customer (free in its window, else the approved ticket
+     * template), purpose 'ticket_alt'. Only while AiSensy is not the ticket
+     * sender (AiSensy's own hook queues the second number itself), at most
+     * once per booking and number (the "hi" queue row records it), and
+     * whatever does not arrive waits in that queue for this number's next
+     * message (WaQueue::afterNotify). Switch: wa_ticket_alt_on (default 1).
+     * Never throws.
+     */
+    private static function ticketToAltNumber(array $booking, string $text, ?string $mediaUrl, array $templateVars, int $bid): void
+    {
+        try {
+            if ($bid <= 0 || !Settings::getBool('wa_ticket_alt_on', true)) {
+                return;
+            }
+            if (!array_key_exists('alt_phone', $booking)) {
+                $row = Database::fetch('SELECT alt_phone, alt_country_code FROM bookings WHERE id = :b', ['b' => $bid]);
+                $booking += (array) $row;
+            }
+            $alt = self::usablePhone($booking['alt_phone'] ?? '');
+            if ($alt === '') {
+                return;
+            }
+            require_once __DIR__ . '/waroute.php';
+            $cc   = WaRoute::hintDigits((string) ($booking['alt_country_code'] ?? ''));
+            $hint = $cc === '977' ? 'NP' : ($cc === '91' ? 'IN' : self::countryHint($booking));
+            $to   = self::intlDigits($alt, $hint);
+            if ($to === '' || strlen($to) < 11 || $to === self::whatsappNumberFor($booking)) {
+                return;
+            }
+            require_once __DIR__ . '/waqueue.php';
+            if (!WaQueue::metaOnly() || WaQueue::alreadyHas($bid, $to)) {
+                return;
+            }
+            self::whatsapp($to, $text, $mediaUrl, null, $templateVars, $bid, ['purpose' => 'ticket_alt']);
+        } catch (Throwable $e) {
+            Logger::warning('second-number ticket failed: ' . $e->getMessage(), ['booking' => $bid], 'whatsapp');
         }
     }
 
@@ -2746,7 +2884,8 @@ final class Notify
             return;
         }
 
-        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
+        $coSale  = Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''));
+        $company = (string) $coSale['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $total   = (float) ($booking['total_amount'] ?? 0);
         $amount  = inr($total);
@@ -2779,16 +2918,60 @@ final class Notify
                 $text .= "माथिको QR स्क्यान गर्नुहोस् · Or scan the QR above\n\n";
             }
 
+            /* 19 Nov 2026 (blueprint: "eSewa with the NPR amount"): a Nepal
+               booking also sees the eSewa id and the fare in रू at the frozen
+               rate (npr_per_inr). Shown only when eSewa is set up.
+               Same rule as pay.php: the eSewa of the company that issued THIS
+               ticket (companyFor()['payEsewa']: the Nepal company's own once
+               typed, else the India one); रू = the NPR frozen on the sale when
+               the desk froze one, else INR x npr_per_inr; shown for a Nepal
+               sale (sale/desk entity NP or frozen NPR) or a Nepal number. */
+            $hint      = self::countryHint($booking);
+            $esewa     = trim((string) ($coSale['payEsewa'] ?? ''));
+            $frozenNpr = strtoupper((string) ($booking['fx_currency'] ?? '')) === 'NPR' && (float) ($booking['fx_total'] ?? 0) > 0;
+            $nepalSale = ($coSale['saleEntity'] ?? 'IN') === 'NP' || ($coSale['entity'] ?? 'IN') === 'NP' || $frozenNpr || $hint === 'NP';
+            if ($nepalSale && $esewa !== '' && $total > 0) {
+                $npr = $frozenNpr ? round((float) $booking['fx_total']) : round($total * Settings::getFloat('npr_per_inr', 1.6));
+                $text .= "eSewa: " . $esewa . " · रू " . indianNumber((float) $npr) . "\n\n";
+            }
+
             $text .= "भुक्तानी पछि प्रमाण अपलोड गर्नुहोस्:\n"
                    . appUrl('') . "\n"
                    . "सहयोग: " . Settings::officePhone();
             $facts = self::ticketFacts($booking);
-            self::whatsapp($phone, $text, $payImg, self::countryHint($booking), [
-                '1' => $pnr,
-                '2' => $facts['route'] !== '' ? $facts['route'] : '-',
-                '3' => $facts['date']  !== '' ? $facts['date']  : '-',
-                '4' => $amount,
-            ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_booking_received', 'purpose' => 'booking_received']);
+            $bidP  = (int) ($booking['id'] ?? 0);
+
+            /* WA-7 phase 1 / ON-1 (19 Nov 2026): inside the customer's 24 h
+               window the message carries ONE "Pay ₹X" button (exact amount)
+               under the pay QR picture - a gateway page when one is switched
+               on (PaymentAdapters::redirectUrl), else pay.php. Direct UPI only,
+               no WhatsApp Payments; the office still verifies every payment.
+               Switch: wa_pay_cta_on (default 1). Anything else: the old path. */
+            if (self::payCtaSend($booking, $phone, $hint, $text, $payImg, $total)) {
+                // sent with the button
+            } else {
+                $meta = ['template_name' => 'shg_booking_received', 'purpose' => 'booking_received'];
+                // WA-2: outside the window the registry's shg_pay_request (URL button to pay.php) once APPROVED.
+                try {
+                    require_once __DIR__ . '/watplmeta.php';
+                    $pt = WaTplMeta::forPurpose('pay', [
+                        'amount' => $amount,
+                        'seat'   => $facts['seats'],
+                        'date'   => $facts['date'] !== '' ? formatDate($facts['date'], 'j M Y') : '',
+                        'pnr'    => $pnr,
+                    ]);
+                    if ($pt !== null) {
+                        $meta['meta_tpl'] = $pt;
+                    }
+                } catch (Throwable $ignored) {
+                }
+                self::whatsapp($phone, $text, $payImg, $hint, [
+                    '1' => $pnr,
+                    '2' => $facts['route'] !== '' ? $facts['route'] : '-',
+                    '3' => $facts['date']  !== '' ? $facts['date']  : '-',
+                    '4' => $amount,
+                ], $bidP ?: null, $meta);
+            }
         }
 
         if (!empty($booking['contact_email'])) {
@@ -2802,6 +2985,77 @@ final class Notify
                 . '<p>' . e($company) . '</p>'
             );
             self::email((string) $booking['contact_email'], 'Booking received · ' . $pnr, $html);
+        }
+    }
+
+    /**
+     * The "Pay ₹X" button message (19 Nov 2026, WA-7 phase 1 / ON-1): Meta's
+     * interactive cta_url on the bot number, only inside this number's 24 h
+     * window (Meta refuses interactive messages outside it). Header = the
+     * pay QR picture with the exact amount; button = the first redirect
+     * gateway (PaymentAdapters::redirectUrl) else pay.php?pnr=. True when
+     * Meta accepted it (logged + journalled like any send); false = the
+     * caller keeps its old text / template path. Never throws.
+     */
+    public static function payCtaSend(array $booking, string $phone, ?string $hint, string $text, ?string $payImg, float $total): bool
+    {
+        try {
+            $pnr = (string) ($booking['pnr'] ?? '');
+            if (!Settings::getBool('wa_pay_cta_on', true) || $pnr === '' || $total <= 0 || trim($text) === '' || mb_strlen($text) > 1024) {
+                return false;
+            }
+            require_once __DIR__ . '/waroute.php';
+            $number = self::intlDigits($phone, $hint);
+            if ($number === '' || !WaRoute::metaOn() || !WaRoute::metaReady() || !WaRoute::metaWindowOpen($number)) {
+                return false;
+            }
+            $due = $total;
+            if ((int) ($booking['id'] ?? 0) > 0) {
+                try {
+                    require_once __DIR__ . '/payadapter.php';
+                    $due = PaymentAdapters::due($booking + ['total_amount' => $total]);
+                } catch (Throwable $e) {
+                    $due = $total;
+                }
+            }
+            if ($due <= 0) {
+                return false;
+            }
+            $url = '';
+            try {
+                require_once __DIR__ . '/payadapter.php';
+                $url = PaymentAdapters::redirectUrl($booking);
+            } catch (Throwable $e) {
+                $url = '';
+            }
+            if ($url === '' && (trim(Settings::getString('upi_id', '')) !== '' || trim(Settings::getString('esewa_id', '')) !== '')) {
+                $url = appUrl('pay.php?pnr=' . urlencode($pnr));
+            }
+            if ($url === '') {
+                return false;
+            }
+            $btn = 'Pay ' . inr($due);
+            $img = ($payImg !== null && preg_match('~^https://~i', $payImg) === 1) ? $payImg : null;
+            require_once ROOT_PATH . '/whatsapp/api.php';
+            $r = sendWhatsAppCtaUrl($number, $text, $btn, $url, $img);
+            if (!$r['success'] && $img !== null) {
+                $r = sendWhatsAppCtaUrl($number, $text, $btn, $url);   // the picture was the problem
+            }
+            if (!$r['success']) {
+                Logger::info('pay button not accepted: ' . (string) ($r['error'] ?? ''), ['pnr' => $pnr], 'whatsapp');
+                return false;
+            }
+            self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_free', 'ref' => (string) $r['message_id']];
+            self::logMessage('whatsapp', $number, $text . "\n[" . $btn . '] ' . $url, 'sent', [
+                'provider'  => 'cloud_api', 'bookingId' => (int) ($booking['id'] ?? 0) ?: null,
+                'sid'       => (string) $r['message_id'], 'purpose' => 'booking_received',
+                'media_url' => $img,
+            ]);
+            WaRoute::count('free');
+            return true;
+        } catch (Throwable $e) {
+            Logger::warning('pay button send failed: ' . $e->getMessage(), [], 'whatsapp');
+            return false;
         }
     }
 
@@ -3445,7 +3699,20 @@ final class Notify
 
             // On the AiSensy driver this would be a second copy of the same update.
             if (!$aisSent || Settings::getString('whatsapp_driver', '') !== 'aisensy') {
-                $wa = self::whatsapp($phone, $body['whatsapp'], null, $hint);
+                /* 19 Nov 2026 (WA-2): outside the 24 h window a reminder / "bus
+                   on the way" goes on its own APPROVED template
+                   (shg_trip_reminder, shg_bus_live); until then nothing changes. */
+                $tripMeta = [];
+                try {
+                    require_once __DIR__ . '/watplmeta.php';
+                    $tt = self::tripTemplate($booking, $event, $facts, $pnr);
+                    if ($tt !== null) {
+                        $tripMeta = ['meta_tpl' => $tt, 'purpose' => $event];
+                    }
+                } catch (Throwable $ignored) {
+                    $tripMeta = [];
+                }
+                $wa = self::whatsapp($phone, $body['whatsapp'], null, $hint, [], $tripMeta !== [] && $bid > 0 ? $bid : null, $tripMeta);
                 if ($wa === true) {
                     $channels[] = 'wa';
                     $ok = true;
@@ -3489,6 +3756,54 @@ final class Notify
                 ? 'Sent via ' . implode(' + ', $channels)
                 : 'No channel delivered it — check Settings -> Test WhatsApp / Test SMS.',
         ];
+    }
+
+    /**
+     * The registry template for a trip event (19 Nov 2026, WA-2), or null
+     * while it is not APPROVED: reminder_24h / 12h / 2h -> shg_trip_reminder
+     * (name, route, date, time, boarding point); departed / bus_near ->
+     * shg_bus_live (name, route + the live track link as its URL button).
+     * Values come from the booking; a missing one is sent as '-'.
+     *
+     * @param array<string,string> $facts
+     */
+    private static function tripTemplate(array $booking, string $event, array $facts, string $pnr): ?array
+    {
+        $purpose = str_starts_with($event, 'reminder_') ? 'reminder' : (in_array($event, ['departed', 'bus_near'], true) ? 'bus_live' : '');
+        if ($purpose === '') {
+            return null;
+        }
+        $name = '';
+        if ((int) ($booking['id'] ?? 0) > 0) {
+            $name = trim((string) Database::scalar(
+                'SELECT full_name FROM booking_passengers WHERE booking_id = :id ORDER BY id LIMIT 1',
+                ['id' => (int) $booking['id']], ''
+            ));
+        }
+        $time = '';
+        foreach ([(string) ($facts['boardingTime'] ?? ''), (string) ($facts['depTime'] ?? '')] as $cand) {
+            $ts = $cand !== '' ? strtotime($cand) : false;
+            if ($ts !== false) {
+                $time = date('g:i A', $ts);
+                break;
+            }
+        }
+        $board = (string) ($facts['boarding'] ?? '') !== '' ? (string) $facts['boarding'] : (string) ($facts['boardingStop'] ?? '');
+        $board = trim((string) preg_replace('/\s*@\s*[0-2]?\d:\d{2}\s*$/u', '', (string) preg_replace('/\s*\[[^\]]*\]\s*/u', ' ', $board)));
+        $route = str_replace(' → ', ' to ', (string) ($facts['route'] ?? ''));
+        $ctx = [
+            'name'     => $name,
+            'route'    => $route,
+            'date'     => ($facts['date'] ?? '') !== '' && Security::isValidDate((string) $facts['date']) ? formatDate((string) $facts['date'], 'j M Y') : (string) ($facts['date'] ?? ''),
+            'time'     => $time,
+            'boarding' => $board,
+        ];
+        if ($purpose === 'bus_live' && $pnr !== '' && class_exists('Ticket')) {
+            $track = Ticket::trackUrl($pnr);
+            $base  = rtrim(appUrl(''), '/') . '/';
+            $ctx['track_path'] = str_starts_with($track, $base) ? substr($track, strlen($base)) : '';
+        }
+        return WaTplMeta::forPurpose($purpose, $ctx);
     }
 
     /**

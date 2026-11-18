@@ -75,6 +75,34 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $k = (string) ($_POST['tkey'] ?? '');
         $l = (string) ($_POST['lang'] ?? 'en');
         try {
+            /* 19 Nov 2026 (WA-2): the Meta template registry (includes/watplmeta.php).
+               Reading statuses is a GET; asking Meta for the missing templates
+               is superadmin-only (free, but it is the owner's WABA). */
+            $act = (string) ($_POST['action'] ?? '');
+            if ($act === 'meta_sync' || $act === 'meta_submit') {
+                require_once INCLUDE_PATH . '/watplmeta.php';
+                if ($act === 'meta_submit' && !Auth::isSuperadmin()) {
+                    $flash = ['bad', 'Only the owner (superadmin) can ask Meta for new templates.'];
+                } elseif (!WaTplMeta::configured()) {
+                    $flash = ['bad', 'The Meta token / WABA id is not configured on this server.'];
+                } elseif ($act === 'meta_sync') {
+                    $s = WaTplMeta::sync();
+                    $flash = $s['ok'] ? ['ok', 'Meta statuses read: ' . implode(', ', array_map(static fn($n, $st) => $n . ' ' . $st, array_keys($s['statuses']), $s['statuses'])) . '.']
+                                      : ['bad', 'Could not read Meta: ' . $s['error']];
+                } else {
+                    $s = WaTplMeta::submitMissing(false);
+                    if ($s['ok']) {
+                        $done = array_values(array_filter($s['rows'], static fn($r) => in_array($r['action'], ['submitted', 'failed', 'invalid', 'skipped'], true)));
+                        $flash = ['ok', 'Asked Meta for ' . (int) $s['submitted'] . ' template(s).' . ($done !== []
+                            ? ' ' . implode(' · ', array_map(static fn($r) => $r['name'] . ': ' . $r['action'] . ($r['action'] !== 'submitted' ? ' (' . $r['detail'] . ')' : ''), $done)) : ' Nothing was missing.')];
+                        Logger::audit('whatsapp.templates_submit', 'setting', 'wa_tpl_meta', null, ['submitted' => (int) $s['submitted']], 'Submit missing to Meta (admin/wa-templates.php)');
+                    } else {
+                        $flash = ['bad', 'Meta refused the request: ' . $s['error']];
+                    }
+                }
+                header('Location: wa-templates.php?f=' . rawurlencode($flash[0] . '|' . mb_substr($flash[1], 0, 900)) . '#meta-registry');
+                exit;
+            }
             if (($_POST['action'] ?? '') === 'sync') {
                 $s = WaTplLib::syncMetaStatus();
                 $flash = $s['error'] !== '' ? ['bad', 'Could not read Meta status: ' . $s['error']]
@@ -142,6 +170,57 @@ if ($flash !== null) { echo '<div class="flash ' . $e($flash[0]) . '">' . $e($fl
     <a class="sg-chip <?= $cat === '' ? 'on' : '' ?>" href="wa-templates.php">All</a>
     <?php foreach (WaTplLib::CATS as $ck2 => $cl): ?><a class="sg-chip <?= $cat === $ck2 ? 'on' : '' ?>" href="wa-templates.php?c=<?= $e($ck2) ?>"><?= $e($cl) ?></a><?php endforeach; ?>
   </nav>
+</div>
+
+<?php
+/* 19 Nov 2026 (WA-2): the templates the SITE sends on the Meta number
+   (includes/watplmeta.php) - one row each, with Meta's last known status. */
+$regRows = [];
+$regSync = 0;
+$regConf = false;
+try {
+    require_once INCLUDE_PATH . '/watplmeta.php';
+    $regRows = WaTplMeta::overview();
+    $regSync = WaTplMeta::lastSync();
+    $regConf = WaTplMeta::configured();
+} catch (Throwable $ex) {
+    $regRows = [];
+}
+$regDefs = class_exists('WaTplMeta') ? WaTplMeta::defs() : [];
+?>
+<div class="panel" id="meta-registry">
+  <h2>📨 Meta templates on the bot number</h2>
+  <p class="muted">The small UTILITY templates this site uses outside the 24-hour window (language English). A template is used only once Meta marks it <b>APPROVED</b>; until then the message waits for the customer's next WhatsApp (free) as before. Last read from Meta: <b><?= $regSync > 0 ? $e(date('j M Y, H:i', $regSync)) : 'never' ?></b>.</p>
+  <?php if ($regRows !== []): ?>
+  <div class="table-wrap"><table class="table wt-reg">
+    <thead><tr><th>Name</th><th>Used for</th><th>Meta status</th><th>In use</th></tr></thead>
+    <tbody>
+    <?php foreach ($regRows as $r):
+      $st = $r['status'] !== '' ? $r['status'] : 'not read';
+      $cls = $r['status'] === 'APPROVED' ? 'st-approved' : ($r['status'] === 'REJECTED' || $r['status'] === 'MISSING' ? 'st-rejected' : ($r['status'] === 'PENDING' ? 'st-submitted' : ''));
+      $d = $regDefs[$r['name']] ?? null;
+    ?>
+      <tr>
+        <td data-label="Name"><code><?= $e($r['name']) ?></code><br><small class="muted"><?= $e($r['kind'] === 'known' ? 'made by hand in WhatsApp Manager' : $r['title']) ?></small>
+          <?php if ($d !== null): ?><details><summary class="muted" style="cursor:pointer">Wording</summary><pre class="wt-out" style="display:block"><?= $e(($d['header'] !== '' ? '[' . $d['header'] . " header]\n" : '') . $d['body'] . (isset($d['button']) ? "\n[" . $d['button']['type'] . ' button: ' . $d['button']['text'] . ']' : '')) ?></pre></details><?php endif; ?></td>
+        <td data-label="Used for"><?= $e($r['purpose']) ?></td>
+        <td data-label="Meta status"><span class="wt-badge <?= $e($cls) ?>"><?= $e($st) ?></span></td>
+        <td data-label="In use"><?= $r['ready'] ? '✅' : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
+  <?php if ($mayEdit): ?>
+  <div class="wt-row">
+    <form method="post"><input type="hidden" name="<?= $e($ck) ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="meta_sync">
+      <button class="btn ghost" type="submit" <?= $regConf ? '' : 'disabled title="Meta token / WABA id not configured"' ?>>🔄 Refresh status from Meta</button></form>
+    <?php if (Auth::isSuperadmin()): ?>
+    <form method="post" onsubmit="return confirm('Ask Meta to review the templates that are missing from the WhatsApp account? (Free. Existing ones are not touched.)')"><input type="hidden" name="<?= $e($ck) ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="meta_submit">
+      <button class="btn" type="submit" <?= $regConf ? '' : 'disabled title="Meta token / WABA id not configured"' ?>>📤 Submit missing to Meta</button></form>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
 </div>
 
 <?php foreach (WaTplLib::BUILTIN as $k => $tpl):

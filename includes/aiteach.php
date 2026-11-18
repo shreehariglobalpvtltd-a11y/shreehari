@@ -17,7 +17,7 @@
  *  One run (cron/ai-teach.php, nightly):
  *    write   Claude (Opus 5.5) reads the company facts — the same briefing
  *            the assistant answers from (ai_system_prompt()) plus every
- *            published article — and writes up to 6 NEW articles that are
+ *            published article — and writes up to 4 NEW articles that are
  *            not there yet, for passengers, agents or staff, answering the
  *            open customer questions where the facts allow.
  *    check   AiLearn::numbersOk — no fare, time, date or count frozen into
@@ -89,6 +89,18 @@ final class AiTeach
         return max(0.05, (float) Settings::getString('ai_teach_run_usd', '3'));
     }
 
+    /**
+     * 19 Nov 2026: max_tokens of one article round. Opus 5.5 always thinks
+     * before it writes and the thinking counts against this; a round that
+     * still hits it is now logged as "cut off at max_tokens" (it used to be
+     * "unreadable answer") — raise ai_teach_max_tokens then. Rounds ask for
+     * 4 articles (was 6) so the three-language JSON fits.
+     */
+    public static function maxTokens(): int
+    {
+        return max(4000, min(64000, Settings::getInt('ai_teach_max_tokens', 12000)));
+    }
+
     public static function spent(): float
     {
         return (float) self::kvGet('spent', '0');
@@ -150,7 +162,7 @@ final class AiTeach
 
         for ($round = 1; $round <= self::MAX_ROUNDS && $left() > 0.05; $round++) {
             $out['rounds'] = $round;
-            $w = self::ask($f['facts'], self::writeTask($f['titles'], $f['questions']), self::writeSchema(), 12000);
+            $w = self::ask($f['facts'], self::writeTask($f['titles'], $f['questions']), self::writeSchema(), self::maxTokens());
             $out['cost'] += $w['cost'];
             if ($w['json'] === null) {
                 $out['note'] = $w['note'];
@@ -308,7 +320,7 @@ final class AiTeach
     {
         return "TASK: write NEW knowledge-base articles for this company's assistant.\n"
             . "The assistant answers passengers, our agents and our office staff on WhatsApp, Facebook and the website, "
-            . "in Nepali, Hindi and English. Write up to 6 articles it does not have yet — the questions people really ask "
+            . "in Nepali, Hindi and English. Write up to 4 articles it does not have yet — the questions people really ask "
             . "about the company, booking, payment, tickets and corrections, boarding, luggage, travel between India and Nepal, "
             . "documents, complaints, how agents and counters work, and how to use the app. Prefer the open questions below "
             . "when the facts answer them.\n"
@@ -385,28 +397,63 @@ final class AiTeach
      */
     private static function ask(string $facts, string $task, array $schema, int $maxTokens): array
     {
-        $model = self::model();
+        $r = self::call("COMPANY FACTS — the only source you may use:\n\n" . $facts, $task, $schema, $maxTokens);
+        return ['json' => $r['json'], 'cost' => $r['cost'], 'note' => $r['note']];
+    }
+
+    /**
+     * The one raw Claude client of the night jobs (AiTeach and AiReview —
+     * 19 Nov 2026: shared, so there is never a second HTTP client).
+     *
+     * Opus 5.5 / Haiku 5.5 rules kept here: no temperature / top_p / top_k,
+     * no thinking switch or budget_tokens (thinking is always on; depth is
+     * output_config.effort), no assistant prefill, server-side fallback on
+     * (beta header in post()). stop_reason is checked: 'refusal' and
+     * 'max_tokens' end the call with a note and json = null — a cut-off
+     * JSON is never parsed (that used to show up as "unreadable answer").
+     *
+     * @return array{json: ?array, cost: float, note: string, usage: array, model: string, stop: string, http: int}
+     */
+    public static function call(string $system, string $task, array $schema, int $maxTokens, ?string $model = null, string $effort = 'medium',
+                                bool $cache = true): array
+    {
+        $model = $model !== null && trim($model) !== '' ? trim($model) : self::model();
+        $effort = in_array($effort, ['low', 'medium', 'high', 'xhigh', 'max'], true) ? $effort : 'medium';
+        // $cache = false for a caller that sends this prefix once (the night
+        // review): a cache mark that is never read only adds the write premium.
+        $sys = ['type' => 'text', 'text' => $system];
+        if ($cache) {
+            $sys['cache_control'] = ['type' => 'ephemeral'];
+        }
         $body = [
             'model'      => $model,
             'max_tokens' => $maxTokens,
-            'system'     => [
-                ['type' => 'text', 'text' => "COMPANY FACTS — the only source you may use:\n\n" . $facts, 'cache_control' => ['type' => 'ephemeral']],
-            ],
+            'system'     => [$sys],
             'messages'      => [['role' => 'user', 'content' => $task]],
-            'output_config' => ['effort' => 'medium', 'format' => ['type' => 'json_schema', 'schema' => $schema]],
+            'output_config' => ['effort' => $effort, 'format' => ['type' => 'json_schema', 'schema' => $schema]],
             // A declined request is re-run on Anthropic's recommended model instead of failing.
             'fallbacks'     => 'default',
         ];
         $r = self::post($body);
         $j = json_decode((string) $r['body'], true);
-        $cost = is_array($j) ? self::cost((array) ($j['usage'] ?? []), $model) : 0.0;
+        $usage = is_array($j) ? (array) ($j['usage'] ?? []) : [];
+        $cost = is_array($j) ? self::cost($usage, $model) : 0.0;
+        $base = ['json' => null, 'cost' => $cost, 'note' => '', 'usage' => $usage,
+                 'model' => is_array($j) && is_string($j['model'] ?? null) ? $j['model'] : $model,
+                 'stop' => is_array($j) ? (string) ($j['stop_reason'] ?? '') : '', 'http' => (int) $r['http']];
         if (!$r['ok'] || !is_array($j)) {
             $err = is_array($j) ? (string) ($j['error']['message'] ?? '') : '';
             Logger::warning('AI teach: Claude HTTP ' . $r['http'], ['error' => mb_substr($err, 0, 200)], 'ai');
-            return ['json' => null, 'cost' => $cost, 'note' => 'Claude HTTP ' . $r['http'] . ($err !== '' ? ': ' . mb_substr($err, 0, 120) : '')];
+            return ['note' => 'Claude HTTP ' . $r['http'] . ($err !== '' ? ': ' . mb_substr($err, 0, 120) : '')] + $base;
         }
         if (($j['stop_reason'] ?? '') === 'refusal') {
-            return ['json' => null, 'cost' => $cost, 'note' => 'Claude declined (' . (string) ($j['stop_details']['category'] ?? '') . ')'];
+            return ['note' => 'Claude declined (' . (string) ($j['stop_details']['category'] ?? '') . ')'] + $base;
+        }
+        if (($j['stop_reason'] ?? '') === 'max_tokens') {
+            // Thinking plus a long JSON ran past max_tokens: the JSON is cut off, never parse it.
+            Logger::warning('AI teach: Claude answer cut off at max_tokens',
+                ['max_tokens' => $maxTokens, 'output_tokens' => (int) ($usage['output_tokens'] ?? 0), 'model' => $model], 'ai');
+            return ['note' => 'cut off at max_tokens (' . $maxTokens . ' tokens)'] + $base;
         }
         $text = '';
         foreach ((array) ($j['content'] ?? []) as $b) {
@@ -415,7 +462,10 @@ final class AiTeach
             }
         }
         $data = json_decode($text, true);
-        return ['json' => is_array($data) ? $data : null, 'cost' => $cost, 'note' => is_array($data) ? '' : 'unreadable answer'];
+        if (!is_array($data)) {
+            Logger::warning('AI teach: unreadable answer', ['stop_reason' => (string) ($j['stop_reason'] ?? ''), 'chars' => mb_strlen($text)], 'ai');
+        }
+        return ['json' => is_array($data) ? $data : null, 'note' => is_array($data) ? '' : 'unreadable answer'] + $base;
     }
 
     /** @return array{ok: bool, http: int, body: string} */
@@ -484,6 +534,17 @@ final class AiTeach
 
     private static function save(array $a, bool $publish): int
     {
+        return self::saveArticle($a, $publish);
+    }
+
+    /**
+     * Store one article (AiTeach::writeSchema shape) in the knowledge base
+     * through AiKb::save. Shared with AiReview (19 Nov 2026); $source names
+     * the writer. $publish = false → a draft the office reviews on AI
+     * Knowledge (the assistant answers from published articles only).
+     */
+    public static function saveArticle(array $a, bool $publish, string $source = ''): int
+    {
         if (self::$store !== null) {
             return (self::$store)($a, $publish);
         }
@@ -493,7 +554,7 @@ final class AiTeach
             default => ['public', 'customer'],
         };
         $id = AiKb::save([
-            'category'              => 'teacher',
+            'category'              => $source !== '' ? 'review' : 'teacher',
             'canonical_title'       => (string) $a['title'],
             'canonical_answer'      => (string) $a['answer_en'],
             'english_content'       => (string) $a['answer_en'],
@@ -503,7 +564,7 @@ final class AiTeach
             'roman_hindi_examples'  => (string) ($a['roman_hi'] ?? ''),
             'keywords'              => mb_substr((string) ($a['keywords'] ?? '') . ', ' . ($a['roman_ne'] ?? '') . ', ' . ($a['roman_hi'] ?? ''), 0, 4000),
             'applicable_roles'      => $roles,
-            'source_reference'      => 'AI teacher ' . self::model() . ' · ' . date('Y-m-d') . ($publish ? ' · fact-checked' : ' · needs a look'),
+            'source_reference'      => ($source !== '' ? $source : 'AI teacher ' . self::model()) . ' · ' . date('Y-m-d') . ($publish ? ' · fact-checked' : ' · needs a look'),
             'publication_status'    => $publish ? 'published' : 'draft',
         ], 0);
         Database::update('ai_kb_articles', ['source_type' => 'ai_learned'], 'id = :id', ['id' => $id]);
