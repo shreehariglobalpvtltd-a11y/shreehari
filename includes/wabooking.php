@@ -315,7 +315,14 @@ final class WaBooking
                         return self::out(self::say('askContact', $lang));
                     }
                     if (strlen($cust) === 10) {
-                        $cust = ((string) ($slots['country'] ?? '') === 'NP' ? '977' : '91') . $cust;
+                        /* 19 Nov 2026 (i1): no country on the form = the chat's own
+                           (+977 sender / Nepal number) - a Nepal 98xxxxxxxx never becomes +91. */
+                        $formC = strtoupper((string) ($slots['country'] ?? ''));
+                        if ($formC === '') {
+                            $sc    = strtoupper(ltrim(trim($senderCountry), '+'));
+                            $formC = in_array($sc, ['NP', '977'], true) || (strlen($phoneDigits) >= 13 && str_starts_with($phoneDigits, '977')) ? 'NP' : '';
+                        }
+                        $cust = ($formC === 'NP' ? '977' : '91') . $cust;
                     }
                     if (self::differentContact($cust, $phoneDigits)) {
                         $slots['contact'] = $cust;
@@ -1940,7 +1947,18 @@ final class WaBooking
         if ($pnr !== '') {
             self::$lastSale = ['pnr' => $pnr, 'bookingId' => (int) ($res['bookingId'] ?? 0), 'status' => (string) ($res['status'] ?? ''), 'seller' => false];
             // 5 Oct 2026: a sale made inside a WhatsApp chat is a WHATSAPP booking.
-            BookingChannel::markWhatsappPnr($pnr, self::$saleNote);
+            /* 19 Nov 2026 (i1): a Messenger sale (FbMessenger sets $saleNote for
+               its turn) is tagged MESSENGER; switch booking_channel_messenger_on
+               (default 1) - off = tagged WHATSAPP as before. */
+            $chatTag = (stripos(self::$saleNote, 'messenger') !== false && Settings::getBool('booking_channel_messenger_on', true)
+                && method_exists('BookingChannel', 'markChatPnr')) ? 'MESSENGER' : 'WHATSAPP';
+            if ($chatTag === 'MESSENGER') {
+                if (!BookingChannel::markChatPnr($pnr, $chatTag, self::$saleNote)) {
+                    BookingChannel::markWhatsappPnr($pnr, self::$saleNote);   // never left untagged
+                }
+            } else {
+                BookingChannel::markWhatsappPnr($pnr, self::$saleNote);
+            }
             /* The language rides along: after a sale the conversation is
                cleared, so a romanised "naam galat bhayo" would be read as
                English and a Nepali customer would suddenly be answered in

@@ -111,6 +111,12 @@ try {
     // Ticket page only (17 Sep 2026): did the WhatsApp ticket go? See shg_wa_last().
     // 8 Oct 2026: only a send to the booking's own number(s) answers — never a seller copy.
     $payload['wa'] = shg_wa_last((int) ($detail['id'] ?? 0), (string) ($detail['contact_phone'] ?? ''));
+    /* 19 Nov 2026 (u3 TK-5): the NPR a Nepal window froze on this sale (bookings.fx_*,
+       read with the row by BookingService::detail) - the app ticket's fbMoney() prints
+       'NPR …' from it and tkGoldPay() keeps a UPI-amount QR off it. '' / 0 = INR sale. */
+    $payload['fxCurrency'] = strtoupper(trim((string) ($detail['fx_currency'] ?? '')));
+    $payload['fxTotal']    = (float) ($detail['fx_total'] ?? 0);
+    $payload['fxRate']     = (float) ($detail['fx_rate'] ?? 0);
 
     /* Directions to the pickup (8 Oct 2026, D6-11): only from the OFFICIAL
        coordinates (the label's [lat,lng] or the route's pickup row) — null

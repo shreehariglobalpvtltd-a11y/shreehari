@@ -258,9 +258,24 @@ try {
             : ['applied' => false, 'label' => ''];
     }
 
+    /* 19 Nov 2026 (u3 TK-5): the NPR a Nepal window froze on this sale (bookings.fx_*),
+       so the app ticket (11-pdf-ticket.js fbMoney, 07-checkout.js tkGoldPay) prints the
+       same NPR as the server ticket. Only a desk sale is ever frozen; '' / 0 otherwise. */
+    $bkFx = ['fx_currency' => $booking['fx_currency'] ?? null, 'fx_total' => $booking['fx_total'] ?? null, 'fx_rate' => $booking['fx_rate'] ?? null];
+    if ($seller !== null && $bkFx['fx_currency'] === null && CounterDesk::frozenColumns()['bookings']) {
+        try {
+            $bkFx = Database::fetch('SELECT fx_currency, fx_total, fx_rate FROM bookings WHERE pnr = :p LIMIT 1', ['p' => (string) $booking['pnr']]) ?? $bkFx;
+        } catch (Throwable $e) {
+            // display only: the INR ticket still prints
+        }
+    }
+
     Response::success([
         'pnr'        => $booking['pnr'],
         'total'      => (float) $booking['total_amount'],
+        'fxCurrency' => strtoupper(trim((string) ($bkFx['fx_currency'] ?? ''))),
+        'fxTotal'    => (float) ($bkFx['fx_total'] ?? 0),
+        'fxRate'     => (float) ($bkFx['fx_rate'] ?? 0),
         'status'     => $booking['status'],
         'isCod'      => (bool) $booking['is_cod'],
         'payment'    => $payInfo,

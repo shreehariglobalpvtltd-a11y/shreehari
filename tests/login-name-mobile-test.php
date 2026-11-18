@@ -154,6 +154,11 @@ $cleanup = static function () use ($allPhones, $bookingTables): void {
         }
         Database::query('DELETE FROM bookings WHERE id = :b', ['b' => (int) $b['id']]);
     }
+    /* 19 Nov 2026 (u7): a proven sign-in now also leaves a remembered-device row (customer_sessions,
+       keyed by user_id) - removed with its user, before the user row goes. */
+    try {
+        Database::query('DELETE FROM customer_sessions WHERE user_id IN (SELECT id FROM users WHERE phone IN (' . implode(',', array_fill(0, count($allPhones), '?')) . '))', $allPhones);
+    } catch (Throwable $e) {}   // table missing on an older test DB
     Database::query('DELETE FROM users WHERE phone IN (' . implode(',', array_fill(0, count($allPhones), '?')) . ')', $allPhones);
     try { Database::query('DELETE FROM user_profiles WHERE phone IN (' . implode(',', array_fill(0, count($allPhones), '?')) . ')', $allPhones); } catch (Throwable $e) {}
     // otp_verify: A2's code checks (per number) - 10 in 10 min, so a few runs in a row would lock P_OLD out

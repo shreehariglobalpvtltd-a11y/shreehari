@@ -34,7 +34,13 @@ if (!defined('SHG_APP')) {
 
 final class BookingChannel
 {
-    public const TAGS = ['ONLINE', 'AGENT', 'COUNTER', 'ADMIN', 'WHATSAPP', 'GOOGLE_ADS'];
+    /* 19 Nov 2026 (i1): MESSENGER - a sale the Facebook Messenger assistant
+       made (stored like WHATSAPP in bookings.channel_tag; WaBooking sets it
+       while booking_channel_messenger_on, default on). */
+    public const TAGS = ['ONLINE', 'AGENT', 'COUNTER', 'ADMIN', 'WHATSAPP', 'MESSENGER', 'GOOGLE_ADS'];
+
+    /** The tags a chat sale stores in bookings.channel_tag. */
+    public const CHAT_TAGS = ['WHATSAPP', 'MESSENGER'];
 
     /** tag => [label, pill text colour, pill background, chart colour] */
     public const META = [
@@ -43,13 +49,14 @@ final class BookingChannel
         'COUNTER'    => ['Counter',    '#7a4a00', '#ffe6c7', '#F08423'],
         'ADMIN'      => ['Admin',      '#5a3fb0', '#efeaff', '#7B5CD6'],
         'WHATSAPP'   => ['WhatsApp',   '#075e54', '#d9fdd3', '#25D366'],
+        'MESSENGER'  => ['Messenger',  '#0b4a9e', '#e0edff', '#0084FF'],
         'GOOGLE_ADS' => ['Google Ads', '#8a1c13', '#fde3df', '#EA4335'],
     ];
 
     /** The query-string values the registers use (?source=…) => tag. */
     public const FILTERS = [
         'online' => 'ONLINE', 'agent' => 'AGENT', 'counter' => 'COUNTER',
-        'admin'  => 'ADMIN', 'whatsapp' => 'WHATSAPP', 'ads' => 'GOOGLE_ADS',
+        'admin'  => 'ADMIN', 'whatsapp' => 'WHATSAPP', 'messenger' => 'MESSENGER', 'ads' => 'GOOGLE_ADS',
     ];
 
     private static ?bool $hasTag = null;
@@ -106,7 +113,8 @@ final class BookingChannel
         }
         $sql = 'CASE';
         if (self::hasTagColumn()) {
-            $sql .= " WHEN $b.channel_tag = 'WHATSAPP' THEN 'WHATSAPP'";
+            $sql .= " WHEN $b.channel_tag = 'WHATSAPP' THEN 'WHATSAPP'"
+                  . " WHEN $b.channel_tag = 'MESSENGER' THEN 'MESSENGER'";
         }
         $sql .= " WHEN $b.source = 'counter' THEN 'COUNTER'"
               . " WHEN $b.source = 'agent' THEN 'AGENT'"
@@ -154,7 +162,7 @@ final class BookingChannel
     {
         [$label, $fg, $bg] = self::META[$tag] ?? self::META['ONLINE'];
         return '<span class="pill ch-pill ch-' . strtolower($tag) . '" style="color:' . $fg . ';background:' . $bg . '">'
-             . ($tag === 'WHATSAPP' ? '💬 ' : '') . $label . '</span>';
+             . (in_array($tag, self::CHAT_TAGS, true) ? '💬 ' : '') . $label . '</span>';
     }
 
     /** The tag of one stored booking ('ONLINE' if it cannot be read). */
@@ -251,6 +259,39 @@ final class BookingChannel
             $out[(string) $r['d']] = (int) $r['n'];
         }
         return $out;
+    }
+
+    /**
+     * A chat assistant's sale by PNR (19 Nov 2026, i1): 'WHATSAPP' or
+     * 'MESSENGER' (anything else = WHATSAPP). Never throws; false when the
+     * column / booking is not there.
+     */
+    public static function markChatPnr(string $pnr, string $tag, string $why = ''): bool
+    {
+        $tag = strtoupper(trim($tag));
+        if ($tag !== 'MESSENGER') {
+            return self::markWhatsappPnr($pnr, $why);
+        }
+        if ($pnr === '' || !self::hasTagColumn()) {
+            return false;
+        }
+        try {
+            $before = Database::fetch('SELECT id, pnr, channel_tag FROM bookings WHERE pnr = :p', ['p' => $pnr]);
+            if ($before === null) {
+                return false;
+            }
+            if (($before['channel_tag'] ?? null) === 'MESSENGER') {
+                return true;
+            }
+            Database::run('UPDATE bookings SET channel_tag = :t WHERE id = :id', ['t' => 'MESSENGER', 'id' => (int) $before['id']]);
+            Logger::audit('booking.channel', 'booking', (string) $before['pnr'],
+                ['channel_tag' => $before['channel_tag'] ?? null], ['channel_tag' => 'MESSENGER'],
+                $why !== '' ? $why : 'sold on Facebook Messenger');
+            return true;
+        } catch (Throwable $e) {
+            Logger::warning('BookingChannel::markChatPnr failed', ['pnr' => $pnr, 'error' => $e->getMessage()]);
+            return false;
+        }
     }
 
     /** markWhatsapp() for callers that hold the PNR (Quick Ticket, the assistant). */

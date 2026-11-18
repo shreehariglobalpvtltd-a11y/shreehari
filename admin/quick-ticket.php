@@ -121,7 +121,7 @@ $staffCode  = AgentWallet::agentCodeLabel($staffId) ?: '';
    select is locked (BookingService::create refuses another code anyway).
    AG-3: with staff_commission_off on, staff entries say "no commission". */
 $agentOnly   = Auth::isCounterAgent();
-$staffNoComm = Settings::getBool('staff_commission_off', false);
+$staffNoComm = Settings::getBool('staff_commission_off', true);   // the wallet's own default (list-wide fallback)
 $agentList   = [];
 if ($agentOnly) {
     if ($staffCode !== '') {
@@ -131,10 +131,30 @@ if ($agentOnly) {
 } else {
     $agentList = AgentWallet::sellableAgents();
 }
+/* AG-3 (u5 request): each staff entry asks AgentWallet::staffCommissionOff(<that staff
+   member's admin id>) - the rule the wallet pays by, so staff_commission_counter_staff_off
+   is respected too. An entry with no AgentPro row keeps the list-wide setting. */
+if ($agentList !== []) {
+    $staffIdByCode = [];
+    try {
+        foreach (Database::fetchAll('SELECT admin_id, staff_no FROM ap_members WHERE staff_no IS NOT NULL') as $sm) {
+            $staffIdByCode['SHG-S-' . str_pad((string) (int) $sm['staff_no'], 4, '0', STR_PAD_LEFT)] = (int) $sm['admin_id'];
+        }
+    } catch (Throwable $e) {
+        $staffIdByCode = [];
+    }
+    foreach ($agentList as &$qtAg) {
+        if (($qtAg['type'] ?? '') === 'staff' && isset($staffIdByCode[(string) $qtAg['code']])) {
+            $qtAg['noComm'] = AgentWallet::staffCommissionOff($staffIdByCode[(string) $qtAg['code']]);
+        }
+    }
+    unset($qtAg);
+}
 $agentLabel = static function (array $ag) use ($staffNoComm): string {
     $isStaff = ($ag['type'] ?? '') === 'staff';
+    $noComm  = $isStaff && (isset($ag['noComm']) ? (bool) $ag['noComm'] : $staffNoComm);
     return ($ag['co'] ? '🏢 ' : ($isStaff ? '🧑‍💼 ' : '👤 ')) . $ag['code'] . ' · ' . $ag['name']
-        . ($isStaff && $staffNoComm ? ' · स्टाफ · staff (no commission)' : '');
+        . ($noComm ? ' · स्टाफ · जना मात्र · passenger count' : '');
 };
 $commFlat   = AgentWallet::flatMode();
 $commDirect = Settings::getFloat('agent_flat_direct', 200.0);
@@ -527,6 +547,22 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <div class="qt-hint" style="width:100%">Example: fare ₹2,000 − discount ₹200 = final ₹1,800. Max <?= Security::e((string) $maxDisc) ?>%.</div>
       </div>
 
+      <?php /* 19 Nov 2026: "पैसा कहिले? · When will they pay" on a Cash sale - a note for the
+               office only (bookings.cash_note, BookingService::cashNoteClean); it never confirms
+               or changes a payment. Sent only while "Received" is Cash. */ ?>
+      <div class="qt-row" id="qtCashBox" style="margin:10px 0;gap:6px;flex-wrap:wrap">
+        <span class="qt-k" style="font-weight:700">💵 पैसा कहिले? · When will they pay <small style="font-weight:600;opacity:.7">(Cash · ऐच्छिक / optional)</small></span>
+        <select id="qtCashWhen" class="qt-in" style="max-width:240px" aria-label="When will they pay">
+          <option value="">—</option>
+          <option value="full">पूरा तिर्यो · Paid in full</option>
+          <option value="partial">आंशिक · Part paid (₹)</option>
+          <option value="later">पछि तिर्ने · Pays later</option>
+        </select>
+        <input type="number" id="qtCashAmt" class="qt-in" min="1" step="1" inputmode="numeric" placeholder="₹ रकम · amount" aria-label="Amount paid now (₹)" style="max-width:130px" hidden>
+        <input type="date" id="qtCashDate" class="qt-in" aria-label="Pays by (date)" style="max-width:170px" hidden>
+        <input type="text" id="qtCashTxt" class="qt-in" maxlength="80" placeholder="नोट · note" aria-label="Cash note" style="max-width:260px" hidden>
+      </div>
+
       <div class="qt-row" style="margin:10px 0">
         <span class="qt-k" style="font-weight:700">एजेन्ट · Agent <small style="color:#e53e3e">(अनिवार्य / required)</small></span>
         <select id="qtAgent" class="qt-in" style="max-width:320px" required<?= $agentOnly ? ' disabled data-own="1" title="आफ्नै कोड · your own code"' : '' ?>>
@@ -869,11 +905,13 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   }
   function money(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
   function commLine(seats) {
-    var ag = $('#qtAgent'); if (!ag || !ag.value || ag.value === 'OTHER' || !COMM_FLAT || !seats) return '';
+    var ag = $('#qtAgent'); if (!ag || !ag.value || ag.value === 'OTHER' || !seats) return '';
     var sel = AGENTS.find(function (a) { return a.code === ag.value; });
-    if (sel && sel.type === 'staff' && STAFF_NO_COMM) {
-      return '<div style="margin-top:2px"><small>🧑‍💼 स्टाफ · staff (no commission)</small><em>' + esc(ag.value) + ' · ' + seats + ' जना</em></div>';
+    // AG-3: staff_commission_off - per staff entry (a.noComm, AgentWallet::staffCommissionOff), else list-wide
+    if (sel && sel.type === 'staff' && (typeof sel.noComm === 'boolean' ? sel.noComm : STAFF_NO_COMM)) {
+      return '<div style="margin-top:2px"><small>🧑‍💼 जना मात्र · passenger count</small><em>' + esc(ag.value) + ' · ' + seats + ' जना</em></div>';
     }
+    if (!COMM_FLAT) return '';
     var rate = (sel && sel.type === 'joint') ? COMM_JOINT : COMM_DIRECT;
     return '<div style="margin-top:2px"><small>💰 कमिशन · Commission</small><b style="color:#178A50">' + money(rate * seats) + '</b><em>' + esc(ag.value) + ' · ' + money(rate) + ' × ' + seats + ' seat' + (seats > 1 ? 's' : '') + '</em></div>';
   }
@@ -1057,6 +1095,34 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   $('#qtDiscType').addEventListener('change', renderDiscountPreview);
   if ($('#qtLug')) $('#qtLug').addEventListener('input', renderDiscountPreview);
   if ($('#qtInf')) $('#qtInf').addEventListener('input', renderDiscountPreview);
+  /* 19 Nov 2026: "पैसा कहिले? · When will they pay" - sent with a Cash sale only (a note,
+     never a payment). null = nothing chosen / not a Cash sale. */
+  function cashNote() {
+    var w = $('#qtCashWhen'); if (!w || !w.value || st.pay !== 'cash') return null;
+    var o = { when: w.value };
+    if (w.value === 'partial') { var a = parseFloat($('#qtCashAmt').value) || 0; if (a > 0) o.amount = Math.round(a * 100) / 100; }
+    if (w.value !== 'full' && /^\d{4}-\d{2}-\d{2}$/.test($('#qtCashDate').value || '')) o.date = $('#qtCashDate').value;
+    var n = ($('#qtCashTxt').value || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (n) o.note = n;
+    return o;
+  }
+  function cashNoteLine() {
+    var o = cashNote(); if (!o) return null;
+    var w = { full: 'Paid in full', partial: 'Part paid', later: 'Pays later' }[o.when] || o.when;
+    return 'पैसा कहिले? · When will they pay: ' + [w, o.amount ? money(o.amount) : '', o.date ? 'by ' + o.date : '', o.note || ''].filter(Boolean).join(' · ');
+  }
+  function paintCash() {
+    var box = $('#qtCashBox'), w = $('#qtCashWhen'); if (!box || !w) return;
+    var show = function (el, on) { el.hidden = !on; el.style.display = on ? '' : 'none'; };   // .qt-row / .qt-in set display
+    show(box, st.pay === 'cash');
+    show($('#qtCashAmt'), w.value === 'partial');
+    show($('#qtCashDate'), w.value === 'partial' || w.value === 'later');
+    show($('#qtCashTxt'), w.value !== '');
+  }
+  if ($('#qtCashWhen')) {
+    $('#qtCashWhen').addEventListener('change', paintCash);
+    $('#qtPay').addEventListener('click', function () { setTimeout(paintCash, 0); });
+    paintCash();
+  }
   function confirmSale(name) {
     if (!plan) {
       showErr('Live fare is still loading. Please wait a moment and confirm again.');
@@ -1093,9 +1159,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       'Received by: ' + String(st.pay || 'cash').toUpperCase(),
       'Agent: ' + agentText,
       'Note: ' + ($('#qtNote').value.trim() || '—'),
+      cashNoteLine(),
       '',
       'OK थिचेपछि मात्र ticket issue हुन्छ।'
-    ]);
+    ].filter(function (x) { return x !== null; }));
     return window.confirm(lines.join('\n'));
   }
   $('#qtForm').addEventListener('submit', function (e) {
@@ -1107,6 +1174,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     hideErr();
     var dv = parseFloat($('#qtDisc').value) || 0;
     var dx = deskExtras();   // P8-3f / P4-4d
+    var cnW = $('#qtCashWhen');
+    if (st.pay === 'cash' && cnW && cnW.value === 'partial' && !((parseFloat($('#qtCashAmt').value) || 0) > 0)) {
+      showErr('आंशिक भए रकम लेख्नुहोस् · Part paid: enter the amount (₹).'); $('#qtCashAmt').focus(); return;
+    }
     if (!confirmSale(name)) return;
     if (!t0) startClock();
     step(2); setBusy(true);
@@ -1117,6 +1188,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       viaWhatsapp: ($('#qtViaWa') && $('#qtViaWa').checked) ? 1 : 0,
       discountType: dv > 0 ? $('#qtDiscType').value : '', discountValue: dv, note: $('#qtNote').value.trim(),
       luggagePieces: dx.lug, infantCount: dx.inf,
+      cashNote: cashNote() || undefined,   // 19 Nov 2026: "पैसा कहिले?" (Cash only; a note, never a payment)
       // 🤖 what the bot proposed for this sale (null when it proposed nothing) — scores the outcome loop
       bot: botPrefill || undefined,
       // 🌙 the Ready Queue card this sale came from, so the brain can score
@@ -1133,6 +1205,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       prependRecent(j.data);
       $('#qtLine').value = ''; $('#qtName').value = ''; $('#qtPhone').value = ''; $('#qtDisc').value = ''; $('#qtNote').value = '';
       if ($('#qtLug')) $('#qtLug').value = '0';   // P8-3f / P4-4d: the next passenger starts with no extras
+      if ($('#qtCashWhen')) { $('#qtCashWhen').value = ''; $('#qtCashAmt').value = ''; $('#qtCashDate').value = ''; $('#qtCashTxt').value = ''; paintCash(); }
       if ($('#qtInf')) $('#qtInf').value = '0';
       if ($('#qtViaWa')) $('#qtViaWa').checked = false;   // the next passenger starts unticked
       st.prefer = []; st.preferPhone = '';
@@ -1258,6 +1331,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   function pickChip(sel, v) {
     var hit = false;
     $$('button[data-v]', $(sel)).forEach(function (b) { var on = b.getAttribute('data-v') === String(v); b.classList.toggle('on', on); if (on) hit = true; });
+    if (sel === '#qtPay') paintCash();   // 19 Nov 2026: the bot picked the payment - the cash note box follows
     return hit;
   }
   function botReset() {

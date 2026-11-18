@@ -296,10 +296,20 @@ if (Security::isPost()) {
     }
 }
 
+/* 19 Nov 2026 (u6/i3): ?design=royal|modern|heritage shows the previews and the A4
+   sheets in that design; none = the office's default (ap_id_front_style / ap_vc_style). */
+$design = strtolower(trim((string) ($_GET['design'] ?? '')));
+if (!in_array($design, ApCard::VARIANTS, true)) {
+    $design = '';
+}
+$designQ = $design !== '' ? '&variant=' . $design : '';
 $cards = [];
 foreach (ApCard::SIDES as $s) {
-    $cards[$s] = '/api/agentpro-card.php?m=' . $id . '&s=' . $s . '&v=' . $m['photoVer'] . '&t=' . time();
+    $cards[$s] = '/api/agentpro-card.php?m=' . $id . '&s=' . $s . '&v=' . $m['photoVer'] . '&t=' . time() . $designQ;
 }
+$sheetId = '/api/agentpro-card.php?member=' . $id . '&kind=id&sheet=a4&format=pdf' . $designQ;
+$sheetVc = '/api/agentpro-card.php?member=' . $id . '&kind=vc&sheet=a4&format=pdf' . $designQ;
+$designChips = ['' => 'अफिसको · Office default', 'royal' => '👑 शाही सुनौलो · Royal Gold', 'modern' => '✨ आधुनिक नीलो · Modern Blue', 'heritage' => '🏛 नेपाल-भारत सम्पदा · Heritage'];
 $links = Database::fetchAll('SELECT * FROM ap_wa_links WHERE admin_id = :a AND revoked_at IS NULL ORDER BY verified_at DESC', ['a' => $id]);
 $pks = Database::fetchAll('SELECT id, label, created_at, last_used_at FROM ap_passkeys WHERE admin_id = :a ORDER BY id', ['a' => $id]);
 $bal = AgentWallet::balances($id);
@@ -308,7 +318,7 @@ $statusChip = ['valid' => 'ok', 'suspended' => 'warn', 'expired' => 'warn', 'rev
 $app = Database::fetch('SELECT * FROM ap_applications WHERE admin_id = :a ORDER BY id DESC LIMIT 1', ['a' => $id]);
 $recent = AgentWallet::entries($id, 8);
 $formUrl = '/admin/team-form.php?admin=' . $id;
-$cardPdf = '/api/agentpro-card.php?m=' . $id . '&pdf=1';
+$cardPdf = '/api/agentpro-card.php?m=' . $id . '&pdf=1' . $designQ;   // same design as the previews (i3 fix)
 $code = $m['isAgent'] ? AgentWallet::agentCodeFor($id) : null;
 $staffNo = !$m['isAgent'] ? (int) Database::scalar('SELECT staff_no FROM ap_members WHERE admin_id = :a', ['a' => $id], 0) : 0;
 $purgeOpen = isset($_GET['purge']) && $isSuper && !$self;
@@ -378,8 +388,15 @@ endif; ?>
       <div class="mp-cards"><a href="<?= $e($cards['id-front']) ?>" target="_blank"><img alt="ID front" src="<?= $e($cards['id-front']) ?>"></a>
         <a href="<?= $e($cards['id-back']) ?>" target="_blank"><img alt="ID back" src="<?= $e($cards['id-back']) ?>"></a></div>
       <p class="ph-sub">Issued <?= $e($m['cardIssued'] !== '' ? formatDate(substr($m['cardIssued'], 0, 10), 'j M Y') : '—') ?> · valid till <?= $e($m['validUntil'] !== '' ? formatDate($m['validUntil'], 'j M Y') : '—') ?></p>
+      <div class="mm-acts" aria-label="Card design">
+        <span class="ph-sub" style="margin:0;font-weight:700">डिजाइन · Design:</span>
+        <?php foreach ($designChips as $dv => $dl): ?>
+          <a class="btn sm <?= $dv === $design ? '' : 'ghost' ?>" href="/admin/team-member.php?id=<?= $id ?><?= $dv !== '' ? '&amp;design=' . $e($dv) : '' ?>"<?= $dv === $design ? ' aria-current="true"' : '' ?>><?= $e($dl) ?></a>
+        <?php endforeach; ?>
+      </div>
       <div class="mm-acts">
-        <a class="btn ghost sm" href="/admin/team-print.php?ids[]=<?= $id ?>&amp;what=all" target="_blank" rel="noopener">🖨 Print</a>
+        <a class="btn ghost sm" href="<?= $e($sheetId) ?>" target="_blank" rel="noopener">🖨 A4 ID cards · ID कार्ड A4</a>
+        <a class="btn ghost sm" href="/admin/team-print.php?ids[]=<?= $id ?>&amp;what=all" target="_blank" rel="noopener" title="अफिसको डिजाइनमा · Prints in the office default design">🖨 Print</a>
         <a class="btn ghost sm" href="<?= $e($cardPdf) ?>" target="_blank" rel="noopener">⬇ PDF</a>
         <a class="btn ghost sm" href="/id.php?c=<?= $e(rawurlencode($m['cardToken'])) ?>" target="_blank" rel="noopener">Verify page</a>
         <?php if ($canOwn): ?>
@@ -395,6 +412,7 @@ endif; ?>
     <div class="panel-body">
       <div class="mp-vc"><img alt="Visiting card front" src="<?= $e($cards['vc-front']) ?>"><img alt="Visiting card back" src="<?= $e($cards['vc-back']) ?>"></div>
       <p class="ph-sub">QR opens WhatsApp <b class="ap-mono"><?= $e($m['waDisplay']) ?></b> · share link <a href="/c.php?u=<?= $e(rawurlencode($m['cardToken'])) ?>" target="_blank">/c.php</a></p>
+      <div class="mm-acts"><a class="btn ghost sm" href="<?= $e($sheetVc) ?>" target="_blank" rel="noopener">🖨 A4 visiting cards · भिजिटिङ कार्ड A4</a></div>
     </div>
   </section>
 </div>

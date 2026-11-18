@@ -1346,6 +1346,27 @@ $haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinn
     <h3>🍽️ Halts on the way <span class="muted" style="font-weight:400">· खाना / चिया / विश्राम (<?= count($rHalts) ?>)</span></h3>
     <p class="muted" style="font-size:12px;margin:0 0 6px">Tea, breakfast, lunch, dinner and fuel halts shown to customers on the home route line and the live tracker. "≈ approximate" = typical plan; the crew picks the exact dhaba. Times follow the departure: a retimed bus moves its halts.</p>
     <?php if ($rHalts === []): ?><p class="muted" style="font-size:13px">No halts yet.</p><?php endif; ?>
+    <?php
+      /* 19 Nov 2026 (u8 AI-4 follow-up): a halt time learned from the GPS trail at night
+         (route_stop_learned, cron/stop-timing.php) is shown beside the halt. "Use this time"
+         only re-posts the normal edit_halt form above with the halt's own values and the
+         suggested clock - routes.edit, CSRF and the route_halt.edit audit as before; nothing
+         changes a timetable by itself. The clock is worked from TODAY's departure time and
+         the learned median offset, so a retimed bus is not given a stale time. */
+      $rLearn = [];
+      if ($rHalts !== [] && is_file(INCLUDE_PATH . '/stoptiming.php')) {
+          try {
+              require_once INCLUDE_PATH . '/stoptiming.php';
+              foreach (StopTiming::learned($rid) as $lk => $lr) {
+                  if (str_starts_with((string) $lk, 'halt:') && $lr['suggested_time'] !== null) {
+                      $rLearn[(int) $lr['stop_ref']] = $lr;
+                  }
+              }
+          } catch (Throwable $e) {
+              $rLearn = [];   // stop timing not installed
+          }
+      }
+    ?>
     <?php foreach ($rHalts as $h):
       $hDay   = $h['offsetMin'] !== null ? intdiv(Boarding::hmToMin((string) $r['dep_time']) + $h['offsetMin'], 1440) : 0;
       $hClock = $h['offsetMin'] !== null ? Boarding::minToHm((int) Boarding::hmToMin((string) $r['dep_time']) + $h['offsetMin']) : (string) ($h['clock'] ?? '');
@@ -1356,6 +1377,28 @@ $haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinn
       <span><?= Security::e($haltKindLab[$h['kind']] ?? $h['kind']) ?> · <?= (int) $h['haltMin'] ?> min<?= $h['km'] !== null ? ' · ' . Security::e(number_format((float) $h['km'], 0)) . ' km' : '' ?></span>
       <?php if ($h['note'] !== ''): ?><span class="muted"><?= Security::e($h['note']) ?></span><?php endif; ?>
       <?php if (!$h['active']): ?><span class="off-badge" style="font-size:10px;padding:2px 6px;border-radius:4px">OFF</span><?php endif; ?>
+      <?php $hl = $rLearn[(int) $h['id']] ?? null; if ($hl !== null):
+        [$hSug, $hSugDay] = StopTiming::suggest((string) $r['dep_time'], (int) $hl['median_offset_min']);
+        $hSug = substr($hSug, 0, 5); ?>
+      <span class="muted" data-learned-halt="<?= (int) $h['id'] ?>">GPS ≈ <?= Security::e($hSug) ?><?= $hSugDay > 0 ? '<sup>+' . $hSugDay . '</sup>' : '' ?> · <?= (int) $hl['samples'] ?> trips<?= $hl['median_dwell_min'] !== null ? ' · रोकिने · stops ' . (int) $hl['median_dwell_min'] . ' min' : '' ?></span>
+        <?php if ($canEdit && $hSugDay <= 3 && ($hSug !== $hClock || $hSugDay !== $hDay)): ?>
+      <form method="post" style="margin:0" onsubmit="return confirm('समय <?= Security::e($hSug) ?> राख्ने? · Set this halt to <?= Security::e($hSug) ?><?= $hSugDay > 0 ? ' (+' . $hSugDay . ')' : '' ?>?')">
+        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>">
+        <input type="hidden" name="action" value="edit_halt">
+        <input type="hidden" name="halt_id" value="<?= (int) $h['id'] ?>">
+        <input type="hidden" name="name" value="<?= Security::e($h['name']) ?>">
+        <input type="hidden" name="kind" value="<?= Security::e($h['kind']) ?>">
+        <input type="hidden" name="clock_time" value="<?= Security::e($hSug) ?>">
+        <input type="hidden" name="day" value="<?= (int) $hSugDay ?>">
+        <input type="hidden" name="halt_min" value="<?= (int) $h['haltMin'] ?>">
+        <input type="hidden" name="km" value="<?= $h['km'] !== null ? Security::e((string) $h['km']) : '' ?>">
+        <input type="hidden" name="landmark" value="<?= Security::e($h['landmark']) ?>">
+        <input type="hidden" name="note" value="<?= Security::e($h['note']) ?>">
+        <?php if ($h['approx']): ?><input type="hidden" name="is_approx" value="1"><?php endif; ?>
+        <button class="btn ghost" type="submit" style="font-size:11.5px;padding:3px 8px">यो समय राख्नुहोस् · Use this time</button>
+      </form>
+        <?php endif; ?>
+      <?php endif; ?>
       <?php if ($canEdit): ?>
       <div class="stop-controls">
         <form method="post"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>"><input type="hidden" name="action" value="toggle_halt"><input type="hidden" name="halt_id" value="<?= (int) $h['id'] ?>"><button class="btn stop-onoff <?= $h['active'] ? 'on' : 'offb' ?>" type="submit"><?= $h['active'] ? 'ON' : 'OFF' ?></button></form>

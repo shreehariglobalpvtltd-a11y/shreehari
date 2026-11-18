@@ -133,10 +133,16 @@
   }
   /* AG-3 (19 Nov 2026): one label for an agent / staff entry in every desk list.
      With staff_commission_off on, a staff entry says it earns no commission. */
+  /* The server says it per entry (a.noComm = AgentWallet::staffCommissionOff for that
+     staff member, index.php); STAFF.staffNoComm is the list-wide fallback. */
+  function staffNoComm(a) {
+    if (!a || a.type !== 'staff') return false;
+    return typeof a.noComm === 'boolean' ? a.noComm : !!STAFF.staffNoComm;
+  }
   function agentLabel(a) {
-    var staffNo = a.type === 'staff' && STAFF.staffNoComm;
+    var staffNo = staffNoComm(a);
     return (a.co ? '🏢 ' : (a.type === 'staff' ? '🧑‍💼 ' : '👤 ')) + esc(a.code) + ' · ' + esc(a.name)
-      + (staffNo ? ' · स्टाफ · staff (no commission)' : '');
+      + (staffNo ? ' · स्टाफ · जना मात्र · passenger count' : '');
   }
   var PAY_LBL = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' };
   function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
@@ -754,12 +760,14 @@
     var fmt = function (n) { try { return inr(n); } catch (e) { return '₹' + n; } };
     var commLine = '';
     var agSel = $q('#cAgentCode');
-    if (agSel && agSel.value && agSel.value !== 'OTHER' && seats > 0 && STAFF.commFlat) {
-      var selAgent = (STAFF.agents || []).find(function (a) { return a.code === agSel.value; });
+    var selAgent = agSel && agSel.value && agSel.value !== 'OTHER'
+      ? (STAFF.agents || []).find(function (a) { return a.code === agSel.value; }) : null;
+    if (selAgent && seats > 0 && staffNoComm(selAgent)) {
+      // AG-3: staff_commission_off - a staff seller is counted (passengers), never paid per head
+      commLine = '<span>·</span><small>🧑‍💼 ' + esc(agSel.value) + ' · जना मात्र · passenger count · ' + seats + ' जना</small>';
+    } else if (agSel && agSel.value && agSel.value !== 'OTHER' && seats > 0 && STAFF.commFlat) {
       var rate = (selAgent && selAgent.type === 'joint') ? Number(STAFF.commJoint || 400) : Number(STAFF.commDirect || 200);
-      commLine = (selAgent && selAgent.type === 'staff' && STAFF.staffNoComm)
-        ? '<span>·</span><small>🧑‍💼 ' + esc(agSel.value) + ' · स्टाफ · staff (no commission) · ' + seats + ' जना</small>'
-        : '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
+      commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
     }
     var due = off > 0 ? Math.max(1, total - off) : total;
     var npr = showNpr() ? nprText(due) : '';

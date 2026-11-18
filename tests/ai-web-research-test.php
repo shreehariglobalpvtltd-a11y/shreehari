@@ -52,7 +52,8 @@ $prop = static function (string $name, mixed $value): void {
 $j = static fn(mixed $v): string => (string) json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
 /* Settings this test touches: remembered here, restored at the end. */
-const WR_KEYS = ['ai_web_research_on', 'ai_web_research_max_uses', 'ai_claude_cache_on', 'ai_agent_model', 'ai_model'];
+const WR_KEYS = ['ai_web_research_on', 'ai_web_research_max_uses', 'ai_claude_cache_on', 'ai_agent_model', 'ai_model',
+                 'ai_staff_provider', 'ai_staff_model'];   // 19 Nov 2026 (u8): the staff brain, pinned off below
 $saved = [];
 foreach (WR_KEYS as $k) {
     $saved[$k] = Database::fetch('SELECT svalue, stype FROM settings WHERE skey = :k', ['k' => $k]);
@@ -83,6 +84,9 @@ try {
     Settings::set('ai_agent_model', $opus, 'string', 'ai');
     Settings::set('ai_claude_cache_on', '1', 'bool', 'ai');
     Settings::set('ai_web_research_max_uses', '3', 'int', 'ai');
+    /* 19 Nov 2026 (u8): staff turns now go to ai_staff_model (Haiku) first; this suite checks the
+       ai_agent_model ladder, so the staff brain is switched off here (restored at the end). */
+    Settings::set('ai_staff_provider', 'off', 'string', 'ai');
 
     echo "\n1. Who is handed the web search tool\n";
     Settings::set('ai_web_research_on', '0', 'bool', 'ai');

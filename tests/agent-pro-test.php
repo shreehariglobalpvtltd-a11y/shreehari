@@ -190,9 +190,15 @@ foreach (['id-front', 'id-back', 'vc-front', 'vc-back'] as $side) {
     $over = array_filter(ApCard::scene($long, $side)->ops, static fn($o) => $o['t'] === 'text' && ($o['max'] ?? 0) > 0 && $o['w'] > $o['max'] + 0.5);
     check("$side: a very long agency name still fits (wraps / shrinks, nothing overflows)", $over === [], implode(' | ', array_map(static fn($o) => $o['text'] . ' ' . round($o['w']) . '>' . $o['max'], $over)));
 }
-$nameOps = array_values(array_filter(ApCard::scene($long, 'id-front')->ops, static fn($o) => $o['t'] === 'text' && $o['font'] === 'sansB' && $o['size'] >= 24 && str_contains($long['name'], $o['text'])));
+/* 19 Nov 2026 (CD-1): the default ID / visiting card is now Royal Gold; these two checks are about
+   the 13 Nov portrait card and the member's own visiting-card theme, so they ask for it by name.
+   The portrait card (mg15, 13 Nov) prints the name in CAPITALS, shrunk to fit and cut with "…",
+   so a line is a piece of the upper-cased name (the 2-letter initials badge is not a line). */
+$longUp  = mb_strtoupper($long['name']);
+$nameOps = array_values(array_filter(ApCard::scene($long, 'id-front', 'portrait')->ops, static fn($o) => $o['t'] === 'text' && $o['font'] === 'sansB'
+    && mb_strlen((string) $o['text']) > 3 && str_contains($longUp, rtrim((string) $o['text'], '…'))));
 check('…on the ID card it takes two lines', count($nameOps) === 2);
-$vcOps = ApCard::scene($m, 'vc-front')->ops;
+$vcOps = ApCard::scene($m, 'vc-front', 'portrait')->ops;
 check('the visiting card prints "WA:" and the number', (bool) array_filter($vcOps, static fn($o) => $o['t'] === 'text' && $o['text'] === 'WA:')
     && (bool) array_filter($vcOps, static fn($o) => $o['t'] === 'text' && $o['text'] === $m['waDisplay']));
 $zbar = trim((string) shell_exec('command -v zbarimg 2>/dev/null'));
@@ -421,6 +427,10 @@ function cbor_enc(mixed $v): string {
 $_SERVER['HTTP_HOST'] = 'localhost:8899';
 $_SESSION = [];
 $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+if ($key === false && is_file($cnf = dirname(PHP_BINARY) . '/extras/ssl/openssl.cnf')) {
+    /* 19 Nov 2026: the Windows PHP build finds no openssl.cnf on its own - use the one it ships */
+    $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC, 'config' => $cnf]);
+}
 $det = openssl_pkey_get_details($key)['ec'];
 $cose = cbor_enc([1 => 2, 3 => -7, -1 => 1, -2 => ['__bytes' => $det['x']], -3 => ['__bytes' => $det['y']]]);
 $admRow = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $agentId]);

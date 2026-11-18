@@ -382,6 +382,16 @@ try {
         $lowAt    = max(0, Settings::getInt('search_low_seats_at', 6));
         $seatsLow = $lowAt > 0 && $seatsLeft > 0 && $seatsLeft <= $lowAt;
 
+        /* 19 Nov 2026 (NP-3, u4 request): the sales closing clock, judged the way
+           BookingService::create() judges the sale - a signed-in staff member by their
+           role (Boarding::salesChannel, the same answer QuickTicket::clockChannel gives),
+           anyone else as an online customer; an extra bus (slot 2+) keeps its own
+           departure rule. Display only: the card says 'बुकिङ बन्द · Booking closed 17:00'
+           and create() still refuses the sale on its own. */
+        $clock       = $slot > 1 ? null
+            : Boarding::clockClose($route, $date, Auth::admin() !== null ? Boarding::salesChannel(null) : 'online');
+        $salesClosed = $clock !== null && !empty($clock['closed']);
+
         $results[] = [
             'routeId'      => $routeId,
             'routeCode'    => $route['route_code'],
@@ -420,6 +430,9 @@ try {
             'seatsLeft'    => $seatsLeft,
             'seatsLow'     => $seatsLow,
             'seatsLowLabel'=> $seatsLow ? 'केवल ' . $seatsLeft . ' सिट बाँकी · Only ' . $seatsLeft . ' seat' . ($seatsLeft === 1 ? '' : 's') . ' left' : '',
+            'salesClosed'  => $salesClosed,
+            'clockLabel'   => $salesClosed ? (string) $clock['label'] : '',
+            'clockReason'  => $salesClosed ? (string) $clock['reason'] : '',
             'totalSeats'   => $totalSeats,
             'boarding'     => $boarding,
             'drop'         => $drop,

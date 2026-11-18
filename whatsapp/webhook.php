@@ -474,14 +474,8 @@ function wh_process_inbound(array $msg): void
             Logger::exception($e, 'whatsapp');
         }
         $reply = WaFlow::handleReply($from, (array) $msg['interactive'], $staff, resolvePhoneCountry('', '+' . $from));
-        $media = $reply['media'] ?? null;
-        $r = ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024)
-            ? sendWhatsAppImage($from, $media, $reply['text'])
-            : ['success' => false];
-        if (!$r['success']) {
-            $r = sendWhatsAppText($from, $reply['text']);
-        }
-        Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
+        $r = wh_send_flow_reply($from, $reply);
+        Notify::logOutbound($from, (string) $reply['text'], $r['success'] ? 'sent' : 'failed', [
             'provider' => 'cloud_api', 'sid' => $r['message_id'] ?? '', 'purpose' => 'bot_reply', 'error' => $r['success'] ? null : ($r['error'] ?? ''),
         ]);
         return;
@@ -588,6 +582,44 @@ function wh_process_inbound(array $msg): void
     } catch (Throwable $e) {
         Logger::exception($e, 'whatsapp');
     }
+}
+
+/**
+ * The answer to a filled booking FORM (WaFlow::handleReply). 19 Nov 2026 (i1):
+ * a bad field comes back as the form itself, filled in again ($reply['ui'],
+ * kind 'flow') - it goes first (body = ui.body, else the reply text) when
+ * that body fits Meta's 1024 characters; the picture / text sends are the
+ * fall-back when it is refused or too long. Any OTHER reply (a seller's sale:
+ * the ticket picture + a 'Next ticket' button, or no ui at all) goes through
+ * wh_send_reply, which carries the picture as the buttons' header and
+ * honours wa_buttons_on.
+ *
+ * @param array{text: string, media?: ?string, ui?: ?array} $reply
+ * @return array<string, mixed> the send that went (or the last refusal)
+ */
+function wh_send_flow_reply(string $from, array $reply): array
+{
+    $flowUi = is_array($reply['ui'] ?? null) ? $reply['ui'] : null;
+    if ($flowUi === null || ($flowUi['kind'] ?? '') !== 'flow') {
+        $reply['text'] = (string) ($reply['text'] ?? '');
+        return wh_send_reply($from, $reply);
+    }
+    $text  = (string) ($reply['text'] ?? '');
+    $media = $reply['media'] ?? null;
+    $r = ['success' => false];
+    $uiBody = trim((string) ($flowUi['body'] ?? '')) !== '' ? (string) $flowUi['body'] : $text;
+    if (mb_strlen($uiBody) <= 1024) {
+        $r = sendWhatsAppInteractive($from, $uiBody, $flowUi);
+    }
+    if (empty($r['success'])) {
+        $r = ($media !== null && $media !== '' && mb_strlen($text) <= 1024)
+            ? sendWhatsAppImage($from, (string) $media, $text)
+            : ['success' => false];
+    }
+    if (empty($r['success'])) {
+        $r = sendWhatsAppText($from, $text);
+    }
+    return $r;
 }
 
 /**

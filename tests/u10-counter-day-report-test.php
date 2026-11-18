@@ -31,12 +31,12 @@ try {
     Settings::set('admin_whatsapp', '919104801507', 'string', 'notify', false);
     Settings::set('ceo_whatsapp', '919726401507', 'string', 'notify', false);
     Settings::set('office_report_numbers', '', 'string', 'reports', false);
-    Settings::set('counter_day_report_numbers', '9104801507, 9000010299', 'string', 'reports', false);
+    Settings::set('counter_day_report_numbers', '919104801507, 919000010299, 9812345678', 'string', 'reports', false);
     Settings::set('chalani_mail_to', 'u10-office@example.test', 'string', 'reports', false);
     Settings::flush();
 
     check('numbers() = the two office numbers', count(OfficeReport::numbers()) === 2);
-    check('counter_day_report_numbers adds one (a duplicate of 9104801507 is not repeated)', count(OfficeReport::counterDayNumbers()) === 3, json_encode(OfficeReport::counterDayNumbers()));
+    check('counter_day_report_numbers adds one (a duplicate of 9104801507 is not repeated; a bare 10-digit number without 91/977 is skipped)', count(OfficeReport::counterDayNumbers()) === 3, json_encode(OfficeReport::counterDayNumbers()));
     check("dueSlot('21:30') fires once inside the grace", OfficeReport::dueSlot('21:30', '2026-11-19 21:40', '') === '2026-11-19 21:30'
         && OfficeReport::dueSlot('21:30', '2026-11-19 21:40', '2026-11-19 21:30') === null && OfficeReport::dueSlot('21:30', '2026-11-19 21:20', '') === null);
 

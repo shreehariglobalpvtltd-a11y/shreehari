@@ -587,6 +587,59 @@ final class AgentPro
      *  super-admin account: its mobile cannot be used for a new login).
      * ================================================================= */
 
+    /** Tests only: replaces the card warm-up (receives the admin id). Null = the real one. */
+    public static ?Closure $cardWarmHook = null;
+
+    /** @var array<int, true> members whose warm-up is already queued in this request */
+    private static array $cardWarmQueued = [];
+
+    /**
+     * 19 Nov 2026 (u6/i3): an ID was issued / approved -> draw every design of the
+     * member's cards into the cache (ApCard::prerender), so the office's first
+     * print or download is instant. Runs at shutdown, AFTER the answer has gone
+     * out (php-fpm: fastcgi_finish_request), and reads the member then, so a PIN /
+     * branch / photo set later in the same request is on the cards. Once per member
+     * per request. Never on CLI or the dev server (nobody should wait for it there:
+     * the first card view warms the rest anyway). Off with ap_card_prerender=0.
+     * Never throws: a cache warm-up must not fail an approval.
+     */
+    public static function warmCards(int $adminId): void
+    {
+        if ($adminId <= 0) {
+            return;
+        }
+        try {
+            if (self::$cardWarmHook !== null) {
+                (self::$cardWarmHook)($adminId);
+                return;
+            }
+            if (isset(self::$cardWarmQueued[$adminId]) || !Settings::getBool('ap_card_prerender', true)
+                || PHP_SAPI !== 'fpm-fcgi' || !function_exists('fastcgi_finish_request')) {
+                return;
+            }
+            self::$cardWarmQueued[$adminId] = true;
+            register_shutdown_function(static function () use ($adminId): void {
+                try {
+                    if (session_status() === PHP_SESSION_ACTIVE) {
+                        session_write_close();          // never hold this browser's session lock while drawing
+                    }
+                    ignore_user_abort(true);
+                    fastcgi_finish_request();
+                    @set_time_limit(120);
+                    require_once __DIR__ . '/agentpro-card.php';
+                    $m = self::member($adminId);
+                    if ($m !== null) {
+                        ApCard::prerender($m);
+                    }
+                } catch (Throwable $e) {
+                    Logger::warning('Card warm-up failed: ' . $e->getMessage(), ['member' => $adminId], 'agent');
+                }
+            });
+        } catch (Throwable $e) {
+            Logger::warning('Card warm-up not queued: ' . $e->getMessage(), ['member' => $adminId], 'agent');
+        }
+    }
+
     /** Give a member without one their agent code (agents) or SHG-S staff number. Returns the ID. */
     public static function issueCode(int $adminId, int $by): string
     {
@@ -608,6 +661,7 @@ final class AgentPro
             $code = (string) (self::member($adminId)['idNo'] ?? '');
         }
         Logger::audit('agentpro.code_issued', 'admin', (string) $adminId, null, ['code' => $code], 'ID issued by admin #' . $by);
+        self::warmCards($adminId);
         return $code;
     }
 
@@ -641,6 +695,7 @@ final class AgentPro
         }
         Logger::audit('agentpro.card_for_login', 'admin', (string) $adminId, null, ['role' => (string) $a['role']],
             'ID card made for an existing login by admin #' . $by);
+        self::warmCards($adminId);
         return self::member($adminId) ?? [];
     }
 
@@ -1238,6 +1293,9 @@ final class AgentPro
     public static function payoutTemplate(int $adminId, string $status, float $amount, string $detail): bool
     {
         try {
+            if (!class_exists('WaTplMeta') && is_file(__DIR__ . '/watplmeta.php')) {
+                require_once __DIR__ . '/watplmeta.php';   // no autoloader: the admin pages never load it
+            }
             if (class_exists('WaTplMeta') && is_callable(['WaTplMeta', 'sendNamed'])) {
                 $m = self::member($adminId, false);
                 if ($m !== null && $m['phone'] !== '') {
@@ -1271,6 +1329,7 @@ final class AgentPro
         ], 'admin_id = :a', ['a' => $adminId]);
         Logger::audit('agentpro.card_reissued', 'admin', (string) $adminId, null, null,
             'ID card re-issued (old card QR now reads revoked)' . ($by > 0 ? ' by admin #' . $by : ''));
+        self::warmCards($adminId);   // the new token is a new QR: draw the new cards
     }
 
     public static function setCardStatus(int $adminId, string $status, int $by = 0): void
@@ -2682,6 +2741,7 @@ final class AgentPro
             ['status' => 'approved', 'code' => $code, 'ref' => $app['ref'], 'driver' => $driver['driverId'] ?? null], 'Approved in one tap by admin #' . $by);
 
         self::sendWelcome($adminId, $password, $driver['pin'] ?? null);
+        self::warmCards($adminId);   // 19 Nov 2026 (u6/i3): every card design ready for the office's first print
 
         return ['admin_id' => $adminId, 'code' => $code] + ($password !== null ? ['password' => $password] : [])
             + ($driver !== null ? ['driver_id' => $driver['driverId'], 'driver_pin' => $driver['pin']] : []);

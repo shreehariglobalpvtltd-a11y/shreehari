@@ -133,9 +133,12 @@ final class WaTplMeta
             'title'    => 'Withdrawal request update',
             'purpose'  => ['withdraw', 'withdraw_update'],
             'header'   => '',
-            'vars'     => ['request', 'amount', 'status', 'note'],
-            'examples' => ['WD-0012', '₹5,000', 'paid', 'UPI ref 431298765432'],
-            'body'     => "Update on your withdrawal request {{1}}.\nAmount: {{2}}\nStatus: {{3}}\nNote: {{4}}\nThank you, S Hari Global office.",
+            /* 19 Nov 2026 (i1): {{1}} is the member's NAME - AgentPro::payoutTemplate
+               sends [name, amount, status, reference-or-reason] (never submitted
+               to Meta before this change, so nothing approved is re-worded). */
+            'vars'     => ['name', 'amount', 'status', 'note'],
+            'examples' => ['Ramesh Kumar', '₹5,000', 'paid', 'UPI ref 431298765432'],
+            'body'     => "Hello {{1}}, here is an update on your withdrawal request.\nAmount: {{2}}\nStatus: {{3}}\nNote: {{4}}\nThank you, S Hari Global office.",
             'footer'   => 'S Hari Global',
         ],
         'shg_daily_collection' => [
@@ -532,6 +535,61 @@ final class WaTplMeta
         } catch (Throwable $e) {
             Logger::warning('WaTplMeta forPurpose failed: ' . $e->getMessage(), ['purpose' => $purpose], 'whatsapp');
             return null;
+        }
+    }
+
+    /** Tests replace the delivery: fn(string $phone, string $text, string $country, array $meta): bool|string (Notify::whatsapp's shape). */
+    public static $sendHook = null;
+
+    /**
+     * Send ONE registry template by its name (19 Nov 2026, i1 - AgentPro's
+     * shg_withdraw_update): only when ready() (APPROVED, wa_tpl_meta_on, not
+     * just refused), and only a template with no media header / URL / Flow
+     * button (those need values this call does not carry). $vars: a list in
+     * the template's {{1}}.. order, or keyed by the registry's var names.
+     *
+     * Delivery is Notify::whatsapp with purpose + meta_tpl: inside the
+     * number's 24 h window the same words go free, outside it the template
+     * (WaRoute::metaTemplate, under wa_paid_daily_limit). $country 'IN'/'NP'
+     * (or '91'/'977') places a bare 10-digit number. true = it went;
+     * false = not ready / not sendable / refused - the caller sends its text.
+     */
+    public static function sendNamed(string $phone, string $name, array $vars, string $country = 'IN'): bool
+    {
+        try {
+            $name = trim($name);
+            if ($name === '' || !self::ready($name)) {
+                return false;
+            }
+            $s = self::shape($name);
+            if ($s === null || $s['header'] !== '' || $s['button'] !== []) {
+                return false;
+            }
+            $vals = [];
+            $list = array_is_list($vars);
+            foreach (array_values($s['vars']) as $i => $k) {
+                $vals[] = self::flat((string) ($list ? ($vars[$i] ?? '') : ($vars[$k] ?? ($vars[(string) ($i + 1)] ?? ''))));
+            }
+            $purpose = isset(self::DEFS[$name])
+                ? (string) (((array) self::DEFS[$name]['purpose'])[0] ?? $name)
+                : (string) (self::KNOWN[$name]['purpose'] ?? $name);
+            $body = isset(self::DEFS[$name]) ? (string) self::DEFS[$name]['body'] : '';
+            $text = $body !== ''
+                ? (string) preg_replace_callback('/\{\{(\d+)\}\}/', static fn(array $m): string => $vals[(int) $m[1] - 1] ?? '-', $body)
+                : implode("\n", $vals);
+            $c    = strtoupper(ltrim(trim($country), '+'));
+            $hint = in_array($c, ['NP', '977'], true) ? 'NP' : (in_array($c, ['IN', '91'], true) ? 'IN' : null);
+            $meta = ['purpose' => $purpose, 'meta_tpl' => ['name' => $name, 'lang' => self::LANG, 'vars' => $vals, 'header' => [], 'buttons' => []]];
+            if (self::$sendHook !== null) {
+                return (self::$sendHook)($phone, $text, (string) $hint, $meta) === true;
+            }
+            if (!class_exists('Notify')) {
+                require_once __DIR__ . '/notify.php';
+            }
+            return Notify::whatsapp($phone, $text, null, $hint, [], null, $meta) === true;
+        } catch (Throwable $e) {
+            Logger::warning('WaTplMeta sendNamed failed: ' . $e->getMessage(), ['name' => $name], 'whatsapp');
+            return false;
         }
     }
 

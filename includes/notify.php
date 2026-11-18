@@ -395,6 +395,14 @@ final class Notify
     public static function whatsapp(string $phone, string $message, ?string $mediaUrl = null, ?string $countryHint = null, array $templateVars = [], ?int $bookingId = null, array $meta = []): bool|string
     {
         $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
+        /* 19 Nov 2026 (i1, u7 LG-1): a login code to a bare 10-digit number with
+           no hint takes the country of the record that owns the number (staff
+           profile, customer account, the number that wrote to us) - a Nepal
+           98xxxxxxxx code must never go to +91 or onto the auth template there. */
+        if (($countryHint === null || trim($countryHint) === '')
+            && in_array((string) ($meta['purpose'] ?? ''), ['otp', 'login', 'auth'], true)) {
+            $countryHint = self::otpCountry($phone);
+        }
         $number = self::intlDigits($phone, $countryHint);
         $paused = false;
         $ref    = null;   // Twilio message SID, filled by whatsappTwilio()
@@ -1195,7 +1203,7 @@ final class Notify
         $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
         $text = "🚌 " . $company . "\n"
               . "तपाईंको बुकिङ " . $pnr . " पक्का भयो ✅\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . "जम्मा: " . self::waAmount($booking) . "\n"
               . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
               . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
@@ -1394,7 +1402,7 @@ final class Notify
         unset($en); // customer message is Nepali-only; $en kept for logs/readability above
         $text = "🚌 " . $company . "\n"
               . $np . "\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . " (उही)\n"
+              . "जम्मा: " . self::waAmount($booking) . " (उही)\n"
               . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
               . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
@@ -1806,6 +1814,9 @@ final class Notify
             $d = substr($d, 2);
         }
         if (strlen($d) === 10) {
+            // 19 Nov 2026 (i1): a stored dial code ('977' / '+977' / '91') is a hint too.
+            $h = ltrim(strtoupper(trim((string) $countryHint)), '+');
+            $countryHint = match ($h) { '977', 'NP' => 'NP', '91', 'IN' => 'IN', default => $countryHint };
             if ($countryHint === 'NP') {
                 $cc = '977';
             } elseif ($countryHint === 'IN') {
@@ -1879,6 +1890,63 @@ final class Notify
             return 'IN';
         }
         return null;
+    }
+
+    /**
+     * The country ('NP' / 'IN' / null) for a login code to a BARE 10-digit
+     * number (19 Nov 2026, i1): the staff profile that owns it
+     * (admin_profiles.country_code), else the one spelling (+977 / +91) that
+     * has written to our Meta number, else the customer account
+     * (users.country_code - last, because that column defaults to '91').
+     * Two staff profiles that disagree = null (the configured default, as
+     * before). Never throws.
+     */
+    public static function otpCountry(string $phone): ?string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (strlen($d) === 11 && str_starts_with($d, '0')) {
+            $d = substr($d, 1);
+        }
+        if (strlen($d) !== 10 || preg_match('/^0+$/', $d) === 1) {
+            return null;
+        }
+        $norm = static function (string $cc): ?string {
+            $c = ltrim(strtoupper(trim($cc)), '+');
+            return match ($c) { '977', 'NP' => 'NP', '91', 'IN' => 'IN', default => null };
+        };
+        try {
+            $rows = Database::fetchAll(
+                "SELECT DISTINCT p.country_code FROM admins a JOIN admin_profiles p ON p.admin_id = a.id
+                  WHERE p.country_code IS NOT NULL AND p.country_code <> ''
+                    AND (a.phone LIKE :a OR p.whatsapp LIKE :b OR p.display_phone LIKE :c)",
+                ['a' => '%' . $d, 'b' => '%' . $d, 'c' => '%' . $d]
+            );
+            $seen = array_values(array_unique(array_filter(array_map(static fn(array $r): ?string => $norm((string) $r['country_code']), $rows))));
+            if (count($seen) === 1) {
+                return $seen[0];
+            }
+            if (count($seen) > 1) {
+                return null;
+            }
+        } catch (Throwable $e) {
+            // no profile table / column: the next record decides
+        }
+        /* The spelling that actually wrote to us comes BEFORE the customer
+           account: users.country_code is NOT NULL DEFAULT '91', so a Nepal
+           account that kept the default would otherwise send a +977 person's
+           code to +91 (review, 19 Nov). */
+        try {
+            $np = (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'wa_inbound' AND kkey = :k", ['k' => '977' . $d], 0);
+            $in = (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'wa_inbound' AND kkey = :k", ['k' => '91' . $d], 0);
+            if ($np > 0 && $in <= 0) {
+                return 'NP';
+            }
+            if ($in > 0 && $np <= 0) {
+                return 'IN';
+            }
+        } catch (Throwable $e) {
+        }
+        return self::countryFromAccount($d);
     }
 
 
@@ -2198,6 +2266,31 @@ final class Notify
             Logger::warning('AiSensy ticket send failed', ['booking' => $bookingId, 'err' => $e->getMessage()], 'whatsapp');
             return null;
         }
+    }
+
+    /**
+     * The fare as the free-form WhatsApp ticket text shows it (19 Nov 2026,
+     * TK-5): a Nepal NPR sale (Ticket::isNprSale - the NPR frozen on the sale,
+     * switch ticket_npr_primary) reads 'रू 4,480 (₹2,800)', everything else
+     * '₹2,800' exactly as before. The NPR comes from Ticket::moneyParts(), the
+     * helper behind Ticket::money(), so the text matches the printed ticket.
+     * Meta / AiSensy template bodies are NOT built from this (no re-approval).
+     */
+    public static function waAmount(array $booking, ?float $inr = null): string
+    {
+        $inr = $inr ?? (float) ($booking['total_amount'] ?? 0);
+        try {
+            if (!class_exists('Ticket')) {
+                require_once __DIR__ . '/ticket.php';
+            }
+            $p = Ticket::moneyParts($booking, $inr);
+            if (!empty($p['isNpr']) && (float) $p['npr'] > 0) {
+                return 'रू ' . indianNumber((float) $p['npr']) . ' (' . inr($inr) . ')';
+            }
+        } catch (Throwable $e) {
+            // the plain ₹ amount below
+        }
+        return inr($inr);
     }
 
     /** The {{1}}..{{7}} ticket template variables — public for WaTemplates. */
@@ -2528,7 +2621,7 @@ final class Notify
                   . ($waDrop !== '' ? "गन्तव्य: " . $waDrop . "\n" : '')
                   . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
                   . ($waDateNep !== '' ? "यात्रा मिति: " . $waDateNep . "\n" : '')
-                  . "\nजम्मा: " . $amount . "\n\n"
+                  . "\nजम्मा: " . self::waAmount($booking) . "\n\n"
                   . "तपाईंको E-Ticket: " . $ticketUrl . "\n"
                   . ($viewUrl !== '' ? "हेर्नुहोस् / View: " . $viewUrl . "\n" : '')
                   . "PDF: " . Ticket::downloadUrl($pnr) . "\n\n"
@@ -3247,7 +3340,7 @@ final class Notify
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
             $text = "🚌 " . $company . "\n"
                   . $pnr . " को भुक्तानी प्राप्त भयो ✅\n"
-                  . "जम्मा: " . $amount . "\n"
+                  . "जम्मा: " . self::waAmount($booking) . "\n"
                   . "तपाईंको टिकटमा अब PAID देखिन्छ — नयाँ प्रति डाउनलोड गर्नुहोस्:\n"
                   . Ticket::imageUrl($pnr);
             self::whatsapp($phone, $text, null, self::countryHint($booking));

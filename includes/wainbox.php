@@ -58,11 +58,47 @@ final class WaInbox
 {
     public const PAUSE_MAX_HOURS = 72;
 
-    /** International digits (country code first) for any way a number is written. */
-    public static function intl(string $phone): string
+    /**
+     * International digits (country code first) for any way a number is written.
+     * 19 Nov 2026 (i1): India and Nepal share 10-digit mobiles, so a bare one
+     * takes $country ('NP' / '977' / 'IN' / '91') when the caller knows it, else
+     * the spelling that has actually written to our Meta number (wa_inbound) -
+     * a Nepal 98xxxxxxxx that wrote as +977 never becomes +91. Unknown = the
+     * configured default, as before.
+     */
+    public static function intl(string $phone, ?string $country = null): string
     {
         require_once INCLUDE_PATH . '/waroute.php';
-        return WaRoute::intl($phone);
+        $hint = WaRoute::hintDigits($country) !== '' ? $country : self::seenCountry($phone);
+        return WaRoute::intl($phone, $hint);
+    }
+
+    /**
+     * '977' / '91' when only that spelling of a bare 10-digit number has written
+     * to us (the newer one when both have), '' otherwise. Never throws.
+     */
+    public static function seenCountry(string $phone): string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (str_starts_with($d, '00')) {
+            $d = substr($d, 2);
+        }
+        if (strlen($d) === 11 && str_starts_with($d, '0')) {
+            $d = substr($d, 1);
+        }
+        if (strlen($d) !== 10) {
+            return '';
+        }
+        try {
+            $np = (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'wa_inbound' AND kkey = :k", ['k' => '977' . $d], 0);
+            $in = (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'wa_inbound' AND kkey = :k", ['k' => '91' . $d], 0);
+        } catch (Throwable $e) {
+            return '';
+        }
+        if ($np <= 0 && $in <= 0) {
+            return '';
+        }
+        return $np > $in ? '977' : '91';
     }
 
     /** The two spellings message_logs uses for one person. @return list<string> */

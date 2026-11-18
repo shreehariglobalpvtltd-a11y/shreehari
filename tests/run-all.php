@@ -228,6 +228,46 @@ const CORE_SUITES = [
     'u13-S3-bot-polish-test.php'      => 'a help request (मलाई मदद चाहिए) never opens a booking; time words and names kept apart',
     'u11-F1-test.php'                 => 'temporary-password session: no office AI, no /api/, crashing CLI suite exits 1, system notes are not the customer words',
     'u11-F3-test.php'                 => 'SmartBook PNR readable in light theme, inbox Pause row clear of the floating button, follow-up labels, every u11 suite registered',
+    /* 19 Nov 2026 (Nepal ops, units u1..u10 + integrators i1..i3), registered with the code they
+       guard. u5-ag-payout and u6-cards probe :8963 themselves and skip their HTTP part when it is
+       down, so they stay here; tests/u10-seed-lib.php is a helper, never a suite. */
+    'u1-wa-ticket-queue-test.php'     => 'WhatsApp ticket queue: an unreached number (customer / second number) gets it free on its next message',
+    'u1-wa-tpl-meta-test.php'         => 'registry templates: ready only when approved, refused ones skipped for a while, sync is a GET',
+    'u1-wa-pay-cta-test.php'          => 'pending payment = one "Pay" button inside the window; eSewa line for Nepal sales only',
+    'u1-wa-reply-pdf-test.php'        => 'bot replies: text then the PDF document, no lone document when the text fails',
+    'u2-wa-flow-test.php'             => 'WhatsApp form: ON only once published in this WABA, re-ask keeps the typed mobile + UPI',
+    'u2-fb-booking-test.php'          => 'Messenger guided booking only with fb_msgr_form_on + a WhatsApp-proven number, summary + yes first',
+    'u2-wa-form-page-test.php'        => 'admin/wa-form.php renders the form status and the dropped-form note',
+    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; COD and pending tickets print the live link',
+    'u4-desk-test.php'                => 'sales closing clock per route + channel, office never blocked, Nepal desks and quick agent',
+    'u5-ag-staff-headcount-test.php'  => 'staff / office logins earn a head count, not new commission; agents and counter unchanged',
+    'u5-ag-payout-test.php'           => 'agent withdrawal request + manual office pay / decline, verify tick only when switched on',
+    'u5-ag-fix-test.php'              => 'payout WhatsApp: template first, plain text only when the template did not go',
+    'u6-cards-test.php'               => 'ID / visiting cards: royal / modern / heritage, Nepal-first letterhead, bilingual labels, cache keys',
+    'u7-remember-login-test.php'      => 'field roles stay signed in N days, office roles N hours, ended by sign-out or password change',
+    'u7-customer-remember-test.php'   => 'passengers stay signed in after a proven door, only for customer_remember_days',
+    'u7-remember-fix-test.php'        => 'office cap never extended, idle office device refused, relock screen keeps the session',
+    'u8-ai-review-test.php'           => 'nightly AI review: per-night and per-month caps, drafts unless autolearn, digest lines',
+    'u8-contact-lang-test.php'        => 'contact language: default ne, live hook start, backfill never moves it',
+    'u8-stop-timing-test.php'         => 'stop timing learned from GPS: departure for boarding stops, minimum trips before a suggestion',
+    'u8-pages-test.php'               => 'AI centre / map pages render; a learned halt is shown read-only',
+    'u10-counter-book-test.php'       => 'counter book: desk-wise day totals, an agent with no desk gets its own line',
+    'u10-counter-day-report-test.php' => 'counter day report on WhatsApp once per slot, e-mail only when every copy failed',
+    'u10-driver-list-test.php'        => 'driver list: first at N passengers, every step, final before departure, phones only when switched on',
+    'i1-wa-glue-test.php'             => 'WhatsApp glue across units (19 Nov integrator i1)',
+    'i3-agent-cards-login-test.php'   => 'agent / cards / login glue across units (19 Nov integrator i3)',
+    'i4-halt-use-time-test.php'       => 'Routes → Halts: GPS-learned halt time + "Use this time" re-posts edit_halt (CSRF, audited)',
+    'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+];
+
+/**
+ * Extra -d flags for one suite, added only when the runner's own PHP lacks
+ * the extension and its DLL is present (19 Nov 2026: u5-ag-payout encrypts
+ * the payout bank account with sodium, which php-dev.ini does not load;
+ * without it that part of the suite is skipped, not failed).
+ */
+const SUITE_EXT = [
+    'u5-ag-payout-test.php' => ['sodium'],
 ];
 
 /**
@@ -273,6 +313,12 @@ const HTTP_SUITES = [
     'u12-P2-chalani-pay-test.php' => 'chalani pay mode per booking (बसमा / नगद / अनलाइन), to-collect total, crew QR to the pay page, no double counting',
     'u13-S1-cabin-test.php'       => 'the berth sharing a cabin with a free women-reserved berth goes to a woman only (couple in one booking allowed)',
     'u13-S2-cod-holder-test.php'  => 'pay-at-boarding cash holder: office/chalani/online settle = commission only, agent holder = commission + cash due',
+    // 19 Nov 2026 (Nepal ops): these three need SHG_TEST_BASE (default http://localhost:8963).
+    'u9-blueprint-test.php'       => 'pay page app buttons, duplicate UTR refused, office / customer one-word answers, find + resend a ticket',
+    'u10-chalani-money-helper-test.php' => 'one chalani money rule on screen, print, CSV, PDF and PNG; NPR desks in NPR',
+    'u10-day-close-test.php'      => 'counter day close: one close per desk per day, frozen totals, office only',
+    // i2 calls /api/track.php and /api/search.php over curl with no "server down -> skip" probe.
+    'i2-desk-ui-test.php'         => 'desk UI glue across units (19 Nov integrator i2)',
 ];
 
 /* ---------------------------------------------------------------------
@@ -538,7 +584,14 @@ foreach ($suites as $file => $what) {
     }
 
     printf("  running  %-32s %s\n", $file, $what);
-    $r       = runSuite($file, $extraIni);
+    $suiteIni = $extraIni;
+    foreach (SUITE_EXT[$file] ?? [] as $ext) {
+        $dll = rtrim((string) ini_get('extension_dir'), '\\/') . DIRECTORY_SEPARATOR . 'php_' . $ext . '.dll';
+        if (!extension_loaded($ext) && is_file($dll)) {
+            $suiteIni[] = 'extension=' . $ext;
+        }
+    }
+    $r       = runSuite($file, $suiteIni);
     $totalT += $r['seconds'];
     $note    = tally($r['output']);
 

@@ -49,6 +49,27 @@ try {
     Logger::warning('daily-schedule heartbeat not written', ['err' => $e->getMessage()], 'cron');
 }
 
+/* 19 Nov 2026 (u7/i3): ended / expired sign-in rows, once a day - passenger
+   remember-me rows (customer_sessions, customer_sessions_keep_days, default 90)
+   and the staff session registry (admin_sessions idle 90+ days whose remember
+   window is over). A live or remembered device is never touched. Lives here
+   because this job really runs every night (cron/rotate.php is weekly on live).
+   Each prune is best effort and never fails the seed. */
+$sessionsPurged = ['customer' => 0, 'admin' => 0];
+try {
+    require_once INCLUDE_PATH . '/customerprofile.php';
+    $sessionsPurged['customer'] = CustomerProfile::prune();
+} catch (Throwable $e) {
+    $sessionsPurged['customerError'] = $e->getMessage();
+}
+try {
+    require_once INCLUDE_PATH . '/adminsessions.php';
+    $sessionsPurged['admin'] = AdminSessions::prune();
+} catch (Throwable $e) {
+    $sessionsPurged['adminError'] = $e->getMessage();
+}
+$result['sessionsPurged'] = $sessionsPurged;
+
 $routeList = $result['routes'];
 echo '[daily-schedule] created ' . $result['created']
     . ' (skipped ' . $result['skipped_existing'] . ' existing) across '

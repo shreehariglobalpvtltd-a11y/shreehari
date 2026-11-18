@@ -52,7 +52,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $pin = trim((string) ($_POST['pin'] ?? ''));
         $ans = (string) ($_POST['sec_a'] ?? '');
         $qk  = (string) ($_POST['sec_q'] ?? '');
-        $q   = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS[$qk] ?? '');
+        // 19 Nov 2026 (u7/i3): a NEW answer only from the offered questions (no date of birth)
+        $q   = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS_OFFERED[$qk] ?? '');
         $did = [];
         // check everything first, save after — never half a setup
         if ($pin !== '' || !$hasQk) {
@@ -125,11 +126,11 @@ admin_header('Setup · सुरुको सेटअप', '');
       <h3><i>2</i> सुरक्षा प्रश्न · Security question<?= $hasQ ? '<span class="ok">छ ✓</span>' : '' ?></h3>
       <label>प्रश्न · Question
         <select name="sec_q" id="suQ">
-          <?php foreach (QuickUnlock::SEC_QUESTIONS as $k => $label): ?><option value="<?= $e($k) ?>"><?= $e($label) ?></option><?php endforeach; ?>
+          <?php foreach (QuickUnlock::SEC_QUESTIONS_OFFERED as $k => $label): ?><option value="<?= $e($k) ?>"><?= $e($label) ?></option><?php endforeach; ?>
           <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
         </select></label>
       <label id="suOwnL" hidden>तपाईंको प्रश्न · Your question<input name="sec_own" maxlength="150"></label>
-      <label>उत्तर · Answer<input name="sec_a" id="suA" type="date" maxlength="80"<?= $hasQ ? '' : ' required' ?>></label>
+      <label>उत्तर · Answer<input name="sec_a" id="suA" type="text" maxlength="80"<?= $hasQ ? '' : ' required' ?>></label>
       <small>PIN बिर्सिँदा यही उत्तरले नयाँ PIN राख्न मिल्छ — यही फोनमा मात्र। उत्तर कसैलाई नभन्नुहोस्। · If you forget the PIN, this answer lets you set a new one, on this phone only.<?= $hasQ ? ' खाली छोडे पुरानै रहन्छ।' : '' ?></small>
     </div>
     <?php endif; ?>
@@ -149,7 +150,7 @@ admin_header('Setup · सुरुको सेटअप', '');
 (function(){
   var q = document.getElementById('suQ'), a = document.getElementById('suA'), o = document.getElementById('suOwnL');
   if (!q || !a) return;
-  function sync(){ a.type = q.value === 'dob' ? 'date' : 'text'; if (o) o.hidden = q.value !== 'own'; }
+  function sync(){ a.type = 'text'; if (o) o.hidden = q.value !== 'own'; }
   q.addEventListener('change', function(){ a.value = ''; sync(); }); sync();
 })();
 </script>

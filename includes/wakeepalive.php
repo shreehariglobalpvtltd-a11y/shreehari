@@ -139,8 +139,10 @@ final class WaKeepAlive
         require_once INCLUDE_PATH . '/waroute.php';
         require_once INCLUDE_PATH . '/officereport.php';
         $now = self::now();
+        require_once INCLUDE_PATH . '/wainbox.php';
         foreach (OfficeReport::numbers() as $raw) {
-            $intl = WaRoute::intl($raw);
+            // 19 Nov 2026 (i1): a bare 10-digit office number takes the spelling (+977 / +91) that wrote to us.
+            $intl = WaInbox::intl($raw);
             if ($intl === '') {
                 continue;
             }

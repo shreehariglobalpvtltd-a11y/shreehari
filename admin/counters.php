@@ -138,93 +138,48 @@ if (!Security::isValidDate($to))   { $to   = todayISO(); }
 if ($from > $to) { [$from, $to] = [$to, $from]; }
 $t1 = addDaysISO($to, 1);
 
-/* The desk a SALE belongs to: the code frozen on the sale, else the seller's
-   desk today (marked in the UI as a fallback), else blank = online. */
-$codeExpr = $hasStamp
-    ? "COALESCE(NULLIF(b.counter_code,''), ap.counter_code, '')"
-    : "COALESCE(ap.counter_code, '')";
+/* 19 Nov 2026 (u10 request): the book is CounterBook::range() now - the one rule the
+   office WhatsApp report and the day close read (includes/counterbook.php):
+   - a SALE belongs to the code frozen on it, else the seller's desk today (marked
+     "from profile"); a sale with no desk but a seller is that SELLER's own line
+     ('AG:<admin id>' - an agent or a clerk with no desk is not "online"); '' = online.
+   - a COLLECTION belongs to the drawer it went into: the desk of the person who
+     verified it, else the selling desk (a ticket sold at Nepalgunj and paid on
+     boarding at Surat is Surat's cash).
+   - commission = agent_ledger commission (+ voids) in the window; net = cash +
+     online - commission - refunds. Read-only, like the page always was. */
+require_once INCLUDE_PATH . '/counterbook.php';
 
-/* The desk a COLLECTION belongs to is a different question, and the one a
-   cashier actually asks: whose drawer did this money go into? A ticket sold
-   at Nepalgunj and paid on boarding, or settled later at the Surat window,
-   is Surat's cash — crediting it to Nepalgunj would leave both drawers
-   wrong. So the money follows the person who verified it, and only falls
-   back to the selling desk when that person has no desk of their own. */
-$takenExpr = "COALESCE(NULLIF(apv.counter_code,''), " . ($hasStamp ? "NULLIF(b.counter_code,''), " : '') . "ap.counter_code, '')";
-
-$sold    = [];   // code => ['tickets','seats','inr','npr','stamped']
-$taken   = [];   // code => ['cash'=>inr, ...] verified money
-$takenNp = [];   // code => NPR physically taken
-$refund  = [];   // code => rupees refunded
-$pending = [];   // code => COD still to collect
+$sold    = [];   // key => ['tickets','seats','inr','npr','stamped']
+$taken   = [];   // key => ['cash'=>inr, 'online'=>inr] verified money
+$takenNp = [];   // key => NPR physically taken
+$refund  = [];   // key => rupees refunded
+$pending = [];   // key => COD still to collect
+$commis  = [];   // key => commission credited (agent_ledger)
+$netOf   = [];   // key => cash + online - commission - refunds
+$lineOf  = [];   // key => the CounterBook line (label, kind, ...)
+$bookTot = ['commission' => 0.0, 'net' => 0.0];
 
 try {
-    $rows = Database::fetchAll(
-        "SELECT $codeExpr AS code,
-                COUNT(*) AS tickets,
-                COALESCE(SUM((SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id)), 0) AS seats,
-                COALESCE(SUM(b.total_amount), 0) AS inr" .
-                ($hasFx ? ", COALESCE(SUM(b.fx_total), 0) AS npr" : ", 0 AS npr") .
-                ($hasStamp ? ", SUM(CASE WHEN COALESCE(b.counter_code,'') <> '' THEN 1 ELSE 0 END) AS stamped" : ", 0 AS stamped") . "
-           FROM bookings b
-           LEFT JOIN admin_profiles ap ON ap.admin_id = b.sold_by_admin_id
-          WHERE b.status IN ('confirmed','completed')
-            AND b.confirmed_at >= :f AND b.confirmed_at < :t1
-          GROUP BY code",
-        ['f' => $from, 't1' => $t1]
-    );
-    foreach ($rows as $r) {
-        $sold[(string) $r['code']] = [
-            'tickets' => (int) $r['tickets'],
-            'seats'   => (int) $r['seats'],
-            'inr'     => (float) $r['inr'],
-            'npr'     => (float) $r['npr'],
-            'stamped' => (int) $r['stamped'],
-        ];
+    $book = CounterBook::range($from, $to);
+    foreach ($book['rows'] as $k => $r) {
+        $k = (string) $k;
+        $lineOf[$k] = $r;
+        if ((int) $r['tickets'] > 0) {
+            $sold[$k] = ['tickets' => (int) $r['tickets'], 'seats' => (int) $r['seats'], 'inr' => (float) $r['inr'],
+                         'npr' => (float) $r['npr'], 'stamped' => (int) $r['stamped']];
+        }
+        if ((float) $r['cash'] != 0.0 || (float) $r['online'] != 0.0) {
+            $taken[$k] = ['cash' => (float) $r['cash'], 'online' => (float) $r['online']];
+        }
+        if ((float) $r['takenNpr'] > 0) { $takenNp[$k] = (float) $r['takenNpr']; }
+        if ((float) $r['refund'] != 0.0) { $refund[$k] = (float) $r['refund']; }
+        if ((float) $r['pending'] > 0) { $pending[$k] = (float) $r['pending']; }
+        if ((float) $r['commission'] != 0.0) { $commis[$k] = (float) $r['commission']; }
+        $netOf[$k] = (float) $r['net'];
     }
-
-    $rows = Database::fetchAll(
-        "SELECT $takenExpr AS code, p.method,
-                COALESCE(SUM(p.amount), 0) AS inr" .
-                ($hasLocal ? ", COALESCE(SUM(CASE WHEN p.local_currency = 'NPR' THEN p.local_amount ELSE 0 END), 0) AS npr" : ", 0 AS npr") . "
-           FROM payments p
-           JOIN bookings b ON b.id = p.booking_id
-           LEFT JOIN admin_profiles ap  ON ap.admin_id  = b.sold_by_admin_id
-           LEFT JOIN admin_profiles apv ON apv.admin_id = p.verified_by
-          WHERE p.status = 'verified'
-            AND p.verified_at >= :f AND p.verified_at < :t1
-          GROUP BY code, p.method",
-        ['f' => $from, 't1' => $t1]
-    );
-    foreach ($rows as $r) {
-        $c = (string) $r['code'];
-        $m = strtolower((string) $r['method']) === 'cod' ? 'cash' : strtolower((string) $r['method']);
-        $taken[$c][$m] = ($taken[$c][$m] ?? 0.0) + (float) $r['inr'];
-        $takenNp[$c]   = ($takenNp[$c] ?? 0.0) + (float) $r['npr'];
-    }
-
-    $rows = Database::fetchAll(
-        "SELECT $codeExpr AS code, COALESCE(SUM(b.refund_amount), 0) AS amt
-           FROM bookings b
-           LEFT JOIN admin_profiles ap ON ap.admin_id = b.sold_by_admin_id
-          WHERE b.refund_status = 'processed'
-            AND b.cancelled_at >= :f AND b.cancelled_at < :t1
-          GROUP BY code",
-        ['f' => $from, 't1' => $t1]
-    );
-    foreach ($rows as $r) { $refund[(string) $r['code']] = (float) $r['amt']; }
-
-    $rows = Database::fetchAll(
-        "SELECT $codeExpr AS code, COALESCE(SUM(b.total_amount), 0) AS amt
-           FROM bookings b
-           LEFT JOIN admin_profiles ap ON ap.admin_id = b.sold_by_admin_id
-          WHERE b.status IN ('confirmed','completed')
-            AND b.confirmed_at >= :f AND b.confirmed_at < :t1
-            AND (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) = 'cod_pending'
-          GROUP BY code",
-        ['f' => $from, 't1' => $t1]
-    );
-    foreach ($rows as $r) { $pending[(string) $r['code']] = (float) $r['amt']; }
+    $bookTot['commission'] = (float) $book['totals']['commission'];
+    $bookTot['net']        = (float) $book['totals']['net'];
 } catch (Throwable $e) {
     $flash = $flash ?? ['bad', 'The book could not be read: ' . $e->getMessage()];
 }
@@ -282,7 +237,7 @@ if ($editId !== '') { $editing = CounterDesk::get($editId); }
 
 /* Every code that appears anywhere in the window, desks first. */
 $allCodes = array_keys($desks);
-foreach ([$sold, $taken, $refund, $pending] as $set) {
+foreach ([$sold, $taken, $refund, $pending, $commis] as $set) {
     foreach (array_keys($set) as $c) {
         if (!in_array((string) $c, $allCodes, true)) { $allCodes[] = (string) $c; }
     }
@@ -507,23 +462,28 @@ $e = static fn($v): string => Security::e((string) $v);
   <table>
     <thead><tr>
       <th>Counter</th><th>Money</th><th>Tickets</th><th>Seats</th>
-      <th>Sold (₹)</th><th>Cash in</th><th>Online / UPI</th><th>To collect</th><th>Refunded</th><th>Staff</th><th></th>
+      <th>Sold (₹)</th><th>Cash in</th><th>Online / UPI</th><th>To collect</th><th>Refunded</th>
+      <th title="agent_ledger commission (+ voids) in the window">कमिशन · Commission</th><th title="cash + online − commission − refunds">खुद · Net</th>
+      <th>Staff</th><th></th>
     </tr></thead>
     <tbody>
     <?php foreach ($allCodes as $code):
+        $code   = (string) $code;
         $d      = $desks[$code] ?? null;
+        $isAg   = str_starts_with($code, 'AG:');   // a seller with no desk: their own line (CounterBook)
         $s      = $sold[$code]  ?? ['tickets' => 0, 'seats' => 0, 'inr' => 0.0, 'npr' => 0.0, 'stamped' => 0];
         $t      = $taken[$code] ?? [];
         $cash   = ($t['cash'] ?? 0.0);
         $online = array_sum($t) - $cash;
         $isNp   = $d !== null && $d['currency'] === 'NPR';
-        if ($s['tickets'] === 0 && $t === [] && ($refund[$code] ?? 0) == 0 && $d === null) { continue; }
+        if ($s['tickets'] === 0 && $t === [] && ($refund[$code] ?? 0) == 0 && ($commis[$code] ?? 0) == 0 && $d === null) { continue; }
     ?>
       <tr<?= $d !== null && (int) $d['is_active'] === 0 ? ' style="opacity:.6"' : '' ?>>
         <td>
-          <span class="flagpill"><?= $code === '' ? '🌐' : Brand::flagFor($code, 15, true) ?>
-            <?= $e($code === '' ? 'Online / no desk' : ($d['name'] ?? $code)) ?></span>
-          <?php if ($code !== ''): ?><div class="ctr-note"><?= $e($code) ?><?php
+          <span class="flagpill"><?= $code === '' ? '🌐' : ($isAg ? '👤' : Brand::flagFor($code, 15, true)) ?>
+            <?= $e($code === '' ? 'Online / no desk' : ($isAg ? (string) ($lineOf[$code]['label'] ?? $code) : ($d['name'] ?? $code))) ?></span>
+          <?php if ($isAg): ?><div class="ctr-note">डेस्क छैन · no desk<?= ($lineOf[$code]['role'] ?? '') !== '' ? ' · ' . $e($lineOf[$code]['role']) : '' ?></div>
+          <?php elseif ($code !== ''): ?><div class="ctr-note"><?= $e($code) ?><?php
             if ($d !== null && (int) $d['is_active'] === 0) { echo ' · closed'; }
             if ($d !== null && (int) ($d['show_public'] ?? 0) === 1) { echo ' · 🌐 on the website' . (($d['office_kind'] ?? '') === 'head' ? ' (head office)' : ''); }
             if ($s['tickets'] > 0 && $s['stamped'] < $s['tickets']) {
@@ -531,7 +491,7 @@ $e = static fn($v): string => Security::e((string) $v);
             }
           ?></div><?php endif; ?>
         </td>
-        <td><?php if ($code === ''): ?><span class="cur-inr">₹ INR</span>
+        <td><?php if ($code === '' || $isAg): ?><span class="cur-inr">₹ INR</span>
             <?php else: ?><span class="<?= $isNp ? 'cur-npr' : 'cur-inr' ?>"><?= $isNp ? 'रू NPR' : '₹ INR' ?></span>
               <?php if ($isNp): ?><div class="ctr-note">1 ₹ = <?= $e(CounterDesk::rate($code)) ?></div><?php endif; ?>
               <?php if ($d !== null): ?><div class="ctr-note"><?= $d['entity'] === 'NP' ? 'Nepal company' : 'India company' ?></div><?php endif; ?>
@@ -552,9 +512,15 @@ $e = static fn($v): string => Security::e((string) $v);
         <td><?= $e(inr($online)) ?></td>
         <td><?= ($pending[$code] ?? 0) > 0 ? '<strong>' . $e(inr((float) $pending[$code])) . '</strong>' : '<span class="muted">—</span>' ?></td>
         <td><?= ($refund[$code] ?? 0) > 0 ? $e(inr((float) $refund[$code])) : '<span class="muted">—</span>' ?></td>
+        <td><?= ($commis[$code] ?? 0) != 0 ? $e(inr((float) $commis[$code])) : '<span class="muted">—</span>' ?></td>
+        <td><?= $e(inr((float) ($netOf[$code] ?? ($cash + $online - (float) ($commis[$code] ?? 0) - (float) ($refund[$code] ?? 0))))) ?></td>
         <td><?= ($staffAt[$code] ?? 0) > 0 ? (int) $staffAt[$code] : '<span class="muted">—</span>' ?></td>
         <td style="white-space:nowrap">
-          <?php if ($code !== ''): ?>
+          <?php if ($isAg): ?>
+            <?php /* the register filters on the seller only, so it also lists their desk-stamped
+                     sales, which this book counts under the desk line - say so on the link */ ?>
+            <a class="btn ghost sm" href="<?= $base ?>/admin/bookings.php?agent=<?= (int) substr($code, 3) ?>&from=<?= $e($from) ?>&to=<?= $e($to) ?>" title="यो विक्रेताका सबै बिक्री, काउन्टरमा छापिएका समेत · every sale by this seller, desk-stamped ones too (those count on the desk line)">सबै बिक्री · All sales by seller</a>
+          <?php elseif ($code !== ''): ?>
             <a class="btn ghost sm" href="<?= $base ?>/admin/bookings.php?counter=<?= urlencode($code) ?>&from=<?= $e($from) ?>&to=<?= $e($to) ?>">Tickets</a>
             <?php if ($canEdit && $d !== null): ?>
               <a class="btn ghost sm" href="<?= $base ?>/admin/counters.php?edit=<?= urlencode($code) ?>">Edit</a>
@@ -576,6 +542,8 @@ $e = static fn($v): string => Security::e((string) $v);
         <td colspan="2"><?= $e(inr($totTaken)) ?> collected</td>
         <td><?= $e(inr($totPending)) ?></td>
         <td><?= $e(inr($totRefund)) ?></td>
+        <td><?= $e(inr($bookTot['commission'])) ?></td>
+        <td><?= $e(inr($bookTot['net'])) ?></td>
         <td colspan="2"></td>
       </tr>
     </tbody>
@@ -587,6 +555,8 @@ $e = static fn($v): string => Security::e((string) $v);
     <br><b>Sold</b> is the desk that cut the ticket; <b>cash in</b> is the desk whose drawer the money
     went into. They differ on purpose: a ticket sold here and paid on boarding, or settled at another
     window, is that window's cash.
+    <br>👤 A seller with no desk (an agent, or a clerk not yet given one) has a line of their own,
+    as in the office WhatsApp report — not "Online". <b>Net</b> = cash + online − commission − refunds.
   </p>
 </div>
 <?php if ($hasEntity): ?>

@@ -1732,6 +1732,8 @@ async function submitBooking() {
     status: apiResult.status || 'pending',
     codFlag: isCod
   };
+  /* 19 Nov 2026 (u3 TK-5): the NPR a Nepal window froze on the sale (book.php), for fbMoney() / tkGoldPay() */
+  if (apiResult.fxCurrency) { booking.fxCurrency = String(apiResult.fxCurrency); booking.fxTotal = Number(apiResult.fxTotal) || 0; booking.fxRate = Number(apiResult.fxRate) || 0; }
   if (out.bookingType) {
     booking.bookingType = out.bookingType;
     booking.cabinType = out.cabinType;
@@ -1870,7 +1872,13 @@ function coServerExtras(d, out) {
     tripStatus: String(d.tripStatus || (out && out.tripStatus) || ''),
     live_status: (d.live_status && d.live_status.key) ? d.live_status : null,
     depTime: (out && out.depTime) || '',
-    arrived: !!d.arrived
+    arrived: !!d.arrived,
+    /* 19 Nov 2026 (u3 TK-5): the NPR a Nepal window froze on this sale (track.php /
+       book.php) - 11-pdf-ticket.js fbMoney() prints 'NPR …' from it, tkGoldPay() keeps
+       a UPI-amount code off it. undefined = an older server; nothing is guessed. */
+    fxCurrency: d.fxCurrency === undefined ? undefined : String(d.fxCurrency || ''),
+    fxTotal: d.fxTotal === undefined ? undefined : (Number(d.fxTotal) || 0),
+    fxRate: d.fxRate === undefined ? undefined : (Number(d.fxRate) || 0)
   };
 }
 /* Turn a track.php payload into the shape the app renders. Used both to
@@ -1913,6 +1921,7 @@ function bookingFromServer(d, phone) {
   };
   Object.assign(b, coServerExtras(d, out));
   if (b.pickupMap === undefined) delete b.pickupMap;
+  ['fxCurrency', 'fxTotal', 'fxRate'].forEach(k => { if (b[k] === undefined) delete b[k]; });
   if (ret) {
     b.ret = {
       routeId: ret.routeCode || '', date: ret.date || '',
@@ -2545,9 +2554,21 @@ function tkGoldPay(b) {
   const upi = String(st.upiId || '').trim();
   const name = String(st.upiName || '');
   const biz = String(st.adminWhatsApp || (typeof CONFIG !== 'undefined' && CONFIG.adminWhatsApp) || '').replace(/\D/g, '');
-  if (due > 0 && upi && cur === 'INR') {
+  /* 19 Nov 2026 (TK-1 parity with Ticket::paymentQr / rawUpiQrOk): a sale the window
+     took in NPR (fxCurrency NPR + fxTotal) never gets a UPI-amount code - it goes to the
+     office ("Pay via office", the NPR due). The raw upi:// code with the amount only on a
+     CONFIRMED, not pay-at-boarding ticket with no proof already waiting, and only while
+     ticket_pay_qr_upi is on (default on); otherwise the live pay link (pay.php), which
+     records the UTR and can never take the money twice. */
+  const nprSale = String(b.fxCurrency || b.fx_currency || '').toUpperCase() === 'NPR' && Number(b.fxTotal || b.fx_total || 0) > 0;
+  if (due > 0 && upi && cur === 'INR' && !nprSale) {
+    const bs = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+    const pay = b.payment || {};
+    const proofWaiting = pay.status === 'pending' && !!(pay.utr || pay.shotThumb);
+    const rawOk = bs.ticket_pay_qr_upi !== false && b.status === 'confirmed' && !isCod && !proofWaiting;
+    const live = location.origin + '/pay.php?pnr=' + enc(b.id) + (isCod && b.dlKey ? '&k=' + enc(b.dlKey) : '');
     return { kind: 'due', due: due, paid: false, upi: upi, name: name,
-      url: 'upi://pay?pa=' + enc(upi) + '&pn=' + enc(name) + '&am=' + due.toFixed(2) + '&cu=INR&tn=' + enc(b.id) };
+      url: rawOk ? 'upi://pay?pa=' + enc(upi) + '&pn=' + enc(name) + '&am=' + due.toFixed(2) + '&cu=INR&tn=' + enc(b.id) : live };
   }
   if (due <= 0 && upi) {
     return { kind: 'upi', due: 0, paid: paid, upi: upi, name: name,
@@ -2946,10 +2967,10 @@ function renderStatus(id) {
     <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261116d" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261120a" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261116d" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261120a" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

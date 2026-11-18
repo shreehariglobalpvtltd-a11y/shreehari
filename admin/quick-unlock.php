@@ -57,7 +57,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 break;
             case 'set_secq':
                 $qk = (string) ($_POST['sec_q'] ?? '');
-                $q  = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS[$qk] ?? '');
+                // 19 Nov 2026 (u7/i3): a NEW answer only from the offered questions (no date of birth); saved answers keep working
+                $q  = $qk === 'own' ? trim(Security::clean((string) ($_POST['sec_own'] ?? ''), 150)) : (QuickUnlock::SEC_QUESTIONS_OFFERED[$qk] ?? '');
                 QuickUnlock::secSet($id, $q, (string) ($_POST['sec_a'] ?? ''));
                 $flash = ['ok', '✅ सुरक्षा प्रश्न राखियो · Security question saved.'];
                 break;
@@ -140,8 +141,8 @@ $pwField = $fresh ? '' : '<label>हालको पासवर्ड · Curren
       <?= Security::csrfField() ?><input type="hidden" name="action" value="set_secq">
       <?= $pwField ?>
       <label>प्रश्न · Question
-        <select name="sec_q" onchange="document.getElementById('quOwn').hidden=this.value!=='own';document.getElementById('quA').type=this.value==='dob'?'date':'text'">
-          <?php foreach (QuickUnlock::SEC_QUESTIONS as $k => $label): ?><option value="<?= Security::e($k) ?>"><?= Security::e($label) ?></option><?php endforeach; ?>
+        <select name="sec_q" onchange="document.getElementById('quOwn').hidden=this.value!=='own'">
+          <?php foreach (QuickUnlock::SEC_QUESTIONS_OFFERED as $k => $label): ?><option value="<?= Security::e($k) ?>"><?= Security::e($label) ?></option><?php endforeach; ?>
           <option value="own">आफ्नै प्रश्न लेख्ने · Write my own</option>
         </select></label>
       <label id="quOwn" hidden>तपाईंको प्रश्न · Your question<input type="text" name="sec_own" maxlength="150"></label>

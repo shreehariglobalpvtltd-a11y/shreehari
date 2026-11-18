@@ -107,7 +107,16 @@ final class WaAgentRoute
         if ($raw === '') {
             $raw = Settings::getString('company_whatsapp', '');
         }
-        return self::intl($raw);
+        /* 19 Nov 2026 (i1): a bare 10-digit admin number takes the spelling
+           (+977 / +91) that has written to our Meta number - a Nepal
+           98xxxxxxxx never becomes +91. Unknown = +91 as before. */
+        $hint = '';
+        try {
+            require_once INCLUDE_PATH . '/wainbox.php';
+            $hint = WaInbox::seenCountry($raw);
+        } catch (Throwable $ignored) {
+        }
+        return self::intl($raw, $hint);
     }
 
     /* -----------------------------------------------------------------

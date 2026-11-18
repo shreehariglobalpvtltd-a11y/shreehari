@@ -109,6 +109,20 @@ $xCols = '';
 foreach (['luggage_pieces', 'luggage_fee', 'infant_count', 'infant_fee'] as $xc) {
     $xCols .= CounterDesk::hasColumn('bookings', $xc) ? ', b.' . $xc : ', 0 AS ' . $xc;
 }
+/* 19 Nov 2026 (NP-2 phase 2, u10 request): the desk the sale was cut at and the NPR
+   frozen on it, so a booking sold at a Nepal window and paid on boarding says what the
+   crew collects in that money - ChalaniPng::deskMoney(), the office chalani's own rule. */
+$xCols .= CounterDesk::stampColumn() ? ', b.counter_code' : ", '' AS counter_code";
+foreach (['fx_currency', 'fx_rate', 'fx_total'] as $fc) {
+    $xCols .= CounterDesk::hasColumn('bookings', $fc) ? ', b.' . $fc : ', NULL AS ' . $fc;
+}
+/* "रू 4,480 (₹2,800)" for an NPR desk's sale, "₹2,800" for every other. */
+$bkMoney = static function (float $inr, array $r): string {
+    $desk = (string) ($r['counter_code'] ?? '');
+    return $desk !== '' && ChalaniPng::deskCurrency($desk) !== null
+        ? ChalaniPng::deskMoney($inr, $desk, $r)
+        : '₹' . number_format($inr);
+};
 foreach ($deps as $dep) {
     $rows = Database::fetchAll(
         "SELECT bp.id AS pax_id, bp.seat_no, bp.full_name, bp.gender, b.id AS booking_id, b.pnr, b.booking_mode, b.contact_phone,
@@ -316,10 +330,10 @@ dialog.pq::backdrop{background:rgba(8,15,30,.55)}
             <?php endif; ?>
             <?php $gPm = $pmB[(int) $r['booking_id']] ?? ['mode' => 'due', 'amt' => 0.0]; ?>
             <div class="pmrow"><span class="st <?= $e($cls) ?>"><?= $e($lbl) ?></span>
-              <span class="pm pm-<?= $e($gPm['mode']) ?>"><?= $e(ChalaniPng::payModeLabel($gPm['mode'], 'ne') . ($gPm['mode'] === 'boarding' && $gPm['amt'] > 0 ? ' ₹' . number_format($gPm['amt']) : '')) ?></span>
+              <span class="pm pm-<?= $e($gPm['mode']) ?>"><?= $e(ChalaniPng::payModeLabel($gPm['mode'], 'ne') . ($gPm['mode'] === 'boarding' && $gPm['amt'] > 0 ? ' ' . $bkMoney((float) $gPm['amt'], $r) : '')) ?></span>
               <?php if (!empty($gPm['claim'])): ?><span class="pm pm-pending"><?= $e(ChalaniPng::payClaimLabel('ne')) ?></span><?php endif; ?>
               <?php if ($gPm['mode'] === 'boarding'): ?><button type="button" class="qrb" data-payqr data-pnr="<?= $e($r['pnr']) ?>" data-name="<?= $e($g['lead']) ?>"
-                data-amt="₹<?= $e(number_format($gPm['amt'])) ?>" data-link="<?= $e(ChalaniPng::payLink((string) $r['pnr'])) ?>" data-qr="<?= $e($qrBase . rawurlencode((string) $r['pnr'])) ?>"
+                data-amt="<?= $e($bkMoney((float) $gPm['amt'], $r)) ?>" data-link="<?= $e(ChalaniPng::payLink((string) $r['pnr'])) ?>" data-qr="<?= $e($qrBase . rawurlencode((string) $r['pnr'])) ?>"
                 title="यात्रुलाई अनलाइन तिर्ने QR देखाउनुहोस् · Show the passenger a QR to pay online (free)">💳 QR</button><?php endif; ?></div>
           </div>
         <?php endforeach; ?>

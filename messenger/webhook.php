@@ -112,8 +112,19 @@ function msgr_handle(array $m): void
         // The PSID is the conversation key. It is not a phone, so the booking
         // bot will ask for a mobile before it can issue a ticket, and can
         // never book to the PSID (QuickTicket::sellCustomer rejects it).
-        $reply = WaBot::reply($psid, $text, 'text', []);
-        $r = Messenger::send($psid, (string) ($reply['text'] ?? ''), $reply['media'] ?? null);
+        /* 19 Nov 2026 (i1): a sale made in this Messenger chat says so - WaBooking
+           tags it MESSENGER (switch booking_channel_messenger_on, default 1), the
+           same note includes/fbmessenger.php uses; restored after the turn. */
+        require_once INCLUDE_PATH . '/wabooking.php';
+        $saleNoteWas = WaBooking::$saleNote;
+        WaBooking::$saleNote = 'sold by the Facebook Messenger assistant';
+        try {
+            $reply = WaBot::reply($psid, $text, 'text', []);
+        } finally {
+            WaBooking::$saleNote = $saleNoteWas;
+        }
+        $r = Messenger::send($psid, (string) ($reply['text'] ?? ''), $reply['media'] ?? null,
+            is_array($reply['ui'] ?? null) ? $reply['ui'] : null);
 
         Notify::logOutbound($psid, (string) ($reply['text'] ?? ''), $r['success'] ? 'sent' : 'failed', [
             'provider' => 'messenger',

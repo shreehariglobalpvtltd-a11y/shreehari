@@ -1023,6 +1023,15 @@ final class WaFlow
     {
         require_once ROOT_PATH . '/whatsapp/api.php';
         $hint = in_array(strtoupper($country), ['NP', '977'], true) ? 'NP' : (in_array(strtoupper($country), ['IN', '91'], true) ? 'IN' : null);
+        if ($hint === null) {
+            // 19 Nov 2026 (i1): no country given - the spelling (+977 / +91) that wrote to us decides, never a guessed +91.
+            try {
+                require_once INCLUDE_PATH . '/wainbox.php';
+                $seen = WaInbox::seenCountry($phone);
+                $hint = $seen === '977' ? 'NP' : ($seen === '91' ? 'IN' : null);
+            } catch (Throwable $ignored) {
+            }
+        }
         $to   = waCleanPhone($phone, $hint);
         if ($to === '') {
             return ['success' => false, 'error' => 'Not a mobile number.', 'via' => ''];
@@ -1069,7 +1078,7 @@ final class WaFlow
 
         $lang = in_array($lang, ['en', 'ne', 'hi', 'gu'], true) ? $lang : 'ne';
         $hint = str_starts_with($to, '977') ? 'NP' : 'IN';
-        if (WaRoute::metaWindowOpen($to)) {
+        if (WaRoute::metaWindowOpen($to, $hint)) {
             $text = WaBooking::bookingPrompt($lang);
             $reply = sendWhatsAppInteractive($to, $text, [
                 'kind' => 'buttons',

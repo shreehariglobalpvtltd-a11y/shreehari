@@ -175,6 +175,11 @@ final class WaHabit
         foreach (Database::fetchAll("SELECT * FROM wa_habits WHERE status = 'on' AND hour = :h AND (last_sent_day IS NULL OR last_sent_day < :d)", ['h' => $hour, 'd' => $today]) as $h) {
             $out['due']++;
             $intl = (string) $h['phone'];
+            if (strlen(preg_replace('/\D/', '', $intl) ?? '') === 10) {
+                // 19 Nov 2026 (i1): an old bare 10-digit row takes the spelling (+977 / +91) that wrote to us - never a guessed +91.
+                require_once INCLUDE_PATH . '/wainbox.php';
+                $intl = WaInbox::intl($intl);
+            }
             if (!WaRoute::metaWindowOpen($intl)) {
                 $out['skipped']++;                       // never paid: waits for the person's next message
                 Database::update('wa_habits', ['last_note' => 'window closed ' . date('H:i', $now)], 'id = :i', ['i' => (int) $h['id']]);

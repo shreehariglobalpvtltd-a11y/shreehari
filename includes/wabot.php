@@ -62,7 +62,14 @@ final class WaBot
                 if (!class_exists('CustomerDirectory') && is_file(INCLUDE_PATH . '/customerdirectory.php')) {
                     require_once INCLUDE_PATH . '/customerdirectory.php';
                 }
+                /* 19 Nov 2026 (i1): CUSTOMER text only - a staff / office / agent / counter
+                   number (AiTools::whoIs role staff or admin) is not a customer's language. */
+                $langWho = null;
                 if (class_exists('CustomerDirectory') && method_exists('CustomerDirectory', 'noteLang')) {
+                    require_once INCLUDE_PATH . '/aitools.php';
+                    $langWho = AiTools::whoIs($from);
+                }
+                if (is_array($langWho) && !in_array((string) ($langWho['role'] ?? 'customer'), ['staff', 'admin'], true)) {
                     $intl = preg_replace('/\D/', '', $from) ?? '';
                     if (str_starts_with($intl, '00')) {
                         $intl = substr($intl, 2);

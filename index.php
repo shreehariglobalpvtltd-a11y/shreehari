@@ -143,6 +143,9 @@ $boot = [
    offline pill's "N queued") - default OFF. Always in the feed, so the saved page a
    phone opens with no signal knows the answer even before the settings row exists. */
 $boot['settings']['offline_callback_on'] = Settings::getBool('offline_callback_on', false);
+/* 19 Nov 2026 (TK-1 parity): the app ticket's pay QR follows Ticket::rawUpiQrOk() - a raw
+   UPI code with the amount only while this is on (default on, like the server ticket). */
+$boot['settings']['ticket_pay_qr_upi'] = Settings::getBool('ticket_pay_qr_upi', true);
 
 /* Counter mode (3 Sep 2026): when a staff member who may sell is signed in,
    tell the app so it runs the SAME search -> seats -> checkout as a counter
@@ -298,8 +301,28 @@ if ($staffRow !== null) {
        (14-counter.js then shows its own code, read-only); the server refuses
        another code anyway. Staff, counter and office keep the full list. */
     $boot['staff']['agents'] = Auth::isCounterAgent() ? [] : AgentWallet::sellableAgents();
-    // AG-3 (19 Nov 2026): staff_commission_off on = staff entries earn no commission (label only here)
-    $boot['staff']['staffNoComm'] = Settings::getBool('staff_commission_off', false);
+    /* AG-3 (19 Nov 2026): a staff entry that earns no commission (staff_commission_off)
+       says "जना मात्र · passenger count" in the desk lists (label only here). Decided per
+       staff member by AgentWallet::staffCommissionOff(<their admin id>), the rule the
+       wallet pays by - so staff_commission_counter_staff_off is respected too. The
+       list-wide staffNoComm (same default as the wallet: on) is the fallback. */
+    $boot['staff']['staffNoComm'] = Settings::getBool('staff_commission_off', true);
+    if ($boot['staff']['agents'] !== []) {
+        $staffIdByCode = [];
+        try {
+            foreach (Database::fetchAll('SELECT admin_id, staff_no FROM ap_members WHERE staff_no IS NOT NULL') as $sm) {
+                $staffIdByCode['SHG-S-' . str_pad((string) (int) $sm['staff_no'], 4, '0', STR_PAD_LEFT)] = (int) $sm['admin_id'];
+            }
+        } catch (Throwable $e3) {
+            $staffIdByCode = [];   // AgentPro not installed: the list-wide flag decides
+        }
+        foreach ($boot['staff']['agents'] as &$sbAg) {
+            if (($sbAg['type'] ?? '') === 'staff' && isset($staffIdByCode[(string) $sbAg['code']])) {
+                $sbAg['noComm'] = AgentWallet::staffCommissionOff($staffIdByCode[(string) $sbAg['code']]);
+            }
+        }
+        unset($sbAg);
+    }
     // NP-1: the run this desk opens on ('toIndia' for a Nepal desk / Nepal agent branch)
     $boot['staff']['desk']['direction'] = CounterDesk::direction($deskCode);
     /* NP-3 (19 Nov 2026): the sales closing clock for THIS seller, today only,

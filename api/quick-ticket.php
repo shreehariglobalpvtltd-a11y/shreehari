@@ -331,6 +331,10 @@ try {
             // 16 Nov 2026 (P8-3f / P4-4d): the desk's extras; charged only behind their owner switches
             'luggagePieces' => (int) ($in['luggagePieces'] ?? 0),
             'infantCount'   => (int) ($in['infantCount'] ?? 0),
+            /* 19 Nov 2026: "पैसा कहिले? · When will they pay" {when, amount?, date?, note?} -
+               a note on a Cash sale only; BookingService::cashNoteClean() keeps what is real
+               and it never confirms or changes a payment. */
+            'cashNote'      => is_array($in['cashNote'] ?? null) ? $in['cashNote'] : null,
         ];
         /* 5 Oct 2026 (owner): the agent is compulsory on Quick Ticket as well.
            The page already asks for it, but the server used to fall back to

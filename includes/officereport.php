@@ -451,7 +451,10 @@ final class OfficeReport
         foreach ($out as $n) { $seen[normalisePhone($n)] = true; }
         foreach (preg_split('/[\s,;]+/', Settings::getString('counter_day_report_numbers', '')) ?: [] as $n) {
             $d = preg_replace('/\D/', '', (string) $n) ?? '';
-            if (strlen($d) < 10) { continue; }
+            if (!preg_match('/^(91[6-9]\d{9}|9779[6-8]\d{8})$/', $d)) {
+                if ($d !== '') { Logger::warning('counter_day_report_numbers: skipped a number without country code', ['n' => substr($d, -4)], 'report'); }
+                continue;   // a bare 98xxxxxxxx would become +91 - only full 91/977 numbers
+            }
             $k = normalisePhone($d);
             if ($k === '' || isset($seen[$k])) { continue; }
             $seen[$k] = true;

@@ -564,6 +564,7 @@ final class AgentWallet
                 'type' => 'staff',
                 'co'   => false,
                 'city' => trim((string) ($sr['city'] ?? '')),
+                'noComm' => self::staffCommissionOff((int) $sr['id']),   // AG-3: counted, not paid per head
             ];
         }
         return $list;

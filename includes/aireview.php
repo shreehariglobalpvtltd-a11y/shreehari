@@ -94,12 +94,12 @@ final class AiReview
 
     public static function nightUsd(): float
     {
-        return max(0.0, (float) Settings::getString('ai_review_usd', '1.50'));
+        return min(10.0, max(0.0, (float) Settings::getString('ai_review_usd', '1.50')));   // hard cap = ai-center + easy-settings max
     }
 
     public static function monthUsd(): float
     {
-        return max(0.0, (float) Settings::getString('ai_review_month_usd', '45'));
+        return min(300.0, max(0.0, (float) Settings::getString('ai_review_month_usd', '45')));
     }
 
     public static function maxTokens(): int

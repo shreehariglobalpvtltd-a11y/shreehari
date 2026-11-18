@@ -1319,7 +1319,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116d" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120a" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
@@ -1847,6 +1847,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261116d" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120a" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

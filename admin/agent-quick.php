@@ -25,6 +25,7 @@ require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/agentpro.php';
 require_once INCLUDE_PATH . '/quickunlock.php';
+require_once INCLUDE_PATH . '/agentpro-card.php';
 $admin = admin_boot('customers.view');
 $e     = static fn($v): string => Security::e((string) ($v ?? ''));
 
@@ -143,6 +144,9 @@ if ($allowed && Security::isPost()) {
                     $branchErr = $bx->getMessage();
                 }
             }
+            /* 19 Nov 2026 (u6/i3): every card design drawn into the cache after the answer has
+               gone (reads the member at shutdown, so the PIN / branch above are on it). */
+            AgentPro::warmCards($aid);
             Logger::audit('agent.quick_add', 'admin', (string) $aid, null,
                 ['role' => $in['role'], 'pin' => $pinSet, 'branch' => $branchCode], 'Quick add (name + number) by admin #' . $by);
             $_SESSION['shg_quick2_done'] = [
@@ -239,11 +243,48 @@ admin_header('⚡ Quick Agent · नाम + नम्बर', 'agent-quick');
     <?php /* 19 Nov 2026: the member's ID card in its three styles + the visiting card
              (api/agentpro-card.php, built by the card unit). */ ?>
     <div class="acts" aria-label="ID card styles">
-      <?php foreach (['royal' => '👑 Royal', 'modern' => '✨ Modern', 'heritage' => '🏛 Heritage'] as $v => $vl): ?>
+      <?php foreach (['royal' => '👑 शाही · Royal', 'modern' => '✨ आधुनिक · Modern', 'heritage' => '🏛 सम्पदा · Heritage'] as $v => $vl): ?>
         <a class="btn ghost" target="_blank" rel="noopener" href="/api/agentpro-card.php?member=<?= (int) $done['id'] ?>&amp;kind=id&amp;variant=<?= $e($v) ?>">🪪 ID · <?= $e($vl) ?></a>
       <?php endforeach; ?>
-      <a class="btn ghost" target="_blank" rel="noopener" href="/api/agentpro-card.php?member=<?= (int) $done['id'] ?>&amp;kind=vc">📇 भिजिटिङ कार्ड · Visiting card</a>
+      <a class="btn ghost" id="qaVcOne" target="_blank" rel="noopener" href="/api/agentpro-card.php?member=<?= (int) $done['id'] ?>&amp;kind=vc">📇 भिजिटिङ कार्ड · Visiting card</a>
     </div>
+    <?php /* 19 Nov 2026 (u6/i3): the A4 print sheets (4 ID cards / 10 visiting cards, crop marks)
+             as signed 24 h links, in the design picked here ('' = the office's default). */
+      $sheetUrls = [];
+      try {
+          foreach (array_merge([''], ApCard::VARIANTS) as $v) {
+              $sheetUrls[$v] = ['id' => ApCard::signedUrl((int) $done['id'], 'sheet-id', 86400, $v),
+                                'vc' => ApCard::signedUrl((int) $done['id'], 'sheet-vc', 86400, $v)];
+          }
+      } catch (Throwable $sx) {
+          $sheetUrls = [];
+      }
+      $designLabel = ['' => 'अफिसको डिजाइन · Office default', 'royal' => '👑 शाही सुनौलो · Royal Gold', 'modern' => '✨ आधुनिक नीलो · Modern Blue', 'heritage' => '🏛 नेपाल-भारत सम्पदा · Heritage'];
+      $vcOneBase = '/api/agentpro-card.php?member=' . (int) $done['id'] . '&kind=vc';
+    ?>
+    <?php if ($sheetUrls !== []): ?>
+    <div class="acts" aria-label="A4 print sheets" style="align-items:center">
+      <label for="qaDesign" style="font-weight:800;font-size:13.5px">डिजाइन · Design
+        <select id="qaDesign" style="min-height:44px;margin-left:6px;border-radius:10px;font:inherit">
+          <?php foreach ($sheetUrls as $v => $u): ?>
+            <option value="<?= $e($v) ?>" data-id="<?= $e($u['id']) ?>" data-vc="<?= $e($u['vc']) ?>" data-vcone="<?= $e($vcOneBase . ($v !== '' ? '&variant=' . $v : '')) ?>"><?= $e($designLabel[$v] ?? $v) ?></option>
+          <?php endforeach; ?>
+        </select></label>
+      <a class="btn ghost" id="qaSheetId" target="_blank" rel="noopener" href="<?= $e($sheetUrls['']['id']) ?>">🖨 A4 ID cards · ID कार्ड A4</a>
+      <a class="btn ghost" id="qaSheetVc" target="_blank" rel="noopener" href="<?= $e($sheetUrls['']['vc']) ?>">🖨 A4 visiting cards · भिजिटिङ कार्ड A4</a>
+    </div>
+    <script>
+    (function () {
+      var s = document.getElementById('qaDesign'), a = document.getElementById('qaSheetId'), b = document.getElementById('qaSheetVc'),
+          c = document.getElementById('qaVcOne');
+      if (s && a && b) s.addEventListener('change', function () {
+        var o = s.options[s.selectedIndex];
+        a.href = o.getAttribute('data-id'); b.href = o.getAttribute('data-vc');
+        if (c && o.getAttribute('data-vcone')) c.href = o.getAttribute('data-vcone');
+      });
+    })();
+    </script>
+    <?php endif; ?>
   </div>
 
 <?php else: ?>

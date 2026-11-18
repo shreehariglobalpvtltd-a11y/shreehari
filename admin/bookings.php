@@ -263,12 +263,24 @@ $fromSql = "FROM bookings b
           LEFT JOIN buses bu ON bu.id = s.bus_id"
      . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '');
 
+/* 19 Nov 2026 (NP-2, u10 request): the desk the money is written in - the "counter"
+   filter, else this login's own desk. At an NPR desk the amounts read "रू 4,480 (₹2,800)"
+   (shg_booking_desk_money), with the NPR frozen on each sale (bookings.fx_*) where it has
+   one. A rupee desk or no desk keeps the plain ₹ figure. Display only. */
+$moneyDesk = $tripF['counter'] !== '' ? (string) $tripF['counter'] : (string) (Auth::deskScopeCode() ?? '');
+$hasFx     = CounterDesk::frozenColumns()['bookings'];
+$fxSel     = $hasFx ? 'b.fx_currency, b.fx_total, b.fx_rate' : 'NULL AS fx_currency, NULL AS fx_total, NULL AS fx_rate';
+
 // Totals over the WHOLE filtered set (not just this page).
 $agg = Database::fetch(
     "SELECT COUNT(*) AS total,
             COALESCE(SUM(b.status = 'confirmed'), 0) AS confirmed,
             COALESCE(SUM(b.status = 'pending'), 0) AS pending,
-            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') THEN b.total_amount ELSE 0 END), 0) AS revenue
+            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') THEN b.total_amount ELSE 0 END), 0) AS revenue"
+     . ($hasFx ? ",
+            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') AND b.fx_currency = 'NPR' AND (b.fx_rate > 0 OR b.fx_total > 0)
+                              THEN (CASE WHEN b.fx_rate > 0 THEN b.total_amount * b.fx_rate WHEN b.total_amount > 0 THEN b.fx_total ELSE 0 END) ELSE 0 END), 0) AS fx_npr,
+            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') AND b.fx_currency = 'NPR' AND (b.fx_rate > 0 OR b.fx_total > 0) THEN b.total_amount ELSE 0 END), 0) AS fx_inr" : '') . "
      " . $fromSql,
     $params
 ) ?? ['total' => 0, 'confirmed' => 0, 'pending' => 0, 'revenue' => 0];
@@ -276,6 +288,24 @@ $totalResults     = (int) $agg['total'];
 $confirmedCount   = (int) $agg['confirmed'];
 $pendingCount     = (int) $agg['pending'];
 $confirmedRevenue = (float) $agg['revenue'];
+/* The Revenue card at an NPR desk: the NPR frozen on the sales that have it, plus the
+   rest at the desk's rate - one desk, so INR and NPR are never added together. A frozen
+   sale counts as total_amount x fx_rate (fx_total only where fx_rate is 0), the same order
+   as ChalaniPng::rateFor, so after a partial cancel or a fare correction the card still
+   equals the sum of its rows. */
+$revenueTxt = inr($confirmedRevenue);
+if ($moneyDesk !== '') {
+    require_once INCLUDE_PATH . '/chalanipng.php';
+    $deskCur = ChalaniPng::deskCurrency($moneyDesk);
+    if ($deskCur !== null && $deskCur['code'] === 'NPR') {
+        $fxInr = min($confirmedRevenue, (float) ($agg['fx_inr'] ?? 0));
+        $nprAll = (float) ($agg['fx_npr'] ?? 0) + ($confirmedRevenue - $fxInr) * ChalaniPng::rateFor([], $moneyDesk);
+        $revenueTxt = shg_booking_desk_money($confirmedRevenue, $moneyDesk,
+            $confirmedRevenue > 0 ? ['fx_currency' => 'NPR', 'fx_total' => $nprAll, 'total_amount' => $confirmedRevenue] : null);
+    } else {
+        $revenueTxt = shg_booking_desk_money($confirmedRevenue, $moneyDesk);
+    }
+}
 $pages = max(1, (int) ceil($totalResults / $PER_PAGE));
 if ($page > $pages) { $page = $pages; }
 $offset = ($page - 1) * $PER_PAGE;
@@ -284,6 +314,7 @@ $offset = ($page - 1) * $PER_PAGE;
 // real prepares and would quote a bound LIMIT (same note as activity-log.php).
 $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.booking_mode,
                b.source, b.sold_by_admin_id, b.is_cod, b.parcel_tag, b.border_id_verified, b.sub_agent_admin_id, b.parent_agent_id,
+               " . $fxSel . ",
                r.from_city, r.to_city, r.route_code, bl.travel_date, bl.boarding_stop, bl.drop_stop,
                s.id AS schedule_id, COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
                bu.bus_number, bu.bus_name,
@@ -720,7 +751,7 @@ $canEdit   = Auth::can('bookings.edit');
   </div>
   <div class="card">
     <div class="k">Revenue</div>
-    <div class="v"><?= Security::e(inr($confirmedRevenue)) ?></div>
+    <div class="v"><?= Security::e($revenueTxt) ?></div>
   </div>
 </div>
 
@@ -806,7 +837,7 @@ $canEdit   = Auth::can('bookings.edit');
             </form>
           <?php endif; ?>
         </td>
-        <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>
+        <td data-label="Amount"><?= Security::e($moneyDesk !== '' ? shg_booking_desk_money((float) $b['total_amount'], $moneyDesk, $b) : inr((float) $b['total_amount'])) ?></td>
         <td data-label="Status"><?= admin_pill((string) $b['status']) ?></td>
         <td data-label="Actions"><div class="tk-acts">
           <a class="btn ghost" href="<?= $viewUrl ?>" title="Open the ticket">👁 View</a>

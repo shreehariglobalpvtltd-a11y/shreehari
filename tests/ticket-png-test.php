@@ -6,7 +6,8 @@
  *   • Ticket::pngPath() renders a 1080x1620 PNG, caches via tickets.png_path,
  *     and force-rerenders on demand;
  *   • Ticket::reissue() clears the PNG cache with the PDF one;
- *   • the ONE QR: verifyQrPayload() accepts the keyed verify URL (camera
+ *   • the verify QR (19 Nov 2026: no longer the only QR - a ticket may also
+ *     carry a pay QR and map QRs): verifyQrPayload() accepts the keyed verify URL (camera
  *     opens the live page, the boarding scanner posts the same string) and
  *     refuses a tampered key — while the legacy pipe payload still verifies;
  *   • Ticket::imageUrl() carries the download key;
@@ -113,7 +114,7 @@ check('pdf_path cleared too', Database::scalar('SELECT pdf_path FROM tickets WHE
 Ticket::pngPath($bid);           // restore the cache for the live site
 check('re-render restores the cache', (string) Database::scalar('SELECT png_path FROM tickets WHERE booking_id = :b', ['b' => $bid], '') !== '');
 
-echo "\n== one QR: URL form verifies like the payload ==\n";
+echo "\n== verify QR: URL form verifies like the payload ==\n";
 $url = appUrl('verify-ticket.php') . '?pnr=' . urlencode($pnr) . '&k=' . Ticket::downloadToken($pnr);
 check('verify URL resolves to the PNR', Ticket::verifyQrPayload($url) === $pnr);
 check('tampered key is refused', Ticket::verifyQrPayload(str_replace('&k=', '&k=0', $url)) === null);

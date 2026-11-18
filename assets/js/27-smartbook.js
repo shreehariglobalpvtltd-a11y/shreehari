@@ -418,6 +418,7 @@
     sel.value = S.point;
     $('sbPointWhy').textContent = S.why.point ? L3(S.why.point) : '';
     $('sbCc').value = S.cc; $('sbPhone').value = S.phone; $('sbName').value = S.name;
+    altOther();   // a pasted / AI-filled main number can change S.cc without a 'change' event
     seg('sbType', S.type); seg('sbCabin', S.cabin); seg('sbBerth', S.berth); seg('sbSeatMode', S.seatMode);
     $('sbCabin').hidden = S.type !== 'private';
     nearSync();   // P4-1f: the 📍 button only where it can answer
@@ -502,10 +503,66 @@
     if (d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
     return /^[6-9]\d{9}$/.test(d) ? '' : tr('needPhoneIn');
   }
+  /* 19 Nov 2026 (u4 desk glue): the desk card's optional second WhatsApp number - 10 digits
+     in its own country, never the same as the first (SmartBook::bookNow checks it again). */
+  function altDigits() {
+    var el = $('sbAltPhone'); if (!el) return '';
+    var d = digits(el.value), np = ($('sbAltCc') || {}).value === 'NP';
+    if (np && d.length === 13 && d.indexOf('977') === 0) d = d.slice(3);
+    if (!np && d.length === 12 && d.indexOf('91') === 0) d = d.slice(2);
+    if (!np && d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
+    return d;
+  }
+  function altErr() {
+    var d = altDigits(); if (!d) return '';
+    if (d.length !== 10 || d === digits(S.phone).slice(-10)) return 'दोस्रो नम्बर: १० अङ्क, पहिलोभन्दा फरक · 2nd number: 10 digits, not the first number';
+    /* the same country rules as phoneErr(), so the ticket never goes to a number that cannot
+       exist (and BookingService::create would silently drop one not starting 6-9) */
+    if (($('sbAltCc') || {}).value === 'NP') {
+      if (!/^9[678]\d{8}$/.test(d)) return 'दोस्रो नम्बर: नेपाल नम्बर 98/97/96 बाट सुरु हुन्छ · 2nd number: a Nepal number starts with 98/97/96';
+    } else if (!/^[6-9]\d{9}$/.test(d)) {
+      return 'दोस्रो नम्बर: भारत नम्बर 6/7/8/9 बाट सुरु हुन्छ · 2nd number: an India number starts with 6/7/8/9';
+    }
+    return '';
+  }
+  /* while the clerk has not chosen the 2nd number's country: a typed +977 / +91 prefix picks
+     it, and a number that cannot be a Nepal mobile (not 96/97/98) is India. 98... stays as
+     it is (it can be either country). */
+  function altGuessCc() {
+    var cc = $('sbAltCc'), el = $('sbAltPhone'); if (!cc || !el || S.altPicked) return;
+    var raw = String(el.value || '').replace(/[^\d+]/g, ''), d = digits(raw);
+    /* 977 counts as the code only with a '+' or past 10 digits: 9771234567 is a real India mobile */
+    if (/^\+977/.test(raw) || (d.length >= 11 && d.indexOf('977') === 0)) { cc.value = 'NP'; return; }
+    if (/^\+91/.test(raw) || (d.length === 12 && d.indexOf('91') === 0)) { cc.value = 'IN'; return; }
+    if (d.length >= 2 && !/^9[678]/.test(d)) cc.value = 'IN';
+  }
+  /* 19 Nov 2026: "पैसा कहिले? · When will they pay" on a desk Cash sale - a note for the
+     office only, never a payment (BookingService::cashNoteClean keeps what is real). */
+  function cashNote() {
+    var w = $('sbxCashWhen'); if (!w || !w.value) return null;
+    var o = { when: w.value };
+    if (w.value === 'partial') { var a = Number(($('sbxCashAmt') || {}).value) || 0; if (a > 0) o.amount = Math.round(a * 100) / 100; }
+    if (w.value !== 'full') { var d = String(($('sbxCashDate') || {}).value || ''); if (/^\d{4}-\d{2}-\d{2}$/.test(d)) o.date = d; }
+    var n = String(($('sbxCashTxt') || {}).value || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (n) o.note = n;
+    return o;
+  }
+  function cashNoteText(o) {
+    if (!o) return '';
+    var w = { full: 'पूरा तिर्यो · Paid in full', partial: 'आंशिक · Part paid', later: 'पछि तिर्ने · Pays later' }[o.when] || '';
+    return [w, o.amount ? money(o.amount) : '', o.date ? (o.when === 'later' ? '' : 'by ') + o.date : '', o.note || ''].filter(Boolean).join(' · ');
+  }
+  /* Is this desk-list entry a staff member who earns no commission (staff_commission_off)?
+     The server says so per entry (a.noComm) or for the whole list (STAFF.staffNoComm). */
+  function noComm(a) {
+    if (!a || a.type !== 'staff') return false;
+    if (typeof a.noComm === 'boolean') return a.noComm;
+    return !!(STAFF && STAFF.staffNoComm);
+  }
   function errs() {
     var e = {};
     if (STAFF && STAFF.agentRequired && $('sbAgent') && !S.agent) e.agent = tr('needAgent');
     var pe = phoneErr(); if (pe) e.phone = pe;
+    var ae = STAFF ? altErr() : ''; if (ae) e.alt = ae;
     if (String(S.name || '').trim().length < 2) e.name = tr('needName');
     if (S.pax.some(function (p) { return !p.gender; })) e.pax = tr('needGender');
     return e;
@@ -514,6 +571,7 @@
     var e = errs();
     var f = [['phone', 'sbPhone', 'sbPhoneE'], ['name', 'sbName', 'sbNameE'], ['pax', null, 'sbPaxE']];
     if ($('sbAgent')) f.unshift(['agent', 'sbAgent', 'sbAgentE']);
+    if ($('sbAltPhone')) f.push(['alt', 'sbAltPhone', 'sbAltE']);
     f.forEach(function (x) {
       var show = !!e[x[0]] && (all || S.touched[x[0]]);
       var el = $(x[2]); el.hidden = !show; el.textContent = show ? e[x[0]] : '';
@@ -836,6 +894,7 @@
   function renderQuote(flash) {
     var q = S.q;
     var line = $('sbSeatLine');
+    clockLine(q);
     if (q) {
       if (q.ok) {
         var tag = q.auto ? tr('autoTag') : tr('yours');
@@ -886,6 +945,22 @@
     syncPoint();
     renderQLine();
     renderPromo();
+  }
+  /* 19 Nov 2026 (NP-3): today's bus was closed by the sales clock and the quote moved to a
+     later day (quote.clockNote {label, reason}) - say so loudly above the quick line, never
+     a silent jump. Shown in Quick and Full mode; gone again when the note is. */
+  function clockLine(q) {
+    var cn = q && q.clockNote, el = $('sbClock');
+    if (!cn || !(cn.label || cn.reason)) { if (el) { el.hidden = true; el.innerHTML = ''; } return; }
+    if (!el) {
+      var at = $('sbQLine'); if (!at || !at.parentNode) return;
+      el = document.createElement('p'); el.id = 'sbClock'; el.className = 'sb-clock'; el.setAttribute('role', 'alert');
+      el.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:9px;background:#FFF4E5;border:1px solid #F5A623;color:#7A4100;font-weight:700;font-size:13px;line-height:1.35';
+      at.parentNode.insertBefore(el, at);
+    }
+    el.hidden = false;
+    el.innerHTML = '⛔ ' + esc(cn.label || '') + (cn.reason ? '<br><small style="font-weight:500">' + esc(cn.reason) + '</small>' : '')
+      + (q.dateLabel ? '<br><small style="font-weight:500">यो टिकट ' + esc(q.dateLabel) + ' को बसका लागि हो · This ticket is for ' + esc(q.dateLabel) + '</small>' : '');
   }
   /* 14 Nov 2026: the pickup box shows the pickup that will really be booked.
      A pickup that is past / inside the boarding cut-off for the day is still in the
@@ -1359,16 +1434,22 @@
      16 Oct 2026 (owner: "network wala ma confirm namagne, one click mai ticket"):
      a staff desk never gets the sheet - one click books, like Ctrl+Enter and Auto-book. */
   function book(pay, wantPrint, verify, tap) {
-    S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = S.touched.agent = true;
+    S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = S.touched.agent = S.touched.alt = true;
     var e = showErrs(true);
     if (Object.keys(e).length) {
-      var k = Object.keys(e)[0], el = k === 'phone' ? $('sbPhone') : (k === 'name' ? $('sbName') : (k === 'agent' ? $('sbAgent') : $('sbPax')));
+      var k = Object.keys(e)[0], el = k === 'phone' ? $('sbPhone') : (k === 'name' ? $('sbName') : (k === 'agent' ? $('sbAgent') : (k === 'alt' ? $('sbAltPhone') : $('sbPax'))));
       say(e[k]);
       try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {}
       if (k !== 'pax') el.focus({ preventScroll: true }); else { var g = el.querySelector('.sb-g.u'); if (g) g.focus({ preventScroll: true }); }
       return;
     }
     if (S.busy) return;
+    // 19 Nov 2026: "Part paid" needs the amount, or the note would say nothing
+    if (STAFF && pay === 'cash' && $('sbxCashWhen') && $('sbxCashWhen').value === 'partial' && !(Number(($('sbxCashAmt') || {}).value) > 0)) {
+      say('आंशिक भए रकम लेख्नुहोस् · Part paid: enter the amount (₹)');
+      try { $('sbxCashAmt').focus(); } catch (x) {}
+      return;
+    }
     /* 14 Nov 2026: the card just changed (gender, date, pickup …) and its new quote is
        still on the way — S.q is the OLD berth / pickup. Wait for the new one, then go
        on: the seat map and the confirm sheet are never drawn from a stale quote.
@@ -1404,6 +1485,11 @@
     if (dx.lug > 0) body.luggagePieces = dx.lug;
     if (dx.inf > 0) body.infantCount = dx.inf;
     var emB = emBody(); if (emB) body.emergency = emB;   // 15 Nov 2026 (P7): only a valid number that is not the passenger's own
+    if (STAFF) {   // 19 Nov 2026: the 2nd WhatsApp number (its own country) + the Cash sale's "when will they pay"
+      var altD = altDigits();
+      if (altD && !altErr()) { body.altPhone = altD; body.altCountry = $('sbAltCc') && $('sbAltCc').value === 'NP' ? 'NP' : 'IN'; }
+      var cnB = pay === 'cash' ? cashNote() : null; if (cnB) body.cashNote = cnB;
+    }
     store.set();
     api(body).then(function (r) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
@@ -1515,7 +1601,13 @@
       rows.push(['🆘 ' + tr('emS'), [emS.name, emR ? emR.ne : '', (emS.country === 'IN' ? '+91 ' : '+977 ') + emS.phone].filter(Boolean).join(' · ')]);
     }
     if (STAFF && ticketNote()) rows.push(['🧾 ' + tr('tNote'), ticketNote()]);
-    if (STAFF && (S.agent || STAFF.ownCode)) rows.push([tr('credited'), S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)]);
+    if (STAFF && (S.agent || STAFF.ownCode)) {
+      var credA = S.agent && S.agent !== 'OTHER' ? agentByCode(S.agent) : null;
+      rows.push([tr('credited'), (S.agent === 'OTHER' ? (STAFF.company || '') : (S.agent || STAFF.ownCode)) + (noComm(credA) ? ' · जना मात्र · passenger count' : '')]);
+    }
+    if (STAFF && altDigits() && !altErr()) rows.push(['📱 दोस्रो नम्बर · 2nd number', (($('sbAltCc') || {}).value === 'NP' ? '+977 ' : '+91 ') + altDigits()]);
+    if (STAFF) { var cnS = cashNoteText(cashNote()); if (cnS) rows.push(['💵 पैसा कहिले? · When will they pay', cnS]); }
+    if (q.clockNote && q.clockNote.label) rows.push(['⛔ ' + q.clockNote.label, q.dateLabel || q.date || '']);
     return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(Number(q.price.total) + dxS.amt) : '—') + '</b>'
       + (q.price ? '<span>≈ ' + esc(npr(dxS.amt > 0 && Number(q.price.total) > 0 ? Math.round(Number(q.price.npr) * (Number(q.price.total) + dxS.amt) / Number(q.price.total)) : q.price.npr)) + '</span>' : '') + '</div><dl>'
       + rows.filter(function (r) { return String(r[1] || '').replace(/[\s·→+]/g, '') !== ''; })
@@ -1814,7 +1906,12 @@
   }
   function agentByCode(code) { for (var i = 0; i < AGENTS.length; i++) { if (AGENTS[i].code === code) return AGENTS[i]; } return null; }
   function agentLine(a) { return a.code + ' · ' + a.name + (a.city ? ' · ' + a.city : ''); }
-  function agentRate(a) { if (!STAFF || !STAFF.commFlat) return ''; return money(a && a.type === 'joint' ? STAFF.commJoint : STAFF.commDirect) + '/pax'; }
+  function agentRate(a) {
+    if (!STAFF) return '';
+    if (noComm(a)) return 'जना मात्र · passenger count';   // AG-3: staff_commission_off - staff are counted, not paid per head
+    if (!STAFF.commFlat) return '';
+    return money(a && a.type === 'joint' ? STAFF.commJoint : STAFF.commDirect) + '/pax';
+  }
   /* exact = a code only (while typing); loose = a code, or ONE agent whose line contains the text */
   function findAgent(s, loose) {
     var c = normCode(s); if (c) return agentByCode(c);
@@ -1869,8 +1966,69 @@
   }
 
   /* Counter keyboard: Ctrl+Enter = auto-berth + Cash + print · Enter in the name / passengers = one more passenger. */
+  /* 19 Nov 2026 (u4 desk glue): the staff card's own extra fields, built here so the
+     customer page never carries them (admin/smartbook.php reads the card from the one
+     template). (1) दोस्रो नम्बर · 2nd number with its own India / Nepal select, under the
+     mobile + name; it starts on the OTHER country of the main number until the clerk picks.
+     (2) पैसा कहिले? · When will they pay - in the desk box above Book (else under the 2nd
+     number); sent with a Cash sale only. */
+  function buildDeskMore() {
+    if (!STAFF || $('sbAltF')) return;
+    var grid = root.querySelector('.sb-grid');
+    if (grid && grid.parentNode) {
+      var f = document.createElement('div');
+      f.className = 'sb-f sb-f-alt'; f.id = 'sbAltF'; f.style.margin = '8px 0 0';
+      f.innerHTML = '<label class="sb-l" for="sbAltPhone">📱 दोस्रो नम्बर · 2nd number <small style="text-transform:none;font-weight:600;opacity:.7">(ऐच्छिक · optional — टिकट दुवैमा जान्छ · the ticket goes to both)</small></label>'
+        + '<div class="sb-tel"><select id="sbAltCc" aria-label="2nd number country"><option value="IN">+91 🇮🇳</option><option value="NP">+977 🇳🇵</option></select>'
+        + '<input id="sbAltPhone" type="tel" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="98XXXXXXXX"></div>'
+        + '<small class="sb-fe" id="sbAltE" hidden></small>';
+      grid.parentNode.insertBefore(f, grid.nextSibling);
+      var cc = $('sbAltCc');
+      S.altPicked = false;   // resetDeskMore() clears it for the next customer
+      altOther();
+      cc.addEventListener('change', function () { S.altPicked = true; S.idem = null; showErrs(false); syncButtons(); });
+      $('sbCc').addEventListener('change', altOther);
+      $('sbAltPhone').addEventListener('input', function () { altGuessCc(); S.idem = null; showErrs(false); syncButtons(); });
+      $('sbAltPhone').addEventListener('blur', function () { S.touched.alt = true; showErrs(false); });
+    }
+    var host = $('sbxDesk') || $('sbAltF');
+    if (host && !$('sbxCash')) {
+      var c = document.createElement('span');
+      c.className = 'sbx-tnote sbx-cash'; c.id = 'sbxCash';
+      c.innerHTML = '<label for="sbxCashWhen">💵 पैसा कहिले? · When will they pay <small style="font-weight:600;opacity:.7">(Cash)</small></label>'
+        + '<select id="sbxCashWhen" style="min-height:40px;border-radius:9px;padding:0 8px;font:inherit;font-weight:600">'
+        + '<option value="">— ऐच्छिक · optional —</option><option value="full">पूरा तिर्यो · Paid in full</option>'
+        + '<option value="partial">आंशिक · Part paid (₹)</option><option value="later">पछि तिर्ने · Pays later</option></select>'
+        + '<span id="sbxCashMore" hidden style="flex-wrap:wrap;gap:6px">'
+        + '<input id="sbxCashAmt" type="number" min="1" step="1" inputmode="numeric" placeholder="₹ रकम · amount" aria-label="Amount paid now (₹)" style="flex:1 1 110px">'
+        + '<input id="sbxCashDate" type="date" aria-label="Pays by (date)" style="flex:1 1 140px"></span>'
+        + '<input id="sbxCashTxt" maxlength="80" autocomplete="off" placeholder="नोट · note (जस्तै: बाँकी भाइले दिन्छ)" aria-label="Cash note" hidden>'
+        + '<small>कार्यालयको लागि नोट मात्र — भुक्तानी पक्का गर्दैन · a note for the office only, never a payment</small>';
+      host.appendChild(c);
+      var w = $('sbxCashWhen');
+      var paintCash = function () {
+        var v = w.value, more = $('sbxCashMore');
+        more.hidden = !(v === 'partial' || v === 'later');
+        more.style.display = more.hidden ? 'none' : 'flex';
+        $('sbxCashAmt').hidden = v !== 'partial';
+        $('sbxCashTxt').hidden = v === '';
+        try { $('sbxCashDate').min = todayIso(); } catch (x) {}
+      };
+      w.addEventListener('change', paintCash);
+      paintCash();
+    }
+  }
+  /* the 2nd number starts on the other country of the main number until the clerk picks one */
+  function altOther() { var cc = $('sbAltCc'); if (!cc || S.altPicked) return; cc.value = S.cc === 'NP' ? 'IN' : 'NP'; altGuessCc(); }
+  function resetDeskMore() {
+    ['sbAltPhone', 'sbxCashAmt', 'sbxCashDate', 'sbxCashTxt'].forEach(function (id) { var el = $(id); if (el) el.value = ''; });
+    S.altPicked = false; altOther();   // a country picked for one customer must not stick to the next
+    var w = $('sbxCashWhen'); if (w && w.value) { w.value = ''; try { w.dispatchEvent(new Event('change')); } catch (x) {} }
+  }
+
   if (STAFF) {
     initAgent();
+    buildDeskMore();
     root.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); book('cash', true); return; }
       if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {
@@ -2098,6 +2256,7 @@
     ['sbxLug', 'sbxInf'].forEach(function (id) {   // P8-3f / P4-4d: nor luggage / an infant
       var el = document.getElementById(id); if (el && el.value !== '0') { el.value = '0'; try { el.dispatchEvent(new Event('input')); } catch (x) {} }
     });
+    resetDeskMore();   // 19 Nov 2026: nor a 2nd number or a cash note
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }

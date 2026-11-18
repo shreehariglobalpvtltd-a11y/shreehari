@@ -192,12 +192,20 @@ function renderResults(instant) {
       const pickFare = r.type === 'sleeper' ? srvCardFare(srv, r.to) : 0;
       const perPersonFare = busFare > 0 ? busFare : (r.type === 'sleeper' ? (pickFare > 0 ? pickFare : sharingPP(r.to, true)) : r.fare);
       const fareKnown = fareOk(perPersonFare);
-      const availState    = left <= 0 ? 'gone' : (left <= 10 ? 'low' : 'ok');
+      /* 19 Nov 2026 (u9): the server's own urgency badge ('केवल N सिट बाँकी · Only N seats
+         left', srv.seatsLow / srv.seatsLowLabel) - no extra request per card. */
+      const lowTxt        = srv && srv.seatsLow && srv.seatsLowLabel ? String(srv.seatsLowLabel) : '';
+      const availState    = left <= 0 ? 'gone' : ((lowTxt || left <= 10) ? 'low' : 'ok');
       const seatsPillTxt  = left <= 0
         ? t('resSoldOut')
-        : (r.type === 'sleeper' && cabinsLeft <= 4
+        : (lowTxt ? esc(lowTxt)
+          : (r.type === 'sleeper' && cabinsLeft <= 4
             ? 'Only ' + cabinsLeft + ' cabins left'
-            : left + ' ' + t('resLeft'));
+            : left + ' ' + t('resLeft')));
+      /* 19 Nov 2026 (NP-3): today's bus closed by the sales clock (api/search.php
+         salesClosed / clockLabel) - the card stays, says so, and cannot be booked. */
+      const closed        = !!(srv && srv.salesClosed) && left > 0;
+      const closedTxt     = closed ? String(srv.clockLabel || 'बुकिङ बन्द · Booking closed') : '';
       const pillsRow = `<div class="bc-pills">
           <span class="seats-avail-pill ${availState}">${seatsPillTxt}</span>
           <span class="fare-from-pill">${fareKnown ? 'From ' + inr(perPersonFare) : esc(t('fareNA'))}</span>
@@ -209,9 +217,12 @@ function renderResults(instant) {
       const sidAttr = extra && r._sid ? ` data-sid="${r._sid}"` : '';
       const cta = left <= 0
         ? `<button class="btn btn-ghost btn-sm sold-out" type="button" disabled aria-disabled="true">बुक भइसक्यो · Sold out</button>`
-        : `<button class="btn btn-orange btn-sm" type="button" data-sel="${r.id}"${sidAttr}>${t('resSelect')}</button>`;
+        : (closed
+          ? `<button class="btn btn-ghost btn-sm sales-closed" type="button" disabled aria-disabled="true" title="${esc((srv && srv.clockReason) || closedTxt)}">${esc(closedTxt)}</button>`
+            + `<small class="sales-closed-note" style="display:block;margin-top:4px;font-size:11.5px;color:var(--bad)">भोलिको बस छान्नुहोस् · Choose tomorrow's bus</small>`
+          : `<button class="btn btn-orange btn-sm" type="button" data-sel="${r.id}"${sidAttr}>${t('resSelect')}</button>`);
 
-      return `<div class="bus-card reveal${left <= 0 ? ' is-sold-out' : ''}${extra ? ' is-extra' : ''}" data-rid="${r.id}"${sidAttr}>
+      return `<div class="bus-card reveal${left <= 0 ? ' is-sold-out' : ''}${closed ? ' is-closed' : ''}${extra ? ' is-extra' : ''}" data-rid="${r.id}"${sidAttr}>
         <div class="bc-time">
           <div class="t depTime-big">${esc(r.depTime)} <small>IST</small></div>
           <div class="dur" style="flex:1;display:flex;align-items:center;gap:0;position:relative">
