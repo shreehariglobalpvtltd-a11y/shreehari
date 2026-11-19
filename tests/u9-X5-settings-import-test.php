@@ -389,7 +389,7 @@ try {
         }
         check('Easy Settings has ' . $k . ' (' . $spec[0] . (isset($spec[1]) ? ' ' . $spec[1] . '-' . $spec[2] : '') . ', bilingual label, group, words)', $ok, json_encode($d, JSON_UNESCAPED_UNICODE));
     }
-    check('login_theme is classic | gold, classic first', array_keys((array) ($E['login_theme'][3] ?? [])) === ['classic', 'gold']);
+    check('login_theme is classic | gold | pixel, classic first', array_keys((array) ($E['login_theme'][3] ?? [])) === ['classic', 'gold', 'pixel']);
     check('festival_dates is NOT an Easy Settings key (edited on admin/themes.php)', !isset($E['festival_dates']));
     check('the groups match the X1 / X2 / X4 migrations', ($groups['return_discount_pct'] ?? '') === 'booking' && ($groups['luggage_fee_per_piece'] ?? '') === 'booking'
         && ($groups['infant_seat_fare'] ?? '') === 'booking' && ($groups['festival_theme_on'] ?? '') === 'app' && ($groups['fb_comments_on'] ?? '') === 'facebook');
