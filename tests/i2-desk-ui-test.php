@@ -259,6 +259,11 @@ try {
         Settings::set('sales_close_clock', '{"r7":{"all":"00:00","tz":"Asia/Kathmandu"}}', 'json', 'booking', false);
         $s1 = api('/api/search.php', ['from' => (string) $r7['from_city'], 'to' => (string) $r7['to_city'], 'date' => todayISO()]);
         $hit = $find($s1);
+        /* 19 Nov 2026: after today's bus has left, the search answers with TOMORROW's date
+           (data.date) - that bus is rightly open, so there is nothing to check tonight. */
+        if ($hit !== null && (string) ($s1['json']['data']['date'] ?? todayISO()) !== todayISO()) {
+            $hit = null;
+        }
         if ($hit === null) {
             check('E (today\'s r7 not in the search - departed / no bus today: skipped)', true, substr($s1['body'], 0, 160));
         } else {
