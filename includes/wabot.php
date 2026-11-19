@@ -55,6 +55,25 @@ final class WaBot
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+        /* 19 Nov 2026: a filled-in booking form (wa.php link) is read FIRST. Its "एजेन्ट: SHG-0008"
+           line is noted for the sale and then removed, so the agent-card lookup further down does
+           not answer the form with the agent's card; the rest becomes the plain booking sentence. */
+        if ($kind === 'text' && $body !== '' && $senderDigits !== '' && preg_match('/[:：=]/u', $body) === 1) {
+            try {
+                if (!class_exists('WaBooking') && is_file(INCLUDE_PATH . '/wabooking.php')) {
+                    require_once INCLUDE_PATH . '/wabooking.php';
+                }
+                if (class_exists('WaBooking') && method_exists('WaBooking', 'formToSentence')) {
+                    $asSentence = WaBooking::formToSentence($body);
+                    if ($asSentence !== $body) {
+                        WaBooking::noteFormAgent($senderDigits, $body);
+                        $body = $asSentence;
+                    }
+                }
+            } catch (Throwable $e) {
+                // the message is handled as it came
+            }
+        }
         /* 19 Nov 2026 (u9): the language this person writes in, for the customer directory (unit u8
            adds CustomerDirectory::noteLang). Best effort, only when that method exists. */
         if ($kind === 'text' && $body !== '' && $senderDigits !== '') {

@@ -258,6 +258,7 @@ const CORE_SUITES = [
     'i3-agent-cards-login-test.php'   => 'agent / cards / login glue across units (19 Nov integrator i3)',
     'i4-halt-use-time-test.php'       => 'Routes → Halts: GPS-learned halt time + "Use this time" re-posts edit_halt (CSRF, audited)',
     'driver-pair-test.php'            => 'crew phone connect by a one-time office link / QR (19 Nov)',
+    'wa-form-link-test.php'           => 'WhatsApp booking link (wa.php) + one-message form, agent code credit (19 Nov)',
     'wa87-e2e-test.php'               => '87 WhatsApp sender end to end: name / date → one booking, pay link, UTR never marks paid, one ticket (19 Nov)',
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',

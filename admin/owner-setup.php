@@ -196,6 +196,13 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
     <p style="margin:10px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save drivers</button> <a class="btn" href="drivers.php">Drivers page</a></p>
   </form>
 
+  <div class="os-card">
+    <h2>💬 WhatsApp बुकिङ लिंक · Booking link</h2>
+    <p class="hint">यो link थिच्दा WhatsApp मा फारम (नाम, मोबाइल, चढ्ने ठाउँ, मिति, सिट) खुल्छ — भरेर Send गरेपछि bot ले टिकट पठाउँछ। एजेन्टको आफ्नै link: अन्तमा <code>?a=SHG-0008</code> (उसको code) — त्यो टिकट उसकै नाममा जान्छ।</p>
+    <input readonly value="<?= $e(appUrl('wa.php')) ?>" onclick="this.select()" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px">
+    <p style="margin:8px 0 0"><a class="btn" target="_blank" rel="noopener" href="<?= $e(appUrl('wa.php?go=0&qr=1')) ?>">QR + नमुना · QR and preview</a></p>
+  </div>
+
   <div class="os-card" id="pair">
     <h2>📲 कन्डक्टरको phone जोड्ने · Connect a crew phone (link / QR)</h2>
     <p class="hint">"🔗 Link बनाउ" थिच्नुहोस् → आएको QR कन्डक्टरको phone ले scan गर्ने, वा link WhatsApp मा पठाउने। खोल्नेबित्तिकै phone जोडिन्छ (PIN चाहिँदैन) र बसको live location + यात्रु सूची खुल्छ। Link एक पटक मात्र, २४ घण्टा चल्छ।</p>

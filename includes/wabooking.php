@@ -65,6 +65,92 @@ final class WaBooking
      * @return array{text: string, media: ?string}|null null = not a booking
      *         conversation, so the caller keeps its own reply.
      */
+    /** The booking-form labels people fill in, per field (lower case; Devanagari, Hindi, Gujarati-roman, English). */
+    private const FORM_LABELS = [
+        'name'  => ['नाम', 'पूरा नाम', 'यात्रुको नाम', 'name', 'full name', 'naam', 'nam', 'passenger'],
+        'phone' => ['मोबाइल', 'मोबाईल', 'फोन', 'नम्बर', 'मोबाइल नम्बर', 'mobile', 'mobile no', 'mobile number', 'phone', 'number', 'no', 'whatsapp'],
+        'from'  => ['चढ्ने ठाउँ', 'चढ्ने', 'कहाँबाट', 'कहाँ बाट', 'बाट', 'ठाउँ', 'pickup', 'pick up', 'from', 'boarding', 'kaha bata', 'kahabata', 'chadne thau', 'chadhne thau', 'place'],
+        'date'  => ['मिति', 'तारिख', 'कहिले', 'date', 'miti', 'tarikh', 'day'],
+        'seats' => ['सिट', 'सीट', 'जना', 'यात्रु', 'seat', 'seats', 'jana', 'pax', 'person', 'persons'],
+    ];
+
+    /**
+     * The form line "एजेन्ट: SHG-0008" / "Agent: 8" / "Code: SHG-0008" names the agent who shared the
+     * booking link. Kept for this chat for 6 hours when it is a real ACTIVE agent code; anything
+     * else is ignored (a typo never credits the wrong person).
+     */
+    public static function noteFormAgent(string $phoneDigits, string $text): void
+    {
+        if (preg_match('/^\s*(?:एजेन्ट|एजेंट|agent(?:\s*code)?|code|कोड)\s*[:：=\-]\s*([A-Za-z0-9\- ]{1,16})\s*$/imu', $text, $m) !== 1) {
+            return;
+        }
+        try {
+            if (!class_exists('AgentWallet')) { require_once INCLUDE_PATH . '/agentwallet.php'; }
+            $raw = strtoupper(trim($m[1]));
+            $id  = AgentWallet::resolveAgentCodeFromString($raw);
+            if ($id === null || $id <= 0) {
+                return;
+            }
+            $label = AgentWallet::agentCodeLabel((int) $id) ?: $raw;
+            Database::run("DELETE FROM kv_store WHERE kscope = 'wa_form_agent' AND kkey = :k", ['k' => $phoneDigits]);
+            Database::run("INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('wa_form_agent', :k, :v, 'wabooking')",
+                ['k' => $phoneDigits, 'v' => json_encode(['code' => $label, 'at' => time()])]);
+        } catch (Throwable $e) {
+            Logger::warning('WaBooking: form agent not kept', ['err' => $e->getMessage()], 'whatsapp');
+        }
+    }
+
+    /** The agent code noted for this chat in the last 6 hours, or ''. */
+    public static function formAgent(string $phoneDigits): string
+    {
+        try {
+            $v = Database::scalar("SELECT kvalue FROM kv_store WHERE kscope = 'wa_form_agent' AND kkey = :k", ['k' => $phoneDigits]);
+            $j = is_string($v) ? json_decode($v, true) : null;
+            return is_array($j) && (int) ($j['at'] ?? 0) > time() - 21600 ? (string) ($j['code'] ?? '') : '';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * "नाम: Ram Thapa
+मोबाइल: 98…
+चढ्ने ठाउँ: Mehsana
+मिति: 20/11" → "naam Ram Thapa, number 98…,
+     * Mehsana bata, 20/11, 1 seat". Only when at least two labelled lines are found and one is the
+     * name; anything else is returned untouched. Empty fields are simply left out (the engine asks).
+     */
+    public static function formToSentence(string $text): string
+    {
+        if (!str_contains($text, ':') && !str_contains($text, '：') && !str_contains($text, '=') && !str_contains($text, '-')) {
+            return $text;
+        }
+        $got = [];
+        foreach (preg_split('/\R|[;|]/u', $text) ?: [] as $line) {
+            if (preg_match('/^\s*[\*\-•\d\.\)]*\s*([\p{L}\p{M} ]{2,24}?)\s*[:：=\-]\s*(.*)$/u', $line, $m) !== 1) {
+                continue;
+            }
+            $label = mb_strtolower(trim($m[1]));
+            $val   = trim($m[2], " 	*_.");
+            foreach (self::FORM_LABELS as $field => $labels) {
+                if (in_array($label, $labels, true) && !isset($got[$field])) {
+                    $got[$field] = $val;
+                    break;
+                }
+            }
+        }
+        if (count($got) < 2 || !isset($got['name']) || $got['name'] === '') {
+            return $text;
+        }
+        $parts = ['naam ' . $got['name']];
+        if (($got['phone'] ?? '') !== '') { $parts[] = 'number ' . (preg_replace('/[^\d+]/', '', $got['phone']) ?? ''); }
+        if (($got['from'] ?? '') !== '')  { $parts[] = $got['from'] . ' bata'; }
+        if (($got['date'] ?? '') !== '')  { $parts[] = $got['date']; }
+        $n = (int) preg_replace('/\D/', '', (string) ($got['seats'] ?? ''));
+        $parts[] = ($n >= 1 && $n <= 6 ? $n : 1) . ' seat';
+        return implode(', ', $parts);
+    }
+
     public static function handle(string $phoneDigits, string $text, string $senderCountry = '', ?array $staff = null): ?array
     {
         $text = trim($text);
@@ -75,6 +161,12 @@ final class WaBooking
            on a day nobody said): the ways people type "ticket" ARE the word, so "Tciket book" is the order button
            (the combined question asks the name, pickup and day) and "tciket" is never a name. */
         $text = (string) preg_replace('/(?<![\p{L}\p{M}])(?:tciket|tikat|tiket|tikit|tikut|tickt|tikt|ticet|tcket|tikkat)(?![\p{L}\p{M}])/iu', 'ticket', $text);
+        /* 19 Nov 2026 (owner: "form jasto bharera pathaos, bot le sense garos"): the filled-in
+           booking form (नाम: … / मोबाइल: … / चढ्ने ठाउँ: … / मिति: … / सिट: …, any language) is
+           rewritten into the plain sentence this engine already reads well, so a label never
+           ends up inside the passenger's name. */
+        if ($staff === null) { self::noteFormAgent($phoneDigits, $text); }   // "एजेन्ट: SHG-0008" on the form credits that agent
+        $text = self::formToSentence($text);
         $firstText = $text;                       // the message as it came (one-message sale)
         if (!Settings::getBool('wa_booking_on', true)) {
             return null;
@@ -1911,6 +2003,10 @@ final class WaBooking
                    names a PNR that number already holds (another person's booking). */
                 'sender'    => $phoneDigits,
                 'chatPnrs'  => array_values(array_filter([self::lastSoldPnr($phoneDigits)])),
+                /* 19 Nov 2026: the agent whose booking link / form this customer used (see noteFormAgent):
+                   the same referral-code path the website uses, so commission and its reversal on a
+                   cancel follow the existing ledger rules. '' = a direct sale. */
+                'agentCode' => self::formAgent($phoneDigits),
                 /* '' = the office default (pay on the bus when allowed);
                    'upi' = they chose to pay now, so the booking waits for the
                    money and the QR goes back instead of the ticket. */
