@@ -153,10 +153,10 @@ function admin_nav(): array
 
         // 4. Financial Management — every rupee in / out per person: salary, commission, loans, wallet
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments (UPI/eSewa)', 'perm' => 'payments.view', 'section' => $S4],
-        ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting, Loans & Ledgers', 'perm' => 'payments.view', 'section' => $S4],
-        ['href' => 'payroll.php',      'icon' => 'users',     'label' => 'Salary / Payroll',       'perm' => 'payments.view',    'section' => $S4],
+        ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting, Loans & Ledgers', 'perm' => 'payments.view', 'also' => 'reports.view', 'section' => $S4],   // 19 Nov: the page also asks reports.view
+        ['href' => 'payroll.php',      'icon' => 'users',     'label' => 'Salary / Payroll',       'perm' => 'payments.view', 'also' => 'reports.view', 'section' => $S4],
         ['href' => 'settlements.php',  'icon' => 'refund',    'label' => $agentView ? 'My Settlements' : 'Commission & Wallet Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S4],
-        ['href' => 'agent-statement.php','icon' => 'doc',     'label' => $agentView ? 'My Monthly Statement' : 'Monthly Statements', 'perm' => 'bookings.view', 'section' => $S4],
+        ['href' => 'agent-statement.php','icon' => 'doc',     'label' => $agentView ? 'My Monthly Statement' : 'Monthly Statements', 'perm' => 'bookings.view', 'also' => $agentView ? '' : 'commissions.view', 'section' => $S4],
         ['href' => 'agent-360.php',    'icon' => 'chart-up',  'label' => 'Agent 360 (per-person money)', 'perm' => 'customers.view', 'section' => $S4],
         ['href' => 'agent-aging.php',  'icon' => 'clock',     'label' => 'Agent Cash Aging · नगद बाँकी दिन', 'perm' => 'reports.view', 'section' => $S4],   // 15 Nov 2026 (P4): 0-7 / 8-15 / 16-30 / 30+ days
         ['href' => 'cash-book.php',    'icon' => 'ledger',    'label' => 'Cash Book',              'perm' => 'bookings.view',    'section' => $S4],
@@ -229,7 +229,11 @@ function admin_nav(): array
     $keyed = $all;
     uksort($keyed, static fn($a, $b): int => [$rank($all[$a]), -round($all[$a]['score'], 2), $a] <=> [$rank($all[$b]), -round($all[$b]['score'], 2), $b]);
 
-    return array_values(array_filter($keyed, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
+    /* 19 Nov 2026: 'also' = a second permission the page itself asks for (Accounting / Payroll:
+       reports.view; Monthly Statements for the office: commissions.view). Without it a counter
+       saw the link and got a 403 on the tap. */
+    return array_values(array_filter($keyed, static fn(array $i): bool => ($i['perm'] === '' || Auth::can($i['perm']))
+        && (($i['also'] ?? '') === '' || Auth::can((string) $i['also']))));
 }
 
 /**

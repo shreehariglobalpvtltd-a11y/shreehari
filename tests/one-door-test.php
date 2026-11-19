@@ -90,7 +90,7 @@ $PHU  = '9700000818';  // an agent stored bare, no country anywhere (96/97/98 = 
 $PHONES = [$PH, $PHS, $PHM, $PHX, $PHN, $PHNP, $PHT, $PHL, $PHU];
 
 $keep = [];
-foreach (['whatsapp_driver' => ['click_to_chat', 'string'], 'login_one_door_on' => ['1', 'bool'], 'login_one_door_hi_on' => ['1', 'bool'], 'sell_first_home' => ['0', 'bool'],
+foreach (['whatsapp_driver' => ['click_to_chat', 'string'], 'login_one_door_on' => ['1', 'bool'], 'login_one_door_hi_on' => ['1', 'bool'], 'sell_first_home' => ['0', 'bool'], 'login_code_first_on' => ['0', 'bool'], 'login_pin_required' => ['0', 'bool'],
           'admin_2fa_ids' => [null, 'json']] as $k => [$v, $type]) {
     $keep[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
     if ($v !== null) {
@@ -713,7 +713,9 @@ if ($probe === false || $probeCode !== 200) {
     check('…the counter password → 302 /admin/home.php', $r['code'] === 302 && $r['loc'] === '/admin/home.php', $r['code'] . ' ' . $r['loc']);
     $hm = $http('GET', '/admin/home.php', [], $g);
     check('home opens for the counter with its tiles', $hm['code'] === 200 && str_contains($hm['body'], 'Tickets I cut') && str_contains($hm['body'], 'Switch ID'));
-    preg_match_all('~class="hb-tile" href="(/admin/[a-z\-]+\.php[^"]*)"~', $hm['body'], $mm);
+    // 19 Nov 2026: the counter's home is the Management launcher (mg-a tiles, 12 Nov) or the older hb-tile home
+    preg_match_all('~class="(?:hb-tile|mg-a)" href="(/admin/[a-z\-]+\.php[^"]*)"~', $hm['body'], $mm);
+    $mm[1] = array_values(array_filter($mm[1], static fn(string $u): bool => !str_contains($u, 'logout.php')));   // following Sign out would end the session
     $bad = [];
     foreach (array_unique($mm[1]) as $u) { $x = $http('GET', html_entity_decode($u), [], $g); if ($x['code'] !== 200) { $bad[] = $u . '=' . $x['code']; } }
     check('every counter tile page opens (200, not 403)', $bad === [] && count($mm[1]) >= 5, implode(' ', $bad) ?: count($mm[1]) . ' pages');
