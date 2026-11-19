@@ -3226,17 +3226,17 @@ final class Notify
         }
     }
 
-    private static function staffBookingWhatsApp(string $phone, string $label, string $text, int $bid, string $purpose, ?string $hint = null): void
+    private static function staffBookingWhatsApp(string $phone, string $label, string $text, int $bid, string $purpose, ?string $hint = null, ?string $media = null): void
     {
         $meta = ['purpose' => $purpose];
         $vars = [];
-        if (Settings::getString('wa_cloud_tpl_message', '') === 'shg_office_alert') {
+        if ($media === null && Settings::getString('wa_cloud_tpl_message', '') === 'shg_office_alert') {
             $meta['template_name'] = 'shg_office_alert';
             $meta['template_lang'] = 'en';
             $vars = ['1' => $label, '2' => mb_substr(trim((string) preg_replace('/\s*\R\s*/u', ' · ', $text)), 0, 600)];
         }
         try {
-            self::whatsapp($phone, $text, null, $hint, $vars, $bid > 0 ? $bid : null, $meta);
+            self::whatsapp($phone, $text, $media, $hint, $vars, $bid > 0 ? $bid : null, $meta);
         } catch (Throwable $e) {
             Logger::exception($e, 'whatsapp');
         }
@@ -3274,8 +3274,23 @@ final class Notify
               . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
               . $commission
               . "— " . ($agent['code'] !== '' ? $agent['code'] . ' · ' : '') . Settings::getString('company_name', APP_NAME);
+        /* 19 Nov 2026 (owner: "agent ko name ma kate pachi agent ra customer dubai lai ticket jaos"):
+           the agent's message carries the ticket picture itself, so the agent can forward it.
+           wa_agent_ticket_copy_on = 0 gives the words-only message back. Never when the agent's
+           number is the customer's own (that phone already gets the ticket). */
+        $media = null;
+        if ($pnr !== '' && Settings::getBool('wa_agent_ticket_copy_on', true)) {
+            $own = substr(preg_replace('/\D/', '', (string) ($booking['contact_phone'] ?? '')) ?? '', -10);
+            if ($own === '' || $own !== substr(preg_replace('/\D/', '', (string) $agent['phone']) ?? '', -10)) {
+                try {
+                    $media = Ticket::imageUrl($pnr);
+                } catch (Throwable $ignored) {
+                    $media = null;
+                }
+            }
+        }
         self::staffBookingWhatsApp($agent['phone'], 'Agent booking approved', $text,
-            (int) ($booking['id'] ?? 0), 'booking_agent_approved', $agent['hint'] ?? null);
+            (int) ($booking['id'] ?? 0), 'booking_agent_approved', $agent['hint'] ?? null, $media);
     }
 
     /** WhatsApp the selling agent: booking rejected, customer asked to re-upload. */
