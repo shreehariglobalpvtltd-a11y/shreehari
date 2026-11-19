@@ -241,6 +241,14 @@ function admin_nav(): array
  */
 function admin_nav_main(): array
 {
+    /* 19 Nov 2026 (owner: "agent ko lagi chahine matra, baki merge"): an agent sees only the
+       pages of a selling day - cut a ticket, my tickets, passenger list, my ID & money, my
+       statement, day close, live bus. Everything else stays one tap away under "＋ थप · More".
+       agent_simple_menu = 0 gives the office's everyday list back. */
+    $me = Auth::admin();
+    if (Settings::getBool('agent_simple_menu', true) && (string) ($me['role'] ?? '') === 'agent') {
+        return array_fill_keys(['quick-ticket.php', 'bookings.php', 'manifest.php', '/me/', 'ticket-statement.php', 'shift.php', 'map.php'], true);
+    }
     return array_fill_keys([
         // 1 Tickets & Bus
         'quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'reschedule.php',
@@ -370,6 +378,26 @@ function admin_header(string $title, string $active = ''): void
        . 'function shgTheme(){try{var d=document.documentElement,'
        . 'n=d.getAttribute("data-theme")==="dark"?"light":"dark";'
        . 'd.setAttribute("data-theme",n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}</script>';
+    /* 19 Nov 2026 (owner: "slow xa, smooth chalos"): two browser-native speed-ups, no library.
+       1. Speculation Rules: when a finger goes down on a menu link, Chrome fetches that page
+          at once, so it is already there when the tap ends. PREFETCH only (the page's scripts
+          do not run early) and never for links that act or download (sign-out, exports,
+          prints, anything with act= / del= / forget=).
+       2. Cross-page view transition: a short fade instead of a white flash between pages.
+       admin_fast_nav_on = 0 switches both off. Browsers without them ignore the tags. */
+    if (Settings::getBool('admin_fast_nav_on', true)) {
+        echo '<script type="speculationrules">' . json_encode(['prefetch' => [[
+            'where' => ['and' => [
+                ['href_matches' => '/admin/*'],
+                ['not' => ['href_matches' => ['/admin/logout.php*', '/admin/export*', '/admin/*print*', '/admin/payslip.php*', '/admin/login.php*']]],
+                ['not' => ['href_matches' => ['*act=*', '*del=*', '*delete=*', '*forget=*', '*download*', '*csv=*', '*pdf=*', '*export=*']]],
+                ['not' => ['selector_matches' => '[data-no-prefetch],[download],[target=_blank]']],
+            ]],
+            'eagerness' => 'moderate',
+        ]]], JSON_UNESCAPED_SLASHES) . '</script>';
+        echo '<style>@view-transition{navigation:auto}::view-transition-old(root),::view-transition-new(root){animation-duration:.16s}'
+           . '@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none}}</style>';
+    }
     echo '</head><body>';
 
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
