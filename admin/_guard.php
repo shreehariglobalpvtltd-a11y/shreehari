@@ -113,6 +113,7 @@ function admin_nav(): array
         ['href' => 'routes.php',       'icon' => 'road',      'label' => 'Pickup / Drop Stops & Fares', 'perm' => 'routes.view',  'section' => $S2],
         ['href' => 'agreements.php',   'icon' => 'user-cog',  'label' => 'Agents by Location (web cards)', 'perm' => 'customers.view', 'section' => $S2],
         ['href' => 'counters.php',     'icon' => 'building',  'label' => 'Counters & Collection',  'perm' => 'reports.view',     'section' => $S2],
+        ['href' => 'day-memo.php',     'icon' => 'building',  'label' => '🧾 दैनिक हिसाब मेमो · Day memo', 'perm' => 'reports.view', 'section' => $S2],   // 19 Nov 2026: the office's paper pad, printable
         ['href' => 'map.php',          'icon' => 'road',      'label' => 'SHARI NAV Live Bus Radar', 'perm' => 'schedules.view', 'section' => $S2],
         ['href' => 'gps-trackers.php', 'icon' => 'road',      'label' => '🛰️ Bus GPS Trackers',     'perm' => 'schedules.manage','section' => $S2],
         ['href' => 'gps-center.php',   'icon' => 'cog',       'label' => '🧭 GPS Control Center',     'perm' => 'schedules.manage','section' => $S2],

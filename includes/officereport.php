@@ -547,6 +547,7 @@ final class OfficeReport
             $lines[] = '⏳ हिसाब नबुझाएका: ' . implode(', ', $notClosed);
         }
         $lines[] = '🔗 ' . appUrl('admin/counters.php?from=' . $day . '&to=' . $day);
+        $lines[] = '🧾 मेमो · Memo: ' . appUrl('admin/day-memo.php?day=' . $day);
         $lines[] = 'EN: ' . (int) $tot['tickets'] . ' tickets · ' . (int) $tot['pax'] . ' pax · cash ' . inr((float) $tot['cash']) . ' · online ' . inr((float) $tot['online'])
             . ' · net ' . inr((float) $tot['net']) . ' · to collect ' . inr($boardDue) . '.';
 

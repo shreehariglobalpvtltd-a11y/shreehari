@@ -377,6 +377,7 @@ if ($dayOn):
   <div class="panel sh-noprint" id="dayClose">
     <h2>आजको हिसाब बुझाउने · Day close
       <span class="muted" style="font-size:12.5px;font-weight:500"> · <?= Security::e((string) ($dcLine['label'] ?? '') !== '' ? (string) $dcLine['label'] : ($dcKeyV === '' ? 'अनलाइन · Online' : $dcKeyV)) ?> · <?= Security::e(formatDate($dcDayV)) ?></span></h2>
+    <?php if (Auth::can('reports.view')): ?><p style="margin:0 0 8px"><a class="btn" href="day-memo.php?day=<?= Security::e($dcDayV) ?><?= $dcKeyV !== '' && !str_starts_with($dcKeyV, 'AG:') ? '&amp;desk=' . Security::e($dcKeyV) : '' ?>">🧾 दैनिक हिसाब मेमो · Day memo (print)</a></p><?php endif; ?>
     <?php if ($dayFlash !== null): ?><p class="pill" style="display:block;padding:8px 12px;background:var(--ok-bg);color:var(--ok)"><?= Security::e($dayFlash[1]) ?></p><?php endif; ?>
     <?php if ($isOffice): ?>
       <form method="get" class="sh-histf" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:0 0 8px">
