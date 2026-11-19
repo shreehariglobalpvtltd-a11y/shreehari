@@ -358,7 +358,7 @@ $agentJar = jar('agent');
 check('agent signs in with username + password (fallback path)', login($RG_AGENT, $agentJar));
 $idx = req('GET', '/admin/index.php', ['jar' => $agentJar]);
 check('agent is bounced off the finance dashboard to ' . ($oneDoor ? 'the one home' : 'agent.php'),
-    $idx['code'] === 302 && str_contains($idx['location'], $oneDoor ? 'home.php' : 'agent.php'),
+    $idx['code'] === 302 && (str_contains($idx['location'], 'smartbook.php') || str_contains($idx['location'], $oneDoor ? 'home.php' : 'agent.php')),   // 19 Nov: sell_first_home sends an agent to the ticket screen
     'HTTP ' . $idx['code'] . ' → ' . $idx['location']);
 $agHome = req('GET', '/admin/agent.php', ['jar' => $agentJar]);
 check('agent dashboard opens', $agHome['code'] === 200, 'HTTP ' . $agHome['code']);

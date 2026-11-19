@@ -90,7 +90,7 @@ $PHU  = '9700000818';  // an agent stored bare, no country anywhere (96/97/98 = 
 $PHONES = [$PH, $PHS, $PHM, $PHX, $PHN, $PHNP, $PHT, $PHL, $PHU];
 
 $keep = [];
-foreach (['whatsapp_driver' => ['click_to_chat', 'string'], 'login_one_door_on' => ['1', 'bool'], 'login_one_door_hi_on' => ['1', 'bool'],
+foreach (['whatsapp_driver' => ['click_to_chat', 'string'], 'login_one_door_on' => ['1', 'bool'], 'login_one_door_hi_on' => ['1', 'bool'], 'sell_first_home' => ['0', 'bool'],
           'admin_2fa_ids' => [null, 'json']] as $k => [$v, $type]) {
     $keep[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
     if ($v !== null) {

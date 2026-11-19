@@ -160,4 +160,19 @@ admin_header('PIN / Pattern', '');
 </div>
 <script src="/assets/js/quick-unlock.js?v=20261101a"></script>
 <?php
+if (is_file(INCLUDE_PATH . '/passkeys.php')) {
+    require_once INCLUDE_PATH . '/passkeys.php';
+    if (Passkeys::ready()) { ?>
+<meta name="csrf-token" content="<?= Security::e(Security::csrfToken()) ?>">
+<div class="ps-card" style="text-align:center;margin-top:14px">
+  <h3 style="margin:0 0 6px">👆 फिंगरप्रिन्ट / Face ID</h3>
+  <p class="muted" style="margin:0 0 10px">यो फोनको आफ्नै lock (औंठाछाप वा अनुहार) ले खोल्न मिल्छ — PIN भन्दा छिटो। औंठाछाप फोनमै रहन्छ, हामीकहाँ आउँदैन। · Open with this phone's own fingerprint or face.</p>
+  <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
+  <input type="hidden" data-pk-label value="<?= Security::e(mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? 'phone'), 0, 40)) ?>">
+  <button class="btn btn-orange" type="button" data-pk="add">👆 यो फोन थप्नुहोस् · Add this phone</button>
+  <p class="muted" id="pkNo" hidden style="margin-top:8px">यो फोन/ब्राउजरमा फिंगरप्रिन्ट छैन — PIN / pattern प्रयोग गर्नुहोस्।</p>
+</div>
+<script src="/assets/js/team-passkey.js?v=20261120b" data-next="<?= Security::e(Auth::homeUrl()) ?>"></script>
+<?php }
+}
 admin_footer();

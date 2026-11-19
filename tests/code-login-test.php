@@ -152,7 +152,7 @@ check('wrong PIN: generic error, no session', isset($r['error']) && sid() === 0)
 $r = CodeLogin::unlock('pin', '4826');
 check('right existing PIN opens THAT account', ($r['go'] ?? '') === 'home' && sid() === $aPin);
 check('session role comes from the account (agent)', ($_SESSION[ADMIN_SESSION_KEY]['role'] ?? '') === 'agent');
-check('dashboard = the one home, filtered by role', Auth::homeUrl() === '/admin/home.php');
+check('an agent starts on the ticket screen (sell_first_home)', Auth::homeUrl() === '/admin/smartbook.php');
 check('door state is gone after sign-in', CodeLogin::state() === null);
 fresh();
 CodeLogin::enter($code(991));

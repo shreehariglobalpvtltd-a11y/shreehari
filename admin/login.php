@@ -882,6 +882,10 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   };
   ?>
   <?php if ($step === 'c_code'): ?>
+  <?php if (Passkeys::ready()): /* 19 Nov 2026: the phone's own lock first, where it has one */ ?>
+    <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
+    <button type="button" class="btn pk" data-pk="login" data-pk-soft hidden style="margin-bottom:12px">👆 फिंगरप्रिन्ट / Face ले भित्र · Fingerprint / Face ID</button>
+  <?php endif; ?>
   <form method="post" action="/admin/login.php" autocomplete="on">
     <?= $hid() ?><input type="hidden" name="mode" value="c_code">
     <label for="code">एजेन्ट / स्टाफ / एडमिन कोड · Agent / Staff / Admin code</label>
@@ -893,6 +897,10 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   <?php elseif ($step === 'c_unlock'): $cPat = $cKinds['pattern'] && !$cKinds['pin']; ?>
   <?php if ($cLock): ?><div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div><?php endif; ?>
   <?= $codeLine($cLock) ?>
+  <?php if (Passkeys::ready()): /* 19 Nov 2026: fingerprint / face above the PIN pad */ ?>
+    <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
+    <button type="button" class="btn pk" data-pk="login" data-pk-soft hidden style="margin:0 0 12px">👆 फिंगरप्रिन्ट / Face ले खोल्नुहोस् · Fingerprint / Face ID</button>
+  <?php endif; ?>
   <div class="qk<?= $cUntil > 0 ? ' cl-locked' : '' ?>" data-qk>
     <div class="qk-tabs" role="tablist">
       <button type="button"<?= $cPat ? '' : ' class="on"' ?> data-qk-tab="pin">🔢 PIN</button>
@@ -1319,7 +1327,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 })();
 </script>
 <?php endif; ?>
-<?php if ($step === 'start' && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if (in_array($step, ['start', 'c_code', 'c_unlock'], true) && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){

@@ -56,10 +56,17 @@ final class Auth
      */
     public static function homeUrl(?array $admin = null): string
     {
+        $admin ??= self::admin();
+        /* 19 Nov 2026 (owner: "agent le kholda main ta ticket katne, ekdam easy"): an agent or a
+           counter opens straight onto the ticket screen (SmartBook); Home stays one tap away in
+           the menu. sell_first_home = 0 gives everybody the home tiles again. */
+        if (Settings::getBool('sell_first_home', true) && in_array((string) ($admin['role'] ?? ''), ['agent', 'counter'], true)
+            && is_file(ROOT_PATH . '/admin/smartbook.php')) {
+            return '/admin/smartbook.php';
+        }
         if (self::oneDoorOn()) {
             return '/admin/home.php';
         }
-        $admin ??= self::admin();
         return match ((string) ($admin['role'] ?? '')) {
             'agent'    => '/admin/agent.php',
             'counter'  => '/admin/bookings.php',
