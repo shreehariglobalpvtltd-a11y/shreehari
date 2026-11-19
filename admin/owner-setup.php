@@ -18,11 +18,14 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/ticket.php';
+require_once INCLUDE_PATH . '/qr.php';
+require_once INCLUDE_PATH . '/driverauth.php';
 
 $admin = admin_boot('dashboard.view');
 $can   = Auth::canManageSettings();
 $e     = static fn($v): string => Security::e((string) $v);
 $flash = [];
+$pair  = null;   // ['name' =>, 'url' =>, 'qr' =>] right after a connect link is made
 
 $keys = [
     'india_hub_map'          => ['map'],
@@ -59,7 +62,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $local = substr($phone, -10);
                 $ex = Database::fetch('SELECT id FROM drivers WHERE phone = :p', ['p' => $local]);
-                $driverId = $ex !== null ? (int) $ex['id'] : (int) Database::insert('drivers', ['full_name' => $name, 'phone' => $local, 'role' => 'driver', 'is_active' => 1]);
+                $driverId = $ex !== null ? (int) $ex['id'] : (int) Database::insert('drivers', ['full_name' => $name, 'phone' => $local, 'role' => in_array((string) ($row['role'] ?? ''), ['driver', 'conductor'], true) ? (string) $row['role'] : 'conductor', 'is_active' => 1]);
             } elseif ($pick !== '' && ctype_digit($pick)) {
                 $driverId = (int) $pick;
             } elseif ($pick === '') {
@@ -74,6 +77,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $done++;
         }
         $flash[] = ['ok', 'Driver सेभ भयो · saved (' . $done . ')'];
+    } elseif ((string) ($_POST['act'] ?? '') === 'pair') {
+        try {
+            $did  = (int) ($_POST['driver_id'] ?? 0);
+            $code = DriverAuth::pairCode($did, (int) ($admin['id'] ?? 0));
+            $url  = appUrl('driver/?pair=' . $code);
+            $pair = ['name' => (string) Database::scalar('SELECT full_name FROM drivers WHERE id = :i', ['i' => $did], ''),
+                     'url' => $url, 'qr' => QrCode::dataUri($url, 6, 3)];
+        } catch (Throwable $ex) {
+            $flash[] = ['bad', $ex->getMessage()];
+        }
     } elseif ((string) ($_POST['act'] ?? '') === 'facts') {
         $changed = [];
         foreach ($keys as $k => $spec) {
@@ -112,7 +125,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 
 $buses   = Database::fetchAll('SELECT id, bus_number, default_driver_id FROM buses WHERE is_active = 1 ORDER BY id');
-$drivers = Database::fetchAll("SELECT id, full_name, phone FROM drivers WHERE is_active = 1 AND role IN ('driver','co-driver') ORDER BY full_name");
+$drivers = Database::fetchAll("SELECT id, full_name, phone, role FROM drivers WHERE is_active = 1 AND full_name <> '' ORDER BY full_name");
 $val     = static fn(string $k): string => Settings::getString($k, '');
 $tplReady = null;
 try {
@@ -165,22 +178,46 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
 
   <form method="post" class="os-card">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="drivers">
-    <h2>1 · 🚌 बसको driver · Driver per bus</h2>
-    <p class="hint">यहाँ राखेको driver लाई ५ यात्रु पुगेपछि यात्रु सूची WhatsApp मा जान्छ। नयाँ driver: "+ नयाँ" छानेर नाम र phone लेख्नुहोस्।</p>
+    <h2>1 · 🚌 बसको कन्डक्टर / ड्राइभर · Crew per bus</h2>
+    <p class="hint">यहाँ राखेको मान्छेलाई ५ यात्रु पुगेपछि यात्रु सूची WhatsApp मा जान्छ। नयाँ: "+ नयाँ" छानेर नाम र phone लेख्नुहोस्।</p>
     <?php foreach ($buses as $b): ?>
       <div class="os-bus">
         <b><?= $e($b['bus_number']) ?></b>
         <label>Driver<select name="bus[<?= (int) $b['id'] ?>][driver]">
           <option value="">— छैन · none —</option>
-          <?php foreach ($drivers as $d): ?><option value="<?= (int) $d['id'] ?>" <?= (int) $b['default_driver_id'] === (int) $d['id'] ? 'selected' : '' ?>><?= $e($d['full_name']) ?> · …<?= $e(substr((string) $d['phone'], -4)) ?></option><?php endforeach; ?>
-          <option value="new">+ नयाँ driver · new</option>
+          <?php foreach ($drivers as $d): ?><option value="<?= (int) $d['id'] ?>" <?= (int) $b['default_driver_id'] === (int) $d['id'] ? 'selected' : '' ?>><?= $e($d['full_name']) ?> (<?= $e($d['role']) ?>) · …<?= $e(substr((string) $d['phone'], -4)) ?></option><?php endforeach; ?>
+          <option value="new">+ नयाँ · new</option>
         </select></label>
         <label>नयाँ नाम · New name<input name="bus[<?= (int) $b['id'] ?>][name]" maxlength="120" placeholder="Ram Bahadur"></label>
-        <label>Phone<input name="bus[<?= (int) $b['id'] ?>][phone]" inputmode="tel" maxlength="16" placeholder="98XXXXXXXX / 9XXXXXXXXX"></label>
+        <label>Phone<input name="bus[<?= (int) $b['id'] ?>][phone]" inputmode="tel" maxlength="16" placeholder="98XXXXXXXX / 9XXXXXXXXX">
+          <select name="bus[<?= (int) $b['id'] ?>][role]" style="margin-top:4px"><option value="conductor">कन्डक्टर · Conductor</option><option value="driver">ड्राइभर · Driver</option></select></label>
       </div>
     <?php endforeach; ?>
     <p style="margin:10px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save drivers</button> <a class="btn" href="drivers.php">Drivers page</a></p>
   </form>
+
+  <div class="os-card" id="pair">
+    <h2>📲 कन्डक्टरको phone जोड्ने · Connect a crew phone (link / QR)</h2>
+    <p class="hint">"🔗 Link बनाउ" थिच्नुहोस् → आएको QR कन्डक्टरको phone ले scan गर्ने, वा link WhatsApp मा पठाउने। खोल्नेबित्तिकै phone जोडिन्छ (PIN चाहिँदैन) र बसको live location + यात्रु सूची खुल्छ। Link एक पटक मात्र, २४ घण्टा चल्छ।</p>
+    <?php if ($pair !== null): ?>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;background:#f3f8ff;border:1px solid #cfe0ff;border-radius:12px;padding:12px;margin-bottom:10px">
+        <img src="<?= $e($pair['qr']) ?>" alt="QR" width="180" height="180" style="background:#fff;border-radius:8px">
+        <div style="flex:1;min-width:220px">
+          <b><?= $e($pair['name']) ?></b> को phone ले यो QR scan गर्नुहोस्, वा link पठाउनुहोस्:
+          <input readonly value="<?= $e($pair['url']) ?>" onclick="this.select()" style="display:block;width:100%;margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:12px">
+          <a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=<?= rawurlencode('S Hari Global — बस app जोड्ने link (एक पटक मात्र): ' . $pair['url']) ?>">WhatsApp मा पठाउ · Send</a>
+        </div>
+      </div>
+    <?php endif; ?>
+    <?php foreach ($drivers as $d): ?>
+      <form method="post" action="#pair" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)">
+        <?= Security::csrfField() ?><input type="hidden" name="act" value="pair"><input type="hidden" name="driver_id" value="<?= (int) $d['id'] ?>">
+        <span style="flex:1"><b><?= $e($d['full_name']) ?></b> <span class="muted">(<?= $e($d['role']) ?>) · …<?= $e(substr((string) $d['phone'], -4)) ?></span></span>
+        <button class="btn" type="submit" <?= $can ? '' : 'disabled' ?>>🔗 Link बनाउ · Make link</button>
+      </form>
+    <?php endforeach; ?>
+    <?php if ($drivers === []): ?><p class="muted">पहिले माथि कन्डक्टर/ड्राइभर थप्नुहोस्।</p><?php endif; ?>
+  </div>
 
   <form method="post" class="os-card">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="facts">

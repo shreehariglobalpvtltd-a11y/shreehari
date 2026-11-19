@@ -150,6 +150,64 @@ final class DriverAuth
         return ['token' => $token, 'driver' => $d, 'deviceId' => $id];
     }
 
+    /* ------------------------------------------------------------------
+     *  19 Nov 2026 — connect a crew phone by link / QR (owner: "conductor ko
+     *  mobile, link le scanner le connect matra garnu paros").
+     *  The office makes a ONE-TIME code for one drivers row (24 h); the
+     *  phone that opens /driver/?pair=CODE gets a device token for that row
+     *  without typing a PIN. Only the code's SHA-256 is stored. Redeeming
+     *  burns the code; a wrong / used / expired code gives null.
+     * ------------------------------------------------------------------ */
+    public const PAIR_TTL = 86400;
+
+    /** @return string the code to put in the link (shown once) */
+    public static function pairCode(int $driverId, int $byAdmin = 0): string
+    {
+        $d = Database::fetch('SELECT id FROM drivers WHERE id = :i AND is_active = 1', ['i' => $driverId]);
+        if ($d === null) {
+            throw new RuntimeException('Driver not found or inactive.');
+        }
+        $code = bin2hex(random_bytes(16));
+        $val  = json_encode(['d' => $driverId, 'exp' => time() + self::PAIR_TTL, 'by' => $byAdmin]);
+        Database::run("DELETE FROM kv_store WHERE kscope = 'driver_pair' AND kvalue LIKE :p", ['p' => '{"d":' . $driverId . ',%']);
+        Database::run("INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('driver_pair', :k, :v, 'pair')",
+            ['k' => hash('sha256', $code), 'v' => $val]);
+        Logger::audit('driver.pair_code', 'driver', (string) $driverId, null, ['ttl' => self::PAIR_TTL], 'Crew phone connect link made');
+        return $code;
+    }
+
+    /** @return array{token:string, driver:array<string,mixed>, deviceId:int}|null */
+    public static function pairRedeem(string $code, string $label = ''): ?array
+    {
+        if (preg_match('/^[a-f0-9]{32}$/', $code) !== 1) {
+            return null;
+        }
+        $key = hash('sha256', $code);
+        $row = Database::fetch("SELECT kvalue FROM kv_store WHERE kscope = 'driver_pair' AND kkey = :k", ['k' => $key]);
+        if ($row === null) {
+            return null;
+        }
+        // burn first: two phones racing on one code - only one DELETE wins
+        if (Database::run("DELETE FROM kv_store WHERE kscope = 'driver_pair' AND kkey = :k", ['k' => $key]) !== 1) {
+            return null;
+        }
+        $j = json_decode((string) $row['kvalue'], true);
+        $driverId = (int) ($j['d'] ?? 0);
+        if ($driverId <= 0 || (int) ($j['exp'] ?? 0) < time()) {
+            return null;
+        }
+        // issue() needs a PIN on the row: a crew member connected by link gets a random one
+        // nobody knows (the office can set a real PIN later on Drivers).
+        if (Database::scalar('SELECT pin_hash FROM drivers WHERE id = :i', ['i' => $driverId]) === null) {
+            Database::update('drivers', ['pin_hash' => Security::hashPassword(bin2hex(random_bytes(8)))], 'id = :i', ['i' => $driverId]);
+        }
+        $res = self::issue($driverId, $label);
+        if ($res !== null) {
+            Logger::audit('driver.pair_redeem', 'driver', (string) $driverId, null, ['device' => $res['deviceId']], 'Crew phone connected by link');
+        }
+        return $res;
+    }
+
     /** The bearer token this request carries ('' when none). */
     public static function requestToken(): string
     {

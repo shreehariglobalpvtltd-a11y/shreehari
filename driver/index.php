@@ -296,6 +296,20 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     show('vLogin');
   }
 
+  /* ---------- connect by office link / QR (19 Nov 2026): /driver/?pair=CODE ---------- */
+  (function () {
+    var m = /[?&]pair=([a-f0-9]{32})/.exec(location.search);
+    if (!m) return;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}   // the code never stays in the address bar
+    $('eLogin').textContent = 'जोड्दैछ… · Connecting…';
+    api('POST', { action: 'pair', code: m[1] }).then(function (j) {
+      if (!j.ok) { $('eLogin').textContent = j.error || 'Link not valid.'; return; }
+      S.token = j.data.token; lsSet(K.token, S.token); lsSet(K.name, j.data.driver.name); lsSet(K.role, j.data.driver.role || 'driver');
+      $('eLogin').textContent = '';
+      loadMe();
+    }).catch(function () { $('eLogin').textContent = 'No internet. Open the link again. · इन्टरनेट छैन, लिंक फेरि खोल्नुहोस्।'; });
+  })();
+
   /* ---------- sign in ---------- */
   $('fLogin').addEventListener('submit', function (e) {
     e.preventDefault();

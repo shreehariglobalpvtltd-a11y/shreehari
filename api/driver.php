@@ -21,7 +21,9 @@
  *         SOS / breakdown tell the owner + office at once (bell + WhatsApp).
  *    `me` also carries crew {actions, speedWarnKmh, restSoftMin, …, officeTel}.
  *
- *  Every action but login needs the device token (X-Driver-Token). No
+ *    POST {action:'pair', code}             -> {token, driver}   (one-time office link / QR, no PIN)
+ *
+ *  Every action but login / pair needs the device token (X-Driver-Token). No
  *  session cookie is read or written, so no CSRF token is needed: a page on
  *  another site cannot read the token out of the driver's phone.
  *
@@ -50,6 +52,21 @@ try {
     }
     if (!LiveTrips::available()) {
         Response::error('The driver app is not set up on this server yet.', 503);
+    }
+
+    /* ---------------- connect by link / QR (19 Nov 2026) ---------------- */
+    if ($action === 'pair') {
+        if ($method !== 'POST') { Response::error('Method not allowed.', 405); }
+        Security::requireRateLimit('driver_pair', Security::clientIp(), 10, 600);
+        $ua  = Security::clean((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 160);
+        $res = DriverAuth::pairRedeem(Security::clean((string) Response::field('code', ''), 40), $ua);
+        if ($res === null) {
+            Response::error('यो लिंक पुरानो वा प्रयोग भइसकेको छ — कार्यालयसँग नयाँ माग्नुहोस् · This link is used or expired: ask the office for a new one.', 401);
+        }
+        Response::success(['token' => $res['token'], 'driver' => [
+            'name' => (string) $res['driver']['full_name'], 'phone' => (string) $res['driver']['phone'],
+            'role' => (string) ($res['driver']['role'] ?? 'driver'),
+        ]]);
     }
 
     /* ---------------- sign in ---------------- */
