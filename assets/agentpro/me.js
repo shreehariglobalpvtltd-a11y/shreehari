@@ -296,8 +296,16 @@
       + '<div class="ap-actions" style="margin:0">'
       + (h.call ? '<a class="ap-btn sm" href="tel:' + esc(h.call) + '">📞 ' + esc(t('call')) + '</a>' : '')
       + (h.wa ? '<a class="ap-btn wa sm" href="https://wa.me/' + esc(h.wa) + '" target="_blank" rel="noopener">💬 ' + esc(t('waOffice')) + '</a>' : '')
-      + (h.joinUrl ? '<button type="button" class="ap-btn ghost sm" id="shareJoin">🔗 नयाँ एजेन्ट दर्ता · Register</button>' : '') + '</div>'
+      + (h.joinUrl ? '<button type="button" class="ap-btn ghost sm" id="shareJoin">🔗 नयाँ एजेन्ट दर्ता · Register</button>' : '')
+      + (S.me && S.me.bookLink ? '<button type="button" class="ap-btn wa sm" id="shareBook">🎫 मेरो बुकिङ लिंक · My booking link</button>' : '') + '</div>'
       + (h.callDisplay ? '<p class="ap-hint" style="margin:8px 0 0">' + esc(t('office')) + ': ' + esc(h.callDisplay) + '</p>' : '') + '</section>';
+  }
+  /* 19 Nov 2026: the agent's own WhatsApp booking link - the customer fills the form, the ticket is credited to this agent */
+  function shareBook() {
+    var u = S.me && S.me.bookLink; if (!u) return;
+    var text = 'S Hari Global — WhatsApp बाट टिकट बुक गर्नुहोस् (नाम, मोबाइल, चढ्ने ठाउँ, मिति भरेर Send):';
+    if (navigator.share) { navigator.share({ title: 'S Hari Global', text: text, url: u }).catch(function () {}); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + u), '_blank');
   }
   function shareJoin() {
     var h = S.me && S.me.help; if (!h || !h.joinUrl) return;
@@ -403,6 +411,7 @@
     if (w.payoutVerified === false) {
       sheet('<h2>' + esc(t('withdraw')) + '</h2><div class="ap-note warn">' + esc(t('needVerify')) + '</div>' + helpCard());
       var sj = $('#sheet #shareJoin'); if (sj) sj.addEventListener('click', shareJoin);
+      var sb1 = $('#sheet #shareBook'); if (sb1) sb1.addEventListener('click', shareBook);
       return;
     }
     var chips = ms.map(function (m, i) { return '<button type="button" class="ap-chip" data-pm="' + esc(m.method) + '" aria-pressed="' + (i === 0) + '">' + esc(t('m_' + m.method)) + '</button>'; }).join('');
@@ -583,6 +592,7 @@
     }); });
     docsBind();
     var sj = $('#shareJoin'); if (sj) sj.addEventListener('click', shareJoin);
+    var sb2 = $('#shareBook'); if (sb2) sb2.addEventListener('click', shareBook);
     $$('.qrUp').forEach(function (inp) { inp.addEventListener('change', function () {
       if (!inp.files[0]) return; var fd = new FormData(); fd.append('file', inp.files[0]);
       toast(t('loading')); api('payout_qr', fd, true).then(function (r) { r.ok ? (toast('✓ ' + t('qrHave')), load()) : toast(r.error || t('net'), true); });

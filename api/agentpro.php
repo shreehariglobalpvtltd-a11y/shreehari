@@ -722,6 +722,15 @@ try {
                 'company' => ['name' => Settings::getString('company_name', APP_NAME), 'upi' => Settings::getString('upi_id', ''),
                               'upiName' => Settings::getString('upi_name', APP_NAME), 'wa' => Settings::bookingWhatsApp()],
                 'help' => ap_help((string) ($m['countryCode'] ?? '')),
+                /* 19 Nov 2026: the agent's own WhatsApp booking link (wa.php?a=<code>): a customer who
+                   books through it is credited to this agent. '' when the member has no agent code. */
+                'bookLink' => (static function () use ($id): string {
+                    try {
+                        require_once INCLUDE_PATH . '/agentwallet.php';
+                        $c = AgentWallet::agentCodeLabel($id);
+                        return $c !== '' ? appUrl('wa.php?a=' . rawurlencode($c)) : '';
+                    } catch (Throwable $e) { return ''; }
+                })(),
                 'csrf' => Security::csrfToken(),
             ]);
 
