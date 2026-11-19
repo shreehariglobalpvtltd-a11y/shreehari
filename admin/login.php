@@ -543,6 +543,8 @@ if (Auth::oneDoorOn()) {
        button, and on a phone the PIN / pattern steps full-screen dark. Colours only: no new font (Poppins
        would add ~160 KB to the lock screen), no step, size or text change. */
     $ltGold = strtolower(trim(Settings::getString('login_theme', 'classic'))) === 'gold';
+    /* 19 Nov 2026: 'pixel' = Pixel-phone lock look: AMOLED black, white type, soft wallpaper glow, pill fields, round keys, big clock. Colours + clock only. */
+    $ltPixel = strtolower(trim(Settings::getString('login_theme', 'classic'))) === 'pixel';
     ?><!doctype html>
 <html lang="ne"<?= $ltGold ? ' class="lt-gold"' : '' ?>><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -815,6 +817,51 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 :root.lt-gold body .qk-tabs button{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.18);color:#D5DEEE}
 :root.lt-gold body .qk-tabs button.on{background:#E2B650;border-color:#E2B650;color:#10182B}
 </style><?php endif; ?>
+<?php if ($ltPixel): /* login_theme = pixel: AMOLED black + white, Pixel lock-screen feel. Colours / shapes only; every step, text and size rule of the lock screen stays. */ ?><style id="lt-pixel">
+body.px{color-scheme:dark;--ink:#F2F2F5;--mut:#B4B7C2;--line:#2C2D33;--royal:#A8C7FA;--card:#000;--well:#141418}
+body.px{color:var(--ink);border-top:0;background:#000;min-height:100vh;min-height:100dvh}
+/* the wallpaper: true black with white contour rings rising from the bottom corner and a soft
+   blue-violet glow - one inline SVG (vector, sharp on any screen, ~1 KB, no extra request) */
+body.px::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-color:#000;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 900' preserveAspectRatio='xMidYMax slice'%3E%3Cg fill='none' stroke='%23fff'%3E%3Ccircle cx='40' cy='940' r='120' stroke-opacity='.22'/%3E%3Ccircle cx='40' cy='940' r='190' stroke-opacity='.18'/%3E%3Ccircle cx='40' cy='940' r='265' stroke-opacity='.14'/%3E%3Ccircle cx='40' cy='940' r='345' stroke-opacity='.11'/%3E%3Ccircle cx='40' cy='940' r='430' stroke-opacity='.08'/%3E%3Ccircle cx='40' cy='940' r='520' stroke-opacity='.06'/%3E%3Ccircle cx='40' cy='940' r='615' stroke-opacity='.04'/%3E%3Ccircle cx='430' cy='-30' r='150' stroke-opacity='.10'/%3E%3Ccircle cx='430' cy='-30' r='230' stroke-opacity='.06'/%3E%3C/g%3E%3C/svg%3E"),
+  radial-gradient(120% 55% at 85% -8%,rgba(92,120,214,.34) 0%,rgba(92,120,214,0) 62%),radial-gradient(90% 45% at 0% 108%,rgba(150,92,214,.26) 0%,rgba(150,92,214,0) 60%);
+  background-size:cover,auto,auto;background-position:center bottom,0 0,0 0;background-repeat:no-repeat}
+body.px .box,body.px.lock .box{background:transparent;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+body.px .who-nm{font-size:20px}body.px .who-cd,body.px .who-card a{font-size:14px}
+body.px .qk-tabs button{font-size:15px;min-height:48px}body.px .cl-alt-b small{font-size:13px}body.px .sub,body.px .links a{font-size:15px}
+body.px .logo img{height:34px;filter:none;opacity:.9}
+body.px h1{font-size:22px;font-weight:500;color:#fff}
+body.px .lk-clock{font-size:76px;font-weight:300;letter-spacing:-1px;color:#fff;margin:18px 0 0}
+body.px .lk-date{font-size:14px;color:#C9CCD6;margin:0 0 22px}
+body.px a{color:#A8C7FA}
+body.px label{font-weight:600;color:#C9CCD6;font-size:13px}
+body.px input,body.px select{background:#141418;border:1px solid #2C2D33;color:#fff;border-radius:28px;min-height:56px;padding:0 20px;font-size:18px}
+body.px input:focus,body.px select:focus{border-color:#A8C7FA;box-shadow:0 0 0 3px rgba(168,199,250,.28)}
+body.px input::placeholder{color:#8B8E99;opacity:1}
+body.px option{background:#141418;color:#fff}
+body.px .btn{background:#A8C7FA;color:#062E6F;border-radius:28px;min-height:56px;box-shadow:none;font-weight:700}
+body.px .btn:active{background:#C2D7FB}
+body.px .btn.wa{background:#1F3B2A;color:#9CE8B5;box-shadow:none}
+body.px .btn.alt,body.px .btn.pick,body.px .btn.pk{background:#1B1B20;color:#E6E8EF;border:1px solid #2C2D33;box-shadow:none}
+body.px .btn.pick small{color:var(--mut)}
+body.px .or{color:#8B8E99}body.px .or::before,body.px .or::after{border-top-color:#2C2D33}
+body.px .ceo{background:#141418;border-color:#2C2D33}body.px .ceo span{color:var(--mut)}body.px .ceo img{border-color:#A8C7FA}
+body.px .msg.bad{background:#3B1A1E;color:#FFB4BC}body.px .msg.ok{background:#12301F;color:#9CE8B5}body.px .msg.warn{background:#33280F;color:#FFD48A}
+body.px.lock .links a,body.px.lock .who a,body.px.lock .who-card a,body.px.lock .cl-forgot button,body.px.lock .lk-forgot button{color:#A8C7FA}
+body.px .qk .lk-keys button{background:#1B1B20;color:#fff;border:0;box-shadow:none;width:76px;height:76px;font-weight:300;font-size:28px}
+body.px .qk .lk-keys button:active{background:#3A3F52}
+body.px .qk .lk-keys button.s{background:transparent;color:#A8C7FA;font-size:15px;font-weight:600}
+body.px .qk .lk-keys button.go{background:#A8C7FA;color:#062E6F}
+body.px .lk-dots i{border-color:#8B8E99}
+body.px .lk-dots i.on{background:#fff;border-color:#fff}
+body.px .qk-pad{background:transparent;box-shadow:none}
+body.px .qk-dot{background:#8B8E99}
+body.px .qk-pad:not(.bad):not(.good) .qk-dot.on{background:#fff}
+body.px .qk-pad:not(.bad):not(.good) polyline{stroke:#A8C7FA}
+body.px .qk-tabs button{background:#141418;border-color:#2C2D33;color:#C9CCD6;border-radius:24px}
+body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F}
+@media (max-height:640px){body.px .lk-clock{font-size:52px}body.px .qk .lk-keys button{width:62px;height:62px;font-size:23px}}
+</style><?php endif; ?>
 <script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="manifest" href="/admin/app-manifest.php"><meta name="theme-color" content="#0B1220">
 <?php /* 16 Nov 2026 (P2-1g): the service worker, registered exactly like admin/staff-chat.php does
@@ -829,9 +876,10 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="S Hari Manage">
 </head>
-<body class="<?= trim((($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '') . ($step === 'c_unlock' || ($step === 'start' && ($remembered ?? null) !== null) ? ' cu' : '') . (in_array($step, ['c_setup', 'c_forgot', 'c_create', 'c_confirm'], true) ? ' cs' . ($step === 'c_forgot' ? ' cs-f' : '') : '')) ?>">
+<body class="<?= trim(($ltPixel ? 'px ' : '') . (($remembered ?? null) !== null || $cLock ? 'lock ' : '') . (in_array($step, CodeLogin::STEPS, true) ? 'cf' : '') . ($step === 'c_unlock' || ($step === 'start' && ($remembered ?? null) !== null) ? ' cu' : '') . (in_array($step, ['c_setup', 'c_forgot', 'c_create', 'c_confirm'], true) ? ' cs' . ($step === 'c_forgot' ? ' cs-f' : '') : '')) ?>">
 <main class="box" data-door="one">
   <div class="logo"><img src="<?= $h(Brand::markUrl(68)) ?>" alt="<?= $h($company) ?>" width="112" height="58"></div>
+  <?php if ($ltPixel && !$cLock && !($step === 'start' && ($remembered ?? null) !== null)): ?><div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div><?php endif; ?>
   <h1><?= $h($title) ?></h1>
   <?php if ($step === 'start'): ?>
     <p class="sub">एजेन्ट, काउन्टर, स्टाफ, अफिस — सबैको एउटै ढोका · One door for agents, counters, staff and office</p>
@@ -1329,6 +1377,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
 <?php endif; ?>
 <?php if (in_array($step, ['start', 'c_code', 'c_unlock'], true) && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
+<?php if ($ltPixel && !(($remembered ?? null) !== null || $cPad) && !$cLock): /* pixel look: the clock on the code / mobile steps (the PIN steps already run their own) */ ?><script>(function(){var c=document.getElementById('lkClock'),d=document.getElementById('lkDate');if(!c)return;function t(){var n=new Date();c.textContent=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}t();setInterval(t,15000);})();</script><?php endif; ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
 (function(){
   var c=document.getElementById('lkClock'),d=document.getElementById('lkDate');

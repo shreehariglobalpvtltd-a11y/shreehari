@@ -60,7 +60,13 @@ final class Auth
         /* 19 Nov 2026 (owner: "agent le kholda main ta ticket katne, ekdam easy"): an agent or a
            counter opens straight onto the ticket screen (SmartBook); Home stays one tap away in
            the menu. sell_first_home = 0 gives everybody the home tiles again. */
-        if (Settings::getBool('sell_first_home', true) && in_array((string) ($admin['role'] ?? ''), ['agent', 'counter'], true)
+        /* 19 Nov 2026 (px1, owner: "main kaam ticket katne - surumai ticket katne thau aos", for
+           admins too): the roles that land on the ticket screen are a setting now,
+           sell_first_roles (default agent, counter, superadmin, manager). Home is the first
+           row of the menu. Other roles keep their home. */
+        $sellRoles = array_filter(array_map('trim', explode(',', strtolower(
+            Settings::getString('sell_first_roles', 'agent,counter,superadmin,manager')))));
+        if (Settings::getBool('sell_first_home', true) && in_array((string) ($admin['role'] ?? ''), $sellRoles, true)
             && is_file(ROOT_PATH . '/admin/smartbook.php')) {
             return '/admin/smartbook.php';
         }

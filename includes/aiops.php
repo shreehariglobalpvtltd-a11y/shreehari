@@ -2802,7 +2802,7 @@ final class AiOps
         'login_theme'              => ['🎨 लगइन पेजको रूप · Login page look', 'enum',
                                        ['login theme', 'login look', 'login design', 'login colour', 'login color', 'login rang', 'gold login', 'golden login',
                                         'classic login', 'लगइन थिम', 'लगइन रूप', 'लगइन रंग'],
-                                       ['classic' => 'Classic — अहिलेको जस्तै · as today', 'gold' => 'Gold — सुनौलो · golden']],
+                                       ['classic' => 'Classic — अहिलेको जस्तै · as today', 'gold' => 'Gold — सुनौलो · golden', 'pixel' => 'Pixel — AMOLED कालो + सेतो · black + white']],
         // a bare "facebook / fb" is Messenger (fb_msgr_on); "comment" names these two (EASY_OVER keeps the narrower one)
         'fb_comments_on'           => ['💬 Facebook कमेन्ट पढ्ने र जवाफ · Facebook Page comments', 'bool',
                                        ['fb comment', 'fb comments', 'facebook comment', 'facebook comments', 'comment', 'comments', 'कमेन्ट', 'टिप्पणी', 'કોમેન્ટ']],

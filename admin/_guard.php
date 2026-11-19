@@ -374,7 +374,7 @@ function admin_header(string $title, string $active = ''): void
     // the same session token the admin POST forms carry (Security::csrfField / verifyCsrf),
     // for staff JS that posts JSON with an X-CSRF-Token header (inline edit, AI bubble)
     echo '<meta name="shg-admin-csrf" content="' . Security::e(Security::csrfToken()) . '">';
-    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . '</style>';
+    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css() . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
@@ -452,6 +452,8 @@ function admin_header(string $title, string $active = ''): void
        . $pwLink
        . ' · <a href="' . $base . '/admin/quick-unlock.php" title="PIN / Pattern" aria-label="PIN / Pattern">🔐</a>'
        . ' · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
+    // px1 (19 Nov 2026): on a phone the bar is one row - menu, search, lock; name / theme / PIN / sign-out sit in the drawer
+    echo '<a class="tb-lock" href="' . $base . '/admin/logout.php" aria-label="Lock" title="Lock">🔒</a>';
     echo '</header>';
 
     // Sidebar — Phase 3 renders items grouped by their `section` key with
@@ -459,6 +461,16 @@ function admin_header(string $title, string $active = ''): void
     // appear when there are ≥2 sections visible to this admin, so a
     // counter agent whose whole nav is one strip still sees no headers.
     echo '<nav class="side">';
+    /* px1: the phone drawer starts with who is signed in and their four own buttons (the top bar's
+       "who" strip is not drawn on a phone any more). Hidden on wide screens - admin_phone_css(). */
+    echo '<div class="side-me"><b>' . $name . '</b><em>' . $role . '</em><div class="side-me-b">'
+       . '<button type="button" onclick="shgTheme()" aria-label="Dark / light">🌙<small>Dark</small></button>'
+       . '<button type="button" id="sideSnd" onclick="try{var o=localStorage.getItem(\'shg_admin_sound\')===\'0\';localStorage.setItem(\'shg_admin_sound\',o?\'1\':\'0\');this.firstChild.nodeValue=o?\'🔔\':\'🔕\';}catch(e){}" aria-label="Sound on / off">🔔<small>Sound</small></button>'
+       . '<a href="' . $base . '/admin/quick-unlock.php" aria-label="PIN / Pattern">🔐<small>PIN</small></a>'
+       . ($viaOtp ? '' : '<a href="' . $base . '/admin/change-password.php" aria-label="Change password">🔑<small>Password</small></a>')
+       . '<a href="' . $base . '/admin/logout.php" aria-label="Sign out">🚪<small>Sign out</small></a>'
+       . '</div></div>';
+    echo '<script>try{if(localStorage.getItem("shg_admin_sound")==="0")document.getElementById("sideSnd").firstChild.nodeValue="🔕";}catch(e){}</script>';
     $items = admin_nav();
 
     // Render one link row. Kept as a closure so the flat (counter-agent) and
@@ -611,6 +623,90 @@ function admin_header(string $title, string $active = ''): void
  * for up to a week after a deploy. The file's own change time is the stamp,
  * so a changed file reaches every phone on its next page load.
  */
+function admin_phone_css(): string
+{
+    /* 19 Nov 2026 (px1, owner: ".network mobile ma ekdam sano letter; minimal, Pixel jasto; thulo letter").
+       Phones (<= 600px) only, and only while staff_phone_min_on is on (default on; 0 = the look before):
+       - ONE 52px bar that stays: menu, search, lock. The brand row and the name / theme / PIN / sign-out
+         strip are not drawn; those four buttons open the drawer instead (.side-me).
+       - bigger everyday type: drawer rows, launcher tiles and dock, fields, buttons, table cards.
+       Presentation only - same links, same pages, nothing removed. */
+    try {
+        if (!Settings::getBool('staff_phone_min_on', true)) {
+            return '.tb-lock,.side-me{display:none}';
+        }
+    } catch (Throwable $e) {
+        return '.tb-lock,.side-me{display:none}';
+    }
+    return <<<'CSS'
+.tb-lock,.side-me{display:none}
+@media(max-width:600px){
+  .tb{grid-template-columns:44px minmax(0,1fr) 44px;grid-template-rows:44px;grid-template-areas:"menu search lock";top:0;padding:4px 10px;gap:0 8px}
+  .tb .brand,.tb .who{display:none}
+  .tb:not(:has(.tb-search)){grid-template-rows:44px;grid-template-areas:"menu brand lock";top:0}
+  .tb:not(:has(.tb-search)) .brand{display:block;line-height:44px;font-size:17px}
+  .tb-lock{grid-area:lock;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.10);font-size:19px;text-decoration:none;transition:transform .12s,background .15s}
+  .tb-lock:active{transform:scale(.9);background:rgba(255,255,255,.22)}
+  .tb .menu{border-radius:50%;font-size:22px;transition:transform .12s}
+  .tb .menu:active{transform:scale(.9)}
+  .tb-search{height:44px;border-radius:22px}
+  .tb-search input{font-size:16px}
+  body.nav-open,body.nav-open:not(:has(.tb-search)){padding-top:52px}
+  #newPaymentBanner{top:60px!important;font-size:15px!important}
+  #newBookingsPill{top:124px!important;font-size:15px!important}
+  .side-me{display:block;padding:14px 14px 12px;margin:0 0 6px;border-bottom:1px solid rgba(255,255,255,.12)}
+  .side-me b{display:block;font-size:18px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .side-me em{font-style:normal;font-size:13px;color:var(--orange)}
+  .side-me-b{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-top:10px}
+  .side-me-b a,.side-me-b button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:6px 2px;border:0;border-radius:16px;background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:20px;text-decoration:none;cursor:pointer;transition:transform .12s,background .15s}
+  .side-me-b a:active,.side-me-b button:active{transform:scale(.94);background:rgba(255,255,255,.18)}
+  .side-me-b small{font-size:12px;font-weight:600;opacity:.85}
+  .side{width:min(310px,86vw)}
+  .side a{font-size:16px;min-height:50px}
+  .side .side-sec .ss-en,.side .side-sec .ss-ne{font-size:13px}
+  .side-more>summary{font-size:15px}
+  main.wrap{font-size:16px}
+  main.wrap>h1{font-size:23px}
+  .os-app b{font-size:14px!important}.os-app small{font-size:12px!important}.os-dock a{font-size:13px!important}
+  main.wrap :where(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),select,textarea){font-size:17px;min-height:48px}
+  main.wrap :where(.btn,button.btn,a.btn){font-size:16px;min-height:48px}
+  main.wrap :where(label){font-size:15px}
+  @media (prefers-reduced-motion:no-preference){
+    .side{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+    main.wrap :where(.btn,button,.os-app):active{transform:scale(.96)}
+  }
+}
+CSS;
+}
+
+/**
+ * px1 (19 Nov 2026): no staff text under 14px on a phone. The pages were written for a desk
+ * screen and carry hundreds of 10-12.5px labels in their own style blocks; rather than edit
+ * 165 pages, one small pass after load lifts every visible text node that is still under the
+ * floor (staff_text_min_px, default 14; 0 = off). Phones only, the top bar and anything marked
+ * data-keep-size are left alone, and it runs again twice for content a page draws late.
+ */
+function admin_bigtext_js(): string
+{
+    try {
+        if (!Settings::getBool('staff_phone_min_on', true)) { return ''; }
+        $min = (int) Settings::getString('staff_text_min_px', '14');
+    } catch (Throwable $e) {
+        return '';
+    }
+    if ($min <= 0) { return ''; }
+    $min = min(18, max(12, $min));
+    return '(function(){if(!window.matchMedia||!matchMedia("(max-width:600px)").matches)return;var M=' . $min . ';'
+         . 'function run(){var up=[];[document.querySelector("main.wrap"),document.querySelector("nav.side")].forEach(function(r){if(!r)return;'
+         . 'var it=document.createTreeWalker(r,NodeFilter.SHOW_TEXT,null),n;'
+         . 'while((n=it.nextNode())){if(!n.nodeValue||!n.nodeValue.trim())continue;var e=n.parentElement;if(!e||e.__bt)continue;e.__bt=1;'
+         . 'if(e.closest("svg,[data-keep-size],.navbadge,script,style,noscript"))continue;'
+         . 'var f=parseFloat(getComputedStyle(e).fontSize);if(f&&f<M)up.push(e);}});'
+         . 'for(var i=0;i<up.length;i++)up[i].style.setProperty("font-size",M+"px","important");}'
+         . 'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",run);else run();'
+         . 'setTimeout(run,1200);setTimeout(run,3500);})();';
+}
+
 function admin_asset_url(string $rel): string
 {
     $rel = '/' . ltrim($rel, '/');
@@ -671,6 +767,10 @@ function admin_footer(): void
     // the live new-bookings pill (pending-count.php scopes the answer and
     // returns pending=0 for roles that cannot act on payments).
     if (Auth::can('payments.view') || Auth::can('bookings.view')) {
+        // px1: the new-ticket chime + bar is for the office (who verifies payments), never for an agent's own list
+        if (Auth::can('payments.view') && Auth::bookingScopeAdminId() === null && Settings::getBool('new_ticket_alert_on', true)) {
+            echo '<script>window.SHG_NEW_TICKET_ALERT=1;</script>';
+        }
         echo '<script>' . admin_poll_js() . '</script>';
     }
 
@@ -690,6 +790,8 @@ function admin_footer(): void
     // own mobile layout (.sm-table) or opt out (.no-card), have no thead, or
     // whose rows do not line up with the header are left exactly as they are.
     echo '<script>' . admin_cards_js() . '</script>';
+    $btJs = admin_bigtext_js();   // px1: phones - no text under the floor
+    if ($btJs !== '') { echo '<script>' . $btJs . '</script>'; }
     // 5 Sep 2026: Excel-style list tables (Customers / Agents): search,
     // column filters, click-to-sort, sticky header, detail + edit rows.
     echo admin_datatable_assets();
@@ -1040,6 +1142,7 @@ function admin_poll_js(): string
   var KEY_LAST = 'shg_admin_last_pending';
 
   function beep() {
+    try { if (localStorage.getItem('shg_admin_sound') === '0') return; } catch (e) {}
     try {
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
       [880, 1100].forEach(function (freq, i) {
@@ -1054,6 +1157,43 @@ function admin_poll_js(): string
         }, i * 180);
       });
     } catch (e) {}
+  }
+
+  /* px1 (19 Nov 2026, owner: "naya ticket aayo bhane admin lai notification + sound"): the office
+     hears a rising three-note chime and sees a green bar when a ticket is cut anywhere (website,
+     WhatsApp, an agent, a counter). Sound can be muted per phone from the drawer (shg_admin_sound). */
+  function soundOn() { try { return localStorage.getItem('shg_admin_sound') !== '0'; } catch (e) { return true; } }
+  function chime() {
+    if (!soundOn()) return;
+    try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [659, 784, 1047].forEach(function (freq, i) {
+        var o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * 0.14;
+        o.type = 'triangle'; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.36);
+      });
+    } catch (e) {}
+  }
+  function showTicketBanner(n) {
+    var el = document.getElementById('newTicketBanner');
+    if (!el) {
+      el = document.createElement('a');
+      el.id = 'newTicketBanner';
+      el.href = '/admin/bookings.php';
+      el.style.cssText = 'position:fixed;left:12px;right:12px;top:60px;z-index:60;background:#0a6b3b;color:#fff;'
+        + 'padding:14px 16px;border-radius:18px;box-shadow:0 10px 28px rgba(0,0,0,.35);display:flex;align-items:center;'
+        + 'gap:10px;font-size:16px;font-weight:700;text-decoration:none;max-width:460px;margin:0 auto;'
+        + 'transform:translateY(-140%);transition:transform .32s cubic-bezier(.2,.9,.2,1)';
+      el.innerHTML = '<span style="font-size:22px">🎫</span><span data-t style="flex:1"></span><span style="opacity:.85">खोल्नुहोस् →</span>';
+      document.body.appendChild(el);
+    }
+    el.querySelector('[data-t]').textContent = 'नयाँ टिकट आयो · New ticket' + (n > 1 ? ' (' + n + ')' : '');
+    requestAnimationFrame(function () { el.style.transform = 'none'; });
+    clearTimeout(el._h); el._h = setTimeout(function () { el.style.transform = 'translateY(-140%)'; }, 9000);
   }
 
   function showBanner(n) {
@@ -1106,6 +1246,13 @@ function admin_poll_js(): string
         if (anchor && typeof j.maxBooking === 'number') {
           var since = parseInt(anchor.getAttribute('data-since') || '0', 10);
           if (since > 0 && j.maxBooking > since) { showBookingsPill(j.maxBooking - since); }
+        }
+        // px1: a ticket was cut since the last look - tell the office (not on the selling screens, which beep themselves)
+        if (window.SHG_NEW_TICKET_ALERT && typeof j.maxBooking === 'number') {
+          var lastB = parseInt(sessionStorage.getItem('shg_admin_last_maxb') || '-1', 10);
+          var selling = !!document.getElementById('smartBook') || /quick-ticket|new-booking/.test(location.pathname);
+          if (lastB >= 0 && j.maxBooking > lastB && !selling) { chime(); showTicketBanner(j.maxBooking - lastB); }
+          sessionStorage.setItem('shg_admin_last_maxb', String(j.maxBooking));
         }
         var badge = document.getElementById('navBadgePayments');
         if (badge) {

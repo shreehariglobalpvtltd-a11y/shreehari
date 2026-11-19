@@ -174,6 +174,44 @@ html.sbx-admin .sbx-ov{display:block}
   .sbx-more>summary{width:42px;height:42px;padding:0}
   .sbx-reg button{min-height:42px}
 }
+/* 19 Nov 2026 (px1, owner: "mobile ma sano letter, surumai ticket katne thau aos, ekdam sajilo"):
+   on a phone the staff card is SELL-FIRST - mobile + name on top, big, one under the other;
+   then F / M, the agent, the route / date / pickup chips; the typed-order line, Quick / Full
+   switch, regular customers and the desk tools follow. The page title, the bus strip, the
+   card heading and the step line are not drawn (the Book bar already says what is missing).
+   Order + size only: same fields, same ids, same script, nothing removed from the page.
+   Setting staff_phone_min_on = 0 gives the old phone layout back. */
+<?php if (Settings::getBool('staff_phone_min_on', true)): ?>
+@media (max-width:600px){
+  main.wrap{display:flex;flex-direction:column}
+  main.wrap>h1,.sbx-line{display:none}
+  main.wrap>*{order:5}
+  main.wrap>#smartBook{order:1}
+  main.wrap>.sbx-reg{order:2}
+  main.wrap>.sbx-top{order:3;margin-top:10px}
+  main.wrap #smartBook{--sb-h:56px}
+  main.wrap #smartBook .sb-card{display:flex;flex-direction:column;padding:12px 12px 8px}
+  main.wrap #smartBook .sb-card>*{order:6}
+  main.wrap #smartBook .sb-road,main.wrap #smartBook .sb-head{display:none}
+  main.wrap #smartBook .sb-grid{order:1;grid-template-columns:minmax(0,1fr);gap:10px;margin:0 0 10px}
+  main.wrap #smartBook .sb-f-pax{order:2}
+  main.wrap #smartBook .sb-f-agent{order:3}
+  main.wrap #smartBook .sb-qline{order:4;font-size:15px;gap:8px}
+  main.wrap #smartBook .sb-f-alt{order:5}
+  main.wrap #smartBook .sb-terms{order:9}
+  main.wrap #smartBook .sb-grid .sb-f{margin:0;grid-column:1}
+  main.wrap #smartBook .sb-grid input,main.wrap #smartBook .sb-grid select{font-size:20px;font-weight:600;border-radius:16px;padding:0 14px}
+  main.wrap #smartBook .sb-tel select{flex:0 0 92px;font-size:17px;padding:0 8px}
+  main.wrap #smartBook .sb-f-alt input,main.wrap #smartBook .sb-f-alt select,main.wrap #smartBook .sb-f-agent input{font-size:17px;border-radius:14px}
+  main.wrap #smartBook .sb-qline span{padding:9px 14px}
+  main.wrap #smartBook .sb-qline button{min-height:44px;font-size:15px}
+  main.wrap #smartBook .sb-step button{width:52px;height:52px;font-size:22px}
+  main.wrap #smartBook .sb-g{min-height:52px;padding:0 18px;font-size:17px}
+  main.wrap #smartBook .sb-qmode button,main.wrap #smartBook .sb-qhelp{font-size:15px;min-height:44px}
+  .sbx-reg button{font-size:15px;min-height:46px}
+  .sbx-badge,.sbx-auto{font-size:14px}
+}
+<?php endif; ?>
 </style>
 <div class="sbx-top">
   <span class="sbx-badge">⚡ SmartBook · <?= $e($label) ?></span>
