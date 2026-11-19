@@ -194,8 +194,12 @@ html.sbx-admin .sbx-ov{display:block}
   main.wrap #smartBook .sb-card>*{order:6}
   main.wrap #smartBook .sb-road,main.wrap #smartBook .sb-head{display:none}
   main.wrap #smartBook .sb-grid{order:1;grid-template-columns:minmax(0,1fr);gap:10px;margin:0 0 10px}
+  main.wrap #smartBook .sb-dir{order:0;margin-bottom:10px}
+  main.wrap #smartBook .sb-dir-b{min-height:50px;font-size:15px}
   main.wrap #smartBook .sb-f-pax{order:2}
   main.wrap #smartBook .sb-f-agent{order:3}
+  main.wrap #smartBook .sb-row2,main.wrap #smartBook .sb-seat,main.wrap #smartBook .sb-suggest{order:4}
+  main.wrap #smartBook .sb-seg button{min-height:48px;font-size:15px}
   main.wrap #smartBook .sb-qline{order:4;font-size:15px;gap:8px}
   main.wrap #smartBook .sb-f-alt{order:5}
   main.wrap #smartBook .sb-terms{order:9}
@@ -212,6 +216,8 @@ html.sbx-admin .sbx-ov{display:block}
   .sbx-badge,.sbx-auto{font-size:14px}
 }
 <?php endif; ?>
+/* px2: one form only - the Quick / Full switch is not drawn (smartbook_form_mode = full | quick) */
+html.sb-one-form #smartBook #sbQMode{display:none}
 </style>
 <div class="sbx-top">
   <span class="sbx-badge">⚡ SmartBook · <?= $e($label) ?></span>
@@ -304,6 +310,12 @@ window.SHG_BOOT.apiBase = '/api';
   var desk = document.getElementById('sbxDesk'), rail = document.getElementById('sbRail'), bar = document.getElementById('sbBar');
   if (desk && rail && bar && desk.querySelector('input')) rail.insertBefore(desk, bar);
 })();
+<?php /* px2 (20 Nov 2026, owner: "quick ra full 2 ta form - euta matra, full form default"):
+   smartbook_form_mode = full (default) | quick | both. full / quick = ONE form, the switch is not drawn. */
+$sbFormMode = strtolower(trim(Settings::getString('smartbook_form_mode', 'full')));
+if (!in_array($sbFormMode, ['full', 'quick', 'both'], true)) { $sbFormMode = 'full'; } ?>
+window.SHG_SB_FORM = <?= json_encode($sbFormMode) ?>;
+<?php if ($sbFormMode !== 'both'): ?>document.documentElement.classList.add('sb-one-form');<?php endif; ?>
 window.SB_STAFF = <?= json_encode([
     'mode' => $mode, 'label' => $label, 'id' => $me, 'role' => (string) $admin['role'],
     'ownCode' => $ownAgent, 'agents' => $agents, 'agentRequired' => $agentReq, 'company' => $coCode,

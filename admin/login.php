@@ -967,7 +967,12 @@ body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F
     <form method="post" action="/admin/login.php"><?= $hid() ?><input type="hidden" name="mode" value="c_forgot">
       <button type="submit" class="cl-alt-b">🛡️ <span>बिर्सनुभयो?<small>Forgot PIN</small></span></button></form>
     <?php endif; ?>
+    <?php /* 20 Nov 2026 (px2, owner: "login garda password lekhne wala audai naos - PIN, pattern, fingerprint matra"):
+             the password link is drawn only while login_password_link_on = 1 (default 0). The old door itself
+             (/admin/login.php?classic=1) is untouched - the office can still open it by address. */
+    if (Settings::getBool('login_password_link_on', false)): ?>
     <a class="cl-alt-b" href="/admin/login.php?classic=1&amp;other=1">🔑 <span>पासवर्ड<small>Code + password</small></span></a>
+    <?php endif; ?>
   </div>
   <?php if (CodeLogin::waOn()): ?>
   <div class="links">
@@ -1032,7 +1037,7 @@ body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F
       <input id="act" name="act" maxlength="12" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" style="text-align:center;letter-spacing:.2em" aria-label="Activation code">
       <button class="btn alt" type="submit">कोडले खोल्ने · Use the code</button></form></details>
   <?php if ($fq !== ''): ?></details><?php endif; ?>
-  <div class="links cl-row"><a href="/admin/login.php?classic=1&amp;other=1">🔑 पासवर्डले · Password</a><a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
+  <div class="links cl-row"><?php if (Settings::getBool('login_password_link_on', false)): ?><a href="/admin/login.php?classic=1&amp;other=1">🔑 पासवर्डले · Password</a><?php endif; ?><a href="<?= $h($odUrl(['step' => 'c_code'])) ?>">← फिर्ता · Back</a></div>
 
   <?php elseif ($step === 'c_setup' || $step === 'c_forgot'): $askDob = CodeLogin::askDob(); $fq = $step === 'c_forgot' ? CodeLogin::forgotQuestion() : ''; ?>
   <?= $codeLine() ?>
@@ -1375,7 +1380,7 @@ body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F
 })();
 </script>
 <?php endif; ?>
-<?php if (in_array($step, ['start', 'c_code', 'c_unlock'], true) && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if (in_array($step, ['start', 'c_code', 'c_unlock'], true) && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120d" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if ($ltPixel && !(($remembered ?? null) !== null || $cPad) && !$cLock): /* pixel look: the clock on the code / mobile steps (the PIN steps already run their own) */ ?><script>(function(){var c=document.getElementById('lkClock'),d=document.getElementById('lkDate');if(!c)return;function t(){var n=new Date();c.textContent=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}t();setInterval(t,15000);})();</script><?php endif; ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
@@ -1906,6 +1911,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120b" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261120d" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

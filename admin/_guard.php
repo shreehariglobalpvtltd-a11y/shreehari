@@ -609,6 +609,10 @@ function admin_header(string $title, string $active = ''): void
         }
     }
     // View-site stays outside the collapsible groups so it is always reachable.
+    // px2 (20 Nov 2026): every signed-in person can tell head office what went wrong (admin/report-problem.php)
+    if (is_file(__DIR__ . '/report-problem.php') && Settings::getBool('staff_problem_report_on', true)) {
+        echo '<a class="side-site" href="' . $base . '/admin/report-problem.php"><span>🐞</span>समस्या रिपोर्ट · Report a problem</a>';
+    }
     echo '<a class="side-site" href="' . rtrim(APP_URL, '/') . '/" target="_blank" rel="noopener">'
        . '<span><svg class="a-ic"><use href="#a-globe"/></svg></span>View site</a>';
     echo '</nav>';

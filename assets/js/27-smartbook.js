@@ -280,7 +280,10 @@
     /* 16 Oct 2026 (owner: "fast quick name number system lai default, tesai
        rakhdeu sabai"): every visit opens on Quick (name + mobile). "✏️ Change"
        still opens the full form for this visit only - it is no longer saved. */
-    quick: true,
+    /* 20 Nov 2026 (px2, owner: "quick ra full 2 ta form - euta matra, full form default"): the page may
+       stamp window.SHG_SB_FORM = 'full' (setting smartbook_form_mode) - the card then opens as the full
+       form and the Quick / Full switch is not drawn. Anything else = Quick first, as before. */
+    quick: !(window.SHG_SB_FORM === 'full'),
     agent: '',  // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
     /* Cash verification (customer only) - kept in memory for this visit, never
        in localStorage (an ID number must not sit on a shared phone). */

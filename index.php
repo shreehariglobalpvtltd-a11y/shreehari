@@ -788,6 +788,57 @@ if (is_string($stripped) && $stripped !== '') {
     $html = preg_replace('/\n[ \t]*\n(?:[ \t]*\n)+/', "\n\n", $stripped) ?: $stripped;
 }
 
+/* 20 Nov 2026 (px2, owner: ".in mobile ma minimal, thulo thulo letter, 2 page mai aos, ticket direct
+   katna milos"): on a phone (<= 600px) the home page is the ticket card and nothing else -
+   mobile + name on top, big, one under the other; the picture strip, the coach deck, the roles
+   block and the video block are not drawn; the bottom bar keeps Book, My ticket and Track
+   (Home is the same page as Book; the map stays in the top menu). CSS only, stamped by one
+   class on <html>, so nothing is removed from the page or the app. site_minimal_on = 0 = as before. */
+$sbFormMode = strtolower(trim(Settings::getString('smartbook_form_mode', 'full')));
+if (!in_array($sbFormMode, ['full', 'quick', 'both'], true)) { $sbFormMode = 'full'; }
+/* px2: ONE booking form (full by default); the Quick / Full switch is drawn only for 'both'. Read by 27-smartbook.js. */
+$inject .= "\n<script>window.SHG_SB_FORM=" . json_encode($sbFormMode) . ";"
+         . ($sbFormMode !== 'both' ? "try{document.documentElement.classList.add('sb-one-form');}catch(e){}" : '')
+         . "</script><style>html.sb-one-form #smartBook #sbQMode{display:none}</style>";
+if (Settings::getBool('site_minimal_on', true)) {
+    $inject .= <<<'HTML'
+
+<script>try{document.documentElement.classList.add('site-min');}catch(e){}</script>
+<style id="site-min">
+@media (max-width:600px){
+  html.site-min #hero3d,html.site-min #hyperBus,html.site-min #homeRoles,html.site-min #homeVideo{display:none!important}
+  html.site-min #smartBook{--sb-h:56px;margin-top:10px}
+  html.site-min #smartBook .sb-card{display:flex;flex-direction:column;padding:12px 12px 8px}
+  html.site-min #smartBook .sb-card>*{order:6}
+  html.site-min #smartBook .sb-road{display:none}
+  html.site-min #smartBook .sb-grid{order:1;grid-template-columns:minmax(0,1fr);gap:10px;margin:0 0 10px}
+  html.site-min #smartBook .sb-grid .sb-f{margin:0;grid-column:1}
+  html.site-min #smartBook .sb-grid input,html.site-min #smartBook .sb-grid select{font-size:20px;font-weight:600;border-radius:16px;padding:0 14px}
+  html.site-min #smartBook .sb-tel select{flex:0 0 92px;font-size:17px;padding:0 8px}
+  html.site-min #smartBook .sb-dir{order:0;margin-bottom:10px}
+  html.site-min #smartBook .sb-dir-b{min-height:50px;font-size:15px}
+  html.site-min #smartBook .sb-row2,html.site-min #smartBook .sb-seat,html.site-min #smartBook .sb-suggest{order:4}
+  html.site-min #smartBook .sb-seg button{min-height:48px;font-size:15px}
+  html.site-min #smartBook .sb-f-pax{order:2}
+  html.site-min #smartBook .sb-clock{order:3;font-size:15px}
+  html.site-min #smartBook .sb-qline{order:4;font-size:15px;gap:8px}
+  html.site-min #smartBook #sbEm{order:5}
+  html.site-min #smartBook .sb-f-alt{order:5}
+  html.site-min #smartBook .sb-f-alt input,html.site-min #smartBook .sb-f-alt select{font-size:17px;border-radius:14px}
+  html.site-min #smartBook .sb-terms{order:9;font-size:13px}
+  html.site-min #smartBook .sb-qline span{padding:9px 14px}
+  html.site-min #smartBook .sb-qline button{min-height:44px;font-size:15px}
+  html.site-min #smartBook .sb-step button{width:52px;height:52px;font-size:22px}
+  html.site-min #smartBook .sb-g{min-height:52px;padding:0 18px;font-size:17px}
+  html.site-min #smartBook .sb-qmode button,html.site-min #smartBook .sb-qhelp{font-size:15px;min-height:44px}
+  html.site-min #smartBook .sb-l{font-size:14px}
+  html.site-min .bottom-nav .bn-item[data-bn="home"],html.site-min .bottom-nav .bn-item[data-bn="nav"]{display:none}
+  html.site-min .bottom-nav .bn-item .bl{font-size:14px;font-weight:700}
+}
+</style>
+HTML;
+}
+
 $pos = stripos($html, '</head>');
 if ($pos !== false) {
     $html = substr($html, 0, $pos) . $inject . "\n" . substr($html, $pos);
