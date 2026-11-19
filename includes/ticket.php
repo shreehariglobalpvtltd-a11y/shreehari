@@ -1316,7 +1316,14 @@ final class Ticket
         try {
             $x1 = 36; $x2 = $W - 36;
             $artB = $y0 + self::PNG_ART_IMG_H;
-            DocArt::band($im, $x1, $y0, $x2, $artB, 0, null, 0.5, 0.85);
+            /* 19 Nov 2026 (owner: "budha hatayera hamro route ko famous thau haru ko photo"):
+               three real photos of the route - Bageshwari (Nepalgunj), Pashupatinath, Sabarmati
+               Ashram (Ahmedabad) - the issuing side first. ticket_places_on = 0, or a missing
+               photo, gives the old drawn band back. Same height: nothing above moves. */
+            $places = Settings::getBool('ticket_places_on', true) ? self::gdPlaces($im, $x1, $y0, $x2, $artB, $first) : false;
+            if (!$places) {
+                DocArt::band($im, $x1, $y0, $x2, $artB, 0, null, 0.5, 0.85);
+            }
             // caption strip
             $capB = $artB + 74;
             self::gdRoundedGrad($im, $x1, $artB, $x2, $capB, 0, DocArt::NAVY, DocArt::ROYAL);
@@ -1326,18 +1333,76 @@ final class Ticket
             $flagsW = DocArt::flagPairWidth(38, 10);
             DocArt::flagPair($im, $x2 - 28 - $flagsW, $artB + 20, 38, 10, $first);
             $maxW = $x2 - 28 - $flagsW - 24 - ($x1 + 28);
-            $l1 = 'सगरमाथा · Sagarmatha   ·   लुम्बिनी — गौतम बुद्धको जन्मस्थल · Lumbini';
+            $l1 = $places ? 'हाम्रो बाटोका प्रसिद्ध ठाउँ · Famous places on our route'
+                          : 'सगरमाथा · Sagarmatha   ·   लुम्बिनी — गौतम बुद्धको जन्मस्थल · Lumbini';
             $sz = 20;
             foreach ([20, 18, 17, 16] as $try) { $sz = $try; if (self::gdWidth($try, $l1) <= $maxW) { break; } }
-            if (self::gdWidth($sz, $l1) > $maxW) {
+            if (!$places && self::gdWidth($sz, $l1) > $maxW) {
                 $l1 = 'सगरमाथा · Sagarmatha   ·   लुम्बिनी · Lumbini';
             }
             self::gdText($im, $sz, $x1 + 28, $artB + 36, DocArt::col($im, DocArt::GOLD_LIGHT), $l1, true);
-            $l2 = 'भारत–नेपाल मैत्री यात्रा  ·  India – Nepal, one journey';
-            self::gdText($im, 15, $x1 + 28, $artB + 62, imagecolorallocate($im, 190, 204, 228), $l2, false);
+            $l2 = $places ? 'भारत–नेपाल मैत्री यात्रा · Photos: R. Dhungana, N. K. Sapkota, Snehrashmi (CC BY-SA 4.0, Wikimedia)'
+                          : 'भारत–नेपाल मैत्री यात्रा  ·  India – Nepal, one journey';
+            $s2 = 15;
+            while ($s2 > 10 && self::gdWidth($s2, $l2) > $maxW) { $s2--; }
+            self::gdText($im, $s2, $x1 + 28, $artB + 62, imagecolorallocate($im, 190, 204, 228), $l2, false);
         } catch (Throwable $e) {
             Logger::error('Ticket heritage band: ' . $e->getMessage());
         }
+    }
+
+    /** The three route photos (assets/img/places), the issuing country's side first. */
+    private const PLACES = [
+        'bageshwari'    => ['बागेश्वरी मन्दिर · Bageshwari', 'नेपालगञ्ज · Nepalgunj'],
+        'pashupatinath' => ['पशुपतिनाथ · Pashupatinath', 'काठमाडौं · Kathmandu'],
+        'sabarmati'     => ['साबरमती आश्रम · Sabarmati Ashram', 'अहमदाबाद · Ahmedabad'],
+    ];
+
+    /**
+     * Draw the three place photos across [$x1,$x2] x [$y0,$y1], each cropped to fill
+     * its tile, with a dark label strip (name, town). False = a photo is missing or GD
+     * cannot read JPEG; the caller then draws the old band.
+     */
+    private static function gdPlaces($im, int $x1, int $y0, int $x2, int $y1, string $first): bool
+    {
+        if (!function_exists('imagecreatefromjpeg')) {
+            return false;
+        }
+        $keys = $first === 'NP' ? ['bageshwari', 'pashupatinath', 'sabarmati'] : ['sabarmati', 'pashupatinath', 'bageshwari'];
+        $src = [];
+        foreach ($keys as $k) {
+            $f = ROOT_PATH . '/assets/img/places/' . $k . '.jpg';
+            $g = is_file($f) ? @imagecreatefromjpeg($f) : false;
+            if ($g === false) {
+                foreach ($src as $s) { imagedestroy($s); }
+                return false;
+            }
+            $src[$k] = $g;
+        }
+        $gap = 4; $n = count($keys);
+        $tw = (int) floor(($x2 - $x1 - $gap * ($n - 1)) / $n);
+        $th = $y1 - $y0;
+        $white = imagecolorallocate($im, 255, 255, 255);
+        $soft  = imagecolorallocate($im, 214, 224, 240);
+        $i = 0;
+        foreach ($src as $k => $g) {
+            $tx = $x1 + $i * ($tw + $gap);
+            $w  = $i === $n - 1 ? $x2 - $tx : $tw;          // the last tile takes the rounding pixels
+            $sw = imagesx($g); $sh = imagesy($g);
+            $scale = max($w / $sw, $th / $sh);
+            $cw = (int) round($w / $scale); $ch = (int) round($th / $scale);
+            imagecopyresampled($im, $g, $tx, $y0, (int) (($sw - $cw) / 2), (int) (($sh - $ch) / 2), $w, $th, $cw, $ch);
+            imagedestroy($g);
+            $shade = imagecolorallocatealpha($im, 8, 20, 48, 38);
+            imagefilledrectangle($im, $tx, $y1 - 58, $tx + $w - 1, $y1, $shade);
+            [$name, $town] = self::PLACES[$k];
+            $sz = 18;
+            while ($sz > 12 && self::gdWidth($sz, $name) > $w - 20) { $sz--; }
+            self::gdText($im, $sz, $tx + 10, $y1 - 32, $white, $name, true);
+            self::gdText($im, 13, $tx + 10, $y1 - 11, $soft, $town, false);
+            $i++;
+        }
+        return true;
     }
 
     /* =================================================================
@@ -3631,7 +3696,7 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-11-19 00:30:00';   // IST: TK-1..TK-6 - big SEAT tile left of the PNR (40 px), the ticket's own verify QR right of it (ticket_verify_qr; barcode kept), the pay card holds the pickup / Nepal office map QRs (ticket_maps_qr) and, only while money is due, a smaller UPI QR with the EXACT due (ticket_pay_qr_upi); NPR sales print NPR big (Ticket::money); flags 32 px, issuing company first; corridor = the passenger's own ends. Was 2026-11-16 22:50:00:   // IST: PAY ON BOARDING (P1) - the pay pill and the status line say बसमा तिर्ने · PAY ON BOARDING while a pay-at-boarding ticket owes money, PAID · नगद/CASH or अनलाइन/ONLINE once paid (Ticket::payWords); the pay card under a pay-at-boarding QR says cash on the bus or online. Geometry unchanged. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-11-19 14:30:00';   // IST: PLACES - the foot band shows three route photos (Bageshwari Nepalgunj, Pashupatinath, Sabarmati Ashram; ticket_places_on) instead of the drawn Sagarmatha / Buddha band; same height. Was 2026-11-19 00:30:00:   // IST: TK-1..TK-6 - big SEAT tile left of the PNR (40 px), the ticket's own verify QR right of it (ticket_verify_qr; barcode kept), the pay card holds the pickup / Nepal office map QRs (ticket_maps_qr) and, only while money is due, a smaller UPI QR with the EXACT due (ticket_pay_qr_upi); NPR sales print NPR big (Ticket::money); flags 32 px, issuing company first; corridor = the passenger's own ends. Was 2026-11-16 22:50:00:   // IST: PAY ON BOARDING (P1) - the pay pill and the status line say बसमा तिर्ने · PAY ON BOARDING while a pay-at-boarding ticket owes money, PAID · नगद/CASH or अनलाइन/ONLINE once paid (Ticket::payWords); the pay card under a pay-at-boarding QR says cash on the bus or online. Geometry unchanged. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
