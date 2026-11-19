@@ -29,8 +29,19 @@
   var lsDel = function (k) { try { localStorage.removeItem(k); } catch (e) {} };
   var settings = function () { return (BOOT && BOOT.settings) || {}; };
   var lang = function () { return (typeof LANG !== 'undefined' && LANG) ? LANG : 'ne'; };
+  /* 19 Nov 2026: the Android apps (TWA, com.shreehariglobal.travel / .manage) open the site with
+     referrer android-app://… (and the travel app with ?utm_source=android_app). Remember it for the
+     tab so later pages never offer "install the app" inside the app itself. */
+  var isTwa = function () {
+    try {
+      if (String(document.referrer || '').indexOf('android-app://') === 0 || /[?&]utm_source=android_app(&|$)/.test(location.search)) {
+        sessionStorage.setItem('shg:twa', '1');
+      }
+      return sessionStorage.getItem('shg:twa') === '1';
+    } catch (e) { return false; }
+  };
   var isStandalone = function () {
-    try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; }
+    try { return isTwa() || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; }
     catch (e) { return false; }
   };
   var ua = navigator.userAgent || '';
@@ -108,7 +119,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261120a" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261120b" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     // force = the passenger asked (menu Install, the iOS alerts card): no quiet rule applies.
@@ -189,7 +200,7 @@
         document.head.appendChild(st);
       }
       var n = document.createElement('div'); n.id = 'pwaInvite'; n.setAttribute('role', 'region'); n.setAttribute('aria-label', T('pwaInstallT'));
-      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261120a" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
+      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261120b" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
         + '<button type="button" id="pwaInviteGo">' + E(T('pwaInstallBtn')) + '</button>'
         + '<button type="button" id="pwaInviteNo">' + E(T('pwaContinue')) + '</button>';
       document.body.appendChild(n);
