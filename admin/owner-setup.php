@@ -1,0 +1,219 @@
+<?php
+/**
+ * admin/owner-setup.php — बाँकी भर्ने ठाउँ · Owner setup (19 Nov 2026).
+ *
+ * Owner: "1, 2, 3 fill garne thau bandeu, pachi add gardinchhu". One page with the
+ * few facts only the owner can give, each saved where the system already reads it:
+ *   1. Driver per bus      → drivers row + buses.default_driver_id (the driver list,
+ *                             the 21:30 report and the chalani all read it)
+ *   2. Map links           → india_hub_map / nepal_office_map (ticket map QR)
+ *   3. ICICI live details  → icici_live_* settings (kept for the switch to production;
+ *                             nothing goes live until the bank's go-live is checked)
+ *   4. Nepal company       → nepal_reg, nepal_esewa_id, nepal_esewa_name (Nepal ticket)
+ *   5. Play App Signing    → android_*_sha256 (added to /.well-known/assetlinks.json)
+ * plus a read-only checklist of what is still waiting.
+ *
+ * Settings permission; every save CSRF-checked and audited. A secret is never shown back.
+ */
+declare(strict_types=1);
+require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/ticket.php';
+
+$admin = admin_boot('dashboard.view');
+$can   = Auth::canManageSettings();
+$e     = static fn($v): string => Security::e((string) $v);
+$flash = [];
+
+$keys = [
+    'india_hub_map'          => ['map'],
+    'nepal_office_map'       => ['map'],
+    'icici_live_merchant_id' => ['text', 40],
+    'icici_live_aggregator_id' => ['text', 40],
+    'icici_live_app_id'      => ['text', 60],
+    'icici_live_secret_key'  => ['secret', 200],
+    'nepal_reg'              => ['text', 60],
+    'nepal_esewa_id'         => ['text', 80],
+    'nepal_esewa_name'       => ['text', 120],
+    'android_travel_sha256'  => ['sha', 0],
+    'android_manage_sha256'  => ['sha', 0],
+];
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    if (!Security::verifyCsrf()) {
+        $flash[] = ['bad', 'Session expired — फेरि खोल्नुहोस्।'];
+    } elseif (!$can) {
+        $flash[] = ['bad', 'Settings permission चाहिन्छ · needs the Settings permission'];
+    } elseif ((string) ($_POST['act'] ?? '') === 'drivers') {
+        $done = 0;
+        foreach ((array) ($_POST['bus'] ?? []) as $busId => $row) {
+            $busId = (int) $busId;
+            if ($busId <= 0 || !is_array($row)) { continue; }
+            $pick  = (string) ($row['driver'] ?? '');
+            $name  = Security::clean((string) ($row['name'] ?? ''), 120);
+            $phone = preg_replace('/\D/', '', (string) ($row['phone'] ?? '')) ?? '';
+            $driverId = null;
+            if ($pick === 'new') {
+                if ($name === '' || preg_match('/^(91|977)?[6-9]\d{9}$/', $phone) !== 1) {
+                    $flash[] = ['bad', 'Bus #' . $busId . ': नाम र १० अंकको phone चाहिन्छ · name and a 10-digit phone are needed'];
+                    continue;
+                }
+                $local = substr($phone, -10);
+                $ex = Database::fetch('SELECT id FROM drivers WHERE phone = :p', ['p' => $local]);
+                $driverId = $ex !== null ? (int) $ex['id'] : (int) Database::insert('drivers', ['full_name' => $name, 'phone' => $local, 'role' => 'driver', 'is_active' => 1]);
+            } elseif ($pick !== '' && ctype_digit($pick)) {
+                $driverId = (int) $pick;
+            } elseif ($pick === '') {
+                $driverId = null;
+            } else {
+                continue;
+            }
+            $old = Database::scalar('SELECT default_driver_id FROM buses WHERE id = :i', ['i' => $busId]);
+            if ((string) $old === (string) $driverId) { continue; }
+            Database::update('buses', ['default_driver_id' => $driverId], 'id = :i', ['i' => $busId]);
+            Logger::audit('bus.default_driver', 'bus', (string) $busId, ['driver' => $old], ['driver' => $driverId], 'Owner setup');
+            $done++;
+        }
+        $flash[] = ['ok', 'Driver सेभ भयो · saved (' . $done . ')'];
+    } elseif ((string) ($_POST['act'] ?? '') === 'facts') {
+        $changed = [];
+        foreach ($keys as $k => $spec) {
+            if (!array_key_exists($k, $_POST)) { continue; }
+            $v = trim((string) $_POST[$k]);
+            if ($spec[0] === 'secret' && $v === '') { continue; }          // blank = keep the saved secret
+            if ($spec[0] === 'map' && $v !== '') {
+                if (Ticket::mapLink($v) === '') {
+                    $flash[] = ['bad', $k . ': Google Maps link वा "lat, lng" चाहिन्छ · paste a Google Maps link or "lat, lng"'];
+                    continue;
+                }
+            }
+            if ($spec[0] === 'sha' && $v !== '') {
+                $v = strtoupper(preg_replace('/[^0-9A-Fa-f]/', '', $v) ?? '');
+                if (strlen($v) !== 64) {
+                    $flash[] = ['bad', $k . ': SHA-256 = 64 hex (AB:CD:…) · not a SHA-256'];
+                    continue;
+                }
+                $v = implode(':', str_split($v, 2));
+            }
+            if (in_array($spec[0], ['text', 'secret'], true)) {
+                $v = mb_substr(Security::clean($v, (int) $spec[1]), 0, (int) $spec[1]);
+            }
+            if ($v === Settings::getString($k, '')) { continue; }
+            Settings::set($k, $v, 'string', str_starts_with($k, 'icici') ? 'payments' : (str_starts_with($k, 'android') ? 'app' : 'company'));
+            $changed[] = $k;
+        }
+        Settings::flush();
+        if ($changed !== []) {
+            Logger::audit('settings.owner_setup', 'settings', 'owner-setup', null, ['changed' => $changed], 'Owner setup page');
+            $flash[] = ['ok', 'सेभ भयो · saved: ' . implode(', ', $changed)];
+        } elseif (!array_filter($flash, static fn($f) => $f[0] === 'bad')) {
+            $flash[] = ['ok', 'केही बदलिएन · nothing changed'];
+        }
+    }
+}
+
+$buses   = Database::fetchAll('SELECT id, bus_number, default_driver_id FROM buses WHERE is_active = 1 ORDER BY id');
+$drivers = Database::fetchAll("SELECT id, full_name, phone FROM drivers WHERE is_active = 1 AND role IN ('driver','co-driver') ORDER BY full_name");
+$val     = static fn(string $k): string => Settings::getString($k, '');
+$tplReady = null;
+try {
+    require_once INCLUDE_PATH . '/watplmeta.php';
+    $tplReady = method_exists('WaTplMeta', 'overview') ? WaTplMeta::overview() : null;
+} catch (Throwable $ex) {
+    $tplReady = null;
+}
+$approved = 0; $pending = 0; $missing = [];
+foreach ((array) $tplReady as $row) {
+    if (!is_array($row) || (string) ($row['name'] ?? '') === 'shg_booking_form') { continue; }   // waits for a published Flow
+    $st = strtoupper((string) ($row['status'] ?? ''));
+    if ($st === 'APPROVED') { $approved++; } elseif ($st === 'PENDING') { $pending++; } else { $missing[] = (string) ($row['name'] ?? '?'); }
+}
+$withDriver = count(array_filter($buses, static fn($b) => !empty($b['default_driver_id'])));
+$checks = [
+    ['🚌 Driver phone (हरेक बस)', $withDriver === count($buses) && $buses !== [], $withDriver . ' / ' . count($buses) . ' बसमा driver'],
+    ['📍 S Hari Parking map', $val('india_hub_map') !== '', $val('india_hub_map') !== '' ? 'भरियो' : 'खाली'],
+    ['📍 Pushpalal Chowk map', $val('nepal_office_map') !== '', $val('nepal_office_map') !== '' ? 'भरियो' : 'खाली (अहिले नामबाट Google खोज)'],
+    ['🏦 ICICI live details', $val('icici_live_merchant_id') !== '' && $val('icici_live_secret_key') !== '', 'भरेपछि Claude ले bank go-live जाँचेर switch गर्छ'],
+    ['🇳🇵 Nepal company reg no', $val('nepal_reg') !== '', $val('nepal_reg') !== '' ? $val('nepal_reg') : 'खाली'],
+    ['🇳🇵 Nepal eSewa ID', $val('nepal_esewa_id') !== '', $val('nepal_esewa_id') !== '' ? 'भरियो' : 'खाली (नेपाल टिकटमा eSewa लाइन देखिँदैन)'],
+    ['📱 Play App Signing SHA-256', $val('android_travel_sha256') !== '' && $val('android_manage_sha256') !== '', 'Play Console → App signing बाट'],
+    ['💬 Meta templates approved', $tplReady !== null && $approved > 0 && $pending === 0 && $missing === [], $tplReady === null ? '—' : ($approved . ' approved · ' . $pending . ' pending' . ($missing ? ' · missing: ' . implode(', ', array_slice($missing, 0, 3)) : ''))],
+];
+
+admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'owner-setup');
+?>
+<style>
+.os-grid{display:grid;gap:14px;max-width:880px}
+.os-card{background:var(--surface,#fff);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.os-card h2{margin:0 0 4px;font-size:16px}.os-card p.hint{margin:0 0 10px;color:var(--muted);font-size:12.5px}
+.os-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.os-f label{font-size:12px;color:var(--muted)}.os-f input,.os-f select{display:block;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;min-height:40px;font:inherit}
+.os-bus{display:grid;grid-template-columns:140px 1fr 1fr 1fr;gap:8px;align-items:end;padding:8px 0;border-bottom:1px dashed var(--line)}
+@media (max-width:640px){.os-bus{grid-template-columns:1fr}}
+.os-ck{width:100%;border-collapse:collapse}.os-ck td{padding:7px 6px;border-bottom:1px solid var(--line);font-size:13.5px}
+.os-ok{color:var(--ok,#0a7c2f);font-weight:700}.os-no{color:#b26a00;font-weight:700}
+.os-flash{padding:9px 12px;border-radius:10px;margin:0 0 6px}.os-flash.ok{background:#e9f8ee;color:#0a7c2f}.os-flash.bad{background:#fdecec;color:#b3261e}
+</style>
+<div class="os-grid">
+  <?php foreach ($flash as [$t, $m]): ?><div class="os-flash <?= $e($t) ?>"><?= $e($m) ?></div><?php endforeach; ?>
+
+  <div class="os-card">
+    <h2>✅ के बाँकी छ · What is still waiting</h2>
+    <table class="os-ck"><?php foreach ($checks as [$n, $ok, $note]): ?>
+      <tr><td><?= $e($n) ?></td><td class="<?= $ok ? 'os-ok' : 'os-no' ?>"><?= $ok ? '✔ तयार' : '⏳ बाँकी' ?></td><td class="muted"><?= $e($note) ?></td></tr>
+    <?php endforeach; ?></table>
+  </div>
+
+  <form method="post" class="os-card">
+    <?= Security::csrfField() ?><input type="hidden" name="act" value="drivers">
+    <h2>1 · 🚌 बसको driver · Driver per bus</h2>
+    <p class="hint">यहाँ राखेको driver लाई ५ यात्रु पुगेपछि यात्रु सूची WhatsApp मा जान्छ। नयाँ driver: "+ नयाँ" छानेर नाम र phone लेख्नुहोस्।</p>
+    <?php foreach ($buses as $b): ?>
+      <div class="os-bus">
+        <b><?= $e($b['bus_number']) ?></b>
+        <label>Driver<select name="bus[<?= (int) $b['id'] ?>][driver]">
+          <option value="">— छैन · none —</option>
+          <?php foreach ($drivers as $d): ?><option value="<?= (int) $d['id'] ?>" <?= (int) $b['default_driver_id'] === (int) $d['id'] ? 'selected' : '' ?>><?= $e($d['full_name']) ?> · …<?= $e(substr((string) $d['phone'], -4)) ?></option><?php endforeach; ?>
+          <option value="new">+ नयाँ driver · new</option>
+        </select></label>
+        <label>नयाँ नाम · New name<input name="bus[<?= (int) $b['id'] ?>][name]" maxlength="120" placeholder="Ram Bahadur"></label>
+        <label>Phone<input name="bus[<?= (int) $b['id'] ?>][phone]" inputmode="tel" maxlength="16" placeholder="98XXXXXXXX / 9XXXXXXXXX"></label>
+      </div>
+    <?php endforeach; ?>
+    <p style="margin:10px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save drivers</button> <a class="btn" href="drivers.php">Drivers page</a></p>
+  </form>
+
+  <form method="post" class="os-card">
+    <?= Security::csrfField() ?><input type="hidden" name="act" value="facts">
+    <h2>2 · 📍 नक्सा · Map links (ticket QR)</h2>
+    <p class="hint">Google Maps मा ठाउँ खोल्नुहोस् → Share → Copy link → यहाँ paste। वा "23.17, 72.62" जस्तो lat, lng।</p>
+    <div class="os-f">
+      <label>S Hari Parking, Nana Chiloda (AMD)<input name="india_hub_map" value="<?= $e($val('india_hub_map')) ?>" placeholder="https://maps.app.goo.gl/…"></label>
+      <label>Pushpalal Chowk, Nepalgunj (Hotel Darbar अगाडि)<input name="nepal_office_map" value="<?= $e($val('nepal_office_map')) ?>" placeholder="https://maps.app.goo.gl/…"></label>
+    </div>
+
+    <h2 style="margin-top:16px">3 · 🏦 ICICI live (bank बाट आएपछि)</h2>
+    <p class="hint">Bank ले दिएको production details। Secret एकपटक सेभ भएपछि फेरि देखाइँदैन (खाली छोडे पुरानै रहन्छ)। सेभ गरेपछि Claude लाई भन्नुहोस् — bank go-live जाँचेर मात्र असली payment मा switch गरिन्छ।</p>
+    <div class="os-f">
+      <label>Merchant ID<input name="icici_live_merchant_id" value="<?= $e($val('icici_live_merchant_id')) ?>" autocomplete="off"></label>
+      <label>Aggregator ID<input name="icici_live_aggregator_id" value="<?= $e($val('icici_live_aggregator_id')) ?>" autocomplete="off"></label>
+      <label>App ID<input name="icici_live_app_id" value="<?= $e($val('icici_live_app_id')) ?>" autocomplete="off"></label>
+      <label>Secret key <?= $val('icici_live_secret_key') !== '' ? '<span class="os-ok">✔ saved</span>' : '' ?><input name="icici_live_secret_key" type="password" value="" autocomplete="new-password" placeholder="<?= $val('icici_live_secret_key') !== '' ? '•••••••• (बदल्न मात्र लेख्नुहोस्)' : '' ?>"></label>
+    </div>
+
+    <h2 style="margin-top:16px">4 · 🇳🇵 नेपाल कम्पनी · Nepal company</h2>
+    <div class="os-f">
+      <label>Reg. No. (दर्ता नं)<input name="nepal_reg" value="<?= $e($val('nepal_reg')) ?>"></label>
+      <label>eSewa ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
+      <label>eSewa नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
+    </div>
+
+    <h2 style="margin-top:16px">5 · 📱 Play Store App signing SHA-256</h2>
+    <p class="hint">Play Console → app → Setup → App signing → "App signing key certificate" को SHA-256। भरेपछि Claude ले app link (assetlinks) मा थप्छ।</p>
+    <div class="os-f">
+      <label>S Hari Travel<input name="android_travel_sha256" value="<?= $e($val('android_travel_sha256')) ?>" placeholder="AB:CD:…"></label>
+      <label>S Hari Manage<input name="android_manage_sha256" value="<?= $e($val('android_manage_sha256')) ?>" placeholder="AB:CD:…"></label>
+    </div>
+    <p style="margin:12px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save</button></p>
+  </form>
+</div>
+<?php admin_footer(); ?>

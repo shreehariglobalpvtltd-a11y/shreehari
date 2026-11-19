@@ -59,7 +59,11 @@ $_SESSION[ADMIN_SESSION_KEY] = [
 ];
 
 if ($post !== []) {
-    $_POST                    = $post;
+    // keys like bus[3][driver] become nested arrays, as a browser form post would send them
+    $qs = [];
+    foreach ($post as $k => $v) { $qs[] = $k . '=' . rawurlencode((string) $v); }
+    parse_str(implode('&', $qs), $parsed);
+    $_POST                    = $parsed;
     $_POST[CSRF_TOKEN_NAME]   = Security::csrfToken();
     $_SERVER['CONTENT_TYPE']  = 'application/x-www-form-urlencoded';
 }
