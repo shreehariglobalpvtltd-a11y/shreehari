@@ -21,7 +21,9 @@
     + '.qk-tabs{display:flex;gap:8px;justify-content:center;margin:12px 0 6px}'
     + '.qk-tabs button{flex:1;min-height:44px;border:1px solid #c9d3e4;background:#fff;border-radius:12px;font:700 14px/1 inherit;color:#33415c;cursor:pointer}'
     + '.qk-tabs button.on{background:#1d4ed8;border-color:#1d4ed8;color:#fff}'
-    + '.qk-pad{position:relative;width:240px;height:240px;max-width:100%;margin:10px auto 0;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:18px;background:#f3f6fb}'
+    + '.qk-pad{position:relative;width:240px;height:240px;max-width:100%;margin:10px auto 0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;border-radius:18px;background:#f3f6fb}'
+    + '@keyframes qkShake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}'
+    + '.qk-pad.bad{animation:qkShake .42s both}@media (prefers-reduced-motion:reduce){.qk-pad.bad{animation:none}}'
     + '.qk-pad svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}'
     + '.qk-dot{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#9fb0cc;transition:transform .12s,background .12s}'
     + '.qk-dot.on{background:#1d4ed8;transform:scale(1.35)}'
@@ -60,6 +62,7 @@
     var mode  = pad.getAttribute('data-qk-mode') || 'login';
     var first = null;              // set mode: the first drawing, waiting for the confirm
     var dots = [], path = [], drawing = false, cur = null;
+    var sent = false, raf = 0, pid = null;   // 19 Nov 2026: one submit only, one finger only, one redraw per frame
 
     var svg = document.createElementNS(SVGNS, 'svg');
     var line = document.createElementNS(SVGNS, 'polyline');
@@ -109,21 +112,31 @@
       var ua = navigator.userActivation;
       if (navigator.vibrate && (!ua || ua.hasBeenActive)) { try { navigator.vibrate(8); } catch (e) {} }
     }
+    function paint() { raf = 0; redraw(); }
+    function later() { if (!raf) { raf = (window.requestAnimationFrame || setTimeout)(paint, 16); } }
     function redraw() {
       var pts = path.map(function (i) { return centre(i).join(','); });
       if (drawing && cur) { pts.push(cur.join(',')); }
       line.setAttribute('points', pts.join(' '));
     }
-    function reset(cls) {
+    var clearT = 0;
+    function wipe() {
+      clearT = 0;
+      path = []; cur = null;
+      dots.forEach(function (d) { d.classList.remove('on'); });
       pad.classList.remove('bad', 'good');
-      if (cls) { pad.classList.add(cls); }
-      setTimeout(function () {
-        path = []; cur = null;
-        dots.forEach(function (d) { d.classList.remove('on'); });
-        pad.classList.remove('bad', 'good');
-        line.setAttribute('stroke', '#1d4ed8');
-        redraw();
-      }, cls ? 650 : 0);
+      line.setAttribute('stroke', '#1d4ed8');
+      redraw();
+    }
+    /* 19 Nov 2026: a plain reset clears NOW (it used to clear one tick later and could take the
+       first dot of the new drawing with it); the red / green flash clears after 650 ms, and a
+       new touch cancels that timer so it can never wipe a drawing already under way. */
+    function reset(cls) {
+      if (clearT) { clearTimeout(clearT); clearT = 0; }
+      if (!cls) { wipe(); return; }
+      pad.classList.remove('bad', 'good');
+      pad.classList.add(cls);
+      clearT = setTimeout(wipe, 650);
     }
     function say(t) { if (msg) { msg.textContent = t; } }
     function pos(e) {
@@ -131,24 +144,36 @@
       return [e.clientX - r.left, e.clientY - r.top];
     }
 
+    pad.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     pad.addEventListener('pointerdown', function (e) {
+      if (sent || drawing || e.isPrimary === false) { return; }   // already posted / a second finger: ignored
       e.preventDefault();
       reset();
-      drawing = true;
+      drawing = true; pid = e.pointerId;
       try { pad.setPointerCapture(e.pointerId); } catch (x) {}
       var p = pos(e), i = hit(p[0], p[1]);
       if (i >= 0) { add(i); }
       cur = p; redraw();
     });
     pad.addEventListener('pointermove', function (e) {
-      if (!drawing) { return; }
-      var p = pos(e), i = hit(p[0], p[1]);
-      if (i >= 0) { add(i); }
-      cur = p; redraw();
+      if (!drawing || e.pointerId !== pid) { return; }
+      /* a fast swipe on a 120 Hz screen arrives as several points in one event: read them all,
+         so no dot the finger crossed is skipped; the line itself is redrawn once per frame */
+      var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+      if (!evs || !evs.length) { evs = [e]; }
+      var p = null;
+      for (var k = 0; k < evs.length; k++) { p = pos(evs[k]); var i = hit(p[0], p[1]); if (i >= 0) { add(i); } }
+      cur = p; later();
     });
-    function finish() {
-      if (!drawing) { return; }
-      drawing = false; cur = null; redraw();
+    /* the system took the touch away (a call, a notification shade, a gesture): that is not an
+       answer - nothing is posted and no try is used; the pad simply clears */
+    function cancel(e) {
+      if (!drawing || (e && e.pointerId !== pid)) { return; }
+      drawing = false; pid = null; reset();
+    }
+    function finish(e) {
+      if (!drawing || (e && e.pointerId !== pid)) { return; }
+      drawing = false; pid = null; cur = null; redraw();
       if (path.length < 4) {
         line.setAttribute('stroke', '#d33');
         say('कम्तीमा ४ थोप्ला जोड्नुहोस् · Join at least 4 dots.');
@@ -175,10 +200,12 @@
       line.setAttribute('stroke', '#16a34a');
       pad.classList.add('good');
       say('…');
-      if (form) { form.submit(); }
+      if (form && !sent) { sent = true; form.submit(); }
     }
     pad.addEventListener('pointerup', finish);
-    pad.addEventListener('pointercancel', finish);
+    pad.addEventListener('pointercancel', cancel);
+    pad.addEventListener('lostpointercapture', function (e) { if (drawing && e.pointerId === pid) { finish(e); } });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) { sent = false; reset(); } });   // back button: a fresh pad
     window.addEventListener('resize', redraw);
   });
 })();

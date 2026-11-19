@@ -152,6 +152,6 @@ $pwField = $fresh ? '' : '<label>हालको पासवर्ड · Curren
   </div>
 <?php endif; ?>
 </div>
-<script src="/assets/js/quick-unlock.js?v=20261101a"></script>
+<script src="/assets/js/quick-unlock.js?v=20261120c"></script>
 <?php
 admin_footer();

@@ -111,7 +111,7 @@ body .qk-tabs button.on{background:var(--acc);border-color:var(--acc);color:#fff
   </div>
   <a class="out" href="/admin/logout.php">साइन आउट · Sign out</a>
 </main>
-<script src="/assets/js/quick-unlock.js?v=20261101a"></script>
+<script src="/assets/js/quick-unlock.js?v=20261120c"></script>
 </body></html>
 <?php
     exit;
@@ -1349,10 +1349,12 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
     function max(){return len||6;}
     function draw(){var h='';for(var i=0;i<max();i++)h+='<i'+(i<inp.value.length?' class="on"':'')+(!len&&i>3&&inp.value.length<=i?' style="opacity:.35"':'')+'></i>';dots.innerHTML=h;if(okb)okb.style.visibility=len?'hidden':'';}
     function send(){if(busy||inp.value.length<(len||4))return;busy=true;dots.classList.add('done');setTimeout(function(){f.submit();},len?180:0);}
-    function press(k){if(busy||locked)return;if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
+    function press(k){if(busy||locked)return;var ua=navigator.userActivation;if(navigator.vibrate&&(!ua||ua.hasBeenActive)){try{navigator.vibrate(6)}catch(e){}}if(k==='x')inp.value=inp.value.slice(0,-1);else if(k==='ok'){send();return;}
       else if(inp.value.length<max())inp.value+=k;draw();if(inp.value.length===max())send();}
     f.setLen=function(l){len=l;inp.value='';draw();};
-    keys.addEventListener('click',function(e){var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
+    var lastDown=0;keys.addEventListener('pointerdown',function(e){var b=e.target.closest('button');if(!b||e.button>0)return;e.preventDefault();lastDown=Date.now();press(b.getAttribute('data-k'));});
+    keys.addEventListener('click',function(e){if(Date.now()-lastDown<700)return;var b=e.target.closest('button');if(b)press(b.getAttribute('data-k'));});
+    window.addEventListener('pageshow',function(e){if(e.persisted){busy=false;inp.value='';dots.classList.remove('done');draw();}});
     pads.push({f:f,press:press});draw();
   });
   document.querySelectorAll('[data-cl-len] button').forEach(function(b){b.addEventListener('click',function(){
@@ -1381,7 +1383,7 @@ body.lock .cl-alt-b.wa{background:rgba(37,211,102,.22);border-color:rgba(37,211,
   }
 })();
 </script><?php endif; ?>
-<?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null || $cPad): ?><script src="/assets/js/quick-unlock.js?v=20261101a"></script><?php endif; ?>
+<?php if ((($step === 'mobile' || $step === 'id') && QuickUnlock::on()) || ($remembered ?? null) !== null || $cPad): ?><script src="/assets/js/quick-unlock.js?v=20261120c"></script><?php endif; ?>
 
 </body></html>
 <?php

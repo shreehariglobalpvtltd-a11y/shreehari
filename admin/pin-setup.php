@@ -158,7 +158,7 @@ admin_header('PIN / Pattern', '');
     <button class="btn" type="submit" style="background:transparent;color:inherit;border:1px solid var(--line,#dfe5ef)">अहिलेलाई छोड्नुहोस् · Skip for now →</button></form>
   <?php endif; ?>
 </div>
-<script src="/assets/js/quick-unlock.js?v=20261101a"></script>
+<script src="/assets/js/quick-unlock.js?v=20261120c"></script>
 <?php
 if (is_file(INCLUDE_PATH . '/passkeys.php')) {
     require_once INCLUDE_PATH . '/passkeys.php';
