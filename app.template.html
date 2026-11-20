@@ -3701,7 +3701,11 @@ s.addEventListener('click',function(e){e.preventDefault();
           <a href="/explore"><svg class="ic" aria-hidden="true"><use href="#i-map"/></svg><span data-i18n="fPlaces">Places to visit</span></a>
           <a href="/tours"><svg class="ic" aria-hidden="true"><use href="#i-luggage"/></svg><span data-i18n="fTours">Tour packages</span></a>
           <a href="/business"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg><span data-i18n="fBusiness">Business services</span></a>
+          <!-- 20 Nov 2026 (owner: "website ma app download link rakh"): the customer Android app, /downloads/ (1.0.1).
+               Taken away inside the app itself (android-app:// referrer, ?utm_source=android_app, standalone). -->
+          <a class="apk-dl" href="/downloads/S-Hari-Travel.apk" download="S-Hari-Travel.apk" type="application/vnd.android.package-archive"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Android app · एप डाउनलोड</span></a>
         </nav>
+        <script>(function(){try{var inApp=String(document.referrer||'').indexOf('android-app://')===0||/[?&]utm_source=android_app(&|$)/.test(location.search)||sessionStorage.getItem('shg:twa')==='1'||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);if(inApp){document.querySelectorAll('.apk-dl').forEach(function(a){a.remove();});}}catch(e){}})();</script>
       </div>
       <div>
         <h4 data-i18n="fCompany">Company</h4>

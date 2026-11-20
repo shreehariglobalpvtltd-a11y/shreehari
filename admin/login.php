@@ -1355,6 +1355,11 @@ body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F
     <a href="<?= $h(rtrim(APP_URL, '/')) ?>/guide/?v=agent">▶ एजेन्ट गाइड भिडियो — लगइन, टिकट, चलानी, पैसा निकाल्ने · Agent guide video</a>
   </div>
   <?php endif; ?>
+  <?php /* 20 Nov 2026 (owner: "website ma app download link rakh"): the staff Android app from /downloads/ (1.0.1),
+           on every step of this page (the links block above is hidden on the code door). Not shown inside the app itself
+           (?app=1 here; android-app:// referrer / standalone in the script below). */ ?>
+  <?php if (empty($_GET['app'])): ?><p class="note apk-note"><a class="apk-dl" href="/downloads/S-Hari-Manage.apk" download="S-Hari-Manage.apk" type="application/vnd.android.package-archive" style="display:inline-flex;align-items:center;min-height:44px">📱 S Hari Manage — Android app डाउनलोड · Download</a></p><?php endif; ?>
+  <script>(function(){try{var a=document.querySelector('.apk-dl');if(!a)return;var inApp=String(document.referrer||'').indexOf('android-app://')===0||sessionStorage.getItem('shg:twa')==='1'||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);if(inApp){a.closest('.apk-note')?a.closest('.apk-note').remove():a.remove();}}catch(e){}})();</script>
   <?php if (!in_array($step, ['c_code', 'c_unlock', 'c_create', 'c_confirm'], true) && empty($clStepsShown)): ?><p class="note">📞 मद्दत · Help: <a href="tel:+<?= $h($helpTel) ?>" style="white-space:nowrap"><?= $h($helpPhone) ?></a></p><?php endif; ?>
 </main>
 <?php if ($waPoll !== null): ?>
