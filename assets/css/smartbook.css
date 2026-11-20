@@ -705,3 +705,68 @@ html #view-home > #sbDesk{order:-1 !important}
   /* these five carry 40px from more specific rules (polish.css 7.3, depth.css): named here so 44 wins */
   #smartBook .sb-qbar .sb-qmode button,#smartBook .sb-card .sb-qbar .sb-qhelp,#smartBook .sb-card .sb-qline button,#smartBook .sb-card .sb-qline .sb-q-priv{min-height:44px;height:auto}
 }
+
+/* ===================================================================
+   20 Nov 2026 — ticket magic (27-smartbook.js tkMagic). A full-screen
+   moment when a sale is confirmed: the ticket spins in in 3D, the name /
+   number / route write themselves in, a seal stamps, then it hands over
+   to the real ticket. Body-level (outside #smartBook) so no page layer
+   restyles it. Tap / Esc / Enter skips. Reduced motion = a short fade.
+   =================================================================== */
+.tkm{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:16px;cursor:pointer;
+  background:radial-gradient(120% 90% at 50% 40%,rgba(31,79,163,.92),rgba(8,16,38,.97) 70%);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);color:#fff;
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;
+  animation:tkmIn .28s ease-out both}
+.tkm.tkm-out{animation:tkmOut .4s ease-in forwards}
+.tkm-glow{position:absolute;width:min(90vw,560px);aspect-ratio:1;border-radius:50%;
+  background:conic-gradient(from 0deg,#FF9933,#FFD27A,#5B8CFF,#9B6BFF,#FF9933);filter:blur(60px);opacity:.45;
+  animation:tkmSpinBg 6s linear infinite}
+.tkm-stage{position:relative;perspective:1300px;width:min(92vw,400px);text-align:center}
+.tkm-card{position:relative;transform-style:preserve-3d;border-radius:22px;padding:18px 18px 20px;text-align:left;overflow:hidden;
+  background:linear-gradient(150deg,#FFFFFF 0%,#F4F7FF 55%,#FFF4E6 100%);color:#14213D;
+  box-shadow:0 30px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.6) inset;
+  animation:tkmSpin 1.25s cubic-bezier(.16,.84,.24,1.06) both}
+.tkm-top{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px dashed #C9D4EA}
+.tkm-top b{font-size:15px;color:#1F4FA3;letter-spacing:.01em}
+.tkm-top sup{font-size:9px}
+.tkm-logo{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:900;font-size:14px;color:#fff;
+  background:linear-gradient(135deg,#1F4FA3,#F07C1F)}
+.tkm-pnr{margin-left:auto;font:800 12px/1 ui-monospace,Consolas,monospace;padding:6px 8px;border-radius:8px;background:#EAF0FB;color:#1F4FA3}
+.tkm-name{margin-top:14px;padding-right:64px;font-size:clamp(22px,6.4vw,30px);font-weight:900;line-height:1.15;color:#0F2550;word-break:break-word}
+.tkm-ph{margin-top:4px;padding-right:64px;font-size:16px;font-weight:700;color:#3D4A66;font-variant-numeric:tabular-nums}
+.tkm-route{margin-top:12px;font-size:17px;font-weight:800;color:#F07C1F}
+.tkm-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tkm-meta span{font-size:13px;font-weight:700;padding:6px 10px;border-radius:99px;background:#EEF3FB;color:#1F2E4D}
+.tkm-perf{position:absolute;left:0;right:0;bottom:0;height:8px;
+  background:radial-gradient(circle at 8px -2px,transparent 6px,#E3EAF7 6.5px) 0 0/16px 8px repeat-x;opacity:.9}
+.tkm-name span,.tkm-ph span,.tkm-route span{display:inline-block;animation:tkmLetter .42s var(--d,0s) cubic-bezier(.2,.9,.3,1.3) both}
+.tkm-seal{position:absolute;right:14px;top:62px;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;
+  font-size:32px;font-weight:900;color:#fff;background:radial-gradient(circle at 35% 30%,#4ADE80,#15803D);
+  box-shadow:0 0 0 4px rgba(255,255,255,.9),0 10px 24px rgba(21,128,61,.45);animation:tkmSeal .5s 1.55s cubic-bezier(.3,1.6,.5,1) both}
+.tkm-sheen{position:absolute;inset:-40% -60%;pointer-events:none;
+  background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.85) 50%,transparent 60%);
+  transform:translateX(-80%);animation:tkmSheen 1s 1.15s ease-in-out both}
+.tkm-ok{margin:18px 0 0;font-size:19px;font-weight:900;letter-spacing:.02em;text-shadow:0 2px 12px rgba(0,0,0,.35);animation:tkmUp .45s 1.7s ease-out both}
+.tkm-sparks{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none}
+.tkm-sparks i{position:absolute;width:9px;height:9px;margin:-4px;border-radius:50%;
+  background:radial-gradient(circle,#FFF 0,#FFD27A 45%,rgba(255,153,51,0) 70%);
+  animation:tkmSpark .9s var(--d,1s) ease-out both}
+/* the desk (counter) cut is shorter: everything plays ~35% faster */
+.tkm-desk .tkm-card{animation-duration:.9s}
+.tkm-desk .tkm-seal{animation-delay:1.05s}.tkm-desk .tkm-sheen{animation-delay:.8s}.tkm-desk .tkm-ok{animation-delay:1.15s}
+@keyframes tkmIn{from{opacity:0}}
+@keyframes tkmOut{to{opacity:0;transform:scale(1.04)}}
+@keyframes tkmSpinBg{to{transform:rotate(360deg)}}
+@keyframes tkmSpin{0%{transform:translateY(40px) scale(.35) rotateY(-540deg) rotateX(18deg);opacity:0}
+  55%{opacity:1}100%{transform:none;opacity:1}}
+@keyframes tkmLetter{from{opacity:0;transform:translateY(.6em) scale(.6);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+@keyframes tkmSeal{from{opacity:0;transform:scale(2.4) rotate(-25deg)}to{opacity:1;transform:rotate(-8deg)}}
+@keyframes tkmSheen{to{transform:translateX(80%)}}
+@keyframes tkmUp{from{opacity:0;transform:translateY(10px)}}
+@keyframes tkmSpark{0%{opacity:0;transform:rotate(var(--a)) translateX(0) scale(.4)}20%{opacity:1}
+  100%{opacity:0;transform:rotate(var(--a)) translateX(var(--r)) scale(1)}}
+.tkm-calm,.tkm-calm *{animation-duration:.01s !important;animation-delay:0s !important}
+.tkm-calm .tkm-sparks,.tkm-calm .tkm-sheen{display:none}
+.tkm-calm{animation:tkmIn .25s ease-out both !important}
+@media (prefers-reduced-motion:reduce){.tkm *{animation-duration:.01s !important;animation-delay:0s !important}.tkm-sparks,.tkm-sheen{display:none}}

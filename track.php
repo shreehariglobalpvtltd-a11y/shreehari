@@ -264,6 +264,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     <p class="note hidden" id="ttNote"><?= $e($T['ttNote']) ?></p>
   </section>
 
+  <!-- 20 Nov 2026: timetable vs live - two lanes, drawn by track-live.js from status().pace -->
+  <section class="card pace hidden" id="pace" aria-live="polite"></section>
+
 <?php if ($mapV !== null): ?>
   <section class="card" id="mapCard">
     <button type="button" class="btn blue" id="mapBtn">🗺️ <?= $e($T['showMap']) ?></button>

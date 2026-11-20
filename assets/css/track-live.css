@@ -88,3 +88,31 @@ button.btn{width:100%;font:inherit;font-weight:800;font-size:15px;cursor:pointer
   .clk{position:static;display:block;text-align:right;margin:-6px 0 2px}
   .hrow{padding-right:0}
 }
+
+/* 20 Nov 2026: timetable vs live - two lanes (track-live.js pace()). The ghost
+   bus on the dashed lane is the timetable; the solid lane is the GPS fix. */
+.pace .pl-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.pace .pl-h h3{margin:0;font-size:16px}
+.pace .pl-badge{font-weight:800;font-size:14px;padding:6px 12px;border-radius:99px;background:#DCFCE7;color:#14532D;white-space:nowrap}
+.pace.tone-warn .pl-badge{background:#FEF3C7;color:#7C2D12}
+.pace.tone-bad .pl-badge{background:#FEE2E2;color:#7F1D1D}
+.pl-lane{margin:14px 0 4px}
+.pl-lab{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.pl-lab b{color:var(--ink);font-weight:700;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-road{position:relative;height:10px;margin:16px 16px 6px;border-radius:99px;background:var(--soft)}
+.pl-road>i{position:absolute;left:0;top:0;bottom:0;width:var(--p);border-radius:inherit}
+.pl-road>em{position:absolute;top:50%;left:var(--p);width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:17px;background:var(--card);box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.pl-lane.plan .pl-road>i{background:repeating-linear-gradient(90deg,var(--pri) 0 8px,transparent 8px 14px);opacity:.7}
+.pl-lane.plan .pl-road>em{border:2px dashed var(--pri);opacity:.85}
+.pl-lane.live .pl-road>i{background:linear-gradient(90deg,#FF9933,var(--orange))}
+.pl-lane.live .pl-road>em{border:3px solid var(--orange)}
+@media (prefers-reduced-motion:no-preference){
+  .pl-road>i{animation:plGrow 1.1s cubic-bezier(.2,.8,.2,1) both}
+  .pl-road>em{animation:plRide 1.1s cubic-bezier(.2,.8,.2,1) both}
+  .pl-lane.live .pl-road>em{animation:plRide 1.1s cubic-bezier(.2,.8,.2,1) both,plBob 2.4s 1.1s ease-in-out infinite}
+  @keyframes plGrow{from{width:0}}
+  @keyframes plRide{from{left:0}}
+  @keyframes plBob{50%{transform:translateY(-3px)}}
+}
+/* refreshes (every 15 s) do not replay the entrance */
+.pace.pl-on .pl-road>i,.pace.pl-on .pl-road>em{animation:none !important}

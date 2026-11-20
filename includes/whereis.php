@@ -114,8 +114,92 @@ final class WhereIs
                 // the timeline is an extra: never let it break the live answer
                 $out['timeline'] = [];
             }
+            try {
+                $out['pace'] = self::pace($out, $now);
+            } catch (Throwable $e) {
+                $out['pace'] = null;
+            }
         }
         return $out;
+    }
+
+    /**
+     * Timetable vs live, for the two-line "where it should be / where it is"
+     * strip (20 Nov 2026, owner: "2 ta line - bus ka pugyo, time le ka pugnu
+     * parne ho, kati dhilo"). Reads only the timeline's own clock + km pairs:
+     * the planned point follows the ORIGINAL timetable (depTs, before any
+     * office delay), the live point is the measured GPS km only - never a
+     * guess. lateMin = now minus the timetable minute the coach should have
+     * been at its live km (negative = ahead). Null without two timed rows.
+     *
+     * @param array<string,mixed> $st  a status() answer that already has its timeline
+     * @return array<string,mixed>|null
+     */
+    public static function pace(array $st, int $now): ?array
+    {
+        $pts = [];
+        foreach (($st['timeline'] ?? []) as $r) {
+            if (($r['ts'] ?? null) !== null && ($r['km'] ?? null) !== null) {
+                $pts[] = [(int) $r['ts'], (float) $r['km'], (string) ($r['name'] ?? '')];
+            }
+        }
+        $total = (float) ($st['totalKm'] ?? 0);
+        if (count($pts) < 2 || $total <= 0) {
+            return null;
+        }
+        usort($pts, static fn ($a, $b) => $a[0] <=> $b[0]);
+        $n     = count($pts);
+        $first = $pts[0][0];
+        $last  = $pts[$n - 1][0];
+        $state = $now < $first ? 'before' : ($now > $last ? 'after' : 'run');
+
+        // where the timetable says the coach is at "now" (clamped to the run)
+        $planKm = $pts[0][1];
+        $planName = $pts[0][2];
+        for ($i = 1; $i < $n; $i++) {
+            [$t0, $k0, $n0] = $pts[$i - 1];
+            [$t1, $k1, $n1] = $pts[$i];
+            if ($now <= $t0) { break; }
+            $planName = $n0;
+            if ($now >= $t1) { $planKm = $k1; $planName = $n1; continue; }
+            $planKm = $t1 > $t0 ? $k0 + ($k1 - $k0) * ($now - $t0) / ($t1 - $t0) : $k1;
+            break;
+        }
+        $planKm = max(0.0, min($total, $planKm));
+
+        $src    = (string) (($st['progress'] ?? [])['source'] ?? 'none');
+        $liveKm = $src === 'gps' && ($st['progress']['km'] ?? null) !== null ? (float) $st['progress']['km'] : null;
+        $late   = null;
+        $liveName = '';
+        if ($liveKm !== null) {
+            // the timetable minute at which the coach should have been at liveKm
+            $at = $liveKm <= $pts[0][1] ? $first : null;
+            for ($i = 1; $at === null && $i < $n; $i++) {
+                [$t0, $k0] = $pts[$i - 1];
+                [$t1, $k1] = $pts[$i];
+                if ($liveKm <= $k1 + 0.01 && $k1 > $k0) {
+                    $at = $t0 + ($t1 - $t0) * max(0.0, $liveKm - $k0) / ($k1 - $k0);
+                }
+            }
+            $at = $at ?? $last;
+            // a halt holds the same km for a while: on time anywhere inside that window
+            $leave = $at;
+            foreach ($pts as $p) { if ($p[0] >= $at && abs($p[1] - $liveKm) <= 0.5) { $leave = max($leave, (float) $p[0]); } }
+            $late = $now < $at ? (int) round(($now - $at) / 60) : ($now > $leave ? (int) round(($now - $leave) / 60) : 0);
+            foreach ($pts as $p) { if ($p[1] <= $liveKm + 0.5) { $liveName = $p[2]; } }
+        }
+
+        return [
+            'state'    => $state,
+            'planKm'   => (int) round($planKm),
+            'planPct'  => round(100 * $planKm / $total, 1),
+            'planName' => $planName,
+            'liveKm'   => $liveKm !== null ? (int) round($liveKm) : null,
+            'livePct'  => $liveKm !== null ? round(100 * min($total, $liveKm) / $total, 1) : null,
+            'liveName' => $liveName,
+            'lateMin'  => $late,
+            'source'   => $src,
+        ];
     }
 
     /**

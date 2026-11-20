@@ -92,7 +92,41 @@
     $('rail').innerHTML = h;
     $('jrCnt').textContent = fill(T.places, [ns, nh]) + (tot ? ' · ' + kmf(tot) + ' km' : '');
     $('jr').classList.toggle('hidden', !tl.length);
+    pace(d);
     clock();
+  }
+
+  /* 20 Nov 2026 (owner: "2 ta line - bus ka pugyo, time le ka pugnu parne ho, kati dhilo"):
+     lane 1 = where the TIMETABLE says the coach is now (ghost bus, dashed),
+     lane 2 = where the GPS says it is (solid). The badge is the gap in minutes.
+     Lane 2 + the badge appear only for a live GPS fix - no fix, no guess. */
+  var PW = {
+    en: { h: 'Timetable vs live', plan: 'Should be by now', live: 'Bus is here', onTime: 'On time', late: '%s late', early: '%s early', noGps: 'Live GPS is off right now — only the timetable line is shown.', before: 'Starts %s', near: 'near %s' },
+    hi: { h: 'समय-सारणी बनाम लाइव', plan: 'अभी यहाँ होनी चाहिए', live: 'बस यहाँ है', onTime: 'समय पर', late: '%s देरी', early: '%s पहले', noGps: 'अभी लाइव GPS बंद है — सिर्फ़ समय-सारणी की लाइन दिख रही है।', before: '%s बजे शुरू', near: '%s के पास' },
+    ne: { h: 'समय-तालिका र लाइभ', plan: 'अहिले यहाँ पुग्नुपर्ने', live: 'बस यहाँ छ', onTime: 'समयमै', late: '%s ढिलो', early: '%s छिटो', noGps: 'अहिले लाइभ GPS बन्द छ — समय-तालिकाको लाइन मात्र देखाइएको छ।', before: '%s मा सुरु', near: '%s नजिक' }
+  };
+  function pace(d) {
+    var box = $('pace'); if (!box) return;
+    var p = d && d.pace, hc = $('headCard'), L = PW[(hc && hc.getAttribute('data-lang')) || 'en'] || PW.en;
+    var show = p && p.state === 'run' && d.state !== 'cancelled' && d.state !== 'arrived' && d.state !== 'completed';
+    box.classList.toggle('hidden', !show);
+    if (!show) return;
+    var live = p.livePct != null, lm = p.lateMin, badge = '', tone = 'ok';
+    if (live && lm != null) {
+      if (Math.abs(lm) <= 10) badge = '✓ ' + L.onTime;
+      else if (lm > 0) { badge = '⏰ ' + L.late.replace('%s', dur(lm)); tone = lm > 45 ? 'bad' : 'warn'; }
+      else badge = '⚡ ' + L.early.replace('%s', dur(-lm));
+    }
+    var lane = function (cls, icon, pct, lab, name, km) {
+      return '<div class="pl-lane ' + cls + '"><div class="pl-lab"><span>' + esc(lab) + '</span><b>' + esc(name ? L.near.replace('%s', name) : '') + (km != null ? ' · ' + kmf(km) + ' km' : '') + '</b></div>'
+        + '<div class="pl-road"><i style="--p:' + pct + '%"></i><em style="--p:' + pct + '%">' + icon + '</em></div></div>';
+    };
+    var tot = d.displayKm || d.totalKm, f = tot && d.totalKm ? tot / d.totalKm : 1;
+    box.className = 'card pace tone-' + tone + (box.getAttribute('data-seen') ? ' pl-on' : '');
+    box.setAttribute('data-seen', '1');
+    box.innerHTML = '<div class="pl-h"><h3>' + esc(L.h) + '</h3>' + (badge ? '<span class="pl-badge">' + esc(badge) + '</span>' : '') + '</div>'
+      + lane('plan', '🕒', p.planPct, L.plan, p.planName, Math.round(p.planKm * f))
+      + (live ? lane('live', '🚌', p.livePct, L.live, p.liveName, Math.round(p.liveKm * f)) : '<p class="note">' + esc(L.noGps) + '</p>');
   }
 
   /* The second hand: IST clock, the countdown to THIS passenger's pickup, time on the road. */

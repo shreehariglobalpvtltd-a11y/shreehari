@@ -1502,6 +1502,7 @@
       if (STAFF && r.agent) say('🤝 ' + r.agent.code + ' · ' + r.agent.name + (r.commission ? ' · 💰 ' + money(r.commission) : ''));
       else if (STAFF && r.commission) say('💰 Commission ' + money(r.commission));
       if (r.status === 'confirmed') {
+        tkMagic(r, body.name, body.phone, body.country);
         showTicket(r, !STAFF);
         if (STAFF && (printNext || MODE === 'counter' && staffPrint())) window.open('/admin/ticket-80mm.php?pnr=' + encodeURIComponent(r.pnr), '_blank', 'noopener,width=420,height=700');
         printNext = false;
@@ -1871,6 +1872,7 @@
     var r = PAY ? PAY.r : null; closePay(true);
     if (!r) return;
     r.status = 'confirmed'; r.ticket = payTicket(r);
+    tkMagic(r, S.name, S.phone, S.cc);
     showTicket(r, true);
   }
   /* Agent + Online: the customer pays by QR on their own phone - the agent sends the link. */
@@ -2065,6 +2067,62 @@
       if (at >= 0) DB.bookings[at] = Object.assign({}, DB.bookings[at], b); else DB.bookings.unshift(b);
       if (typeof persist === 'function') persist('bookings');
     } catch (e) {}
+  }
+
+  /* ------------------------------------------------------------ ticket magic */
+  /* 20 Nov 2026 (owner: "ticket generate huda magic jasari ghumdai aos, name number ni
+     flow hos"): the moment a sale is confirmed, a 3D ticket spins in over the screen,
+     the passenger's name, number, route and berths write themselves in letter by
+     letter, a seal stamps "confirmed", and it hands over to the real ticket below.
+     Presentation only - the sale is already done when this starts. Tap / Esc skips.
+     Desk sales play a shorter cut (the counter is busy); reduced motion = a quick fade. */
+  function tkMagic(r, name, phone, cc) {
+    try {
+      if (!r || !r.pnr || document.getElementById('tkMagic')) return;
+      var calm = (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)
+        || document.documentElement.getAttribute('data-motion') === 'reduced';
+      var ms = calm ? 900 : (STAFF ? 2300 : 3200);
+      var ph = digits(phone || '');
+      var phTxt = ph ? '+' + (ph.length > 10 ? '' : (cc === 'NP' ? '977 ' : '91 ')) + ph.replace(/(\d{5})(\d+)$/, '$1 $2') : '';
+      var flow = function (txt, d0) {   // one span per letter, staggered
+        var out = '', chars = Array.from(String(txt || ''));
+        for (var i = 0; i < chars.length; i++) {
+          out += '<span style="--d:' + (d0 + i * 0.035).toFixed(3) + 's">' + (chars[i] === ' ' ? '&nbsp;' : esc(chars[i])) + '</span>';
+        }
+        return out;
+      };
+      var sparks = '';
+      for (var k = 0; k < 18; k++) sparks += '<i style="--a:' + (k * 20) + 'deg;--r:' + (120 + (k % 3) * 40) + 'px;--d:' + (0.9 + (k % 4) * 0.06).toFixed(2) + 's"></i>';
+      var el = document.createElement('div');
+      el.id = 'tkMagic';
+      el.className = 'tkm' + (calm ? ' tkm-calm' : '') + (STAFF ? ' tkm-desk' : '');
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      el.innerHTML = '<div class="tkm-glow" aria-hidden="true"></div><div class="tkm-sparks" aria-hidden="true">' + sparks + '</div>'
+        + '<div class="tkm-stage"><div class="tkm-card">'
+        + '<div class="tkm-top"><span class="tkm-logo">SH</span><b>S Hari Global<sup>™</sup></b><span class="tkm-pnr">' + esc(r.pnr) + '</span></div>'
+        + '<div class="tkm-name">' + flow(name || '', 0.75) + '</div>'
+        + (phTxt ? '<div class="tkm-ph">📱 ' + flow(phTxt, 1.05) + '</div>' : '')
+        + '<div class="tkm-route">' + flow(r.route || '', 1.3) + '</div>'
+        + '<div class="tkm-meta"><span>📅 ' + esc(r.dateLabel || '') + '</span><span>💺 ' + esc((r.seatLabels || []).join(', ')) + '</span>'
+        + (r.totalLabel ? '<span>' + esc(r.totalLabel) + '</span>' : '') + '</div>'
+        + '<div class="tkm-perf" aria-hidden="true"></div>'
+        + '<div class="tkm-seal" aria-hidden="true">✓</div><div class="tkm-sheen" aria-hidden="true"></div>'
+        + '</div><p class="tkm-ok">✓ ' + esc(tr('ticketOk')) + '</p></div>';
+      document.body.appendChild(el);
+      var gone = false, tmr;
+      var close = function () {
+        if (gone) return; gone = true; clearTimeout(tmr);
+        el.classList.add('tkm-out');
+        document.removeEventListener('keydown', onKey, true);
+        setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
+      };
+      var onKey = function (e) { if (e.key === 'Escape' || e.key === 'Enter') close(); };
+      el.addEventListener('click', close);
+      document.addEventListener('keydown', onKey, true);
+      tmr = setTimeout(close, ms);
+      try { if (!calm && navigator.vibrate) navigator.vibrate([18, 60, 28]); } catch (e) {}
+    } catch (e) { /* never block the ticket */ }
   }
 
   /* ------------------------------------------------------------ ticket */

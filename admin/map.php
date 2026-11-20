@@ -15,6 +15,8 @@ require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/routegeo.php';
 require_once INCLUDE_PATH . '/etaalerts.php';
 require_once INCLUDE_PATH . '/gpsfleet.php';
+require_once INCLUDE_PATH . '/booking.php';
+require_once INCLUDE_PATH . '/whereis.php';
 
 $admin = admin_boot('schedules.view');
 $base  = '';
@@ -231,6 +233,7 @@ $routeOf  = [];
 foreach ($trips as $raw) { $routeOf[(int) $raw['id']] = (int) $raw['route_id']; }
 $etaCache = [];
 $paxTrips = [];
+$paceOf   = [];
 foreach ($jsTrips as $t) {
     if ($t['cancelled'] || !($t['date'] === $today || in_array($t['stateKey'], ['departed', 'on_route', 'boarding', 'delayed'], true))) {
         continue;
@@ -247,6 +250,15 @@ foreach ($jsTrips as $t) {
     if ($rows === []) {
         continue;
     }
+    /* 20 Nov 2026: timetable vs live for this coach (WhereIs::pace) - read through
+       one of its own bookings, the same engine the passenger's track page uses. */
+    try {
+        $pb = BookingService::findByPnr((string) $rows[0]['pnr']);
+        if ($pb !== null) {
+            $pst = WhereIs::status($pb);
+            if (!empty($pst['pace'])) { $paceOf[$t['id']] = $pst['pace']; }
+        }
+    } catch (Throwable $ex) { /* an extra: never break the map */ }
     $rid = $routeOf[$t['id']] ?? 0;
     if (!isset($etaCache[$t['id']])) {
         [$tFix] = EtaAlerts::fixForTrip((int) $t['id'], $rid);
@@ -452,6 +464,21 @@ admin_header('SHARI NAV — Global Map & Live Bus Tracking', 'map');
 .id-preview-box{background:var(--card,#fff);color:var(--ink,#1e293b);border-radius:14px;width:100%;padding:16px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.35)}
 .id-preview-box input,.id-preview-box select{font-size:16px;background:var(--card,#fff);color:var(--ink,#1e293b);min-width:0}
 @media(max-width:420px){.id-preview-modal{padding:8px}.id-preview-box{padding:12px}.id-preview-box div[style*="grid-template-columns"]{grid-template-columns:1fr !important}}
+/* 20 Nov 2026: timetable vs live lanes on each running trip */
+.lm-pace{margin:10px 0 4px;padding:10px 12px;border-radius:14px;background:linear-gradient(135deg,#f5f8ff,#fff7ee);border:1px solid #e2e9f4}
+.lm-pace .pc-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px}
+.lm-pace .pc-b{font-weight:800;font-size:12px;padding:4px 10px;border-radius:99px;background:#dcfce7;color:#14532d;white-space:nowrap}
+.lm-pace.tone-warn .pc-b{background:#fef3c7;color:#7c2d12}.lm-pace.tone-bad .pc-b{background:#fee2e2;color:#7f1d1d}.lm-pace.tone-na .pc-b{background:#eef2f7;color:#334155}
+.lm-pace .pc-l{margin-top:8px}.lm-pace .pc-l small{display:block;color:#56657f;font-size:12px}.lm-pace .pc-l small b{color:#14213d}
+.lm-pace .pc-r{position:relative;height:8px;margin:12px 14px 4px;border-radius:99px;background:#e6edf8}
+.lm-pace .pc-r i{position:absolute;left:0;top:0;bottom:0;width:var(--p);border-radius:inherit}
+.lm-pace .pc-r em{position:absolute;top:50%;left:var(--p);width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:14px;background:#fff;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.lm-pace .plan .pc-r i{background:repeating-linear-gradient(90deg,#1f4fa3 0 7px,transparent 7px 12px);opacity:.7}
+.lm-pace .plan .pc-r em{border:2px dashed #1f4fa3}
+.lm-pace .live .pc-r i{background:linear-gradient(90deg,#ff9933,#f07c1f)}
+.lm-pace .live .pc-r em{border:3px solid #f07c1f}
+@media (prefers-reduced-motion:no-preference){.lm-pace .pc-r i{animation:lmpG 1s cubic-bezier(.2,.8,.2,1) both}.lm-pace .pc-r em{animation:lmpR 1s cubic-bezier(.2,.8,.2,1) both}
+@keyframes lmpG{from{width:0}}@keyframes lmpR{from{left:0}}}
 </style>
 
 <!-- CATEGORY TABS -->
@@ -616,6 +643,17 @@ $fmChips = [
             <?= $t['blocked'] ? '<span style="color:#8a1f1f">🚫 OFF</span>' : '' ?>
             <?= $t['cancelled'] ? '<span style="color:#8a1f1f">❌ cancelled</span>' : '' ?>
           </div>
+          <?php $pc = $paceOf[$t['id']] ?? null; if ($pc !== null && $pc['state'] === 'run' && !$t['cancelled']):
+              $lm = $pc['lateMin']; $tone = $lm === null ? 'na' : (abs($lm) <= 10 ? 'ok' : ($lm > 45 ? 'bad' : ($lm > 0 ? 'warn' : 'ok')));
+              $badge = $lm === null ? 'No live GPS' : (abs($lm) <= 10 ? '✓ On time · समयमै' : ($lm > 0 ? '⏰ ' . $lm . ' min late · ढिलो' : '⚡ ' . (-$lm) . ' min early · छिटो')); ?>
+          <div class="lm-pace tone-<?= $tone ?>">
+            <div class="pc-h"><b>Timetable vs live · समय-तालिका र लाइभ</b><span class="pc-b"><?= Security::e($badge) ?></span></div>
+            <div class="pc-l plan"><small>🕒 Should be · पुग्नुपर्ने: <b><?= Security::e($pc['planName']) ?></b> · <?= (int) $pc['planKm'] ?> km</small><div class="pc-r"><i style="--p:<?= (float) $pc['planPct'] ?>%"></i><em style="--p:<?= (float) $pc['planPct'] ?>%">🕒</em></div></div>
+            <?php if ($pc['livePct'] !== null): ?>
+            <div class="pc-l live"><small>🚌 Is at · पुगेको: <b><?= Security::e($pc['liveName']) ?></b> · <?= (int) $pc['liveKm'] ?> km</small><div class="pc-r"><i style="--p:<?= (float) $pc['livePct'] ?>%"></i><em style="--p:<?= (float) $pc['livePct'] ?>%">🚌</em></div></div>
+            <?php endif; ?>
+          </div>
+          <?php endif; ?>
           <div class="acts">
             <a class="btn ghost" href="<?= $base ?>/admin/seatmap.php?sid=<?= $t['id'] ?>">🪑 Seats</a>
             <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?sid=<?= $t['id'] ?>&amp;date=<?= Security::e($t['date']) ?>">📋 Manifest</a>
