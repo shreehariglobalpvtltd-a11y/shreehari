@@ -172,7 +172,7 @@ if (is_file(INCLUDE_PATH . '/passkeys.php')) {
   <button class="btn btn-orange" type="button" data-pk="add">👆 यो फोन थप्नुहोस् · Add this phone</button>
   <p class="muted" id="pkNo" hidden style="margin-top:8px">यो फोन/ब्राउजरमा फिंगरप्रिन्ट छैन — PIN / pattern प्रयोग गर्नुहोस्।</p>
 </div>
-<script src="/assets/js/team-passkey.js?v=20261120h" data-next="<?= Security::e(Auth::homeUrl()) ?>"></script>
+<script src="/assets/js/team-passkey.js?v=20261120i" data-next="<?= Security::e(Auth::homeUrl()) ?>"></script>
 <?php }
 }
 admin_footer();
