@@ -704,6 +704,9 @@ html #view-home > #sbDesk{order:-1 !important}
   #smartBook .sb-qline .sb-q-priv{display:inline-flex;align-items:center}
   /* these five carry 40px from more specific rules (polish.css 7.3, depth.css): named here so 44 wins */
   #smartBook .sb-qbar .sb-qmode button,#smartBook .sb-card .sb-qbar .sb-qhelp,#smartBook .sb-card .sb-qline button,#smartBook .sb-card .sb-qline .sb-q-priv{min-height:44px;height:auto}
+  /* 20 Nov 2026: the date chips (Today / Tomorrow / calendar) were 38px on the staff desk, which does not load
+     polish.css (the customer page gets 44px there); line 225 sets 38px for small screens */
+  #smartBook .sb-chips .sb-chip{min-height:44px}
 }
 
 /* ===================================================================
