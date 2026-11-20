@@ -385,3 +385,20 @@ html[data-theme="dark"] .shg-offline-bar{background:#3A2A0A;color:#FFD48A;border
    --sb-primary - on the same pill; no dark-theme rule changes.
    ===================================================================== */
 :root:not([data-theme="dark"]) #smartBook .sb-tk-pnr{color:var(--sb-primary,#1a44c8);-webkit-text-fill-color:currentColor}
+
+/* =====================================================================
+   8. SMALL-PHONE LEFTOVERS  (20 Nov 2026, "d360b")
+   8.1 Cash key: white on the light orange was 2.8:1. The Cash key alone
+       gets a deeper orange of the same family (white = 4.9:1 and up);
+       the Online key, the confirm button and the logo keep their colours.
+   8.2 Phones, any page but the booking home: the S Hari AI pill was a
+       114px pill that sat on the text of My Ticket / Track. It becomes a
+       46px round button above the WhatsApp button (its name stays for
+       screen readers - aria-label). The inline width !important is beaten
+       by max-width. Home keeps its pill (the card hides it there anyway).
+   ===================================================================== */
+#smartBook .sb-cash{background:linear-gradient(120deg,#c94c0e 0%,#b8440c 55%,#a33a09 100%)}
+@media (max-width:600px){
+  html.sb-on:not(.sb-home) #aiFab{max-width:46px !important;min-width:46px;padding:0 !important;justify-content:center;font-size:0 !important;gap:0;overflow:hidden}
+  html.sb-on:not(.sb-home) #aiFab::before{content:"\26A1";font-size:20px;line-height:1}
+}

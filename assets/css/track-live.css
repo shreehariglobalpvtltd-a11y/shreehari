@@ -13,7 +13,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari
 .fl{height:14px;width:21px;vertical-align:middle;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.14)}
 .fl.np{width:11px;box-shadow:none;margin-left:3px}
 .langs{display:flex;gap:4px}
-.langs a{font-size:12px;font-weight:800;color:var(--muted);text-decoration:none;min-width:40px;min-height:40px;display:grid;place-items:center;border-radius:999px;border:1px solid var(--line)}
+.langs a{font-size:12px;font-weight:800;color:var(--muted);text-decoration:none;min-width:44px;min-height:44px;display:grid;place-items:center;border-radius:999px;border:1px solid var(--line)}
 .langs a.on{background:var(--h2);color:#fff;border-color:var(--h2)}
 h1{font-size:21px;margin:4px 0 0;letter-spacing:-.01em}
 .sub{color:var(--muted);font-size:13.5px;margin-bottom:12px}
