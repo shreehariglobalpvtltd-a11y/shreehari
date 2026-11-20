@@ -119,7 +119,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261120d" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261120e" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     // force = the passenger asked (menu Install, the iOS alerts card): no quiet rule applies.
@@ -200,7 +200,7 @@
         document.head.appendChild(st);
       }
       var n = document.createElement('div'); n.id = 'pwaInvite'; n.setAttribute('role', 'region'); n.setAttribute('aria-label', T('pwaInstallT'));
-      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261120d" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
+      n.innerHTML = '<img src="/assets/img/icon-192.png?v=20261120e" alt="" width="36" height="36"><b>' + E(T('pwaInstallT')) + '</b>'
         + '<button type="button" id="pwaInviteGo">' + E(T('pwaInstallBtn')) + '</button>'
         + '<button type="button" id="pwaInviteNo">' + E(T('pwaContinue')) + '</button>';
       document.body.appendChild(n);
