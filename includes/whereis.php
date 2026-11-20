@@ -189,12 +189,14 @@ final class WhereIs
             foreach ($pts as $p) { if ($p[1] <= $liveKm + 0.5) { $liveName = $p[2]; } }
         }
 
+        // km PRINTED = the one corridor distance (displayKm, D9); pct stays on the measured scale
+        $f = (float) ($st['displayKm'] ?? 0) > 0 ? (float) $st['displayKm'] / $total : 1.0;
         return [
             'state'    => $state,
-            'planKm'   => (int) round($planKm),
+            'planKm'   => (int) round($planKm * $f),
             'planPct'  => round(100 * $planKm / $total, 1),
             'planName' => $planName,
-            'liveKm'   => $liveKm !== null ? (int) round($liveKm) : null,
+            'liveKm'   => $liveKm !== null ? (int) round($liveKm * $f) : null,
             'livePct'  => $liveKm !== null ? round(100 * min($total, $liveKm) / $total, 1) : null,
             'liveName' => $liveName,
             'lateMin'  => $late,

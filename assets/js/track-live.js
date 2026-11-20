@@ -121,12 +121,11 @@
       return '<div class="pl-lane ' + cls + '"><div class="pl-lab"><span>' + esc(lab) + '</span><b>' + esc(name ? L.near.replace('%s', name) : '') + (km != null ? ' · ' + kmf(km) + ' km' : '') + '</b></div>'
         + '<div class="pl-road"><i style="--p:' + pct + '%"></i><em style="--p:' + pct + '%">' + icon + '</em></div></div>';
     };
-    var tot = d.displayKm || d.totalKm, f = tot && d.totalKm ? tot / d.totalKm : 1;
     box.className = 'card pace tone-' + tone + (box.getAttribute('data-seen') ? ' pl-on' : '');
     box.setAttribute('data-seen', '1');
     box.innerHTML = '<div class="pl-h"><h3>' + esc(L.h) + '</h3>' + (badge ? '<span class="pl-badge">' + esc(badge) + '</span>' : '') + '</div>'
-      + lane('plan', '🕒', p.planPct, L.plan, p.planName, Math.round(p.planKm * f))
-      + (live ? lane('live', '🚌', p.livePct, L.live, p.liveName, Math.round(p.liveKm * f)) : '<p class="note">' + esc(L.noGps) + '</p>');
+      + lane('plan', '🕒', p.planPct, L.plan, p.planName, p.planKm)
+      + (live ? lane('live', '🚌', p.livePct, L.live, p.liveName, p.liveKm) : '<p class="note">' + esc(L.noGps) + '</p>');
   }
 
   /* The second hand: IST clock, the countdown to THIS passenger's pickup, time on the road. */
