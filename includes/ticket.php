@@ -17,6 +17,7 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+require_once __DIR__ . '/normalfare.php';   // 20 Nov 2026 (nf1): the route's real normal fare
 require_once __DIR__ . '/docart.php';   // emblem, flags, heritage band (9 Oct 2026)
 
 final class Ticket
@@ -2838,6 +2839,17 @@ final class Ticket
            source is dropped only when even 15 px will not fit beside the
            TOTAL FARE label; the SAVED amount always prints. */
         $offerCut = self::discountTotal($booking);
+        /* 20 Nov 2026 (nf1): the route's REAL normal fare (office-set, NormalFare)
+           and the saving against it - takes the same slot, only when higher. */
+        $nfCmp = self::isNprSale($booking) ? null : NormalFare::forBooking($booking);
+        if ($nfCmp !== null) {
+            $nfTxt = 'सामान्य भाडा ₹' . number_format($nfCmp['normal']) . '  ·  बचत SAVED ₹ ' . number_format($nfCmp['save']);
+            $nfSz  = 18;
+            $oMax  = $W - 88 - (88 + self::gdWidth(17, 'जम्मा भाडा  ·  TOTAL FARE') + 24);
+            while ($nfSz > 14 && self::gdWidth($nfSz, $nfTxt) > $oMax) { $nfSz--; }
+            self::gdText($im, $nfSz, $W - 88 - self::gdWidth($nfSz, $nfTxt), 1192 + $grow, $gold, $nfTxt, true);
+            $offerCut = 0.0;   // one line in this slot
+        }
         if ($offerCut > 0) {
             $offerTxt = 'तपाईंले बचाउनुभयो  ·  SAVED ₹ ' . number_format($offerCut) . self::discountPctTxt($booking, $offerCut);
             $offerSrc = self::discountSource($booking);
@@ -4417,6 +4429,10 @@ final class Ticket
         if (self::isNprSale($booking) && $discAll <= 0) {
             // 19 Nov 2026 (TK-5): the INR the books keep, small under the NPR fare
             $pdf->text($W - 205, $boardY + 45, '(INR ' . indianNumber((float) $booking['total_amount']) . ')', 8, 'F2', [220, 210, 195]);
+        }
+        $nfPdf = self::isNprSale($booking) ? null : NormalFare::forBooking($booking);   // 20 Nov 2026 (nf1)
+        if ($nfPdf !== null && $discAll <= 0) {
+            $pdf->text($W - 205, $boardY + 45, 'Normal ' . $money($nfPdf['normal']) . '  -  Save ' . $money($nfPdf['save']), 7.5, 'F1', [220, 210, 195]);
         }
         if ($discAll > 0) {
             $pdf->text($W - 205, $boardY + 45, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money($discAll) . self::discountPctTxt($booking, $discAll), 7.5, 'F1', [220, 210, 195]);

@@ -770,3 +770,19 @@ html #view-home > #sbDesk{order:-1 !important}
 .tkm-calm .tkm-sparks,.tkm-calm .tkm-sheen{display:none}
 .tkm-calm{animation:tkmIn .25s ease-out both !important}
 @media (prefers-reduced-motion:reduce){.tkm *{animation-duration:.01s !important;animation-delay:0s !important}.tkm-sparks,.tkm-sheen{display:none}}
+
+/* 20 Nov 2026 (nf1): the route's real normal fare, struck through, + the saving
+   (27-smartbook.js nfHtml). Shown only when the office set one above this price. */
+.sb-nf{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:6px;margin-left:6px;font-size:13px;line-height:1.3}
+.sb-nf s{color:#8a94a8;text-decoration-thickness:2px;text-decoration-color:#e04848}
+.sb-nf em{font-style:normal;font-weight:800;color:#0f7a3a;background:#dcfce7;padding:2px 8px;border-radius:99px;
+  animation:sbNfPop .5s .1s cubic-bezier(.3,1.6,.5,1) both}
+#sbNf{margin-top:2px}#sbNf .sb-nf{margin-left:0}
+#sbBarTotal[data-nf]:not([data-nf=""])::before{content:attr(data-nf);margin-right:6px;font-size:.72em;font-weight:600;
+  color:#8a94a8;text-decoration:line-through;text-decoration-color:#e04848;text-decoration-thickness:2px}
+:root[data-theme="dark"] .sb-nf s,:root[data-theme="dark"] #sbBarTotal[data-nf]::before{color:#a6b4cb}
+:root[data-theme="dark"] .sb-nf em{background:#14532d;color:#dcfce7}
+.tkm-nf{margin-top:8px;font-size:14px}.tkm-nf s{color:#8a94a8;text-decoration-color:#e04848;text-decoration-thickness:2px}
+.tkm-nf b{color:#0f7a3a;margin-left:6px}
+@keyframes sbNfPop{from{opacity:0;transform:scale(.6)}}
+@media (prefers-reduced-motion:reduce){.sb-nf em{animation:none}}

@@ -40,6 +40,7 @@ require_once __DIR__ . '/autoberth.php';
 require_once __DIR__ . '/quickticket.php';
 require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/sitefacts.php';
+require_once __DIR__ . '/normalfare.php';         // 20 Nov 2026 (nf1): the route's real normal fare
 require_once __DIR__ . '/emergencycontact.php';   // 15 Nov 2026 (P7): the optional emergency contact
 
 /** An idempotency key presented with another request / by another browser: the card makes a new key. */
@@ -1001,6 +1002,8 @@ final class SmartBook
                 'fee'      => (float) $price['fee'],
                 'tax'      => (float) $price['tax'],
                 'total'    => (float) $price['total'],
+                // 20 Nov 2026 (nf1): {normal, save} only when the office's real normal fare is higher
+                'normal'   => NormalFare::compare((int) $plan['routeId'], count($seats), (float) $price['total']),
                 'label'    => (string) ($price['cabinLabel'] ?? ''),
                 'npr'      => $npr,
             ] : null,
@@ -1547,6 +1550,7 @@ final class SmartBook
             'phone'       => $phone,
             'total'       => $total,
             'totalLabel'  => inr($total),
+            'normal'      => NormalFare::forBooking($booking),   // 20 Nov 2026 (nf1): {normal, save} or null
             'npr'         => round($total * (float) SiteFacts::all()['npr']),
             'seats'       => $q['seats'],
             'seatLabels'  => $q['seatLabels'],

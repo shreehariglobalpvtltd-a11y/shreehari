@@ -20,6 +20,7 @@ require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/driverauth.php';
+require_once INCLUDE_PATH . '/normalfare.php';
 
 $admin = admin_boot('dashboard.view');
 $can   = Auth::canManageSettings();
@@ -87,6 +88,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } catch (Throwable $ex) {
             $flash[] = ['bad', $ex->getMessage()];
         }
+    } elseif ((string) ($_POST['act'] ?? '') === 'normalfare') {
+        /* 20 Nov 2026 (nf1): the route's REAL normal fare, per seat. Shown struck
+           through beside a lower real price - never changes what is charged. */
+        $nf = [];
+        foreach ((array) ($_POST['nf'] ?? []) as $rid => $amt) {
+            $a = (float) preg_replace('/[^0-9.]/', '', (string) $amt);
+            if ((int) $rid > 0 && $a > 0 && $a < 100000) { $nf[(string) (int) $rid] = round($a, 2); }
+        }
+        $on = !empty($_POST['nf_on']) ? '1' : '0';
+        Settings::set('normal_fare_json', json_encode($nf), 'json', 'pricing');
+        Settings::set('normal_fare_on', $on, 'bool', 'pricing');
+        Settings::flush();
+        Logger::audit('settings.normal_fare', 'settings', 'owner-setup', null, ['fares' => $nf, 'on' => $on], 'Normal fare (struck-through price)');
+        $flash[] = ['ok', 'सामान्य भाडा सेभ भयो · normal fare saved' . ($on === '1' ? ' (ON)' : ' (OFF)')];
     } elseif ((string) ($_POST['act'] ?? '') === 'facts') {
         $changed = [];
         foreach ($keys as $k => $spec) {
@@ -225,6 +240,21 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
     <?php endforeach; ?>
     <?php if ($drivers === []): ?><p class="muted">पहिले माथि कन्डक्टर/ड्राइभर थप्नुहोस्।</p><?php endif; ?>
   </div>
+
+  <?php $nfMap = NormalFare::map(); $nfRoutes = Database::fetchAll('SELECT id, route_code, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, id'); ?>
+  <form method="post" class="os-card" id="normal-fare">
+    <?= Security::csrfField() ?><input type="hidden" name="act" value="normalfare">
+    <h2>🏷️ सामान्य भाडा · Normal fare (काटिएको भाडा देखाउने)</h2>
+    <p class="hint">यहाँ रुटको <b>साँचो</b> सामान्य भाडा (प्रति सिट) राख्नुहोस् — जस्तै काउन्टर / भीडको दिनमा साँच्चै लिने भाडा। आजको भाडा यो भन्दा कम भए app, desk र टिकटमा <s>सामान्य भाडा</s> र "बचत ₹…" देखिन्छ। भाडा आफैं बदलिँदैन। ⚠️ कहिल्यै नलिएको नक्कली भाडा राख्नु भ्रामक विज्ञापन हो (भारत Consumer Protection Act 2019, नेपाल उपभोक्ता कानुन) — उजुरी परे जरिवाना लाग्न सक्छ।</p>
+    <div class="os-f">
+      <?php foreach ($nfRoutes as $r): ?>
+      <label><?= $e($r['from_city'] . ' → ' . $r['to_city']) ?> <small class="muted"><?= $e($r['route_code']) ?></small>
+        <input name="nf[<?= (int) $r['id'] ?>]" inputmode="decimal" value="<?= isset($nfMap[(int) $r['id']]) ? $e((string) $nfMap[(int) $r['id']] + 0) : '' ?>" placeholder="₹ प्रति सिट · per seat (खाली = नदेखाउने)"></label>
+      <?php endforeach; ?>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="nf_on" value="1" <?= NormalFare::on() ? 'checked' : '' ?>> देखाउने · Show on app, desk and ticket</label>
+    <p style="margin:12px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save</button></p>
+  </form>
 
   <form method="post" class="os-card">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="facts">

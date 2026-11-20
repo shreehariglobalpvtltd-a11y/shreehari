@@ -30,7 +30,7 @@
       adult: 'Adult', child: 'Child <12', senior: 'Senior 60+', patient: 'Patient', lower: 'lower floor', upper: 'upper floor', autoTag: '🤖 S Hari AI pick', yours: 'your choice',
       report: 'report', needPhone: 'Enter a valid mobile', needPhoneNp: 'Nepal mobile: 10 digits starting 96 / 97 / 98', needPhoneIn: 'India mobile: 10 digits starting 6–9',
       needName: 'Enter the lead passenger\'s name', needGender: 'Tap F / M for every passenger', aiGuess: 'AI guessed from the name — tap to change', loading: 'Finding the best berths…',
-      booking: 'Booking…', making: 'Preparing your ticket…', ticketOk: 'Ticket confirmed', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
+      booking: 'Booking…', making: 'Preparing your ticket…', ticketOk: 'Ticket confirmed', nfNormal: 'Normal fare', nfSave: 'You save', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
       share: 'Share', print: 'Print', copy: 'Copy PNR', track: 'Track bus', copied: 'PNR copied', newB: 'Book another', heldQr: 'Berths held — opening the QR page…',
       needAgent: 'Choose the agent this sale is credited to (or Other = company)', agentPick: 'Type a code, name or city — or tap Other', agentBlank: 'Blank = company code',
       agentCo: 'Company code — no agent commission', agentNo: 'Not on the list — pick from the list or tap Other', credited: 'Credited to', commission: 'commission',
@@ -50,7 +50,7 @@
       adult: 'वयस्क', child: 'बच्चा <12', senior: 'वरिष्ठ 60+', patient: 'मरीज़', lower: 'नीचे', upper: 'ऊपर', autoTag: '🤖 S Hari AI की पसंद', yours: 'आपकी पसंद',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लिखें', needPhoneNp: 'नेपाल मोबाइल: 96 / 97 / 98 से 10 अंक', needPhoneIn: 'भारत मोबाइल: 6–9 से 10 अंक',
       needName: 'मुख्य यात्री का नाम लिखें', needGender: 'हर यात्री के लिए म / पु दबाएँ', aiGuess: 'नाम से AI का अनुमान — बदलने के लिए दबाएँ', loading: 'सबसे अच्छी बर्थ ढूँढ रहे हैं…',
-      booking: 'बुक हो रहा है…', making: 'टिकट तैयार हो रहा है…', ticketOk: 'टिकट पक्का', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
+      booking: 'बुक हो रहा है…', making: 'टिकट तैयार हो रहा है…', ticketOk: 'टिकट पक्का', nfNormal: 'सामान्य किराया', nfSave: 'आपकी बचत', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'शेयर', print: 'प्रिंट', copy: 'PNR कॉपी', track: 'बस ट्रैक', copied: 'PNR कॉपी हुआ', newB: 'और बुक करें', heldQr: 'बर्थ रखी गई — QR पेज खुल रहा है…',
       needAgent: 'यह बिक्री किस एजेंट की है चुनें (या Other = कंपनी)', agentPick: 'कोड, नाम या शहर लिखें — या Other दबाएँ', agentBlank: 'खाली = कंपनी कोड',
       agentCo: 'कंपनी कोड — एजेंट कमीशन नहीं', agentNo: 'सूची में नहीं — सूची से चुनें या Other दबाएँ', credited: 'एजेंट', commission: 'कमीशन',
@@ -70,7 +70,7 @@
       adult: 'वयस्क', child: 'बच्चा <१२', senior: 'ज्येष्ठ ६०+', patient: 'बिरामी', lower: 'तल्लो तला', upper: 'माथिल्लो तला', autoTag: '🤖 S Hari AI को रोजाइ', yours: 'तपाईंको रोजाइ',
       report: 'रिपोर्ट', needPhone: 'सही मोबाइल लेख्नुहोस्', needPhoneNp: 'नेपाल मोबाइल: ९६ / ९७ / ९८ बाट १० अङ्क', needPhoneIn: 'भारत मोबाइल: ६–९ बाट १० अङ्क',
       needName: 'मुख्य यात्रुको नाम लेख्नुहोस्', needGender: 'हरेक यात्रुको म / पु थिच्नुहोस्', aiGuess: 'नामबाट AI को अनुमान — बदल्न थिच्नुहोस्', loading: 'सबैभन्दा राम्रो बर्थ खोज्दै…',
-      booking: 'बुक हुँदैछ…', making: 'टिकट तयार हुँदैछ…', ticketOk: 'टिकट पक्का भयो', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
+      booking: 'बुक हुँदैछ…', making: 'टिकट तयार हुँदैछ…', ticketOk: 'टिकट पक्का भयो', nfNormal: 'सामान्य भाडा', nfSave: 'तपाईंको बचत', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'सेयर', print: 'प्रिन्ट', copy: 'PNR कपी', track: 'बस ट्र्याक', copied: 'PNR कपी भयो', newB: 'अर्को बुक', heldQr: 'बर्थ राखियो — QR पेज खुल्दैछ…',
       needAgent: 'यो बिक्री कुन एजेन्टको हो छान्नुहोस् (वा Other = कम्पनी)', agentPick: 'कोड, नाम वा सहर लेख्नुहोस् — वा Other थिच्नुहोस्', agentBlank: 'खाली = कम्पनी कोड',
       agentCo: 'कम्पनी कोड — एजेन्ट कमिसन छैन', agentNo: 'सूचीमा छैन — सूचीबाट छान्नुहोस् वा Other थिच्नुहोस्', credited: 'एजेन्ट', commission: 'कमिसन',
@@ -269,6 +269,12 @@
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(n) { return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
+  /* 20 Nov 2026 (nf1): the route's REAL normal fare struck through + the saving -
+     only when the server sent {normal, save} (office-set, higher than this price). */
+  function nfHtml(nf) {
+    if (!nf || !(Number(nf.save) >= 1)) return '';
+    return '<span class="sb-nf"><s title="' + esc(tr('nfNormal')) + '">' + esc(money(nf.normal)) + '</s> <em>' + esc(tr('nfSave')) + ' ' + esc(money(nf.save)) + '</em></span>';
+  }
   function npr(n) { return 'NPR ' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
   function say(m) { try { if (typeof toast === 'function') toast(m); } catch (e) {} }
 
@@ -943,7 +949,14 @@
     var tot = q && q.ok && q.price ? money(q.price.total) : '—';
     $('sbTotal').textContent = tot;
     $('sbNpr').textContent = q && q.ok && q.price ? '≈ ' + npr(q.price.npr) : '';
+    (function () {   // 20 Nov 2026 (nf1)
+      var host = $('sbTotal').parentNode, el = $('sbNf'), h = q && q.ok && q.price ? nfHtml(q.price.normal) : '';
+      if (!h) { if (el) el.remove(); return; }
+      if (!el) { el = document.createElement('div'); el.id = 'sbNf'; host.appendChild(el); }
+      el.innerHTML = h;
+    })();
     $('sbBarTotal').textContent = tot;
+    try { $('sbBarTotal').setAttribute('data-nf', q && q.ok && q.price && q.price.normal ? money(q.price.normal.normal) : ''); } catch (e) {}
     $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ≈ ' + npr(q.price.npr) : '')) : (q && q.error ? q.error : tr('loading'));
     syncPoint();
     renderQLine();
@@ -2106,6 +2119,7 @@
         + '<div class="tkm-route">' + flow(r.route || '', 1.3) + '</div>'
         + '<div class="tkm-meta"><span>📅 ' + esc(r.dateLabel || '') + '</span><span>💺 ' + esc((r.seatLabels || []).join(', ')) + '</span>'
         + (r.totalLabel ? '<span>' + esc(r.totalLabel) + '</span>' : '') + '</div>'
+        + (r.normal && r.normal.save >= 1 ? '<div class="tkm-nf"><s>' + esc(money(r.normal.normal)) + '</s> <b>' + esc(tr('nfSave')) + ' ' + esc(money(r.normal.save)) + '</b></div>' : '')
         + '<div class="tkm-perf" aria-hidden="true"></div>'
         + '<div class="tkm-seal" aria-hidden="true">✓</div><div class="tkm-sheen" aria-hidden="true"></div>'
         + '</div><p class="tkm-ok">✓ ' + esc(tr('ticketOk')) + '</p></div>';
@@ -2154,7 +2168,7 @@
       + '<button type="button" class="sb-x" data-tk="close" aria-label="Close" style="margin-left:auto">✕</button></div>'
       + '<div class="sb-tk-pnr">' + esc(tr('pnr')) + ' ' + esc(r.pnr) + '</div>'
       + (t.view ? '<div class="sb-tk-imgw" data-tkimg><img class="sb-tk-img" src="' + esc(t.view) + '" alt="Ticket ' + esc(r.pnr) + '" loading="eager" decoding="async"><span class="sb-tk-wait">' + esc(tr('making')) + '</span></div>' : '')
-      + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(r.totalLabel || '') + ' <small>(≈ ' + esc(npr(r.npr)) + ')</small></div>'
+      + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(r.totalLabel || '') + ' <small>(≈ ' + esc(npr(r.npr)) + ')</small>' + nfHtml(r.normal) + '</div>'
       + (r.boardingTime ? '<div class="sb-tk-row">' + esc(r.boarding || '') + ' · <small>' + esc(tr('report')) + ' ' + esc(r.reportTime || '') + '</small></div>' : '')
       + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(r.totalLabel || '') + '</div>' : '')
       /* staff desks: who the sale was credited to and what it earned (the server
