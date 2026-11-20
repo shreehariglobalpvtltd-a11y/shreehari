@@ -126,9 +126,30 @@ h1{font-size:24px;margin:22px 0 4px;color:var(--navy)}
 .dn i.r{background:#FFEDD5}
 .how{font-size:14px;color:var(--mut);margin:0 0 30px}
 footer{background:var(--navy);color:#cbd5e1;padding:16px 0;font-size:13px}
+.wk{padding:0 12px 6px}
+.wk-h,.wk-r{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:stretch}
+.wk-h{font-size:13px;font-weight:800;color:var(--mut);padding:4px 2px 8px}
+.wk-r{padding:6px 0;border-top:1px solid var(--line)}
+.wk-r.t{background:#FFF7E0;border-radius:12px;padding:6px}
+.wk-d{display:flex;flex-direction:column;justify-content:center}
+.wk-d b{font-size:20px;color:var(--navy)}
+.wk-d small{font-size:13px;color:var(--mut)}
+.wk-c{display:flex;flex-direction:column;justify-content:center;gap:1px;min-height:64px;padding:8px 10px;border-radius:12px;background:#E6F0FB;color:var(--navy);text-decoration:none;transition:transform .12s}
+.wk-c.np{background:#FDEBDD;color:#6B2A0B}
+.wk-c:active{transform:scale(.97)}
+.wk-c b{font-size:20px}
+.wk-c small{font-size:12.5px;opacity:.8}
+.wk-c em{font-style:normal;font-size:13px;font-weight:800}
+.wk-c.none{background:transparent;align-items:center}
+.pk{list-style:none;margin:0;padding:0 16px 4px}
+.pk li{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:17px}
+.pk li b{color:var(--navy);font-variant-numeric:tabular-nums}
+.pk-n{padding:6px 16px 10px;margin:0;font-size:15px;font-weight:700;color:#6B2A0B}
+.how{font-size:15px}
 @media (max-width:760px){
   .hero{grid-template-columns:1fr}.dirs{grid-template-columns:1fr}.lines{grid-template-columns:1fr}
-  .tbl .hide-s{display:none}h1{font-size:21px}
+  .tbl .hide-s{display:none}h1{font-size:23px}
+  .sub{font-size:15px}.dir .meta{font-size:15px}.today .s{font-size:16px}
 }
 </style>
 </head>
@@ -146,7 +167,7 @@ footer{background:var(--navy);color:#cbd5e1;padding:16px 0;font-size:13px}
   <div class="card"><h2>The routine is being updated</h2><p style="padding:0 16px">Please call <?= $e($phone) ?> for today's departure.</p></div>
 <?php else: ?>
   <section class="hero" aria-label="Today">
-    <div class="day"><span>Today is</span><b><?= BusRoutine::dayNumber($today) >= 1 ? 'Day ' . (int) BusRoutine::dayNumber($today) : 'Day –' ?></b><span><?= $e(formatDate($today, 'D, j M Y')) ?></span></div>
+    <div class="day"><span>आज · Today</span><b><?= $e(formatDate($today, 'j')) ?></b><span><?= $e(formatDate($today, 'D, M Y')) ?></span></div>
     <?php if ($todays === []): ?>
       <div class="today none">
         <div class="k">Today's bus</div>
@@ -172,7 +193,7 @@ footer{background:var(--navy);color:#cbd5e1;padding:16px 0;font-size:13px}
           <p class="none">No departure in the next 30 days.</p>
         <?php else: ?>
           <div class="when"><?= $e(formatDate($d['date'], 'D, j M')) ?> · <?= $e($d['depTime']) ?></div>
-          <div class="meta"><?= $e($d['line']) ?> · Day <?= (int) $d['dayNo'] ?> · <?= $e($d['from']) ?> → <?= $e($d['to']) ?> · reaches <?= $e(formatDate($d['reachDate'], 'D j M')) ?></div>
+          <div class="meta"><?= $e($d['line']) ?> · <?= $e($d['from']) ?> → <?= $e($d['to']) ?> · पुग्ने · reaches <?= $e(formatDate($d['reachDate'], 'D j M')) ?></div>
           <div class="fare">₹<?= number_format((float) $d['fare']) ?> <span class="none" style="font-size:13px;font-weight:600">per seat</span></div>
           <a class="btn" href="<?= $e($bookUrl($d)) ?>">Book seat · <?= $title ?></a>
         <?php endif; ?>
@@ -185,60 +206,44 @@ footer{background:var(--navy);color:#cbd5e1;padding:16px 0;font-size:13px}
     <div class="pos"><?php foreach ($pos as $p): ?><span><?= $e($p['line']) ?> — <?= $e($p['label']) ?></span><?php endforeach; ?></div>
   </section>
 
-  <section class="card" aria-label="Next 14 days">
-    <h2>Next 14 days</h2>
-    <div style="overflow-x:auto">
-    <table class="tbl">
-      <thead><tr><th>Date</th><th class="hide-s">Day</th><th>Bus</th><th>Direction</th><th class="hide-s">Departs</th><th></th></tr></thead>
-      <tbody>
-      <?php
-      $byDate = [];
-      foreach ($days as $d) { $byDate[$d['date']][] = $d; }
-      for ($i = 0; $i < 14; $i++):
+  <?php /* 20 Nov 2026 (px3, owner: "schedule haru ajai bujhine gara"): one row a day, both ways side
+     by side, each with its own Book button; then ONE pickup list (every bus calls at the same towns).
+     The day numbers (Day 7, 01 04 07 ...) and the per-bus route lines are gone - they confused
+     passengers; the rotation itself (BusRoutine) is unchanged. */
+  $byDate = [];
+  foreach ($days as $d) { $byDate[$d['date']][$d['direction']] = $d; } ?>
+  <section class="card" aria-label="Next 7 days">
+    <h2>अर्को ७ दिन · Next 7 days</h2>
+    <div class="wk">
+      <div class="wk-h"><span>मिति · Date</span><span>🇮🇳 → 🇳🇵</span><span>🇳🇵 → 🇮🇳</span></div>
+      <?php for ($i = 0; $i < 7; $i++):
           $date = addDaysISO($today, $i);
-          foreach ($byDate[$date] ?? [null] as $d): ?>
-        <tr class="<?= $date === $today ? 't' : '' ?>">
-          <td><?= $e(formatDate($date, 'D j M')) ?></td>
-          <td class="hide-s"><?= BusRoutine::dayNumber($date) >= 1 ? 'Day ' . (int) BusRoutine::dayNumber($date) : '–' ?></td>
-          <?php if ($d === null): ?>
-            <td colspan="4" class="none">— no departure —</td>
-          <?php else: ?>
-            <td><b><?= $e($d['line']) ?></b></td>
-            <td><span class="chip <?= $d['direction'] === BusRoutine::DIR_TO_INDIA ? 'np' : '' ?>"><?= $e($d['dirLabel']) ?></span></td>
-            <td class="hide-s"><?= $e($d['from']) ?> · <?= $e($d['depTime']) ?></td>
-            <td><a class="mini" href="<?= $e($bookUrl($d)) ?>">Book →</a></td>
-          <?php endif; ?>
-        </tr>
-      <?php endforeach; endfor; ?>
-      </tbody>
-    </table>
+          $go = $byDate[$date][BusRoutine::DIR_TO_NEPAL] ?? null;
+          $bk = $byDate[$date][BusRoutine::DIR_TO_INDIA] ?? null; ?>
+      <div class="wk-r<?= $date === $today ? ' t' : '' ?>">
+        <span class="wk-d"><b><?= $e(formatDate($date, 'j M')) ?></b><small><?= $date === $today ? 'आज · Today' : ($i === 1 ? 'भोलि · Tomorrow' : $e(formatDate($date, 'l'))) ?></small></span>
+        <?php foreach ([[$go, ''], [$bk, 'np']] as [$d, $cls]): ?>
+          <?php if ($d === null): ?><span class="wk-c none">—</span>
+          <?php else: ?><a class="wk-c <?= $cls ?>" href="<?= $e($bookUrl($d)) ?>"><b><?= $e($d['depTime']) ?></b><small><?= $e($town((string) $d['from'])) ?> · <?= $e($d['line']) ?></small><em>बुक · Book →</em></a><?php endif; ?>
+        <?php endforeach; ?>
+      </div>
+      <?php endfor; ?>
     </div>
   </section>
 
-  <h2 style="color:var(--navy);font-size:19px;margin:6px 0 10px">The three buses</h2>
-  <section class="lines">
-    <?php foreach ($lines as $l): ?>
-      <div class="line">
-        <h3><?= $e($l['code']) ?></h3>
-        <div class="no"><?= $e($l['name']) ?></div>
-        <?php if (!empty($stops[$l['code']])): ?>
-          <b style="font-size:13px">Pickup towns (to Nepal)</b>
-          <ol>
-            <?php foreach ($stops[$l['code']] as $s): ?>
-              <li><?= $e($town((string) $s['stop_name'])) ?><?= $s['stop_time'] !== null ? ' <span>' . $e(substr((string) $s['stop_time'], 0, 5)) . '</span>' : '' ?></li>
-            <?php endforeach; ?>
-          </ol>
-        <?php endif; ?>
-        <div class="dn">
-          <span class="chip">India → Nepal</span> day
-          <?php foreach ($l['outDays'] as $n): ?><i><?= str_pad((string) $n, 2, '0', STR_PAD_LEFT) ?></i><?php endforeach; ?><br>
-          <span class="chip np">Nepal → India</span> day
-          <?php foreach ($l['retDays'] as $n): ?><i class="r"><?= str_pad((string) $n, 2, '0', STR_PAD_LEFT) ?></i><?php endforeach; ?>
-        </div>
-      </div>
-    <?php endforeach; ?>
+  <?php $firstStops = $stops !== [] ? reset($stops) : []; ?>
+  <?php if ($firstStops !== []): ?>
+  <section class="card" aria-label="Pickup times">
+    <h2>चढ्ने ठाउँ र समय · Pickup towns and times (India → Nepal)</h2>
+    <ol class="pk">
+      <?php foreach ($firstStops as $s): ?>
+        <li><span><?= $e($town((string) $s['stop_name'])) ?></span><b><?= $s['stop_time'] !== null ? $e(substr((string) $s['stop_time'], 0, 5)) : '—' ?></b></li>
+      <?php endforeach; ?>
+    </ol>
+    <p class="pk-n">नेपाल → भारत: रुपैडिहाबाट बेलुका <?= $nextNp !== null ? $e($nextNp['depTime']) : '18:00' ?> · Nepal → India leaves Rupaidiha at <?= $nextNp !== null ? $e($nextNp['depTime']) : '18:00' ?>.</p>
   </section>
-  <p class="how">How it works: each bus takes 6 days for the full round trip — Gujarat depart, 1 day on the road, reach Rupaidiha, leave Rupaidiha the next day, 1 day on the road, reach Gujarat. The three buses start 2 days apart, so one bus leaves every day. Day numbers count from Day 1 (<?= $e(formatDate(BusRoutine::anchor(), 'j M Y')) ?>) and simply keep rolling.</p>
+  <?php endif; ?>
+  <p class="how">हरेक दिन एउटा बस जान्छ र एउटा फर्कन्छ। ३ वटा बस पालैपालो चल्छन् · One bus leaves each way every day; our 3 buses take turns.</p>
 <?php endif; ?>
 </main>
 

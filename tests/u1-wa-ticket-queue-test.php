@@ -155,8 +155,14 @@ $res = WaQueue::afterNotify($b, $from);
 
 $np = '977' . U1_NP;
 $alt = '91' . U1_ALT;
-$tplToNp = array_values(array_filter($calls, static fn($c) => $c['to'] === $np && (str_starts_with((string) $c['what'], 'template:') || $c['what'] === 'template')));
+/* 20 Nov 2026 (px3): a refused ticket template is carried at once by an older working template
+   (WaRoute::ticketRescueSpec) - that rescue call is counted on its own below. */
+$isRescue = static fn(array $c): bool => in_array(substr((string) $c['what'], 9), ['shg_booking_received', 'shg_office_alert'], true)
+    || in_array((string) ($c['body']['template']['name'] ?? ''), ['shg_booking_received', 'shg_office_alert'], true);
+$tplToNp = array_values(array_filter($calls, static fn($c) => $c['to'] === $np && !$isRescue($c) && (str_starts_with((string) $c['what'], 'template:') || $c['what'] === 'template')));
 check('exactly ONE template call for the Nepal ticket', count($tplToNp) === 1, count($tplToNp) . ' call(s)');
+$rescueNp = array_values(array_filter($calls, static fn($c) => $c['to'] === $np && $isRescue($c)));
+check('px3: the refused ticket was tried ONCE through the older working template (shg_booking_received)', count($rescueNp) === 1 && ($rescueNp[0]['what'] ?? '') === 'template:shg_booking_received', count($rescueNp) . ' call(s)');
 check('that call was shg_ticket_image on the WaRoute path', ($tplToNp[0]['what'] ?? '') === 'template:shg_ticket_image');
 check('the Cloud API driver did not build the template again', array_filter($calls, static fn($c) => $c['via'] === 'graph' && $c['to'] === $np && $c['what'] === 'template') === []);
 check('the refusal is remembered for a few hours', WaTplMeta::refusedRecently('shg_ticket_image'));
@@ -227,7 +233,7 @@ $r3 = Database::fetch('SELECT * FROM wa_ticket_queue WHERE booking_id = :b AND r
 check('Meta accepted the free picture: afterNotify says sent', $res3['customer'] === 'sent', $res3['customer']);
 check("row recorded as a Meta send ('meta notify') with Meta's wamid", $r3 !== null && $r3['status'] === 'sent' && $r3['via'] === WaQueue::VIA_NOTIFY && str_starts_with((string) $r3['wamid'], 'wamid.U1LATE'),
     $r3 !== null ? $r3['status'] . ' / ' . $r3['via'] . ' / ' . (string) $r3['wamid'] : 'no row');
-$tpl3 = array_filter($calls, static fn($c) => $c['to'] === $np2 && (str_starts_with((string) $c['what'], 'template:') || $c['what'] === 'template'));
+$tpl3 = array_filter($calls, static fn($c) => $c['to'] === $np2 && !$isRescue($c) && (str_starts_with((string) $c['what'], 'template:') || $c['what'] === 'template'));
 check('still only one template call for this ticket', count($tpl3) <= 1, count($tpl3) . ' call(s)');
 
 // (checkStatuses() skips any via starting 'meta', so this row is never sent to AiSensy's status API;

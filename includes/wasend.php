@@ -946,6 +946,34 @@ final class WaSend
 
         self::logAttempt($row, $d['route'], $tpl['name'], $r, $ok);
 
+        /* 20 Nov 2026 (px3): Meta refuses every template made on 18-19 Nov (132001 "does not exist in
+           en", tested on the office number) while the older ones deliver. A refused TICKET is carried
+           at once by an older template with the ticket picture as a link (WaRoute::ticketRescueSpec):
+           the agent's copy by shg_office_alert, the passenger's by shg_booking_received. */
+        if (!$ok && $d['route'] === 'cloud_template' && in_array((int) $r['code'], [132000, 132001, 132015, 132016], true)) {
+            try {
+                require_once __DIR__ . '/waroute.php';
+                require_once __DIR__ . '/watplmeta.php';
+                WaTplMeta::noteRefused((string) $tpl['name'], (int) $r['code']);
+                $spec = WaRoute::ticketRescueSpec((string) $row['purpose'], (array) $tpl['vars'], (string) ($tpl['header'] ?? ''),
+                    $row['booking_id'] !== null ? (int) $row['booking_id'] : 0);
+                if ($spec !== null) {
+                    $rs = ['name' => $spec['name'], 'lang' => 'en', 'vars' => $spec['vars'], 'header' => ''];
+                    $r2 = self::graph($to, self::templatePayload($rs));
+                    self::noteSend();
+                    $ok2 = $r2['success'] && $r2['message_id'] !== '';
+                    self::logAttempt($row, $d['route'], $spec['name'], $r2, $ok2);
+                    if ($ok2) {
+                        $r = $r2;
+                        $ok = true;
+                        $tpl = $rs;
+                    }
+                }
+            } catch (Throwable $e) {
+                // the original failure stands
+            }
+        }
+
         if ($ok) {
             $done = ['state' => 'sent', 'route' => $d['route'], 'attempts' => $attempts, 'wamid' => mb_substr($r['message_id'], 0, 190),
                      'error' => null, 'sent_at' => self::stamp()];

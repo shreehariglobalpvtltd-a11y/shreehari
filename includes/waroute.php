@@ -343,7 +343,112 @@ final class WaRoute
         if ($out['success']) {
             self::count('meta_tpl');
         }
+        if (!$out['success'] && in_array($code, [132000, 132001, 132015, 132016], true)) {
+            $rescued = self::ticketRescue($to, $name, $vars, $hdr['image'] ?? $headerImage, $purpose, $meta);
+            if ($rescued !== null) {
+                return $rescued;
+            }
+        }
         return $out['success'] ? $out : null;
+    }
+
+    /** guard: a rescue never rescues itself */
+    private static bool $inRescue = false;
+
+    /**
+     * 20 Nov 2026 (px3, tested on the office number): every template this site created on
+     * 18-19 Nov (shg_ticket_image, shg_ticket_v2, shg_ticket_changed, shg_trip_reminder ...)
+     * is APPROVED in WhatsApp Manager, yet Meta answers 132001 "does not exist in en" to every
+     * send, while the older templates (shg_office_alert, shg_booking_received) deliver. So a
+     * refused TICKET send is carried by an older template that works, with the ticket picture
+     * as a link:
+     *   - the selling agent's copy (seller_copy)  -> shg_office_alert  ("Ticket <PNR>", details + link)
+     *   - the passenger (ticket / resend / alt)   -> shg_booking_received (PNR, route + seat + link, date, amount)
+     * Only for the ticket family; switch wa_ticket_rescue_on (default 1). Once Meta lets the new
+     * templates through, the normal ticket goes out and this is never reached.
+     *
+     * @param array<int|string,string> $vars the ticket template's {{1}}..{{6}}: name, from, to, date, seat, pnr
+     */
+    private static function ticketRescue(string $to, string $refused, array $vars, ?string $image, string $purpose, array $meta): ?array
+    {
+        if (self::$inRescue) {
+            return null;
+        }
+        $spec = self::ticketRescueSpec($purpose, $vars, $image, isset($meta['bookingId']) ? (int) $meta['bookingId'] : 0);
+        if ($spec === null) {
+            return null;
+        }
+        [$tpl, $args, $pnr] = [$spec['name'], $spec['vars'], $spec['pnr']];
+        self::$inRescue = true;
+        try {
+            $r = self::metaTemplate($to, $tpl, 'en', $args, null, $purpose . '_rescue', ['bookingId' => $meta['bookingId'] ?? null] + (isset($meta['country']) ? ['country' => $meta['country']] : []));
+        } finally {
+            self::$inRescue = false;
+        }
+        if ($r !== null) {
+            Logger::info('WaRoute: ticket carried by ' . $tpl . ' after Meta refused ' . $refused, ['pnr' => $pnr, 'purpose' => $purpose], 'whatsapp');
+            $r['how'] = 'meta template ' . $tpl . ' (rescue for ' . $refused . ')';
+        }
+        return $r;
+    }
+
+    /**
+     * The older, working template that carries a refused ticket (see ticketRescue), with its
+     * {{n}} values, or null when this purpose / these values do not qualify or
+     * wa_ticket_rescue_on = 0. Also used by the outbox (WaSend) path.
+     *
+     * @param array<int|string,string> $vars name, from, to, date, seat, pnr
+     * @return array{name:string, vars:list<string>, pnr:string}|null
+     */
+    public static function ticketRescueSpec(string $purpose, array $vars, ?string $image, int $bookingId = 0): ?array
+    {
+        $p = strtolower($purpose);
+        if (!in_array($p, ['ticket', 'ticket_resend', 'ticket_alt', 'seller_copy', 'aisensy_ticket', 'ticket_update'], true)) {
+            return null;
+        }
+        try {
+            if (!Settings::getBool('wa_ticket_rescue_on', true)) {
+                return null;
+            }
+        } catch (Throwable $e) {
+            return null;
+        }
+        $v = array_values(array_map(static fn($x): string => trim(preg_replace('/\s+/u', ' ', (string) $x) ?? ''), $vars));
+        if (count($v) < 6) {
+            return null;
+        }
+        [$name, $from, $dest, $date, $seat, $pnr] = array_slice($v, 0, 6);
+        if ($pnr === '') {
+            return null;
+        }
+        $link = ($image !== null && preg_match('~^https://~', $image) === 1) ? $image : '';
+        if ($link === '') {
+            try {
+                $link = appUrl('/verify-ticket.php?pnr=' . rawurlencode($pnr));
+            } catch (Throwable $e) {
+                $link = '';
+            }
+        }
+        if ($p === 'seller_copy') {
+            $tpl  = 'shg_office_alert';
+            $args = ['Ticket ' . $pnr, $name . ', ' . $from . ' to ' . $dest . ', ' . $date . ', seat ' . $seat . ($link !== '' ? '. Ticket picture: ' . $link : '')];
+        } else {
+            $amount = 'as on your ticket';
+            $bid = $bookingId;
+            if ($bid > 0) {
+                try {
+                    $row = Database::fetch('SELECT total_amount, currency FROM bookings WHERE id = :b', ['b' => $bid]);
+                    if ($row !== null && (float) $row['total_amount'] > 0) {
+                        $amount = ((string) ($row['currency'] ?? 'INR') === 'NPR' ? 'NPR ' : 'Rs ') . number_format((float) $row['total_amount']);
+                    }
+                } catch (Throwable $e) {
+                    // keep the plain words
+                }
+            }
+            $tpl  = 'shg_booking_received';
+            $args = [$pnr, $from . ' to ' . $dest . ' (' . $name . ', seat ' . $seat . ($link !== '' ? '. Your ticket: ' . $link : '') . ')', $date, $amount];
+        }
+        return ['name' => $tpl, 'vars' => $args, 'pnr' => $pnr];
     }
 
     /**

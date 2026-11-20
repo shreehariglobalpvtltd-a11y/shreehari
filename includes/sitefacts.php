@@ -93,6 +93,28 @@ final class SiteFacts
         } catch (Throwable $e) {
             $fromStops = 0.0;
         }
+        /* 20 Nov 2026 (px3, owner: "exact km 13-something xa, app ma 16-hundred dekhaucha - Nana Chiloda
+           bata Rupaidiha samma count gara"): the figure the site states is counted from the
+           Ahmedabad hub (the stop whose name holds route_km_from_stop, default "Nana Chiloda") to the
+           last stop, both from the same timetable - 1,688 - 316 = 1,372 km on 20 Nov. An empty setting,
+           or no such stop, keeps the whole-route figure. route_distance_km stays the fallback. */
+        $fromName = trim(Settings::getString('route_km_from_stop', 'Nana Chiloda'));
+        if ($fromStops >= 100 && $fromName !== '') {
+            try {
+                $hubKm = Database::scalar(
+                    'SELECT rs.km_from_origin FROM route_stops rs
+                      WHERE rs.is_active = 1 AND rs.km_from_origin IS NOT NULL AND rs.stop_name LIKE :n
+                        AND rs.route_id = (SELECT id FROM routes WHERE is_active = 1 ORDER BY sort_order, id LIMIT 1)
+                      ORDER BY rs.sort_order LIMIT 1',
+                    ['n' => '%' . $fromName . '%'], null
+                );
+                if ($hubKm !== null && (float) $hubKm > 0 && $fromStops - (float) $hubKm >= 100) {
+                    $fromStops -= (float) $hubKm;
+                }
+            } catch (Throwable $e) {
+                // keep the whole-route figure
+            }
+        }
         $km = $fromStops >= 100 ? (int) round($fromStops)
             : (int) round(Settings::getFloat('route_distance_km', (float) self::ROUTE_KM_DEFAULT));
         return $km = $km > 0 ? $km : self::ROUTE_KM_DEFAULT;
