@@ -2229,6 +2229,13 @@
     document.documentElement.classList.toggle('sb-home', !home || home.classList.contains('active'));
   }
   window.addEventListener('hashchange', function () { setTimeout(function () { homeFlag(); ticketFromHash(); }, 0); });
+  // 20 Nov 2026 (d360b): a page opened straight at #/my or #/track never fires hashchange, so .sb-home stayed
+  // on from the first paint. Follow the home view's own "active" class as well.
+  (function () {
+    var hv = document.getElementById('view-home');
+    if (hv && 'MutationObserver' in window) { new MutationObserver(homeFlag).observe(hv, { attributes: true, attributeFilter: ['class'] }); }
+    homeFlag();
+  })();
   // While the card is on screen the floating WhatsApp / Sahayak buttons step aside (phone).
   // 14 Nov 2026 (d360): .sb-fab-ok = "the observer has decided" - until then polish.css §7.1 keeps the two
   // buttons hidden, so they no longer flash over the form while the page loads.
