@@ -1066,6 +1066,11 @@ final class ContentPages
         $placeCards = '';
         try {
             require_once INCLUDE_PATH . '/companylocations.php';
+            require_once INCLUDE_PATH . '/locationmaps.php';
+            $satW = ['en' => ['From above (satellite)', 'Road from our Nepalgunj office', 'km by road', 'Save picture (works offline)'],
+                     'hi' => ['ऊपर से (सैटेलाइट)', 'नेपालगंज कार्यालय से रास्ता', 'कि.मी. सड़क से', 'फोटो सेव करें (बिना नेट)'],
+                     'ne' => ['माथिबाट (स्याटेलाइट)', 'नेपालगञ्ज कार्यालयबाट बाटो', 'कि.मि. सडकबाट', 'तस्बिर सेभ गर्नुहोस् (नेट बिना)']][$lang] ?? null;
+            $satW ??= ['From above (satellite)', 'Road from our Nepalgunj office', 'km by road', 'Save picture (works offline)'];
             foreach (CompanyLocations::forPublic() as $pl) {
                 $nm = $lang !== 'en' && $pl['nameNe'] !== '' ? $pl['nameNe'] : $pl['name'];
                 $ad = $lang !== 'en' && $pl['addressNe'] !== '' ? $pl['addressNe'] : $pl['address'];
@@ -1092,6 +1097,18 @@ final class ContentPages
                 }
                 $mp = $pl['map'] !== '' ? $pl['map'] : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($pl['address']);
                 $btns .= '<a class="btn out sm" href="' . $e($mp) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
+                // 21 Nov 2026 (owner): satellite picture + the road from the Nepalgunj office,
+                // saved on our server so a phone that opened it once keeps it offline.
+                $lm = LocationMaps::saved((int) $pl['id']);
+                foreach ([['sat', $satW[0]], ['route', $satW[1] . (isset($lm['km']) ? ' · ' . $lm['km'] . ' ' . $satW[2] : '')]] as [$key, $cap]) {
+                    $f = (string) ($lm[$key] ?? '');
+                    if ($f === '' || !preg_match('#^uploads/locations/[a-z]+-[0-9a-f]{16}\.jpg$#', $f) || !is_file(ROOT_PATH . '/' . $f)) {
+                        continue;
+                    }
+                    $ph .= '<figure style="margin:0 0 10px"><a href="/' . $e($f) . '" target="_blank" rel="noopener"><img src="/' . $e($f) . '" alt="' . $e($cap . ' - ' . $nm) . '" loading="lazy" decoding="async" style="width:100%;border-radius:12px;display:block"></a>'
+                        . '<figcaption style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:4px"><span>🛰️ ' . $e($cap) . '</span>'
+                        . '<a href="/' . $e($f) . '" download style="min-height:32px">⬇️ ' . $e($satW[3]) . '</a></figcaption></figure>';
+                }
                 $placeCards .= '<article class="card off rv" id="place-' . (int) $pl['id'] . '">' . $ph
                     . '<div class="off-top"><span class="badge">' . $e($kl) . '</span></div>'
                     . '<h2 class="off-name">' . $e($nm) . '</h2>'

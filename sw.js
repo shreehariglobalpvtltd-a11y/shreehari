@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v294';   // 2026-11-20 ch1: SmartBook date chips 44px on touch screens (staff desk)
+var VERSION = 'shg-v295';   // 2026-11-21 lm1: our places' satellite / road pictures kept offline
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a
@@ -48,6 +48,15 @@ var MAX_TILES = 1500; // cap on cached map assets (FIFO eviction)
    Ticket::reissue() unlinks the old render, so the next online fetch
    replaces it. */
 var TICKET_CACHE = 'shg-tickets-v1';
+
+/* 21 Nov 2026 (owner: "Nepalgunj office bata parking samma map offline ma
+   herna milos"): the satellite / road pictures of our own places
+   (uploads/locations/sat-*.jpg, route-*.jpg - the file name is a hash of
+   the picture, so it never changes under one URL). Cache-first and, like
+   the ticket, NOT version-scoped: a deploy must not wipe the map a counter
+   relies on with no signal. Spared in activate() below. */
+var PLACES_CACHE = 'shg-places-v1';
+var PLACE_PIC = /^\/uploads\/locations\/(sat|route)-[0-9a-f]{16}\.jpg$/;
 var TICKET_WAIT_MS = 4000;   // how long a fresh ticket may take before the saved copy answers
 var MAX_TICKETS = 10;
 
@@ -172,7 +181,7 @@ self.addEventListener('activate', function (event) {
       await Promise.all(keys.map(function (k) {
         // drop our own older-version caches; leave anything else alone.
         // TICKET_CACHE is spared on purpose — see its declaration above.
-        if (k === TICKET_CACHE) return null;
+        if (k === TICKET_CACHE || k === PLACES_CACHE) return null;
         // staff door: the code caches it held under the customer names before 13 Nov 2026
         if (STAFF_DOOR && /^shg-(shell|tiles|assets)-/.test(k)) return caches.delete(k);
         if ((k.indexOf('shg-') === 0 || k.indexOf('shm-') === 0) && k.indexOf(VERSION) === -1) return caches.delete(k);
@@ -290,6 +299,23 @@ self.addEventListener('fetch', function (event) {
         return (res && (res.ok || res.status === 403 || res.status === 410)) ? res : hit;
       } catch (e) {
         return hit;
+      }
+    })());
+    return;
+  }
+
+  // Our places' map pictures → cache-first in PLACES_CACHE (offline at the counter).
+  if (url.origin === self.location.origin && PLACE_PIC.test(url.pathname)) {
+    event.respondWith((async function () {
+      var cache, hit;
+      try { cache = await caches.open(PLACES_CACHE); hit = await cache.match(url.pathname); } catch (e) { return plainNetwork(req); }
+      if (hit) return hit;
+      try {
+        var res = await fetch(req);
+        if (res && res.ok) { try { await cache.put(url.pathname, res.clone()); } catch (e) {} }
+        return res;
+      } catch (e) {
+        return netError();
       }
     })());
     return;

@@ -13,6 +13,7 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/contentpages.php';
 require_once INCLUDE_PATH . '/companylocations.php';
+require_once INCLUDE_PATH . '/locationmaps.php';
 
 $admin   = admin_boot('dashboard.view');
 $canEdit = Auth::canManageSettings();
@@ -31,7 +32,15 @@ if ($tableOk && $canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if ($id > 0 && $old === null) {
                 throw new RuntimeException('That place no longer exists.');
             }
-            if ($action === 'delete' && $old !== null) {
+            if ($action === 'maps') {
+                // 21 Nov 2026: satellite + road pictures, saved for offline use
+                @set_time_limit(120);
+                $lines = LocationMaps::buildAll($id > 0 ? $id : null);
+                $flash = ['ok', '🛰️ ' . implode(' · ', $lines)];
+                if ($id > 0) {
+                    $_GET['edit'] = (string) $id;
+                }
+            } elseif ($action === 'delete' && $old !== null) {
                 CompanyLocations::delete($id);
                 $flash = ['ok', '“' . $old['name'] . '” removed. / हटाइयो।'];
                 $id = 0;
@@ -63,6 +72,12 @@ if ($tableOk && $canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $id = CompanyLocations::save($_POST, (int) $admin['id'], $id ?: null, $photos);
                 $flash = ['ok', 'Saved. / सेभ भयो। ' . (!empty($_POST['show_public']) ? 'Customers see it on /offices.' : '(Hidden from customers.)')];
+                // a new or changed map pin: make its satellite / road pictures now
+                $saved = CompanyLocations::get($id);
+                if ($saved !== null && $saved['map'] !== '' && ($old['map'] ?? '') !== $saved['map']) {
+                    @set_time_limit(120);
+                    $flash[1] .= ' 🛰️ ' . implode(' · ', LocationMaps::buildAll($id));
+                }
                 $_GET['edit'] = (string) $id;
             }
         } catch (Throwable $ex) {
@@ -102,6 +117,10 @@ echo ContentPages::adminCss();
 .lc-tag.on{background:#dcfce7;color:#166534}.lc-tag.off{background:#fef3c7;color:#92400e}
 .lc-photos{display:flex;gap:8px;flex-wrap:wrap}.lc-photos figure{margin:0;text-align:center}
 .lc-photos img{width:110px;height:84px;object-fit:cover;border-radius:10px;display:block}
+.lc-maps{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.lc-maps figure{margin:0}.lc-maps img{width:100%;border-radius:12px;display:block}
+.lc-maps figcaption{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:4px}
+.lc-maps figcaption a{min-height:32px}
 </style>
 <?php if ($flash !== null): ?><div class="flash <?= $e($flash[0]) ?>"><?= $e($flash[1]) ?></div><?php endif; ?>
 <?php if (!$tableOk): ?>
@@ -149,6 +168,17 @@ echo ContentPages::adminCss();
         <label class="ct-f">Order<input type="number" name="sort_order" value="<?= (int) ($cur['sort'] ?? 0) ?>"<?= $ro ?>></label>
       </div>
     </section>
+    <?php $lm = $cur !== null ? LocationMaps::saved((int) $cur['id']) : []; if ($cur !== null): ?>
+    <section class="ct-card ct-wide">
+      <h3>🛰️ Satellite map · स्याटेलाइट नक्सा <small class="muted">(saved on our server - opens offline once seen, ⬇️ save to phone)</small></h3>
+      <?php if (!empty($lm['sat']) || !empty($lm['route'])): ?><div class="lc-maps">
+        <?php if (!empty($lm['sat'])): ?><figure><a href="/<?= $e($lm['sat']) ?>" target="_blank" rel="noopener"><img src="/<?= $e($lm['sat']) ?>" alt="Satellite"></a><figcaption>माथिबाट · From above <a href="/<?= $e($lm['sat']) ?>" download>⬇️ Save</a></figcaption></figure><?php endif; ?>
+        <?php if (!empty($lm['route'])): ?><figure><a href="/<?= $e($lm['route']) ?>" target="_blank" rel="noopener"><img src="/<?= $e($lm['route']) ?>" alt="Road"></a><figcaption>नेपालगञ्ज कार्यालय → <?= $e($lm['to'] ?? '') ?> · <?= $e((string) ($lm['km'] ?? '')) ?> km <a href="/<?= $e($lm['route']) ?>" download>⬇️ Save</a></figcaption></figure><?php endif; ?>
+      </div><p class="muted" style="font-size:12px;margin:6px 0 0">Made <?= $e($lm['at'] ?? '') ?></p>
+      <?php else: ?><p class="muted" style="font-size:13px"><?= $cur['map'] === '' ? 'Paste the Google Maps link above and save - the pictures are made by themselves.' : 'Not made yet - press the button.' ?></p><?php endif; ?>
+      <?php if ($canEdit && $cur['map'] !== ''): ?><button class="btn ghost sm" type="submit" form="lcMaps">🛰️ Make / refresh pictures</button><?php endif; ?>
+    </section>
+    <?php endif; ?>
     <section class="ct-card ct-wide">
       <h3>फोटो · Photos (up to <?= CompanyLocations::MAX_PHOTOS ?>)</h3>
       <?php $ph = $cur['photos'] ?? []; if ($ph !== []): ?><div class="lc-photos">
@@ -165,6 +195,7 @@ echo ContentPages::adminCss();
   <?php endif; ?>
 </form>
 <?php if ($cur !== null && $canEdit): ?>
+  <form id="lcMaps" method="post" data-no-guard><?= Security::csrfField() ?><input type="hidden" name="action" value="maps"><input type="hidden" name="id" value="<?= (int) $cur['id'] ?>"></form>
   <?php foreach ($cur['photos'] as $i => $_p): ?><form id="lcRm<?= $i ?>" method="post" data-no-guard><?= Security::csrfField() ?><input type="hidden" name="action" value="photo_remove"><input type="hidden" name="id" value="<?= (int) $cur['id'] ?>"><input type="hidden" name="photo" value="<?= $i ?>"></form><?php endforeach; ?>
   <form method="post" data-no-guard style="margin-top:14px" onsubmit="return confirm('Remove this place?')"><?= Security::csrfField() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $cur['id'] ?>"><button class="btn ghost sm" type="submit">🗑️ Remove place</button></form>
 <?php endif; ?>
@@ -172,20 +203,23 @@ echo ContentPages::adminCss();
 <?php else: ?>
   <div class="ct-head">
     <h2 style="margin:0">📍 Our locations · हाम्रा ठाउँ (<?= count($list) ?>)</h2>
-    <?php if ($canEdit): ?><a class="btn ok sm" href="/admin/locations.php?new=1">➕ Add place</a><?php endif; ?>
+    <?php if ($canEdit): ?><a class="btn ok sm" href="/admin/locations.php?new=1">➕ Add place</a>
+      <form method="post" data-no-guard style="display:inline"><?= Security::csrfField() ?><input type="hidden" name="action" value="maps"><button class="btn ghost sm" type="submit">🛰️ Make all satellite maps</button></form><?php endif; ?>
     <a class="btn ghost sm" href="/offices" target="_blank" rel="noopener">👁️ Customer page</a>
   </div>
   <p class="muted" style="margin:0 0 14px;font-size:13.5px">Fill map link, photos and phone for each place. A place shows to customers on <a href="/offices" target="_blank" rel="noopener">/offices</a> when “Show on website” is ticked and it has a map or an address. The map link is also used for the pickup QR on tickets from that town.</p>
   <div class="lc-list">
-    <?php foreach ($list as $p): $k = CompanyLocations::KINDS[$p['kind']]; ?>
+    <?php foreach ($list as $p): $k = CompanyLocations::KINDS[$p['kind']]; $lm = LocationMaps::saved((int) $p['id']); $thumb = $p['photos'][0] ?? ($lm['sat'] ?? ($lm['route'] ?? '')); ?>
       <a class="lc-item" href="/admin/locations.php?edit=<?= (int) $p['id'] ?>">
-        <?php if ($p['photos'] !== []): ?><img src="/<?= $e($p['photos'][0]) ?>" alt=""><?php else: ?><span class="lc-ph">📍</span><?php endif; ?>
+        <?php if ($thumb !== ''): ?><img src="/<?= $e($thumb) ?>" alt=""><?php else: ?><span class="lc-ph">📍</span><?php endif; ?>
         <span><b><?= $e($p['name']) ?></b><?php if ($p['nameNe'] !== ''): ?><small class="muted"><?= $e($p['nameNe']) ?></small><?php endif; ?><br>
           <span class="lc-tag"><?= $e($k[0] . ' · ' . $k[1]) ?></span>
           <?php if ($p['show_public'] && $p['filled']): ?><span class="lc-tag on">👁️ on website</span><?php elseif (!$p['filled']): ?><span class="lc-tag off">✍️ fill map / address</span><?php else: ?><span class="lc-tag off">hidden</span><?php endif; ?>
           <?php if ($p['map'] !== ''): ?><span class="lc-tag">🗺️ map</span><?php endif; ?>
           <?php if ($p['phone'] !== ''): ?><span class="lc-tag">📞 <?= $e($p['phone']) ?></span><?php endif; ?>
           <?php if ($p['photos'] !== []): ?><span class="lc-tag">📷 <?= count($p['photos']) ?></span><?php endif; ?>
+          <?php if (!empty($lm['sat'])): ?><span class="lc-tag on">🛰️ satellite</span><?php endif; ?>
+          <?php if (!empty($lm['route'])): ?><span class="lc-tag on">🛣️ NPJ → <?= $e((string) ($lm['km'] ?? '')) ?> km</span><?php endif; ?>
         </span>
       </a>
     <?php endforeach; ?>
