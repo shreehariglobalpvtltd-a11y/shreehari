@@ -110,7 +110,7 @@ try {
 
     /* ---- 1. A counter sale credits commission AND cash -------------- */
     $b1 = BookingService::counterSale($route, $sid, TD, [$seatA], [
-        'name' => 'Counter Passenger', 'phone' => '9800000001',
+        'name' => 'Counter Passenger', 'gender' => 'Male', 'phone' => '9800000001',
         'amount' => 2000.00, 'paymentMethod' => 'cash',
     ], $agentId, 'agent');
 
@@ -133,7 +133,7 @@ try {
     check('per-agent override is used', money_is(AgentWallet::commissionPercentFor($agentId), 12.5));
 
     $b2 = BookingService::counterSale($route, $sid, TD, [$seatB], [
-        'name' => 'Second Passenger', 'phone' => '9800000002',
+        'name' => 'Second Passenger', 'gender' => 'Male', 'phone' => '9800000002',
         'amount' => 1000.00, 'paymentMethod' => 'upi',
     ], $agentId, 'agent');
 
@@ -166,7 +166,7 @@ try {
 
     /* ---- 6. Paper ticket, register-only (no seats) ------------------ */
     $r1 = AgentWallet::recordOfflineTicket([
-        'agentId' => $agentId, 'paperNo' => PAPER_A, 'name' => 'Paper Passenger',
+        'agentId' => $agentId, 'paperNo' => PAPER_A, 'name' => 'Paper Passenger', 'gender' => 'Male',
         'phone' => '9800000003', 'travelDate' => TD, 'amount' => 800.00,
         'paymentMode' => 'cash', 'seatText' => 'back row',
     ], $agentId);
@@ -179,14 +179,14 @@ try {
 
     /* ---- 7. The same paper number cannot be claimed twice ----------- */
     expectThrow('re-entering the same paper ticket is refused', fn() => AgentWallet::recordOfflineTicket([
-        'agentId' => $agentId, 'paperNo' => PAPER_A, 'name' => 'Paper Passenger',
+        'agentId' => $agentId, 'paperNo' => PAPER_A, 'name' => 'Paper Passenger', 'gender' => 'Male',
         'travelDate' => TD, 'amount' => 800.00,
     ], $agentId));
 
     /* ---- 8. Paper ticket WITH a seat becomes a real booking --------- */
     $before = AgentWallet::balances($agentId)['commission'];
     $r2 = AgentWallet::recordOfflineTicket([
-        'agentId' => $agentId, 'paperNo' => PAPER_B, 'name' => 'Seated Paper Passenger',
+        'agentId' => $agentId, 'paperNo' => PAPER_B, 'name' => 'Seated Paper Passenger', 'gender' => 'Male',
         'phone' => '9800000004', 'travelDate' => TD, 'amount' => 1600.00,
         'paymentMode' => 'cash', 'routeId' => (int) $route['id'], 'seats' => [$seatC],
     ], $agentId);

@@ -81,7 +81,10 @@ try {
           ?? Database::fetch("SELECT * FROM routes WHERE is_active = 1 ORDER BY id LIMIT 1");
     if ($route === null) { echo "no active route\n"; exit(1); }
     $sid = (int) Seats::schedule((int) $route['id'], TD)['id'];
-    $free = Seats::availability((int) $route['id'], TD)['available'] ?? [];
+    $avAll = Seats::availability((int) $route['id'], TD);
+    // 21 Nov 2026: the passengers are men now (a blank gender no longer slips past the
+    // berth rule), so keep them off the women's berths and their partners.
+    $free = array_values(array_diff($avAll['available'] ?? [], $avAll['female'] ?? []));
     if (count($free) < 4) { echo "not enough free seats\n"; exit(1); }
 
     // Flat company mode, both agents direct ₹200.
@@ -95,7 +98,7 @@ try {
 
     /* ---- 1. CONFIRMED sale: commission moves, cash does NOT --------- */
     $b1 = BookingService::counterSale($route, $sid, TD, [$free[0]], [
-        'name' => 'Pax One', 'phone' => '9800000101', 'amount' => 2000.00, 'paymentMethod' => 'cash',
+        'name' => 'Pax One', 'gender' => 'Male', 'phone' => '9800000101', 'amount' => 2000.00, 'paymentMethod' => 'cash',
     ], $aId, 'agent');
     $bid1 = (int) $b1['id'];
     check('setup: A earns ₹200 and holds ₹2,000 cash', money_is(bookingComm($bid1, $aId), 200.00)
@@ -113,7 +116,7 @@ try {
     /* ---- 2. Re-rate to the NEW agent's tier ------------------------- */
     AgentWallet::setAgentType($bId, 'joint', $bId);   // B now ₹400/pax
     $b2 = BookingService::counterSale($route, $sid, TD, [$free[1]], [
-        'name' => 'Pax Two', 'phone' => '9800000102', 'amount' => 2000.00, 'paymentMethod' => 'upi',
+        'name' => 'Pax Two', 'gender' => 'Male', 'phone' => '9800000102', 'amount' => 2000.00, 'paymentMethod' => 'upi',
     ], $aId, 'agent');
     $bid2 = (int) $b2['id'];
     AgentWallet::reassignSeller(BookingService::detail((string) $b2['pnr']), $bId, $aId);
@@ -123,7 +126,7 @@ try {
 
     /* ---- 3. CANCELLED sale: reassignment mints NOTHING -------------- */
     $b3 = BookingService::counterSale($route, $sid, TD, [$free[2]], [
-        'name' => 'Pax Three', 'phone' => '9800000103', 'amount' => 2000.00, 'paymentMethod' => 'cash',
+        'name' => 'Pax Three', 'gender' => 'Male', 'phone' => '9800000103', 'amount' => 2000.00, 'paymentMethod' => 'cash',
     ], $aId, 'agent');
     $bid3 = (int) $b3['id'];
     BookingService::cancel((string) $b3['pnr'], 'Test cancel', false);
@@ -138,7 +141,7 @@ try {
 
     /* ---- 4. Detach to the office ----------------------------------- */
     $b4 = BookingService::counterSale($route, $sid, TD, [$free[3]], [
-        'name' => 'Pax Four', 'phone' => '9800000104', 'amount' => 2000.00, 'paymentMethod' => 'upi',
+        'name' => 'Pax Four', 'gender' => 'Male', 'phone' => '9800000104', 'amount' => 2000.00, 'paymentMethod' => 'upi',
     ], $aId, 'agent');
     $bid4 = (int) $b4['id'];
     check('setup: A earns ₹200 on the fourth sale', money_is(bookingComm($bid4, $aId), 200.00));

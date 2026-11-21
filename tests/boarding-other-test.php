@@ -227,7 +227,7 @@ if (count($free) < 9) { echo "need 9 free seats on route #$routeId for " . TD . 
 
     // 5) counterSale() (paper register) with the same contract stores the text.
     $b5 = BookingService::counterSale($route, $sid, TD, [$free[4]], [
-        'name' => 'Counter Other', 'phone' => PHONE0 . '08', 'amount' => 1500.00, 'paymentMethod' => 'cash',
+        'name' => 'Counter Other', 'gender' => 'Male', 'phone' => PHONE0 . '08', 'amount' => 1500.00, 'paymentMethod' => 'cash',
         'boarding' => $OTHER, 'boardingOther' => 'Gorakhpur Bus Stand Gate 3',
     ], $agentId, 'agent');
     $l5 = legOf((string) $b5['pnr']);
@@ -235,7 +235,7 @@ if (count($free) < 9) { echo "need 9 free seats on route #$routeId for " . TD . 
     check('(5) counterSale booking confirmed as before', (string) $b5['status'] === 'confirmed');
     expectThrow('(5b) counterSale refuses a 2-character manual text before touching a seat',
         fn() => BookingService::counterSale($route, $sid, TD, [$free[5]], [
-            'name' => 'Counter Short', 'phone' => PHONE0 . '09', 'paymentMethod' => 'cash',
+            'name' => 'Counter Short', 'gender' => 'Male', 'phone' => PHONE0 . '09', 'paymentMethod' => 'cash',
             'boarding' => $OTHER, 'boardingOther' => 'Go',
         ], $agentId, 'agent'), 'at least 3');
     check('(5b) the refused counter sale left its seat free',
@@ -263,7 +263,7 @@ if (count($free) < 9) { echo "need 9 free seats on route #$routeId for " . TD . 
         $town  = trim((string) (is_array($parts) ? $parts[0] : $target['name']));
         $want  = $canon($target);
         $b5c = BookingService::counterSale($route, $sid, TD, [$free[6]], [
-            'name' => 'Counter Town', 'phone' => PHONE0 . '10', 'paymentMethod' => 'cash',
+            'name' => 'Counter Town', 'gender' => 'Male', 'phone' => PHONE0 . '10', 'paymentMethod' => 'cash',
             'boarding' => $town,
         ], $agentId, 'agent');
         $l5c = legOf((string) $b5c['pnr']);
@@ -274,7 +274,7 @@ if (count($free) < 9) { echo "need 9 free seats on route #$routeId for " . TD . 
 
         // 5d) 'originTown' (the create() hint name) is the fallback hint -> the same stop.
         $b5d = BookingService::counterSale($route, $sid, TD, [$free[7]], [
-            'name' => 'Counter Origin', 'phone' => PHONE0 . '11', 'paymentMethod' => 'cash',
+            'name' => 'Counter Origin', 'gender' => 'Male', 'phone' => PHONE0 . '11', 'paymentMethod' => 'cash',
             'originTown' => $town,
         ], $agentId, 'agent');
         $l5d = legOf((string) $b5d['pnr']);
@@ -283,7 +283,7 @@ if (count($free) < 9) { echo "need 9 free seats on route #$routeId for " . TD . 
 
         // 5e) A town matching no configured pickup still falls back to the first open stop.
         $b5e = BookingService::counterSale($route, $sid, TD, [$free[8]], [
-            'name' => 'Counter Nowhere', 'phone' => PHONE0 . '12', 'paymentMethod' => 'cash',
+            'name' => 'Counter Nowhere', 'gender' => 'Male', 'phone' => PHONE0 . '12', 'paymentMethod' => 'cash',
             'boarding' => 'Nowhere Junction',
         ], $agentId, 'agent');
         $l5e = legOf((string) $b5e['pnr']);

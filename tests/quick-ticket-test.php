@@ -324,7 +324,9 @@ try {
     /* ---- the second passenger fills the half-empty cabin ---------------- */
     $res2 = QuickTicket::sell(['name' => 'Quick Test Pax Two', 'phone' => QT_PHONE . '002', 'date' => $D, 'direction' => 'toNepal'], $staffRow);
     check('the second passenger gets a different seat', ($res2['seats'][0] ?? '') !== ($res['seats'][0] ?? ''), $res['seats'][0] . ' then ' . $res2['seats'][0]);
-    check('  …in the same cabin (half-empty cabins fill first)', Seats::unitKey((string) $res2['seats'][0]) === Seats::unitKey((string) $res['seats'][0]));
+    // 21 Nov 2026 (gender_required_shared): neither passenger gave a gender, so the
+    // second is NOT put beside the first (a stranger of unknown gender) - own cabin.
+    check('  …NOT beside the first stranger (both genders unknown)', Seats::unitKey((string) $res2['seats'][0]) !== Seats::unitKey((string) $res['seats'][0]));
 
     /* ---- a woman locks her cabin; the next man goes elsewhere ---------- */
     $resF = QuickTicket::sell(['name' => 'Quick Test Sita', 'phone' => QT_PHONE . '003', 'date' => $D, 'direction' => 'toNepal', 'gender' => 'Female'], $staffRow);

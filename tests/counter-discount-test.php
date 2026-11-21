@@ -57,7 +57,7 @@ else {
     $sell = function (array $seats, array $extra) use ($route, $rid, $D) {
         $sched = Seats::schedule($rid, $D);
         return BookingService::counterSale($route, (int) $sched['id'], $D, $seats,
-            array_merge(['name' => 'Disc Test', 'phone' => CD_PHONE . '0', 'paymentMethod' => 'cash'], $extra),
+            array_merge(['name' => 'Disc Test', 'phone' => CD_PHONE . '0', 'paymentMethod' => 'cash', 'gender' => 'Male'], $extra),
             (int) Database::scalar("SELECT id FROM admins WHERE is_active=1 ORDER BY (role='superadmin') DESC, id ASC LIMIT 1", [], 0),
             'admin');
     };

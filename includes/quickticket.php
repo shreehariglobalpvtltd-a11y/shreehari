@@ -626,6 +626,28 @@ final class QuickTicket
             return false;
         };
 
+        /* 21 Nov 2026 (Seats gender_required_shared): never put a passenger next to a
+           STRANGER when either gender is unknown - an unknown passenger (no gender, or a
+           party's unnamed companions) gets an empty cabin, and nobody joins a stranger
+           whose gender was not recorded (cabin still 'none' while someone sits there).
+           Only when that leaves too few berths does the old list stay (the server then
+           explains which gender to choose). */
+        if (Settings::getBool('gender_required_shared', true)) {
+            $unknown = $gender === null || $count > 1;
+            $keepUnit = static function (string $unit) use ($partial, $units, $unknown): bool {
+                if (!$partial($unit)) {
+                    return true;
+                }
+                return !$unknown && (string) ($units[$unit]['lock'] ?? 'none') !== 'none';
+            };
+            $byUnitSafe = array_filter($byUnit, static fn(array $s, $unit): bool => $keepUnit((string) $unit), ARRAY_FILTER_USE_BOTH);
+            if (count($byUnitSafe) > 0 && array_sum(array_map('count', $byUnitSafe)) >= $count) {
+                $byUnit = $byUnitSafe;
+                $free   = array_values(array_merge(...array_values($byUnit)));
+                usort($free, static fn(string $a, string $b): int => self::seatRank($a) <=> self::seatRank($b));
+            }
+        }
+
         $chosen = [];
         $take   = static function (array $seats) use (&$chosen, $count): void {
             foreach ($seats as $s) {

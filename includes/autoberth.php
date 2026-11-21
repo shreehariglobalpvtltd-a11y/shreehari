@@ -182,6 +182,7 @@ final class AutoBerth
 
         $ctx = [
             'units' => $units, 'women' => $women, 'w' => $w, 'pref' => $pref, 'prefer' => $prefer,
+            'taken' => array_values(array_map('strval', array_merge((array) ($av['booked'] ?? []), (array) ($av['locked'] ?? [])))),
             'rear' => $rear, 'rows' => $rows, 'solo' => count($party) === 1, 'coach' => $coach,
             'bandOf' => array_column($party, 'b', 'i'),
         ];
@@ -477,6 +478,15 @@ final class AutoBerth
             }
             if (in_array(null, array_map(static fn(array $p): ?string => $p['g'], $chunk), true) && $lock !== 'none') {
                 continue;   // an unknown gender never joins a gender-held cabin
+            }
+            /* 21 Nov 2026 (Seats gender_required_shared): a passenger of ANOTHER ticket
+               already on this cabin is never paired with an unknown gender - neither an
+               unknown joining a stranger, nor anyone joining a stranger whose gender was
+               not recorded (lock still 'none' while someone sits there). */
+            $strangers = count(array_intersect($u['beds'], $ctx['taken'] ?? []));   // booked / held by another ticket
+            if ($strangers > 0 && (in_array(null, array_map(static fn(array $p): ?string => $p['g'], $chunk), true) || $lock === 'none')
+                && Settings::getBool('gender_required_shared', true)) {
+                continue;
             }
             if (count($genders) > 1) {
                 // a mixed chunk only on a WHOLE empty cabin (the server's rule)
