@@ -134,6 +134,8 @@ final class PublicLayout
     /** tel: href from any written number (spaces and dashes dropped, a leading + kept or added). */
     public static function telHref(string $phone): string
     {
+        // 21 Nov 2026: "+977 98662 01375 / 98257 88450" dials the FIRST number, never both glued together.
+        $phone = (string) (preg_split('#\s*[/,;]\s*#', $phone)[0] ?? $phone);
         $d = preg_replace('/[^0-9+]/', '', $phone) ?? '';
         if ($d === '') {
             return '';
