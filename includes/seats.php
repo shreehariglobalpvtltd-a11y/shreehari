@@ -2048,6 +2048,57 @@ final class Seats
 
         $touched = [];
 
+        /* 21 Nov 2026 (owner: "female bhaye female matra, boy bhaye boy matra, family bhaye
+           eutai ticket ma chhodin"): a passenger with NO gender used to count as nobody, so
+           an unknown and a woman could end up on one berth. Now a berth never pairs someone
+           with a passenger of ANOTHER ticket whose gender is not known:
+             - a blank-gender passenger may not join a berth someone else already holds;
+             - nobody may join a berth whose other passenger has a blank gender.
+           A blank gender on an empty berth (or a whole berth on one ticket = family) still
+           sells, so a counter sale is never stopped; the berth just stays closed to others
+           until the office fills the gender. Old bookings re-taking their own seats
+           ($womenPartnerRule false) are not touched. Switch gender_required_shared (default on). */
+        if ($womenPartnerRule && Settings::getBool('gender_required_shared', true)) {
+            $vacSet = array_flip(array_map('strtoupper', $vacating));
+            foreach ($incoming as $unitKey => $incomingSeats) {
+                $others = array_values(array_filter(self::unitSeats((string) $unitKey, $coachType),
+                    static fn(string $s): bool => !isset($incomingSeats[strtoupper($s)]) && !isset($vacSet[strtoupper($s)])));
+                if ($others === []) {
+                    continue;
+                }
+                $ph = [];
+                $pp = ['s' => $scheduleId];
+                foreach ($others as $i => $o) {
+                    $ph[] = ':o' . $i;
+                    $pp['o' . $i] = $o;
+                }
+                $occ = Database::fetchAll(
+                    'SELECT bp.gender FROM booking_seats bs
+                       JOIN booking_passengers bp ON bp.booking_id = bs.booking_id AND bp.seat_no = bs.seat_no
+                      WHERE bs.schedule_id = :s AND bs.released_at IS NULL AND bs.seat_no IN (' . implode(', ', $ph) . ')',
+                    $pp
+                );
+                if ($occ === []) {
+                    continue;   // the rest of the berth is empty
+                }
+                $berth = implode(', ', array_keys($incomingSeats));
+                if (in_array(null, array_values($incomingSeats), true)) {
+                    throw new RuntimeException(
+                        'Berth ' . $berth . ' is shared with another passenger - choose Male or Female for this passenger first.'
+                        . ' / बर्थ ' . $berth . ' मा अर्को यात्रु हुनुहुन्छ — पहिले यो यात्रुको लिङ्ग (पुरुष / महिला) छान्नुहोस्।'
+                    );
+                }
+                foreach ($occ as $r) {
+                    if (self::normaliseGender($r['gender'] ?? null) === null) {
+                        throw new RuntimeException(
+                            'The passenger already on this berth (' . $berth . ') has no gender recorded, so it cannot be shared. Please choose another berth.'
+                            . ' / यो बर्थ (' . $berth . ') मा भएको यात्रुको लिङ्ग लेखिएको छैन, त्यसैले साझा गर्न मिल्दैन। अर्को बर्थ छान्नुहोस्।'
+                        );
+                    }
+                }
+            }
+        }
+
         foreach ($incoming as $unitKey => $incomingSeats) {
             // Create-if-absent, then lock the cabin's state row FOR UPDATE so
             // a simultaneous booking into the same cabin waits for us and then
