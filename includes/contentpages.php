@@ -319,7 +319,7 @@ final class ContentPages
      */
     public static function saveUpload(array $f, string $dir, string $slug): string
     {
-        if (!in_array($dir, ['tours', 'places'], true)) {
+        if (!in_array($dir, ['tours', 'places', 'locations'], true)) {
             throw new RuntimeException('Bad upload folder.');
         }
         if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($f['tmp_name'] ?? ''))) {
@@ -1061,6 +1061,51 @@ final class ContentPages
         if ($cards === '') {
             $cards = '<div class="empty"><div class="big" aria-hidden="true">🏢</div><p>' . $e($w['noOffices']) . '</p></div>';
         }
+        // 21 Nov 2026 (owner): our own parkings / pickup yards / offices from admin/locations.php,
+        // with map, photos and contact - only the ones the office filled and switched on.
+        $placeCards = '';
+        try {
+            require_once INCLUDE_PATH . '/companylocations.php';
+            foreach (CompanyLocations::forPublic() as $pl) {
+                $nm = $lang !== 'en' && $pl['nameNe'] !== '' ? $pl['nameNe'] : $pl['name'];
+                $ad = $lang !== 'en' && $pl['addressNe'] !== '' ? $pl['addressNe'] : $pl['address'];
+                $kl = CompanyLocations::KINDS[$pl['kind']][$lang === 'en' ? 1 : 0];
+                $ph = '';
+                foreach ($pl['photos'] as $img) {
+                    $ph .= '<img src="/' . $e($img) . '" alt="' . $e($nm) . '" loading="lazy" decoding="async" style="width:100%;max-height:200px;object-fit:cover;border-radius:12px;margin:0 0 8px">';
+                }
+                $btns = '';
+                $cc = '';   // a second bare number takes the first one's country code ("+977 98.. / 98..")
+                foreach (array_slice(preg_split('#\s*/\s*#', $pl['phone']) ?: [], 0, 2) as $i => $num) {
+                    $num = trim((string) $num);
+                    if ($num === '') { continue; }
+                    $digits = (string) preg_replace('/[^\d+]/', '', $num);
+                    if ($i === 0 && str_starts_with($digits, '+') && strlen($digits) > 11) {
+                        $cc = substr($digits, 0, strlen($digits) - 10);
+                    } elseif ($i > 0 && $cc !== '' && !str_starts_with($digits, '+') && strlen($digits) === 10) {
+                        $digits = $cc . $digits;
+                    }
+                    $btns .= '<a class="btn fill sm" href="tel:' . $e($digits) . '">📞 <span class="num">' . $e($num) . '</span></a>';
+                }
+                if ($pl['whatsapp'] !== '') {
+                    $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($pl['whatsapp']) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
+                }
+                $mp = $pl['map'] !== '' ? $pl['map'] : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($pl['address']);
+                $btns .= '<a class="btn out sm" href="' . $e($mp) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
+                $placeCards .= '<article class="card off rv" id="place-' . (int) $pl['id'] . '">' . $ph
+                    . '<div class="off-top"><span class="badge">' . $e($kl) . '</span></div>'
+                    . '<h2 class="off-name">' . $e($nm) . '</h2>'
+                    . ($ad !== '' ? '<p class="off-addr">📍 ' . $e($ad) . '</p>' : '')
+                    . ($pl['person'] !== '' ? '<p class="off-addr">👤 ' . $e($pl['person']) . '</p>' : '')
+                    . ($pl['hours'] !== '' ? '<p class="off-addr">🕘 ' . $e($w['hours']) . ': ' . $e($pl['hours']) . '</p>' : '')
+                    . ($pl['note'] !== '' ? '<p class="off-addr">ℹ️ ' . $e($pl['note']) . '</p>' : '')
+                    . '<div class="btns">' . $btns . '</div></article>';
+            }
+        } catch (Throwable) {
+            $placeCards = '';
+        }
+        $placesH = ['en' => 'Our parking & pickup points', 'hi' => 'हमारी पार्किंग और बोर्डिंग स्थान', 'ne' => 'हाम्रा पार्किङ र चढ्ने ठाउँ'][$lang] ?? 'Our parking & pickup points';
+
         $soonChips = '';
         foreach ($soon as $o) {
             $soonChips .= '<span class="chip">' . PublicLayout::flag($o['country'], 12) . ' ' . $e(PublicLayout::officeName($o, $lang)) . ' · ' . $e($w['soonOpen']) . '</span>';
@@ -1078,6 +1123,7 @@ final class ContentPages
             . '<img class="hero-art art-16x9" src="/assets/img/hd/bus-hero-m.webp?v=20261015e" width="1600" height="900" alt="' . $e($w['render']) . '" loading="lazy" decoding="async"></picture>'
             . '<p class="hero-cap">' . $e($w['render']) . '</p></section>'
             . '<section class="sec"><div class="grid offices">' . $cards . '</div></section>'
+            . ($placeCards !== '' ? '<section class="sec" id="places"><h2 style="margin:0 0 12px">📍 ' . $e($placesH) . '</h2><div class="grid offices">' . $placeCards . '</div></section>' : '')
             . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . '</h2>'
             . ($lang !== 'ne' ? '<p class="band-ne" lang="ne">' . PublicLayout::flag('NP', 16) . ' नयाँ कार्यालय छिट्टै</p>' : '')
             . '<p>' . $e(sprintf($w['expP'], $co['name'])) . '</p>' . ($soonChips !== '' ? '<div class="chips" style="margin-top:10px">' . $soonChips . '</div>' : '')

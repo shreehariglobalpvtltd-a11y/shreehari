@@ -114,11 +114,13 @@ function admin_nav(): array
         ['href' => 'agreements.php',   'icon' => 'user-cog',  'label' => 'Agents by Location (web cards)', 'perm' => 'customers.view', 'section' => $S2],
         ['href' => 'counters.php',     'icon' => 'building',  'label' => 'Counters & Collection',  'perm' => 'reports.view',     'section' => $S2],
         ['href' => 'owner-setup.php',  'icon' => 'shield',    'label' => '🧩 बाँकी भर्ने ठाउँ · Owner setup', 'perm' => 'dashboard.view', 'section' => $S2],   // 19 Nov 2026: driver per bus, map links, ICICI live, Nepal reg / eSewa, Play SHA-256
+        ['href' => 'desk-day.php',     'icon' => 'building',  'label' => '🇳🇵 Counter day list (NPJ) · कसले कति काट्यो', 'perm' => 'reports.view', 'section' => $S2],   // 21 Nov 2026
         ['href' => 'day-memo.php',     'icon' => 'building',  'label' => '🧾 दैनिक हिसाब मेमो · Day memo', 'perm' => 'reports.view', 'section' => $S2],   // 19 Nov 2026: the office's paper pad, printable
         ['href' => 'map.php',          'icon' => 'road',      'label' => 'SHARI NAV Live Bus Radar', 'perm' => 'schedules.view', 'section' => $S2],
         ['href' => 'gps-trackers.php', 'icon' => 'road',      'label' => '🛰️ Bus GPS Trackers',     'perm' => 'schedules.manage','section' => $S2],
         ['href' => 'gps-center.php',   'icon' => 'cog',       'label' => '🧭 GPS Control Center',     'perm' => 'schedules.manage','section' => $S2],
         ['href' => '/navigate.html',   'icon' => 'road',      'label' => '🚌 Passenger Live Radar Map','perm' => 'schedules.view', 'section' => $S2],
+        ['href' => 'locations.php',    'icon' => 'globe',     'label' => '📍 Our Locations (map · photo · phone)', 'perm' => 'dashboard.view', 'section' => $S2],
         ['href' => 'places.php',       'icon' => 'globe',     'label' => 'Places to Visit',        'perm' => 'dashboard.view',   'section' => $S2],
         ['href' => 'nav-reports.php',  'icon' => 'shield',    'label' => 'Road Reports',           'perm' => 'dashboard.view',   'section' => $S2],
 

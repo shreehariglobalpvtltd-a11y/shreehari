@@ -35,6 +35,10 @@ $keys = [
     'icici_live_aggregator_id' => ['text', 40],
     'icici_live_app_id'      => ['text', 60],
     'icici_live_secret_key'  => ['secret', 200],
+    'nepal_company'          => ['text', 120],
+    'nepal_pan'              => ['text', 40],
+    'nepal_phone'            => ['text', 80],
+    'nepal_office'           => ['text', 255],
     'nepal_reg'              => ['text', 60],
     'nepal_esewa_id'         => ['text', 80],
     'nepal_esewa_name'       => ['text', 120],
@@ -102,6 +106,55 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         Settings::flush();
         Logger::audit('settings.normal_fare', 'settings', 'owner-setup', null, ['fares' => $nf, 'on' => $on], 'Normal fare (struck-through price)');
         $flash[] = ['ok', 'सामान्य भाडा सेभ भयो · normal fare saved' . ($on === '1' ? ' (ON)' : ' (OFF)')];
+    } elseif ((string) ($_POST['act'] ?? '') === 'esewa_qr') {
+        /* 21 Nov 2026 (owner: "NPJ branch ko chhuttai Nepali wala QR rakhdinus"): the
+           Nepal counter's own eSewa / Fonepay QR image, printed on NPR tickets that
+           still owe money. Re-encoded (never stored as sent); 'remove' clears it. */
+        try {
+            if (!empty($_POST['remove'])) {
+                $oldQr = Settings::getString('nepal_esewa_qr', '');
+                Settings::set('nepal_esewa_qr', '', 'string', 'company');
+                Settings::flush();
+                Logger::audit('settings.esewa_qr', 'settings', 'owner-setup', ['file' => $oldQr], ['file' => ''], 'Nepal eSewa QR removed');
+                $flash[] = ['ok', 'eSewa QR हटाइयो · removed'];
+            } else {
+                $f = $_FILES['esewa_qr'] ?? [];
+                if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($f['tmp_name'] ?? ''))) {
+                    throw new RuntimeException('QR को फोटो छान्नुहोस् · choose the QR image');
+                }
+                $mime = mime_content_type((string) $f['tmp_name']) ?: '';
+                if (!in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true) || (int) ($f['size'] ?? 0) > 3 * 1024 * 1024) {
+                    throw new RuntimeException('PNG / JPG / WebP, 3 MB सम्म');
+                }
+                $src = @imagecreatefromstring((string) file_get_contents((string) $f['tmp_name']));
+                if ($src === false) {
+                    throw new RuntimeException('फोटो खुलेन · image could not be read');
+                }
+                $w = imagesx($src); $h = imagesy($src);
+                $sc = min(1.0, 900 / max(1, $w, $h));
+                $dst = imagecreatetruecolor(max(1, (int) round($w * $sc)), max(1, (int) round($h * $sc)));
+                imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+                imagecopyresampled($dst, $src, 0, 0, 0, 0, imagesx($dst), imagesy($dst), $w, $h);
+                $dir = rtrim(defined('UPLOAD_PATH') ? UPLOAD_PATH : ROOT_PATH . '/uploads', '/\\') . '/payqr';
+                if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+                    throw new RuntimeException('Could not create uploads/payqr');
+                }
+                $name = 'esewa-npj-' . bin2hex(random_bytes(4)) . '.png';
+                $ok = imagepng($dst, $dir . '/' . $name . '.tmp', 6) && rename($dir . '/' . $name . '.tmp', $dir . '/' . $name);
+                imagedestroy($src); imagedestroy($dst);
+                if (!$ok) {
+                    @unlink($dir . '/' . $name . '.tmp');
+                    throw new RuntimeException('Could not save the QR');
+                }
+                $oldQr = Settings::getString('nepal_esewa_qr', '');
+                Settings::set('nepal_esewa_qr', 'uploads/payqr/' . $name, 'string', 'company');
+                Settings::flush();
+                Logger::audit('settings.esewa_qr', 'settings', 'owner-setup', ['file' => $oldQr], ['file' => 'uploads/payqr/' . $name], 'Nepal eSewa QR uploaded');
+                $flash[] = ['ok', 'eSewa QR सेभ भयो · saved — NPR टिकटमा देखिन्छ'];
+            }
+        } catch (Throwable $ex) {
+            $flash[] = ['bad', $ex->getMessage()];
+        }
     } elseif ((string) ($_POST['act'] ?? '') === 'facts') {
         $changed = [];
         foreach ($keys as $k => $spec) {
@@ -274,8 +327,13 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
       <label>Secret key <?= $val('icici_live_secret_key') !== '' ? '<span class="os-ok">✔ saved</span>' : '' ?><input name="icici_live_secret_key" type="password" value="" autocomplete="new-password" placeholder="<?= $val('icici_live_secret_key') !== '' ? '•••••••• (बदल्न मात्र लेख्नुहोस्)' : '' ?>"></label>
     </div>
 
-    <h2 style="margin-top:16px">4 · 🇳🇵 नेपाल कम्पनी · Nepal company</h2>
+    <h2 style="margin-top:16px">4 · 🇳🇵 नेपाल कम्पनी · Nepal company (NPJ branch)</h2>
+    <p class="hint">नेपाल काउन्टर (NPJ) बाट काटिएको टिकटमा यही नाम, PAN, फोन र ठेगाना छापिन्छ। PAN र फोन सबै टिकटको "NEPAL OFFICE" QR मुनि पनि आउँछ।</p>
     <div class="os-f">
+      <label>टिकटमा कम्पनी नाम · name on Nepal tickets<input name="nepal_company" value="<?= $e($val('nepal_company')) ?>" placeholder="Shree Hari Global — NPJ Branch"></label>
+      <label>PAN (स्थायी लेखा नम्बर)<input name="nepal_pan" value="<?= $e($val('nepal_pan')) ?>" inputmode="numeric"></label>
+      <label>फोन · phones (/ ले छुट्याउनुहोस्)<input name="nepal_phone" value="<?= $e($val('nepal_phone')) ?>" placeholder="+977 98XXXXXXXX / 98XXXXXXXX"></label>
+      <label>ठेगाना · address<input name="nepal_office" value="<?= $e($val('nepal_office')) ?>"></label>
       <label>Reg. No. (दर्ता नं)<input name="nepal_reg" value="<?= $e($val('nepal_reg')) ?>"></label>
       <label>eSewa ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
@@ -288,6 +346,18 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
       <label>S Hari Manage<input name="android_manage_sha256" value="<?= $e($val('android_manage_sha256')) ?>" placeholder="AB:CD:…"></label>
     </div>
     <p style="margin:12px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save</button></p>
+  </form>
+
+  <form method="post" enctype="multipart/form-data" class="os-card">
+    <?= Security::csrfField() ?><input type="hidden" name="act" value="esewa_qr">
+    <h2>6 · 🇳🇵 NPJ eSewa / Fonepay QR (नेपाली भुक्तानी QR)</h2>
+    <p class="hint">नेपाल काउन्टरको आफ्नै QR को फोटो। NPR मा काटिएको र पैसा बाँकी भएको टिकटमा यही QR छापिन्छ (भारतको UPI QR होइन)। पैसा आएपछि office ले हातैले approve गर्छ।</p>
+    <?php $qrNow = Ticket::esewaQrFile(); if ($qrNow !== ''): ?>
+      <p><img src="data:<?= $e(mime_content_type($qrNow) ?: 'image/png') ?>;base64,<?= base64_encode((string) file_get_contents($qrNow)) ?>" alt="eSewa QR" style="width:160px;height:auto;border:1px solid #e2e8f0;border-radius:10px"></p>
+    <?php else: ?><p class="hint"><b>अहिले कुनै QR छैन।</b></p><?php endif; ?>
+    <div class="os-f"><label>QR फोटो (PNG / JPG)<input type="file" name="esewa_qr" accept="image/png,image/jpeg,image/webp"></label></div>
+    <p style="margin:12px 0 0;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>अपलोड · Upload</button>
+      <?php if (Settings::getString('nepal_esewa_qr', '') !== ''): ?><button class="btn" type="submit" name="remove" value="1" <?= $can ? '' : 'disabled' ?>>हटाउ · Remove</button><?php endif; ?></p>
   </form>
 </div>
 <?php admin_footer(); ?>

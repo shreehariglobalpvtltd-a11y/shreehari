@@ -332,6 +332,17 @@ final class Ticket
         $hub   = self::isIndiaHub($label) ? self::mapLink(Settings::getString('india_hub_map', '')) : '';
         $geo   = $hub === '' ? self::pickupGeo($booking) : null;
         $board = $hub !== '' ? $hub : ($geo !== null ? self::mapLink($geo) : '');
+        if ($board === '' && $label !== '') {
+            // 21 Nov 2026: no pin on the stop -> the office's own place in that town (admin/locations.php).
+            try {
+                if (!class_exists('CompanyLocations')) {
+                    require_once __DIR__ . '/companylocations.php';
+                }
+                $board = self::mapLink(CompanyLocations::mapForTown(self::stopForPrint($label)));
+            } catch (Throwable) {
+                $board = '';
+            }
+        }
         if ($board !== '') {
             $place = self::latin(self::stopForPrint($label));
             $place = trim((string) (preg_split('/\s+·\s+/u', $place)[0] ?? $place));
@@ -343,13 +354,20 @@ final class Ticket
         }
         $npIssued = (self::companyOf($booking)['entity'] ?? 'IN') === 'NP';
         $toIndia  = Boarding::routeDirection(['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')]) === 'toIndia';
-        if ($npIssued || $toIndia) {
+        /* 21 Nov 2026 (owner: "sab ticket ma nepali counter ko location, number aos"): the Nepal
+           office now rides on EVERY ticket (a Gujarat -> Nepal passenger walks to it after the
+           border too). Switch ticket_nepal_office_all (default on); off = Nepal tickets only. */
+        if ($npIssued || $toIndia || Settings::getBool('ticket_nepal_office_all', true)) {
             $np = self::mapLink(Settings::getString('nepal_office_map', ''));
             if ($np === '') {
                 $np = self::NEPAL_OFFICE_MAP_DEFAULT;
             }
+            $npPhone = trim((string) (preg_split('#\s*/\s*#', Settings::getString('nepal_phone', ''))[0] ?? ''));
+            $npReg   = trim(Settings::getString('nepal_reg', ''));
+            $npPan   = trim(Settings::getString('nepal_pan', ''));
+            $npPlace = trim((string) (preg_split('/\s*,\s*/u', Settings::nepalOfficePlace())[0] ?? '')) . ', Nepalgunj';
             $npRow = ['payload' => $np, 'title' => 'नेपाल काउन्टर · NEPAL OFFICE',
-                'place' => self::latin(Settings::nepalOfficePlace()), 'kind' => 'nepal'];
+                'place' => self::latin($npPlace . ($npPhone !== '' ? ' | ' . $npPhone : '') . ($npPan !== '' ? ' | PAN ' . $npPan : '') . ($npReg !== '' ? ' | Reg ' . $npReg : '')), 'kind' => 'nepal'];
             if (($out[0]['payload'] ?? '') !== $np) {
                 if ($npIssued) {
                     array_unshift($out, $npRow);
@@ -3384,7 +3402,7 @@ final class Ticket
         if ($payable && self::frozenNpr($booking) > 0) {
             $co    = self::companyOf($booking);
             $esewa = trim((string) ($co['payEsewa'] ?? ''));
-            $img   = $esewa !== '' ? self::esewaQrFile() : '';
+            $img   = self::esewaQrFile();   // 21 Nov 2026: the uploaded QR prints even before an eSewa id is typed
             $nprTx = 'रू ' . indianNumber(self::nprOf($booking, $due));
             $out['esewa']    = $esewa;
             $out['esewaImg'] = $img;
@@ -3474,7 +3492,13 @@ final class Ticket
     /** The office's own eSewa QR image on the server (the files PayAdapter shows), or ''. */
     public static function esewaQrFile(): string
     {
-        foreach (['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'] as $f) {
+        // 21 Nov 2026: the NPJ branch's own QR uploaded on admin/owner-setup.php comes first.
+        $up = ltrim(str_replace('\\', '/', Settings::getString('nepal_esewa_qr', '')), '/');
+        $files = ['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'];
+        if ($up !== '' && preg_match('#^uploads/payqr/[a-z0-9-]+\.png$#', $up) === 1) {
+            array_unshift($files, $up);
+        }
+        foreach ($files as $f) {
             $p = dirname(__DIR__) . '/' . $f;
             if (is_file($p) && filesize($p) > 0 && filesize($p) < 3 * 1024 * 1024) {
                 return $p;

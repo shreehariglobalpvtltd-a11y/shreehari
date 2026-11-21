@@ -109,6 +109,7 @@ const CORE_SUITES = [
     'counter-role-test.php'        => 'the counter role sees only what it may',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',
+    'npj-counter-test.php'         => 'Nepal desk sells Rupaidiha -> Gujarat only; Nepal office on every ticket; company locations',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
     'agent-controls-test.php'      => 'agent limits hold under pressure',
     'agent-kind-test.php'          => 'org vs person agent numbering',

@@ -161,6 +161,38 @@ final class BookingService
         }
     }
 
+    /**
+     * 21 Nov 2026 (owner: "Nepali counter ma Rupaidiha to Gujarat matra ticket
+     * katna milos"): a desk set to one run sells only that run - the Nepal
+     * desks (default_direction toIndia) never cut a Gujarat -> Nepal ticket.
+     * Until now the direction only chose which run the screen opened on.
+     * Switch desk_one_way_on (default on). A desk with no direction, or a
+     * clerk with no desk, sells both runs as before.
+     */
+    private static function assertDeskDirection(?int $clerkAdminId, int $routeId): void
+    {
+        if (!Settings::getBool('desk_one_way_on', true)) {
+            return;
+        }
+        $code = CounterDesk::codeForSale($clerkAdminId);
+        // Owner (21 Nov 2026): "only the Nepali counter" - an India desk (Rupaidiha too) keeps selling both ways.
+        $nepalDesk = $code !== null && (CounterDesk::entity($code) === 'NP' || CounterDesk::currency($code) === 'NPR');
+        $want = $nepalDesk ? CounterDesk::direction($code) : '';
+        if ($want === '') {
+            return;
+        }
+        $route = Database::fetch('SELECT from_city, to_city FROM routes WHERE id = :i', ['i' => $routeId]);
+        if ($route === null) {
+            return;
+        }
+        $dir = Boarding::routeDirection($route);
+        if ($dir !== $want) {
+            throw new RuntimeException($want === 'toIndia'
+                ? 'यो काउन्टर (' . $code . ') ले रुपैडिहा → गुजरात टिकट मात्र काट्छ। · This desk sells Rupaidiha → Gujarat tickets only.'
+                : 'यो काउन्टर (' . $code . ') ले गुजरात → नेपाल टिकट मात्र काट्छ। · This desk sells Gujarat → Nepal tickets only.');
+        }
+    }
+
     private static function paxSpecialColumn(): bool
     {
         static $has = null;
@@ -417,6 +449,7 @@ final class BookingService
             // BEFORE the transaction so a refusal costs no lock.
             AgentWallet::assertMaySell($sellerId, $routeId);
             self::assertDeskTakes($sellerId, $counterMethod);
+            self::assertDeskDirection($sellerId, $routeId);
         }
 
         /* ---- Any-date sales for staff (6 Sep 2026) ----------------
@@ -1249,6 +1282,7 @@ final class BookingService
         $method = in_array($data['paymentMethod'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true)
             ? (string) $data['paymentMethod'] : 'cash';
         self::assertDeskTakes($adminId ?: null, $method);
+        self::assertDeskDirection($adminId ?: null, (int) $route['id']);
         $note = Security::clean((string) ($data['note'] ?? ''), 255);
 
         // Only a super-admin may sell a staff/emergency-reserved berth; every
