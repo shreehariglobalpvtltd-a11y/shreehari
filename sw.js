@@ -181,7 +181,8 @@ self.addEventListener('activate', function (event) {
       await Promise.all(keys.map(function (k) {
         // drop our own older-version caches; leave anything else alone.
         // TICKET_CACHE is spared on purpose — see its declaration above.
-        if (k === TICKET_CACHE || k === PLACES_CACHE) return null;
+        if (k === TICKET_CACHE) return null;
+        if (k === PLACES_CACHE) return null;   // our places' map pictures, same reason
         // staff door: the code caches it held under the customer names before 13 Nov 2026
         if (STAFF_DOOR && /^shg-(shell|tiles|assets)-/.test(k)) return caches.delete(k);
         if ((k.indexOf('shg-') === 0 || k.indexOf('shm-') === 0) && k.indexOf(VERSION) === -1) return caches.delete(k);

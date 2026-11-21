@@ -171,6 +171,8 @@ try {
         $h6['lines'][1] === $lbl('L5') . ' · ' . $lbl('L6') . ' +2', json_encode($h6, JSON_UNESCAPED_UNICODE));
 
     $mA = Ticket::mapQrs($bA);
+    // nj1 (21 Nov): A also carries the Nepal office QR (ticket_nepal_office_all) - only the pickup one is checked here
+    $mA = array_values(array_filter($mA, static fn(array $q): bool => ($q['kind'] ?? '') !== 'nepal'));
     check('A: pickup map QR from the stop ROW pin, not the label [1,1]', count($mA) === 1 && str_starts_with($mA[0]['payload'], 'https://maps.google.com/?q=') && !str_contains($mA[0]['payload'], 'q=1,1'), json_encode($mA));
     check('mapLink: short form, 6 decimals max', Ticket::mapLink('23.1710000, 72.6230000') === 'https://maps.google.com/?q=23.171,72.623' && Ticket::mapLink('nonsense') === '' && Ticket::mapLink('0,0') === '');
     $mC = Ticket::mapQrs($bC);
@@ -283,7 +285,9 @@ try {
        footer QRs; A (r2 hub, due) carries 3. The second map is no longer dropped. */
     $imgCount = static fn(int $bid): int => substr_count((string) file_get_contents(Ticket::pdfPath($bid)), '/Subtype /Image');
     $iA = $imgCount($A); $iC = $imgCount($C);
-    check('C PDF has one more QR image than A (the second map QR kept beside the pay QR)', $iC === $iA + 1, "A=$iA C=$iC");
+    /* 21 Nov 2026 (nj1): the Nepal office QR is now on EVERY ticket (ticket_nepal_office_all),
+       so A carries it too and both have the same number of footer QRs. */
+    check('C PDF keeps the second map QR beside the pay QR (A has the Nepal office QR too since nj1)', $iC >= $iA && $iC > 0, "A=$iA C=$iC");
     $srcPdf = (string) file_get_contents(INCLUDE_PATH . '/ticket.php');
     check('PDF: four QRs use the compact 66 pt pitch (right edge 544 pt < 555 pt)', str_contains($srcPdf, '$qStep    = $compact ? 66.0 : 88.0'));
     $pdfD = (string) file_get_contents(Ticket::pdfPath($D));
@@ -302,7 +306,7 @@ try {
     $src = (string) file_get_contents(INCLUDE_PATH . '/ticket.php');
     $pngStamp = (string) $ref1->getConstant('PNG_LAYOUT_CHANGED');
     $pdfStamp = (string) $ref1->getConstant('PDF_LAYOUT_CHANGED');
-    check('PNG layout stamp moved to 19 Nov and is in the past', str_starts_with($pngStamp, '2026-11-19') && strtotime($pngStamp) <= time() + 60, $pngStamp);
+    check('PNG layout stamp moved on (19 Nov, 21 Nov nj1) and is in the past', strcmp($pngStamp, '2026-11-19') >= 0 && strtotime($pngStamp) <= time() + 60, $pngStamp);
     check('PDF layout stamp moved to 19 Nov and is in the past', str_starts_with($pdfStamp, '2026-11-19') && strtotime($pdfStamp) <= time() + 60, $pdfStamp);
     check('barcode kept on the PNG', str_contains($src, 'Barcode::draw($im, $scanCode'));
     check('PDF seat box is bigger', str_contains($src, '$seatBoxW  = 112.0'));
