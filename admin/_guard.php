@@ -125,6 +125,7 @@ function admin_nav(): array
         ['href' => 'nav-reports.php',  'icon' => 'shield',    'label' => 'Road Reports',           'perm' => 'dashboard.view',   'section' => $S2],
 
         // 3. Ticketing & Bus Management — sell, change date / name, cancel, the alternate-day routine
+        ['href' => 'nepal-counter.php', 'icon' => 'building', 'label' => '🇳🇵 नेपाल काउन्टर · Nepal counter', 'perm' => 'bookings.view', 'section' => $S3, 'hot' => true],   // 22 Nov 2026
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket (10s)', 'perm' => 'bookings.view', 'section' => $S3, 'hot' => true],
         // 16 Nov 2026 (v2.0): many tickets from one CSV - the same gate as the SmartBook desk sale
         ...(is_file(__DIR__ . '/bulk-tickets.php') ? [['href' => 'bulk-tickets.php', 'icon' => 'ticket-alt', 'label' => 'धेरै टिकट एकैचोटि · Bulk Tickets (CSV)', 'perm' => 'bookings.view', 'section' => $S3]] : []),
@@ -255,7 +256,15 @@ function admin_nav_main(): array
     if (Settings::getBool('agent_simple_menu', true) && (string) ($me['role'] ?? '') === 'agent') {
         return array_fill_keys(['quick-ticket.php', 'bookings.php', 'manifest.php', '/me/', 'ticket-statement.php', 'shift.php', 'map.php'], true);
     }
-    return array_fill_keys([
+    /* 22 Nov 2026 (owner, Nepalgunj): a login on a Nepal (NPR) desk gets its counter home first. */
+    $npDesk = false;
+    try {
+        $dc = (string) (CounterDesk::forAdmin((int) ($me['id'] ?? 0))['code'] ?? '');
+        $npDesk = $dc !== '' && CounterDesk::currency($dc) === 'NPR';
+    } catch (Throwable) {
+        $npDesk = false;
+    }
+    return array_fill_keys(array_merge($npDesk || Auth::isSuperadmin() ? ['nepal-counter.php'] : [], [
         // 1 Tickets & Bus
         'quick-ticket.php', 'bookings.php', 'bus-control.php', 'manifest.php', 'reschedule.php',
         // 2 Agents & Staff
@@ -266,7 +275,7 @@ function admin_nav_main(): array
         'routes.php', 'map.php', 'counters.php',
         // 5 Settings & AI
         'easy-settings.php', 'settings.php', 'wa-manager.php', 'ai-brain.php',
-    ], true);
+    ]), true);
 }
 
 /**

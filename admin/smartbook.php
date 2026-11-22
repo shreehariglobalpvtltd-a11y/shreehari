@@ -393,6 +393,17 @@ window.factPolicyLine = function () { var p = <?= json_encode($F['policy']['line
     if (f) setTimeout(function () { f.focus({ preventScroll: true }); }, 250);
   });
 })();
+/* 22 Nov 2026 (Nepal counter "book this bus"): ?sbdate=YYYY-MM-DD opens the card on that date. */
+(function () {
+  var d = new URLSearchParams(location.search).get('sbdate') || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+  var tries = 0, t = setInterval(function () {
+    var sb = window.SmartBook, inp = document.getElementById('sbDateIn');
+    if (!(sb && sb.state && sb.state.dirs && sb.state.dirs.length && inp) && ++tries < 40) return;
+    clearInterval(t); if (!inp) return;
+    inp.value = d; inp.dispatchEvent(new Event('change', { bubbles: true }));
+  }, 250);
+})();
 /* Opened from a customer / booking page: ?cphone=&cname= fill the card (never books by itself). */
 (function () {
   var qs = new URLSearchParams(location.search), ph = qs.get('cphone') || '', nm = qs.get('cname') || '';
