@@ -117,7 +117,7 @@ echo ContentPages::adminCss();
 .lc-tag.on{background:#dcfce7;color:#166534}.lc-tag.off{background:#fef3c7;color:#92400e}
 .lc-photos{display:flex;gap:8px;flex-wrap:wrap}.lc-photos figure{margin:0;text-align:center}
 .lc-photos img{width:110px;height:84px;object-fit:cover;border-radius:10px;display:block}
-.lc-maps{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.lc-maps .lm-box{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
 .lc-maps figure{margin:0}.lc-maps img{width:100%;border-radius:12px;display:block}
 .lc-maps figcaption{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:4px}
 .lc-maps figcaption a{min-height:32px}
@@ -171,10 +171,8 @@ echo ContentPages::adminCss();
     <?php $lm = $cur !== null ? LocationMaps::saved((int) $cur['id']) : []; if ($cur !== null): ?>
     <section class="ct-card ct-wide">
       <h3>🛰️ Satellite map · स्याटेलाइट नक्सा <small class="muted">(saved on our server - opens offline once seen, ⬇️ save to phone)</small></h3>
-      <?php if (!empty($lm['sat']) || !empty($lm['route'])): ?><div class="lc-maps">
-        <?php if (!empty($lm['sat'])): ?><figure><a href="/<?= $e($lm['sat']) ?>" target="_blank" rel="noopener"><img src="/<?= $e($lm['sat']) ?>" alt="Satellite"></a><figcaption>माथिबाट · From above <a href="/<?= $e($lm['sat']) ?>" download>⬇️ Save</a></figcaption></figure><?php endif; ?>
-        <?php if (!empty($lm['route'])): ?><figure><a href="/<?= $e($lm['route']) ?>" target="_blank" rel="noopener"><img src="/<?= $e($lm['route']) ?>" alt="Road"></a><figcaption>नेपालगञ्ज कार्यालय → <?= $e($lm['to'] ?? '') ?> · <?= $e((string) ($lm['km'] ?? '')) ?> km <a href="/<?= $e($lm['route']) ?>" download>⬇️ Save</a></figcaption></figure><?php endif; ?>
-      </div><p class="muted" style="font-size:12px;margin:6px 0 0">Made <?= $e($lm['at'] ?? '') ?></p>
+      <?php if (!empty($lm['sat']) || !empty($lm['route'])): ?><?= LocationMaps::css() ?><div class="lc-maps"><?= LocationMaps::html($lm, 'ne') ?></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">Made <?= $e($lm['at'] ?? '') ?></p>
       <?php else: ?><p class="muted" style="font-size:13px"><?= $cur['map'] === '' ? 'Paste the Google Maps link above and save - the pictures are made by themselves.' : 'Not made yet - press the button.' ?></p><?php endif; ?>
       <?php if ($canEdit && $cur['map'] !== ''): ?><button class="btn ghost sm" type="submit" form="lcMaps">🛰️ Make / refresh pictures</button><?php endif; ?>
     </section>

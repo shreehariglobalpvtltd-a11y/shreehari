@@ -1067,10 +1067,6 @@ final class ContentPages
         try {
             require_once INCLUDE_PATH . '/companylocations.php';
             require_once INCLUDE_PATH . '/locationmaps.php';
-            $satW = ['en' => ['From above (satellite)', 'Road from our Nepalgunj office', 'km by road', 'Save picture (works offline)'],
-                     'hi' => ['ऊपर से (सैटेलाइट)', 'नेपालगंज कार्यालय से रास्ता', 'कि.मी. सड़क से', 'फोटो सेव करें (बिना नेट)'],
-                     'ne' => ['माथिबाट (स्याटेलाइट)', 'नेपालगञ्ज कार्यालयबाट बाटो', 'कि.मि. सडकबाट', 'तस्बिर सेभ गर्नुहोस् (नेट बिना)']][$lang] ?? null;
-            $satW ??= ['From above (satellite)', 'Road from our Nepalgunj office', 'km by road', 'Save picture (works offline)'];
             foreach (CompanyLocations::forPublic() as $pl) {
                 $nm = $lang !== 'en' && $pl['nameNe'] !== '' ? $pl['nameNe'] : $pl['name'];
                 $ad = $lang !== 'en' && $pl['addressNe'] !== '' ? $pl['addressNe'] : $pl['address'];
@@ -1097,18 +1093,9 @@ final class ContentPages
                 }
                 $mp = $pl['map'] !== '' ? $pl['map'] : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($pl['address']);
                 $btns .= '<a class="btn out sm" href="' . $e($mp) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
-                // 21 Nov 2026 (owner): satellite picture + the road from the Nepalgunj office,
-                // saved on our server so a phone that opened it once keeps it offline.
-                $lm = LocationMaps::saved((int) $pl['id']);
-                foreach ([['sat', $satW[0]], ['route', $satW[1] . (isset($lm['km']) ? ' · ' . $lm['km'] . ' ' . $satW[2] : '')]] as [$key, $cap]) {
-                    $f = (string) ($lm[$key] ?? '');
-                    if ($f === '' || !preg_match('#^uploads/locations/[a-z]+-[0-9a-f]{16}\.jpg$#', $f) || !is_file(ROOT_PATH . '/' . $f)) {
-                        continue;
-                    }
-                    $ph .= '<figure style="margin:0 0 10px"><a href="/' . $e($f) . '" target="_blank" rel="noopener"><img src="/' . $e($f) . '" alt="' . $e($cap . ' - ' . $nm) . '" loading="lazy" decoding="async" style="width:100%;border-radius:12px;display:block"></a>'
-                        . '<figcaption style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:4px"><span>🛰️ ' . $e($cap) . '</span>'
-                        . '<a href="/' . $e($f) . '" download style="min-height:32px">⬇️ ' . $e($satW[3]) . '</a></figcaption></figure>';
-                }
+                // 21-22 Nov 2026 (owner): close / area satellite, the road from the Nepalgunj
+                // office with a Nepali guide - saved on our server, kept offline by the phone.
+                $ph .= LocationMaps::html(LocationMaps::saved((int) $pl['id']), $lang === 'en' ? 'en' : 'ne');
                 $placeCards .= '<article class="card off rv" id="place-' . (int) $pl['id'] . '">' . $ph
                     . '<div class="off-top"><span class="badge">' . $e($kl) . '</span></div>'
                     . '<h2 class="off-name">' . $e($nm) . '</h2>'
@@ -1121,6 +1108,7 @@ final class ContentPages
         } catch (Throwable) {
             $placeCards = '';
         }
+        $placesCss = $placeCards !== '' && class_exists('LocationMaps') ? LocationMaps::css() : '';
         $placesH = ['en' => 'Our parking & pickup points', 'hi' => 'हमारी पार्किंग और बोर्डिंग स्थान', 'ne' => 'हाम्रा पार्किङ र चढ्ने ठाउँ'][$lang] ?? 'Our parking & pickup points';
 
         $soonChips = '';
@@ -1140,7 +1128,7 @@ final class ContentPages
             . '<img class="hero-art art-16x9" src="/assets/img/hd/bus-hero-m.webp?v=20261015e" width="1600" height="900" alt="' . $e($w['render']) . '" loading="lazy" decoding="async"></picture>'
             . '<p class="hero-cap">' . $e($w['render']) . '</p></section>'
             . '<section class="sec"><div class="grid offices">' . $cards . '</div></section>'
-            . ($placeCards !== '' ? '<section class="sec" id="places"><h2 style="margin:0 0 12px">📍 ' . $e($placesH) . '</h2><div class="grid offices">' . $placeCards . '</div></section>' : '')
+            . ($placeCards !== '' ? $placesCss . '<section class="sec" id="places"><h2 style="margin:0 0 12px">📍 ' . $e($placesH) . '</h2><div class="grid offices">' . $placeCards . '</div></section>' : '')
             . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . '</h2>'
             . ($lang !== 'ne' ? '<p class="band-ne" lang="ne">' . PublicLayout::flag('NP', 16) . ' नयाँ कार्यालय छिट्टै</p>' : '')
             . '<p>' . $e(sprintf($w['expP'], $co['name'])) . '</p>' . ($soonChips !== '' ? '<div class="chips" style="margin-top:10px">' . $soonChips . '</div>' : '')

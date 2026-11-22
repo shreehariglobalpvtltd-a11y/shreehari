@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v295';   // 2026-11-21 lm1: our places' satellite / road pictures kept offline
+var VERSION = 'shg-v296';   // 2026-11-22 lm3: close / area / road / last-stretch pictures kept offline
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a
@@ -56,7 +56,7 @@ var TICKET_CACHE = 'shg-tickets-v1';
    the ticket, NOT version-scoped: a deploy must not wipe the map a counter
    relies on with no signal. Spared in activate() below. */
 var PLACES_CACHE = 'shg-places-v1';
-var PLACE_PIC = /^\/uploads\/locations\/(sat|route)-[0-9a-f]{16}\.jpg$/;
+var PLACE_PIC = /^\/uploads\/locations\/(sat|area|route|approach)-[0-9a-f]{16}\.jpg$/;
 var TICKET_WAIT_MS = 4000;   // how long a fresh ticket may take before the saved copy answers
 var MAX_TICKETS = 10;
 
