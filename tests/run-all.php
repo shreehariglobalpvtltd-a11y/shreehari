@@ -292,6 +292,7 @@ const CORE_SUITES = [
     'mp4-qr-meta-test.php'            => 'payment QR library (CRUD, default, desk override, old QR migrated), Google client_secret JSON, WhatsApp: free in window / template in its synced language / 132001 rescue / 131042 hold / 131070 number hold / parked tickets + one office alert, Meta health card',
     'wx6-test.php'                    => 'Nepal journey (office 4 pm, our auto, 6 pm bus, one service), 5 pm NPT warning, boot coach, ticket styles, nav glide',
     'easy-login-test.php'             => 'easy login: mode, code / mobile, FirstName@2026 until changed, office reset, never superadmin, drivers',
+    'fx1-rolemenu-test.php'           => 'admin menu as 8 hubs (admin_hub_menu_on), hub tab strip, phone bottom bar, starter-password nudge',
 ];
 
 /**
