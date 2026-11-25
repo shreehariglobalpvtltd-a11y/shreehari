@@ -14,7 +14,7 @@
 -- country default, else the old single setting nepal_esewa_qr - so the code works before this runs.
 -- The NP default's file is written back into nepal_esewa_qr, so older readers show the same QR.
 --
--- The old single Nepal QR (settings nepal_esewa_qr + nepal_esewa_id / nepal_esewa_name) is copied in
+-- The old single Nepal QR (settings nepal_esewa_qr; nepal_esewa_id -> payee, nepal_esewa_name -> label) is copied in
 -- as the NP default below (only when the library has no row with that file yet; PayQr::importLegacy
 -- does the same from PHP the first time the page opens). Idempotent - safe to apply twice. MariaDB 10.11.
 CREATE TABLE IF NOT EXISTS pay_qr_codes (
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS pay_qr_codes (
 INSERT INTO pay_qr_codes (country, kind, label, payee, file, desk_code, is_default, is_active, sort, created_at, updated_at)
 SELECT 'NP', 'esewa',
        LEFT(CONCAT('eSewa', IF(COALESCE(nm.svalue, '') <> '', CONCAT(' · ', nm.svalue), ' (NPJ)')), 80),
-       LEFT(CONCAT(COALESCE(id.svalue, ''), IF(COALESCE(id.svalue, '') <> '' AND COALESCE(nm.svalue, '') <> '', CONCAT(' · ', nm.svalue), '')), 160),
+       LEFT(COALESCE(id.svalue, ''), 160),   -- the id only: it is the line printed under the QR (the name stays in the label)
        q.svalue, NULL,
        IF(EXISTS (SELECT 1 FROM pay_qr_codes d WHERE d.country = 'NP' AND d.is_default = 1), 0, 1),
        1, 0, NOW(), NOW()

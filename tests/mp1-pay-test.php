@@ -154,8 +154,21 @@ function cleanup(): void {
         else { try { Database::insert('settings', ['skey' => $k] + $row + ['sgroup' => 'payments']); } catch (Throwable $e) {} }   // unsetKeep() removed it
     }
     /* mp4: viewing admin/payment-center.php copies the old single QR (this run's temp file) into
-       the QR library once - that row goes, and pay_qr_legacy_imported is restored via $keep */
-    try { Database::run("DELETE FROM pay_qr_codes WHERE file LIKE 'uploads/payqr/esewa-npj-mp1test%'"); } catch (Throwable $e) {}
+       the QR library as the NP default (which un-defaults the others) - the library goes back
+       to exactly what it held before this run (pictures this run added are removed), and
+       pay_qr_legacy_imported is restored via $keep */
+    global $qrKeep;
+    if (is_array($qrKeep)) {
+        try {
+            $keptFiles = array_column($qrKeep, 'file');
+            foreach (Database::fetchAll('SELECT file FROM pay_qr_codes') as $qr) {
+                $qf = (string) $qr['file'];
+                if (!in_array($qf, $keptFiles, true) && preg_match('#^uploads/payqr/[a-z0-9-]+\.png$#', $qf) === 1 && is_file(ROOT_PATH . '/' . $qf)) { @unlink(ROOT_PATH . '/' . $qf); }
+            }
+            Database::run('DELETE FROM pay_qr_codes');
+            foreach ($qrKeep as $qr) { Database::insert('pay_qr_codes', $qr); }
+        } catch (Throwable $e) {}
+    }
     $keep = [];
     Settings::flush();
     foreach ($tmpFiles as $f) { @unlink($f); }
@@ -163,6 +176,7 @@ function cleanup(): void {
 }
 register_shutdown_function('cleanup');
 $keep['pay_qr_legacy_imported'] = Database::fetch('SELECT svalue, stype FROM settings WHERE skey = :k', ['k' => 'pay_qr_legacy_imported']);   // mp4 QR library flag
+$qrKeep = Database::fetch("SHOW TABLES LIKE 'pay_qr_codes'") !== null ? Database::fetchAll('SELECT * FROM pay_qr_codes') : null;   // mp4: the QR library, restored by cleanup()
 
 echo "\n=== mp1 pay: Payment Management ===\n\n";
 foreach (['whatsapp_notify_customer' => '0', 'whatsapp_notify_admin' => '0', 'email_enabled' => '0'] as $k => $v) { setKeep($k, $v, 'bool'); }
@@ -591,7 +605,13 @@ check('B an NPR sale: the Nepal eSewa id + name, NPR from the frozen total (825)
     && str_starts_with((string) ($st['esewa']['qr'] ?? ''), 'data:image/png;base64,'), json_encode(['id' => $st['esewa']['id'] ?? null, 'npr' => $st['esewa']['npr'] ?? null, 'qr' => substr((string) ($st['esewa']['qr'] ?? ''), 0, 30)]));
 $st2 = (new ManualQrAdapter())->start(['pnr' => 'SHG-2026-00002', 'total_amount' => 1000.0, 'counter_code' => '', 'entity' => 'IN'], 1000.0);
 check('B an India sale keeps the India eSewa id (same QR picture as the ticket)', ($st2['esewa']['id'] ?? '') === '9811111111' && str_starts_with((string) ($st2['esewa']['qr'] ?? ''), 'data:image/png'));
-check('B pay.php reads the same QR (ManualQrAdapter::esewaQrSrc)', preg_match('/ManualQrAdapter::esewaQrSrc\(/', (string) file_get_contents($ROOT . '/pay.php')) === 1);   // mp4: now esewaQrSrc($booking)
+/* mp4: the picture, the id beside it and its wallet word now come from ONE resolver (PayQr::resolve)
+   that the ticket (Ticket::esewaQrFile / paymentQr) and ManualQrAdapter read too - pay.php reads it
+   through ManualQrAdapter::nepalQr($booking, …) and draws that file (ManualQrAdapter::qrSrc). */
+$paySrc = (string) file_get_contents($ROOT . '/pay.php');
+check('B pay.php reads the same QR as the ticket (ManualQrAdapter::nepalQr -> PayQr::resolve, its picture via qrSrc)',
+    str_contains($paySrc, 'ManualQrAdapter::nepalQr($booking') && str_contains($paySrc, "ManualQrAdapter::qrSrc(\$npQ['file'])")
+    && ManualQrAdapter::esewaQrSrc() === ManualQrAdapter::qrSrc(Ticket::esewaQrFile()) && ManualQrAdapter::esewaQrSrc() !== '');
 
 /* ---------------- E. Gmail poll end to end ---------------- */
 echo "\n-- E Gmail credits -> PayCredits\n";

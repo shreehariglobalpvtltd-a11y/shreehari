@@ -369,7 +369,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         throw new RuntimeException(implode(' · ', $bad));
                     }
                     $changed = PayQr::update($qid, $fields);
-                    if (!empty($_POST['is_default']) && (int) $row['is_default'] !== 1) {
+                    /* a desk's own QR is never the country default (PayQr::setDefault refuses it) */
+                    if (!empty($_POST['is_default']) && (int) $row['is_default'] !== 1 && $fields['desk_code'] === null) {
                         PayQr::setDefault($qid);
                         $changed[] = 'is_default';
                     }
@@ -604,31 +605,32 @@ $qrCard = static function (string $country) use ($e): void {
                . '<div class="pc-chips" style="margin-top:4px">'
                . ($isPrint ? '<span class="pc-chip ok">' . ($country === 'NP' ? '🎫 टिकटमा छापिन्छ · prints on tickets' : '🎫 मुख्य · default (pay page fallback)') . '</span>'
                    : ((int) $r['is_default'] === 1 ? '<span class="pc-chip warn">मुख्य · default</span>' : ''))
-               . ($desk !== '' ? '<span class="pc-chip info">🏪 ' . $e($desk) . ' को टिकटमा</span>' : '')
+               . ($desk !== '' ? '<span class="pc-chip info">🏪 ' . $e($desk) . ($country === 'NP' ? ' को टिकटमा · on this desk tickets only' : ' · pay पेज (UPI QR नबने मात्र) · pay page fallback') . '</span>' : '')
                . ((int) $r['is_active'] === 1 ? '' : '<span class="pc-chip mut">⏸ बन्द · off</span>')
                . '</div>'
                . '<details class="pc-adv"><summary>✏️ Edit</summary>'
                . '<form method="post" class="pc-f" autocomplete="off">' . $hid('qr_edit', $id)
                . '<label>नाम · label<input name="label" maxlength="80" value="' . $e($r['label']) . '"></label>'
                . '<label>किसिम · kind<select name="kind">' . $kindOpts((string) $r['kind']) . '</select></label>'
-               . '<label>ID / नम्बर / VPA (QR मुनि छापिन्छ)<input name="payee" maxlength="160" value="' . $e($r['payee']) . '"></label>'
+               . '<label>ID / नम्बर / VPA (' . ($country === 'NP' ? 'QR मुनि छापिन्छ' : 'pay पेजमा QR मुनि देखिन्छ') . ')<input name="payee" maxlength="160" value="' . $e($r['payee']) . '"></label>'
                . '<label>काउन्टर · desk<select name="desk_code">' . $deskOpts($desk) . '</select></label>'
                . '<label>क्रम · order<input name="sort" type="number" min="0" max="999" value="' . (int) $r['sort'] . '"></label>'
                . '<label class="pc-chk"><input type="checkbox" name="is_active" value="1"' . ((int) $r['is_active'] === 1 ? ' checked' : '') . '> चालु · active</label>'
-               . '<label class="pc-chk"><input type="radio" name="is_default" value="1"' . ((int) $r['is_default'] === 1 ? ' checked' : '') . '> 🎫 यो देशको मुख्य QR · ticket default</label>'
+               . ($desk === '' ? '<label class="pc-chk"><input type="radio" name="is_default" value="1"' . ((int) $r['is_default'] === 1 ? ' checked' : '') . '> 🎫 यो देशको मुख्य QR · ' . ($country === 'NP' ? 'ticket default' : 'default') . '</label>'
+                   : '<p class="hint" style="grid-column:1/-1;margin:0">🏪 काउन्टरको आफ्नै QR मुख्य (default) बन्दैन · a desk QR is never the country default</p>')
                . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn" type="submit">सेभ · Save</button></div></form>'
                . '<form method="post" enctype="multipart/form-data" class="pc-inline" style="margin-top:8px">' . $hid('qr_file', $id)
                . '<input type="file" name="qr_file" accept="image/png,image/jpeg,image/webp" required aria-label="New QR picture">'
                . '<button class="btn" type="submit">🔁 फोटो बदल्नुहोस् · Replace</button></form>'
                . '<div class="pc-btns">'
-               . ((int) $r['is_default'] === 1 ? '' : '<form method="post" class="pc-inline">' . $hid('qr_default', $id) . '<button class="btn" type="submit">🎫 मुख्य बनाउनुहोस् · Make default</button></form>')
+               . ((int) $r['is_default'] === 1 || $desk !== '' ? '' : '<form method="post" class="pc-inline">' . $hid('qr_default', $id) . '<button class="btn" type="submit">🎫 मुख्य बनाउनुहोस् · Make default</button></form>')
                . '<form method="post" class="pc-inline" onsubmit="return confirm(' . $e((string) json_encode('यो QR र यसको फोटो मेटाउने? · Delete ' . $r['label'] . '?', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)) . ')">'
                . $hid('qr_delete', $id) . '<button class="btn" type="submit">🗑 हटाउनुहोस् · Delete</button></form>'
                . '</div></details></div>';
         }
         echo '</div>';
         if ($pick === null) {
-            echo '<p class="pc-warn" style="margin-top:8px">⚠️ यो देशको <b>मुख्य QR</b> छैन — "🎫 मुख्य बनाउनुहोस्" थिच्नुहोस्' . ($country === 'NP' ? ' (नत्र पुरानै eSewa QR छापिन्छ)' : '') . '।</p>';
+            echo '<p class="pc-warn" style="margin-top:8px">⚠️ यो देशको <b>मुख्य QR</b> छैन — "🎫 मुख्य बनाउनुहोस्" थिच्नुहोस्' . ($country === 'NP' ? ' (नत्र काउन्टरको आफ्नै QR नभएको टिकटमा library बाहिरको पुरानो esewa-qr फोटो मात्र, त्यो पनि नभए QR बिना · else only an old esewa-qr file outside the library, or no QR)' : '') . '।</p>';
         }
     }
     echo '<details class="pc-adv"' . ($rows === [] ? ' open' : '') . '><summary>➕ QR थप्नुहोस् · Add a QR</summary>'
@@ -639,7 +641,7 @@ $qrCard = static function (string $country) use ($e): void {
        . '<label>नाम · label<input name="label" maxlength="80" placeholder="' . ($country === 'IN' ? 'ICICI UPI' : 'NPJ counter eSewa') . '"></label>'
        . '<label>ID / नम्बर / VPA<input name="payee" maxlength="160" placeholder="' . ($country === 'IN' ? 'shreehari@icici' : '98XXXXXXXX') . '"></label>'
        . '<label>काउन्टर · desk (optional)<select name="desk_code">' . $deskOpts('') . '</select></label>'
-       . '<label class="pc-chk"><input type="checkbox" name="is_default" value="1"' . (PayQr::defaultFor($country) === null ? ' checked' : '') . '> 🎫 मुख्य QR बनाउनुहोस् · make it the ticket default</label>'
+       . '<label class="pc-chk"><input type="checkbox" name="is_default" value="1"' . (PayQr::defaultFor($country) === null ? ' checked' : '') . '> 🎫 मुख्य QR बनाउनुहोस् · make it the ' . ($country === 'NP' ? 'ticket ' : '') . 'default (काउन्टर नछानेमा मात्र · only without a desk)</label>'
        . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn btn-orange" type="submit">⬆️ अपलोड · Upload</button></div>'
        . '</form></details></div>';
 };
@@ -930,7 +932,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
 .pc-qr{border:1px solid var(--line,#e0e8f2);border-radius:12px;padding:8px;min-width:0;overflow-wrap:anywhere;background:var(--card,#fff);color:var(--ink,#0b1220)}
 .pc-qr.off{opacity:.6}
 .pc-qr img{display:block;width:100%;max-width:220px;aspect-ratio:1/1;object-fit:contain;background:#fff;border:1px solid var(--line,#e0e8f2);border-radius:10px;margin:0 auto 6px}
-.pc-qr-miss{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--mut,#637491);border:1px dashed var(--line,#e0e8f2);border-radius:10px;margin-bottom:6px}
+.pc-qr-miss{width:100%;max-width:220px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--mut,#637491);border:1px dashed var(--line,#e0e8f2);border-radius:10px;margin:0 auto 6px}
 .pc-qr-label{display:block;font-size:14px}.pc-qr-meta{display:block;font-size:12px;color:var(--mut,#637491)}
 .pc-qr details .pc-f{grid-template-columns:1fr}
 .pc-qr .pc-inline input[type=file]{flex:1 1 100%;min-width:0;font-size:12px}

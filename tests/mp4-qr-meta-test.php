@@ -14,8 +14,10 @@
  *   Q  QR CRUD: re-encoded PNG upload (bad file refused), add / edit / default
  *      (one per country) / replace picture (old file removed) / delete (file
  *      removed), nepal_esewa_qr follows the NP default
- *   D  desk override: the issuing desk's own QR (the frozen counter_code only,
- *      never the seller's profile desk) prints, else the NP default;
+ *   D  desk override: the issuing desk's own QR (the frozen counter_code, else
+ *      the seller's profile desk - one rule for the ticket and pay.php's
+ *      SELECT * row) prints, else the NP default; a desk QR never becomes the
+ *      country default; ONE resolver (PayQr::resolve) for picture + payee + kind;
  *      Ticket::paymentQr + the pay page carry that row's picture, payee and
  *      wallet word ("Global IME:", never "eSewa:" for another wallet); an
  *      inactive desk QR falls back; a default switched off / moved to India
@@ -151,7 +153,7 @@ function mp4_cleanup(): void {
     foreach ($bookingIds as $b) { try { Database::run('DELETE FROM automation_log WHERE dedupe_key = :k', ['k' => 'alert:wa_perm:' . $b]); } catch (Throwable $e) {} }
     Database::run("DELETE FROM audit_logs WHERE id > :f AND (action LIKE 'pay_qr.%' OR action IN ('whatsapp.meta_fixed', 'whatsapp.phone_health', 'settings.google_oauth'))", ['f' => $auditFloor]);
     try { Database::delete('counter_locations', 'code = :c', ['c' => MP4_DESK]); } catch (Throwable $e) {}
-    foreach ($madeAdmins as $a) { Database::delete('admins', 'id = :i', ['i' => $a]); }
+    foreach ($madeAdmins as $a) { try { Database::delete('admin_profiles', 'admin_id = :i', ['i' => $a]); } catch (Throwable $e) {} Database::delete('admins', 'id = :i', ['i' => $a]); }
     foreach ($keep as $k => $row) {
         Database::delete('settings', 'skey = :k', ['k' => $k]);
         if (is_array($row)) { Database::insert('settings', $row); }
@@ -199,14 +201,26 @@ try {
     $applyMigration();
     $applyMigration();   // twice = still one copy
     $rows = PayQr::all('NP');
-    check('M the migration (applied twice) creates pay_qr_codes and copies the old QR ONCE as the NP default, payee = id · name',
+    check('M the migration (applied twice) creates pay_qr_codes and copies the old QR ONCE as the NP default, payee = the id only (the name in the label)',
         PayQr::ready() && count($rows) === 1 && (string) $rows[0]['file'] === $legacy && (int) $rows[0]['is_default'] === 1
-        && (string) $rows[0]['payee'] === '9800000777 · MP4 Branch' && (string) $rows[0]['kind'] === 'esewa', json_encode($rows, JSON_UNESCAPED_UNICODE));
+        && (string) $rows[0]['payee'] === '9800000777' && str_contains((string) $rows[0]['label'], 'MP4 Branch') && (string) $rows[0]['kind'] === 'esewa', json_encode($rows, JSON_UNESCAPED_UNICODE));
     $legacyId = (int) ($rows[0]['id'] ?? 0);
     Database::run('UPDATE pay_qr_codes SET label = :l WHERE id = :i', ['l' => 'MP4TEST legacy', 'i' => $legacyId]);
     PayQr::reset();
     check('M PayQr::importLegacy finds the file already in the library: nothing added, the flag set', PayQr::importLegacy(0) === null && count(PayQr::all('NP')) === 1 && Settings::getBool(PayQr::LEGACY_FLAG, false));
     check('M the ticket reads the library now (same file)', $same(Ticket::esewaQrFile(), ROOT_PATH . '/' . $legacy));
+    /* the PHP import (first page view, no migration copy yet) writes the same: payee = id only */
+    Database::run('DELETE FROM pay_qr_codes WHERE id = :i', ['i' => $legacyId]);
+    Database::delete('settings', 'skey = :k', ['k' => PayQr::LEGACY_FLAG]);
+    Settings::flush();
+    PayQr::reset();
+    $impId = (int) (PayQr::importLegacy(0) ?? 0);
+    $imp = PayQr::get($impId) ?? [];
+    check('M PayQr::importLegacy (no migration copy): the NP default, payee = the id only, name in the label',
+        $impId > 0 && (int) ($imp['is_default'] ?? 0) === 1 && (string) ($imp['payee'] ?? '') === '9800000777' && str_contains((string) ($imp['label'] ?? ''), 'MP4 Branch'), json_encode($imp, JSON_UNESCAPED_UNICODE));
+    $legacyId = $impId;
+    Database::run('UPDATE pay_qr_codes SET label = :l WHERE id = :i', ['l' => 'MP4TEST legacy', 'i' => $legacyId]);
+    PayQr::reset();
 
     /* ================= Q. CRUD ================= */
     echo "\n-- Q QR CRUD\n";
@@ -245,7 +259,7 @@ try {
     $files[] = ROOT_PATH . '/' . $f3;
     $inId = PayQr::create($fin, $f3, 0);
     check('Q the first India QR becomes the IN default by itself; NP untouched', (int) (PayQr::defaultFor('IN')['id'] ?? 0) === $inId && (int) PayQr::defaultFor('NP')['id'] === $fpId);
-    check('Q the IN default is only the static fallback: pay.php uses it when the UPI QR cannot be drawn', str_contains((string) file_get_contents($ROOT . '/pay.php'), "\$inRow = PayQr::pick(\$booking, 'IN');")
+    check('Q the IN default is only the static fallback: pay.php uses it when the UPI QR cannot be drawn', str_contains((string) file_get_contents($ROOT . '/pay.php'), "\$inQ   = PayQr::resolve(\$booking, 'IN');")
         && str_contains((string) file_get_contents($ROOT . '/pay.php'), "<?php if (\$upiQrStatic !== ''):")   // review fix: its own UPI id under the static picture
         && str_starts_with(PayQr::dataUri(PayQr::pick(null, 'IN')), 'data:image/png;base64,'));
 
@@ -261,8 +275,23 @@ try {
     check('D a ticket cut at MP4T prints the desk QR; another desk / online prints the NP default',
         $same(Ticket::esewaQrFile(['counter_code' => MP4_DESK]), $deskAbs) && $same(Ticket::esewaQrFile(['counter_code' => 'OTHER']), ROOT_PATH . '/' . $f2)
         && $same(Ticket::esewaQrFile(), ROOT_PATH . '/' . $f2));
-    check('D no desk frozen on the sale: the seller\'s profile desk (agent_counter_code) does NOT decide - the NP default, the same QR pay.php shows',
-        $same(Ticket::esewaQrFile(['counter_code' => '', 'agent_counter_code' => MP4_DESK]), ROOT_PATH . '/' . $f2) && PayQr::deskOf(['counter_code' => '', 'agent_counter_code' => MP4_DESK]) === '');
+    /* ONE desk rule everywhere (review fix): counter_code frozen on the sale, else the seller's profile
+       desk - the ticket (loadBooking joins agent_counter_code) and pay.php (SELECT * FROM bookings:
+       only sold_by_admin_id) must land on the same desk */
+    $seller = (int) Database::insert('admins', ['username' => 'mp4-seller-' . strtolower($tag), 'password_hash' => password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT),
+        'full_name' => 'MP4 seller', 'role' => 'agent', 'is_active' => 1, 'must_change_pw' => 0]);
+    $madeAdmins[] = $seller;
+    Database::insert('admin_profiles', ['admin_id' => $seller, 'counter_code' => MP4_DESK, 'counter_name' => 'MP4 Test Desk']);
+    PayQr::reset();
+    check('D no desk frozen on the sale: the seller\'s profile desk decides - from agent_counter_code (the ticket\'s row) AND from sold_by_admin_id (pay.php\'s SELECT * row) alike',
+        PayQr::deskOf(['counter_code' => '', 'agent_counter_code' => MP4_DESK]) === MP4_DESK && PayQr::deskOf(['counter_code' => '', 'sold_by_admin_id' => $seller]) === MP4_DESK
+        && $same(Ticket::esewaQrFile(['counter_code' => '', 'agent_counter_code' => MP4_DESK]), $deskAbs) && $same(Ticket::esewaQrFile(['counter_code' => '', 'sold_by_admin_id' => $seller]), $deskAbs));
+    check('D the frozen desk wins over the seller\'s profile desk; no desk at all = the NP default',
+        PayQr::deskOf(['counter_code' => 'OTHER', 'agent_counter_code' => MP4_DESK, 'sold_by_admin_id' => $seller]) === 'OTHER'
+        && $same(Ticket::esewaQrFile(['counter_code' => 'OTHER', 'sold_by_admin_id' => $seller]), ROOT_PATH . '/' . $f2) && PayQr::deskOf(['counter_code' => '', 'sold_by_admin_id' => null]) === '');
+    $errDef = '';
+    try { PayQr::setDefault($deskId); } catch (RuntimeException $ex) { $errDef = $ex->getMessage(); }
+    check('D a desk\'s own QR can never be made the country default (it would print on every desk)', $errDef !== '' && (int) PayQr::defaultFor('NP')['id'] === $fpId, $errDef);
     $fake = ['pnr' => 'SHG-2099-00001', 'status' => 'pending', 'total_amount' => 1000.0, 'fx_currency' => 'NPR', 'fx_total' => 1650.0, 'is_cod' => 0,
              'currency' => 'INR', 'counter_code' => MP4_DESK, 'entity' => 'NP'];
     $pq = Ticket::paymentQr($fake);
@@ -281,7 +310,19 @@ try {
     check('D no desk: the pay page shows the NP default picture with the default\'s payee and wallet word (same as the ticket)',
         ($st2['esewa']['qr'] ?? '') === PayQr::dataUri(PayQr::get($fpId)) && ($st2['esewa']['id'] ?? '') === '0123 4567 8901' && ($st2['esewa']['kind'] ?? '') === 'Global IME' && ($st2['esewa']['name'] ?? 'x') === '', json_encode($st2['esewa'] ?? null, JSON_UNESCAPED_UNICODE));
     $psrc = (string) file_get_contents($ROOT . '/pay.php');
-    check('D pay.php prints the library row\'s payee + wallet word beside the picture', str_contains($psrc, "\$npQrPayee !== '' ? \$npQrPayee : \$esewaId") && str_contains($psrc, "\$e(\$esKind) . ' ID: <code>'"));
+    check('D pay.php prints picture + payee + wallet word from the one resolver (ManualQrAdapter::nepalQr -> PayQr::resolve)',
+        str_contains($psrc, 'ManualQrAdapter::nepalQr($booking, $esewaId,') && str_contains($psrc, "'id'   => \$npQ['payee'],") && str_contains($psrc, "'kind' => \$npQ['kind'],")
+        && str_contains($psrc, "ManualQrAdapter::qrSrc(\$npQ['file'])") && str_contains($psrc, "\$e(\$esKind) . ' ID: <code>'") && !str_contains($psrc, 'PayQr::pick('));
+    $rs = PayQr::resolve(['counter_code' => MP4_DESK], 'NP', '9811111111', 'Other wallet');
+    check('D PayQr::resolve: a library row never borrows the caller\'s id / name (its own payee + kind)', $rs['source'] === 'desk' && $rs['payee'] === '9844455566' && $rs['name'] === '' && $rs['kind'] === 'eSewa' && $same($rs['file'], $deskAbs), json_encode($rs));
+    /* a library QR typed without a payee: the picture only, never nepal_esewa_id beside it */
+    PayQr::update($deskId, ['payee' => ''] + $fd);
+    $pqN = Ticket::paymentQr($fake);
+    $stN = (new ManualQrAdapter())->start(['counter_code' => MP4_DESK] + $fake, 500.0);
+    check('D a desk QR without a payee: ticket + pay page show its picture with NO id (not nepal_esewa_id 9800000777)',
+        $same((string) $pqN['esewaImg'], $deskAbs) && (string) $pqN['esewa'] === '' && ($stN['esewa']['id'] ?? 'x') === '' && ($stN['esewa']['qr'] ?? '') === PayQr::dataUri(PayQr::get($deskId)),
+        json_encode([$pqN['esewa'] ?? null, $stN['esewa']['id'] ?? null]));
+    PayQr::update($deskId, $fd);
     PayQr::update($deskId, ['is_active' => 0] + $fd);
     check('D the desk QR switched off -> that desk\'s ticket falls back to the NP default', $same(Ticket::esewaQrFile(['counter_code' => MP4_DESK]), ROOT_PATH . '/' . $f2));
     /* review fix: the NP default switched off (or moved to India) must stop printing - the old
@@ -295,6 +336,10 @@ try {
         (int) (PayQr::get($fpId)['is_default'] ?? 1) === 0 && PayQr::defaultFor('NP') === null && Settings::getString('nepal_esewa_qr', 'x') === ''
         && !$same(Ticket::esewaQrFile(), ROOT_PATH . '/' . $f2) && !$same(Ticket::esewaQrFile(['counter_code' => 'OTHER']), ROOT_PATH . '/' . $f2)
         && ManualQrAdapter::esewaQrSrc() !== $fpUri, Settings::getString('nepal_esewa_qr', ''));
+    setKeep('nepal_esewa_qr', $f2, 'string');   // an old reader wrote the switched-off file back into the setting
+    PayQr::reset();
+    check('D even if nepal_esewa_qr points at that switched-off library QR again, the old fallback never prints it',
+        !$same(Ticket::esewaQrFile(), ROOT_PATH . '/' . $f2) && !$same(PayQr::legacyFile(), ROOT_PATH . '/' . $f2));
     PayQr::update($fpId, $fpFields);
     PayQr::setDefault($fpId);
     check('D switched on + made default again -> it prints again', $same(Ticket::esewaQrFile(), ROOT_PATH . '/' . $f2) && Settings::getString('nepal_esewa_qr', '') === $f2);
@@ -304,6 +349,19 @@ try {
     PayQr::update($fpId, $fpFields);
     PayQr::setDefault($fpId);
     check('D (back to Nepal and the default for the next checks)', (int) (PayQr::defaultFor('NP')['id'] ?? 0) === $fpId && Settings::getString('nepal_esewa_qr', '') === $f2);
+    PayQr::update($fpId, ['desk_code' => MP4_DESK] + $fpFields);
+    check('D the NP default given to one desk -> it stops being the country default (setting cleared)',
+        (int) (PayQr::get($fpId)['is_default'] ?? 1) === 0 && PayQr::defaultFor('NP') === null && Settings::getString('nepal_esewa_qr', 'x') === '');
+    PayQr::update($fpId, $fpFields);
+    [$fdIn] = PayQr::clean(['country' => 'NP', 'kind' => 'khalti', 'label' => 'MP4TEST first desk Khalti', 'payee' => '9855500011', 'desk_code' => MP4_DESK, 'is_active' => '1']);
+    $f5 = PayQr::storeImageFile($png(120, 120, 70));
+    $files[] = ROOT_PATH . '/' . $f5;
+    $firstDesk = PayQr::create($fdIn, $f5, 0, true);
+    check('D with no NP default, a new DESK QR (even with "make default" ticked) does not become the country default',
+        (int) (PayQr::get($firstDesk)['is_default'] ?? 1) === 0 && PayQr::defaultFor('NP') === null);
+    PayQr::delete($firstDesk);
+    PayQr::setDefault($fpId);
+    check('D (default restored)', (int) (PayQr::defaultFor('NP')['id'] ?? 0) === $fpId && Settings::getString('nepal_esewa_qr', '') === $f2 && !is_file(ROOT_PATH . '/' . $f5));
     check('D the drawn ticket layout is unchanged (PNG_LAYOUT_CHANGED not bumped)', str_contains((string) file_get_contents($ROOT . '/includes/ticket.php'), "private const PNG_LAYOUT_CHANGED = '2026-11-25 13:45:00';"));
 
     /* ================= G. Google JSON ================= */
@@ -347,9 +405,23 @@ try {
         !$warn($h) && str_contains($h, '🔳 QR कोडहरू · Payment QR codes') && str_contains($h, 'नेपाली QR') && str_contains($h, 'MP4TEST GIBL') && str_contains($h, 'MP4TEST desk eSewa')
         && str_contains($h, '🎫 टिकटमा छापिन्छ · prints on tickets') && str_contains($h, 'value="qr_add"') && str_contains($h, '🏪 ' . MP4_DESK)
         && preg_match('/id="pc-qr-row-' . $fpId . '".{0,4000}?prints on tickets/s', $h) === 1, substr((string) preg_replace('/\s+/', ' ', strip_tags($h)), 0, 300));
+    $deskBlock = preg_match('/id="pc-qr-row-' . $deskId . '"(.*?)(id="pc-qr-row-|➕ QR थप्नुहोस्)/s', $h, $dm) === 1 ? $dm[1] : '';
+    check('P a desk QR card offers no "make default" (button or radio) and says it is that desk\'s only',
+        $deskBlock !== '' && !str_contains($deskBlock, 'value="qr_default"') && !str_contains($deskBlock, 'name="is_default"') && str_contains($deskBlock, 'a desk QR is never the country default'));
+    check('P a missing picture placeholder is no wider than a QR (360 px)', str_contains($h, '.pc-qr-miss{width:100%;max-width:220px;'));
     check('P the Google setup box offers the client_secret JSON upload (manual fields kept)', str_contains($h, 'value="google_json"') && str_contains($h, 'name="google_json"') && str_contains($h, 'name="google_oauth_client_id"'));
+    [$fiD] = PayQr::clean(['country' => 'IN', 'kind' => 'upi', 'label' => 'MP4TEST desk UPI', 'payee' => 'mp4desk@icici', 'desk_code' => MP4_DESK, 'is_active' => '1']);
+    $f7 = PayQr::storeImageFile($png(140, 140, 120));
+    $files[] = ROOT_PATH . '/' . $f7;
+    $inDesk = PayQr::create($fiD, $f7, 0);
     $h = $page('payment-center.php', $SUP, ['tab' => 'in']);
     check('P India tab: its own QR card with the UPI QR, the dynamic-UPI-first note', !$warn($h) && str_contains($h, 'id="pc-qr-IN"') && str_contains($h, 'MP4TEST UPI') && str_contains($h, 'UPI QR रकम + PNR सहित'));
+    check('P India tab: a desk UPI QR is labelled as the pay-page fallback, never "on that desk\'s tickets"',
+        str_contains($h, '🏪 ' . MP4_DESK . ' · pay पेज (UPI QR नबने मात्र) · pay page fallback') && !str_contains($h, MP4_DESK . ' को टिकटमा'));
+    $inR = PayQr::resolve(['counter_code' => MP4_DESK], 'IN');
+    check('P the pay page\'s India fallback follows the same desk rule (desk UPI picture + its own VPA)', $inR['source'] === 'desk' && $inR['payee'] === 'mp4desk@icici'
+        && PayQr::resolve(['counter_code' => ''], 'IN')['payee'] === 'mp4@icici');
+    PayQr::delete($inDesk);
     $h = $page('payment-center.php', $MGR, ['tab' => 'np']);
     check('P a manager sees no QR card (super-admin only)', !str_contains($h, '🔳 QR कोडहरू'));
     $page('payment-center.php', $MGR, ['tab' => 'np'], ['act' => 'qr_default', 'tab' => 'np', 'id' => (string) $deskId]);
@@ -358,8 +430,19 @@ try {
     check('P "make default" by a manager or with a forged CSRF token -> nothing changes', (int) PayQr::defaultFor('NP')['id'] === $fpId && $audits('pay_qr.default') === 0);
     $h = $page('payment-center.php', $SUP, ['tab' => 'np'], ['act' => 'qr_default', 'tab' => 'np', 'id' => (string) $deskId]);
     PayQr::reset();
-    check('P "make default" (super-admin, CSRF) -> the desk QR is the NP default, audited, setting follows', (int) PayQr::defaultFor('NP')['id'] === $deskId && $audits('pay_qr.default') === 1
-        && Settings::getString('nepal_esewa_qr', '') === $f4 && str_contains($h, 'now the default'), substr(strip_tags($h), 0, 200));
+    check('P "make default" on a DESK QR (super-admin, CSRF) -> refused with the reason, the NP default unchanged, not audited',
+        (int) PayQr::defaultFor('NP')['id'] === $fpId && $audits('pay_qr.default') === 0 && Settings::getString('nepal_esewa_qr', '') === $f2 && str_contains($h, 'cannot be the country default'), substr(strip_tags($h), 0, 200));
+    [$fq] = PayQr::clean(['country' => 'NP', 'kind' => 'khalti', 'label' => 'MP4TEST Khalti', 'payee' => '9866600022', 'is_active' => '1']);
+    $f6 = PayQr::storeImageFile($png(150, 150, 30));
+    $files[] = ROOT_PATH . '/' . $f6;
+    $khId = PayQr::create($fq, $f6, 0);
+    $h = $page('payment-center.php', $SUP, ['tab' => 'np'], ['act' => 'qr_default', 'tab' => 'np', 'id' => (string) $khId]);
+    PayQr::reset();
+    check('P "make default" (super-admin, CSRF) on a QR for any desk -> the NP default, audited, setting follows', (int) PayQr::defaultFor('NP')['id'] === $khId && $audits('pay_qr.default') === 1
+        && Settings::getString('nepal_esewa_qr', '') === $f6 && str_contains($h, 'now the default'), substr(strip_tags($h), 0, 200));
+    PayQr::delete($khId);
+    PayQr::setDefault($fpId);
+    PayQr::reset();
     $h = $page('payment-center.php', $SUP, ['tab' => 'np'], ['act' => 'qr_edit', 'tab' => 'np', 'id' => (string) $fpId, 'label' => 'MP4TEST GIBL main', 'kind' => 'gibl', 'payee' => '0123 4567 8901', 'desk_code' => '', 'sort' => '5', 'is_active' => '1']);
     PayQr::reset();
     check('P edit through the page: label saved, audited', (string) (PayQr::get($fpId)['label'] ?? '') === 'MP4TEST GIBL main' && $audits('pay_qr.edit') === 1);

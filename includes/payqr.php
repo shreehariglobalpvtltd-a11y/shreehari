@@ -20,10 +20,13 @@
  *  sent), at most 900 px on the long side - the same handler as the old
  *  eSewa QR on admin/owner-setup.php.
  *
- *  Which QR a ticket prints (Ticket::esewaQrFile($booking), PayQr::pick):
- *    1. an active QR of the ticket's issuing desk (bookings.counter_code, the
- *       desk frozen on the sale) for that country, with its picture on disk;
- *    2. else the country's active default;
+ *  Which QR a ticket prints - ONE resolver, PayQr::resolve($booking), read by
+ *  the ticket, pay.php and ManualQrAdapter alike (picture + payee + wallet
+ *  word always from the same row):
+ *    1. an active QR of the ticket's issuing desk (deskOf: bookings.counter_code,
+ *       the desk frozen on the sale, else the seller's profile desk) for that
+ *       country, with its picture on disk;
+ *    2. else the country's active default (never a desk's own QR);
  *    3. else the old single setting (nepal_esewa_qr) and the fixed
  *       esewa-qr files - exactly as before this library.
  *  India keeps the dynamic UPI QR (amount + PNR, from upi_id) first; the IN
@@ -97,6 +100,7 @@ final class PayQr
     {
         self::$ready = null;
         self::$rows = null;
+        self::$sellerDesk = [];
     }
 
     /** @return list<array<string,mixed>> */
@@ -193,15 +197,40 @@ final class PayQr
         return null;
     }
 
+    /** @var array<int,string> sold_by_admin_id => that seller's profile desk, for one request */
+    private static array $sellerDesk = [];
+
     /**
-     * The desk that issued the ticket: ONLY the code frozen on the sale (bookings.counter_code).
-     * Review fix: never the seller's profile desk (agent_counter_code) - only Ticket::loadBooking
-     * joins it (pay.php does not), and it moves when the agent moves, so the ticket and its
-     * pay page could show two different wallets. No frozen desk = the country default.
+     * The desk that issued the ticket - the SAME rule for the ticket, pay.php, ManualQrAdapter
+     * and smartpay (review fix: they used to disagree): the code frozen on the sale
+     * (bookings.counter_code) first; an older sale without that stamp uses the seller's profile
+     * desk (admin_profiles.counter_code, the agent_counter_code Ticket::loadBooking joins) - the
+     * rule Ticket::issuedBy already prints. A caller whose row lacks agent_counter_code (pay.php
+     * reads SELECT * FROM bookings) gets it looked up here from sold_by_admin_id, so every page
+     * lands on the same desk. No desk = the country default.
      */
     public static function deskOf(array $booking): string
     {
-        return self::cleanDesk((string) ($booking['counter_code'] ?? ''));
+        $stamp = self::cleanDesk((string) ($booking['counter_code'] ?? ''));
+        if ($stamp !== '') {
+            return $stamp;
+        }
+        if (array_key_exists('agent_counter_code', $booking)) {
+            return self::cleanDesk((string) ($booking['agent_counter_code'] ?? ''));
+        }
+        $seller = (int) ($booking['sold_by_admin_id'] ?? 0);
+        if ($seller <= 0) {
+            return '';
+        }
+        if (!array_key_exists($seller, self::$sellerDesk)) {
+            try {
+                self::$sellerDesk[$seller] = self::cleanDesk((string) Database::scalar(
+                    'SELECT counter_code FROM admin_profiles WHERE admin_id = :a LIMIT 1', ['a' => $seller], ''));
+            } catch (Throwable $e) {
+                self::$sellerDesk[$seller] = '';
+            }
+        }
+        return self::$sellerDesk[$seller];
     }
 
     /**
@@ -226,6 +255,86 @@ final class PayQr
         } catch (Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * THE one answer for "which payment QR, which id beside it, which wallet word" - the ticket
+     * (Ticket::paymentQr / esewaQrFile), pay.php and ManualQrAdapter (smartpay) all read this,
+     * so the picture, the payee and its kind always come from the SAME source for the SAME desk:
+     *
+     *   a library row (the issuing desk's QR, else the country default):
+     *       file = its picture, payee = ITS payee only (never another wallet's id: a row without
+     *       a payee prints the QR with no id), kind = its own wallet word ("Khalti", "Global IME")
+     *   no usable row (NP): the old single set-up - the nepal_esewa_qr picture / the fixed
+     *       esewa-qr files with the caller's own id ($fallbackId, else nepal_esewa_id), "eSewa" -
+     *       exactly as before the library. A picture that belongs to a library row which is
+     *       switched off / not the default is never printed this way.
+     *   IN without a row: nothing (the dynamic UPI QR is the caller's own first choice).
+     *
+     * @return array{file: string, payee: string, name: string, kind: string, row: ?array, source: string}
+     *         source: 'desk' | 'default' (library) | 'legacy' | '' (nothing at all)
+     */
+    public static function resolve(?array $booking, string $country = 'NP', string $fallbackId = '', string $fallbackName = ''): array
+    {
+        $row = self::pick($booking, $country);
+        if ($row !== null) {
+            return [
+                'file'   => self::absPath($row),
+                'payee'  => trim((string) ($row['payee'] ?? '')),
+                'name'   => '',
+                'kind'   => self::printLabel((string) ($row['kind'] ?? '')),
+                'row'    => $row,
+                'source' => trim((string) ($row['desk_code'] ?? '')) !== '' ? 'desk' : 'default',
+            ];
+        }
+        if ($country !== 'NP') {
+            return ['file' => '', 'payee' => '', 'name' => '', 'kind' => 'UPI', 'row' => null, 'source' => ''];
+        }
+        $file = self::legacyFile();
+        $id   = trim($fallbackId);
+        $name = trim($fallbackName);
+        if ($id === '') {
+            $id   = trim(Settings::getString('nepal_esewa_id', ''));
+            $name = $id !== '' ? trim(Settings::getString('nepal_esewa_name', '')) : '';
+        }
+        return ['file' => $file, 'payee' => $id, 'name' => $name, 'kind' => 'eSewa', 'row' => null,
+                'source' => $file !== '' || $id !== '' ? 'legacy' : ''];
+    }
+
+    /**
+     * The old single Nepal QR picture (before / beside the library): nepal_esewa_qr, then the
+     * fixed esewa-qr files. A file that belongs to a library row is skipped - that row was not
+     * picked, so it is switched off, lost its default or moved to India (review fix: such a QR
+     * must never keep printing through the old setting).
+     */
+    public static function legacyFile(): string
+    {
+        $root  = rtrim(str_replace('\\', '/', ROOT_PATH), '/');
+        $files = ['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'];
+        try {
+            $up = ltrim(str_replace('\\', '/', Settings::getString('nepal_esewa_qr', '')), '/');
+        } catch (Throwable $e) {
+            $up = '';
+        }
+        if ($up !== '' && preg_match(self::FILE_RX, $up) === 1) {
+            $inLib = false;
+            foreach (self::rows() as $r) {
+                if ((string) $r['file'] === $up) {
+                    $inLib = true;
+                    break;
+                }
+            }
+            if (!$inLib) {
+                array_unshift($files, $up);
+            }
+        }
+        foreach ($files as $f) {
+            $p = $root . '/' . $f;
+            if (is_file($p) && filesize($p) > 0 && filesize($p) < self::MAX_BYTES) {
+                return $p;
+            }
+        }
+        return '';
     }
 
     public static function kindLabel(string $kind): string
@@ -376,8 +485,11 @@ final class PayQr
             'sort' => (int) $fields['sort'], 'created_by' => $by > 0 ? $by : null, 'created_at' => $now, 'updated_at' => $now,
         ]);
         self::$rows = null;
-        /* the first QR of a country becomes its default by itself */
-        if ($makeDefault || (self::defaultFor((string) $fields['country']) === null && (int) $fields['is_active'] === 1)) {
+        /* the first QR of a country becomes its default by itself - never a desk's own QR
+           (review fix: a desk QR is printed on that desk's tickets only, it must not silently
+           become every other desk's and the pay page's QR) */
+        $deskRow = trim((string) ($fields['desk_code'] ?? '')) !== '';
+        if (!$deskRow && ($makeDefault || (self::defaultFor((string) $fields['country']) === null && (int) $fields['is_active'] === 1))) {
             self::setDefault($id);
         }
         self::afterChange();
@@ -407,6 +519,9 @@ final class PayQr
         if ((int) ($fields['is_active'] ?? 0) !== 1) {
             $upd['is_default'] = 0;   // review fix: a QR switched off is never the ticket default
         }
+        if (trim((string) ($fields['desk_code'] ?? '')) !== '') {
+            $upd['is_default'] = 0;   // review fix: a QR given to one desk is that desk's only, never the country default
+        }
         Database::update(self::TABLE, $upd, 'id = :i', ['i' => $id]);
         self::$rows = null;
         self::afterChange();
@@ -419,6 +534,9 @@ final class PayQr
         $row = self::get($id);
         if ($row === null) {
             throw new RuntimeException('QR भेटिएन · not found');
+        }
+        if (trim((string) ($row['desk_code'] ?? '')) !== '') {
+            throw new RuntimeException('काउन्टरको आफ्नै QR मुख्य (default) बन्न सक्दैन — पहिले काउन्टर "कुनै पनि" मा बदल्नुहोस् · a desk QR cannot be the country default; set its desk to "any desk" first');
         }
         Database::run('UPDATE pay_qr_codes SET is_default = 0 WHERE country = :c AND id <> :i', ['c' => (string) $row['country'], 'i' => $id]);
         Database::run('UPDATE pay_qr_codes SET is_default = 1, is_active = 1, updated_at = :u WHERE id = :i', ['u' => date('Y-m-d H:i:s'), 'i' => $id]);
@@ -552,7 +670,7 @@ final class PayQr
                     $now = date('Y-m-d H:i:s');
                     $id = Database::insert(self::TABLE, [
                         'country' => 'NP', 'kind' => 'esewa', 'label' => 'eSewa' . ($name !== '' ? ' · ' . mb_substr($name, 0, 60) : ' (NPJ)'),
-                        'payee' => mb_substr($payee . ($payee !== '' && $name !== '' ? ' · ' . $name : ''), 0, 160),
+                        'payee' => mb_substr($payee, 0, 160),   // review fix: the id only - it is the line printed under the QR (the name stays in the label)
                         'file' => $file, 'desk_code' => null, 'is_default' => 0, 'is_active' => 1, 'sort' => 0,
                         'created_by' => $by > 0 ? $by : null, 'created_at' => $now, 'updated_at' => $now,
                     ]);

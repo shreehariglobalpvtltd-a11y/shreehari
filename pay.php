@@ -449,10 +449,12 @@ if ($chooser && $claim === null && !$proofIn) {
     if ($upiQr === '') {
         try {
             require_once INCLUDE_PATH . '/payqr.php';
-            $inRow = PayQr::pick($booking, 'IN');
-            $upiQr = PayQr::dataUri($inRow);
-            if ($upiQr !== '' && $inRow !== null) {
-                $upiQrStatic = trim((string) ($inRow['payee'] ?? '')) !== '' ? trim((string) $inRow['payee']) : $upiId;
+            $inQ   = PayQr::resolve($booking, 'IN');   // the same resolver (and desk) as the Nepal QR
+            $upiQr = PayQr::dataUri($inQ['row']);
+            if ($upiQr !== '') {
+                /* the picture's own UPI id; a row without one says "scan" only, never the global upi_id
+                   (that may be another account than the one in the picture) */
+                $upiQrStatic = $inQ['payee'] !== '' ? $inQ['payee'] : '-';   // '-' = a static picture with no id typed
             }
         } catch (Throwable $ex) {
             $upiQr = '';
@@ -465,22 +467,21 @@ if ($chooser && $claim === null && !$proofIn) {
         /* 25 Nov 2026 (mp1): one Nepal QR everywhere - the uploaded NPJ QR the ticket prints
            (Ticket::esewaQrFile), else the fixed esewa-qr files. */
         require_once INCLUDE_PATH . '/payadapter.php';
-        $esewaQr = ManualQrAdapter::esewaQrSrc($booking);   // mp4: the issuing desk's own QR (includes/payqr.php), else the NP default
         /* review fix: the holder name belongs to the wallet shown. The Nepal company's own eSewa
            shows nepal_esewa_name (or no name); India's esewa_name only beside India's esewa_id. */
         $npOwnEsewa = ($co['saleEntity'] ?? 'IN') === 'NP' && trim(Settings::getString('nepal_esewa_id', '')) !== ''
             && $esewaId === trim(Settings::getString('nepal_esewa_id', ''));
-        /* review fix (money): the id printed beside the picture is the picture's own - the QR
-           library row's payee (the same row Ticket::paymentQr prints), with its wallet name. */
-        require_once INCLUDE_PATH . '/payqr.php';
-        $npQrRow   = PayQr::pick($booking, 'NP');
-        $npQrPayee = $npQrRow !== null ? trim((string) ($npQrRow['payee'] ?? '')) : '';
+        /* review fix (money, mp4): picture, id and wallet word from ONE resolver - PayQr::resolve,
+           the same one the ticket prints from (the issuing desk's QR, else the NP default, else the
+           old single QR with this sale's own eSewa id). Never one wallet's QR beside another's id. */
+        $npQ = ManualQrAdapter::nepalQr($booking, $esewaId,
+            $npOwnEsewa ? trim((string) ($co['payEsewaName'] ?? '')) : trim(Settings::getString('esewa_name', '')));
         $esewa = [
-            'id'   => $npQrPayee !== '' ? $npQrPayee : $esewaId,
-            'name' => $npQrPayee !== '' ? '' : ($npOwnEsewa ? trim((string) ($co['payEsewaName'] ?? '')) : trim(Settings::getString('esewa_name', ''))),
-            'kind' => $npQrPayee !== '' ? PayQr::printLabel((string) ($npQrRow['kind'] ?? '')) : 'eSewa',
+            'id'   => $npQ['payee'],
+            'name' => $npQ['name'],
+            'kind' => $npQ['kind'],
             'npr'  => $npr,
-            'qr'   => $esewaQr,
+            'qr'   => ManualQrAdapter::qrSrc($npQ['file']),
         ];
     }
 }
@@ -623,11 +624,11 @@ $bizWa = Settings::officeWhatsApp();
     /* 19 Nov 2026 (u9): the eSewa box in रू (frozen NPR, else INR due x npr_per_inr) - first on a
        Nepal sale, after the UPI QR otherwise. Built once, printed in one of the two places. */
     $esewaHtml = '';
-    if (is_array($esewa) && ($esewa['id'] ?? '') !== '') {
+    if (is_array($esewa) && (($esewa['id'] ?? '') !== '' || ($esewa['qr'] ?? '') !== '')) {   // mp4: a library QR without a payee = the picture only
         $esKind = (string) ($esewa['kind'] ?? 'eSewa');
         $esewaHtml = '    <div class="es">' . "\n" . '      <h2>🇳🇵 ' . $e($esKind) . '</h2>' . "\n"
             . (($esewa['qr'] ?? '') !== '' ? '      <div class="qrbox"><img class="qr" src="' . $e($esewa['qr']) . '" alt="' . $e($esKind) . ' QR" width="300" height="300"></div>' . "\n" : '')
-            . '      <div class="row">' . $e($esKind) . ' ID: <code>' . $e($esewa['id']) . '</code>' . (($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '') . '</div>' . "\n"
+            . (($esewa['id'] ?? '') !== '' ? '      <div class="row">' . $e($esKind) . ' ID: <code>' . $e($esewa['id']) . '</code>' . (($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '') . '</div>' . "\n" : '')
             . '      <div class="row">रकम · Amount: <b class="npr">रू ' . $e(number_format((float) ($esewa['npr'] ?? 0))) . '</b> (₹' . $e(number_format($total, 2)) . ')</div>' . "\n"
             . '      <div class="note">eSewa एपबाट पठाउँदा remarks मा ' . $e($pnr) . ' लेख्नुहोस्। · Put ' . $e($pnr) . ' in the eSewa remarks.</div>' . "\n"
             . '    </div>' . "\n";
@@ -640,7 +641,7 @@ $bizWa = Settings::officeWhatsApp();
     <div class="qrbox">
       <img class="qr" src="<?= $e($upiQr) ?>" alt="UPI QR · ₹<?= $e(number_format($total, 2)) ?>" width="300" height="300">
 <?php if ($upiQrStatic !== ''): /* the uploaded static picture: no amount inside it, its own UPI id under it */ ?>
-      <div class="cap">UPI ID: <code><?= $e($upiQrStatic) ?></code> — ₹<?= $e(number_format($total, 2)) ?> आफैं भर्नुहोस्, remarks मा <?= $e($pnr) ?> · type ₹<?= $e(number_format($total, 2)) ?> yourself, put <?= $e($pnr) ?> in the remarks</div>
+      <div class="cap"><?php if ($upiQrStatic !== '-'): ?>UPI ID: <code><?= $e($upiQrStatic) ?></code> — <?php endif; ?>₹<?= $e(number_format($total, 2)) ?> आफैं भर्नुहोस्, remarks मा <?= $e($pnr) ?> · type ₹<?= $e(number_format($total, 2)) ?> yourself, put <?= $e($pnr) ?> in the remarks</div>
 <?php else: ?>
       <div class="cap">QR स्क्यान गर्नुहोस् — रकम र PNR भरिएर आउँछ · Scan with any UPI app — amount and PNR filled in</div>
 <?php endif; ?>
@@ -659,7 +660,7 @@ $bizWa = Settings::officeWhatsApp();
       <div class="f" id="paidBy">कसरी तिर्नुभयो · Paid by</div>
       <div class="seg" role="radiogroup" aria-labelledby="paidBy">
         <label><input type="radio" name="method" value="upi"<?= ($_POST['method'] ?? 'upi') !== 'esewa' ? ' checked' : '' ?>> UPI</label>
-<?php if (is_array($esewa) && ($esewa['id'] ?? '') !== ''): ?>
+<?php if (is_array($esewa) && (($esewa['id'] ?? '') !== '' || ($esewa['qr'] ?? '') !== '')): ?>
         <label><input type="radio" name="method" value="esewa"<?= ($_POST['method'] ?? '') === 'esewa' ? ' checked' : '' ?>> eSewa</label>
 <?php endif; ?>
       </div>

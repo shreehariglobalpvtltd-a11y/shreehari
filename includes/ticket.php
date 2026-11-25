@@ -3460,29 +3460,29 @@ final class Ticket
            confirmed, not pay-at-boarding, no proof waiting); a pending ticket keeps (COD returned above: no QR)
            the live pay.php link below, whose UTR box reaches the COD queue / proof clock. */
         $npCountry = false;
-        /* 25 Nov 2026 (mp4 QR library, includes/payqr.php): the issuing desk's own Nepal QR, else the
-           NP default - its payee (id / number) is the line printed with it. */
-        $qrRow = $payable ? self::payQrRow($booking) : null;
-        $qrPayee = $qrRow !== null ? trim((string) ($qrRow['payee'] ?? '')) : '';
+        /* 25 Nov 2026 (mp4 QR library, includes/payqr.php): ONE resolver (PayQr::resolve, the same
+           one pay.php and ManualQrAdapter read) - the issuing desk's own Nepal QR, else the NP
+           default, else the old single QR; the picture, the id printed beside it and its wallet
+           word all come from that one source. */
+        $npQ = $payable ? self::nepalQr($booking) : null;
         if ($payable && self::frozenNpr($booking) <= 0 && $out['country'] === 'NP' && self::staticPayQrOk($booking)) {
-            $npCountry = self::esewaQrFile($booking) !== '' || trim(Settings::getString('nepal_esewa_id', '')) !== '' || $qrPayee !== '';
+            $npCountry = $npQ !== null && $npQ['source'] !== '';
         }
         if ($payable && (self::frozenNpr($booking) > 0 || $npCountry)) {
             $co    = self::companyOf($booking);
-            $esewa = trim((string) ($co['payEsewa'] ?? ''));
-            if ($npCountry) {
-                $esewa = trim(Settings::getString('nepal_esewa_id', '')) !== '' ? trim(Settings::getString('nepal_esewa_id', '')) : $esewa;
+            $own   = trim((string) ($co['payEsewa'] ?? ''));
+            if ($npCountry && trim(Settings::getString('nepal_esewa_id', '')) !== '') {
+                $own = trim(Settings::getString('nepal_esewa_id', ''));
             }
+            /* the old path (no library row) keeps this sale's own eSewa id exactly as before */
+            $npQ   = self::nepalQr($booking, $own);
             /* review fix (money): the word printed before the id is the wallet the id belongs to -
                "Khalti: 98…", "Global IME: …" - never "eSewa" for another wallet's number. */
-            $idKind = 'eSewa';
-            if ($qrPayee !== '') {
-                $esewa  = $qrPayee;   // the id that belongs to the QR picture printed beside it
-                $idKind = PayQr::printLabel((string) ($qrRow['kind'] ?? ''));
-            }
-            $img   = self::esewaQrFile($booking);   // 21 Nov 2026: the uploaded QR prints even before an eSewa id is typed
+            $esewa  = $npQ['payee'];
+            $idKind = $npQ['kind'];
+            $img    = $npQ['file'];   // 21 Nov 2026: the uploaded QR prints even before an eSewa id is typed
             $nprTx = 'रू ' . indianNumber(self::nprDue($booking, $due));
-            $qrKind = $qrRow !== null ? PayQr::printLabel((string) ($qrRow['kind'] ?? '')) : ($esewa !== '' ? 'eSewa' : '');
+            $qrKind = $npQ['row'] !== null || $esewa !== '' ? $npQ['kind'] : '';
             $out['esewa']     = $esewa;
             $out['esewaKind'] = $idKind;
             $out['qrKind']    = $qrKind;
@@ -3570,46 +3570,32 @@ final class Ticket
         }
     }
 
-    /** The Nepal QR library row for this ticket (its desk's, else the NP default), or null. */
-    private static function payQrRow(?array $booking): ?array
+    /**
+     * The Nepal pay QR of this ticket through THE one resolver (PayQr::resolve - the same one
+     * pay.php and ManualQrAdapter read): picture, payee and wallet word from one source.
+     * @return array{file: string, payee: string, name: string, kind: string, row: ?array, source: string}
+     */
+    private static function nepalQr(?array $booking, string $fallbackId = ''): array
     {
         try {
             if (!class_exists('PayQr')) {
                 require_once __DIR__ . '/payqr.php';
             }
-            return PayQr::pick($booking, 'NP');
+            return PayQr::resolve($booking, 'NP', $fallbackId);
         } catch (Throwable $e) {
-            return null;
+            return ['file' => '', 'payee' => $fallbackId, 'name' => '', 'kind' => 'eSewa', 'row' => null, 'source' => $fallbackId !== '' ? 'legacy' : ''];
         }
     }
 
     /**
      * The office's own Nepal QR image on the server (the files PayAdapter shows), or ''.
-     * 25 Nov 2026 (mp4): the QR library first - the issuing desk's own QR for this
-     * $booking, else the NP default (includes/payqr.php); then the old single setting.
+     * 25 Nov 2026 (mp4): PayQr::resolve - the issuing desk's own QR for this $booking,
+     * else the NP default (includes/payqr.php); then the old single setting
+     * (nepal_esewa_qr, 21 Nov) and the fixed esewa-qr files (PayQr::legacyFile).
      */
     public static function esewaQrFile(?array $booking = null): string
     {
-        $lib = self::payQrRow($booking);
-        if ($lib !== null) {
-            $p = PayQr::absPath($lib);
-            if ($p !== '') {
-                return $p;
-            }
-        }
-        // 21 Nov 2026: the NPJ branch's own QR uploaded on admin/owner-setup.php comes first.
-        $up = ltrim(str_replace('\\', '/', Settings::getString('nepal_esewa_qr', '')), '/');
-        $files = ['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'];
-        if ($up !== '' && preg_match('#^uploads/payqr/[a-z0-9-]+\.png$#', $up) === 1) {
-            array_unshift($files, $up);
-        }
-        foreach ($files as $f) {
-            $p = dirname(__DIR__) . '/' . $f;
-            if (is_file($p) && filesize($p) > 0 && filesize($p) < 3 * 1024 * 1024) {
-                return $p;
-            }
-        }
-        return '';
+        return self::nepalQr($booking)['file'];
     }
 
     /** Presentation only: never treats a screenshot or pending transfer as paid. */
