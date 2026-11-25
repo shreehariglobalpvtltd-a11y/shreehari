@@ -104,10 +104,8 @@ try {
     $npj = $find('NPJ');
     if ($npj !== null) {
         check('Nepal office has a WhatsApp button', $npj['wa'] !== '', $npj['wa']);
-        $place = '';
-        foreach (CompanyLocations::all() as $p) {
-            if (strtolower($p['town']) === 'nepalgunj' && $p['map'] !== '') { $place = $p['map']; break; }
-        }
+        $pp = CompanyLocations::publicPlaceForTown('Nepalgunj', 'map');
+        $place = $pp !== null ? (string) $pp['map'] : '';
         $desk = CounterDesk::get('NPJ');
         if ($place !== '' && $desk !== null && trim((string) $desk['map_url']) === '' && $desk['lat'] === null) {
             check('Nepal office map = the saved place pin, not a text search', $npj['mapUrl'] === $place, $npj['mapUrl']);
@@ -115,6 +113,33 @@ try {
     }
     $allWa = array_filter(CounterDesk::publicOffices(), static fn(array $x): bool => $x['status'] === 'open' && $x['tel'] !== '' && $x['wa'] === '');
     check('every open office with a phone has WhatsApp', $allWa === []);
+
+    /* review: an office card only takes a PUBLIC place's pin, office > pickup > parking, never a border */
+    CompanyLocations::all();   // makes sure the table is there
+    Database::run("DELETE FROM company_locations WHERE town = 'Wxtown'");
+    $mk = static function (string $kind, int $pub, string $map, string $wa = ''): void {
+        Database::insert('company_locations', ['name' => 'Wxtown test ' . $kind, 'kind' => $kind, 'town' => 'Wxtown',
+            'map_url' => $map, 'whatsapp' => $wa !== '' ? $wa : null, 'show_public' => $pub, 'sort_order' => 999, 'created_at' => date('Y-m-d H:i:s')]);
+    };
+    $mk('office',  0, 'https://www.google.com/maps?q=0.000001,0.000001', '9800000009');   // hidden
+    $mk('border',  1, 'https://www.google.com/maps?q=0.000002,0.000002', '9800000008');
+    $mk('parking', 1, 'https://www.google.com/maps?q=0.000003,0.000003');
+    $mk('pickup',  1, 'https://www.google.com/maps?q=0.000004,0.000004');
+    $pp = CompanyLocations::publicPlaceForTown('Wxtown', 'map');
+    check('place pin: hidden office + border skipped, pickup before parking', $pp !== null && $pp['kind'] === 'pickup');
+    check('place WhatsApp: hidden / border numbers never used', CompanyLocations::publicPlaceForTown('Wxtown', 'whatsapp') === null);
+    CounterDesk::flush();
+    $o = $find($code);
+    check('office card map = the public pickup pin', $o !== null && $o['mapUrl'] === 'https://www.google.com/maps?q=0.000004,0.000004', (string) ($o['mapUrl'] ?? ''));
+    $mk('office', 1, 'https://www.google.com/maps?q=0.000005,0.000005');
+    $pp = CompanyLocations::publicPlaceForTown('Wxtown', 'map');
+    check('place pin: a public office wins', $pp !== null && $pp['kind'] === 'office');
+    check('place pin: another town never matches', CompanyLocations::publicPlaceForTown('Wxtow', 'map') === null);
+    Database::run("UPDATE company_locations SET show_public = 0 WHERE town = 'Wxtown'");
+    CounterDesk::flush();
+    $o = $find($code);
+    check('no public place: text search, not a hidden pin', $o !== null && str_starts_with($o['mapUrl'], 'https://www.google.com/maps/search/'), (string) ($o['mapUrl'] ?? ''));
+    Database::run("DELETE FROM company_locations WHERE town = 'Wxtown'");
 
     Settings::set('home_office_incharge_on', '0', 'bool', 'company');
     Settings::flush(); SiteFacts::flush();
@@ -152,6 +177,7 @@ try {
     check('no exception', false, $e->getMessage());
 } finally {
     Database::run('DELETE FROM counter_locations WHERE code = :c', ['c' => $code]);
+    try { Database::run("DELETE FROM company_locations WHERE town = 'Wxtown'"); } catch (Throwable $e) { }
     CounterDesk::flush();
     CounterDesk::syncSettingsMirror();
     $restore();
@@ -170,6 +196,8 @@ check('/offices card: in-charge row', str_contains($cp, 'off-in') && str_contain
 $adm = (string) file_get_contents(dirname(__DIR__) . '/admin/counters.php');
 check('admin form: upload + in-charge boxes', str_contains($adm, 'enctype="multipart/form-data"') && str_contains($adm, 'name="incharge_phone"')
     && str_contains($adm, 'name="incharge_photo"') && str_contains($adm, 'incharge_photo_remove'));
+check('admin form: a too-big / bad photo is skipped, the desk still saves', str_contains($adm, 'UPLOAD_ERR_INI_SIZE')
+    && str_contains($adm, 'catch (Throwable $photoErr)') && str_contains($adm, '$photoLimitMb') && str_contains($adm, "'Desk ' . \$code . ' saved. ' . \$photoWarn"));
 
 echo "\n  $PASS passed, $FAIL failed\n\n";
 exit($FAIL === 0 ? 0 : 1);

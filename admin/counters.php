@@ -34,6 +34,21 @@ $base    = '';
 $flash   = null;
 $canEdit = Auth::isSuperadmin();
 $ready   = CounterDesk::hasTable();
+/* The real in-charge photo limit: the 8 MB re-encode cap or PHP's own upload / post limit, whichever is smaller. */
+$photoLimitMb = (static function (): int {
+    $mb = 8;
+    foreach (['upload_max_filesize', 'post_max_size'] as $k) {
+        $v = trim((string) ini_get($k));
+        if ($v === '' || !preg_match('/^(\d+)\s*([kmg]?)/i', $v, $m)) {
+            continue;
+        }
+        $bytes = (int) $m[1] * ['' => 1, 'k' => 1024, 'm' => 1048576, 'g' => 1073741824][strtolower($m[2])];
+        if ($bytes > 0) {
+            $mb = min($mb, max(1, (int) floor($bytes / 1048576)));
+        }
+    }
+    return $mb;
+})();
 
 /* Which halves of the migration are in place. The page must render, and be
    honest about what it cannot show, on a database where the SQL has not
@@ -83,11 +98,23 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($site !== [] && CounterDesk::hasColumn('counter_locations', 'incharge_phone')) {
                     $site['incharge_phone'] = $_POST['incharge_phone'] ?? '';
                 }
+                /* review: a bad photo never drops the rest of the desk save - the photo is
+                   skipped and the flash says why; a new file is removed if the save fails. */
+                $photoWarn = '';
+                $newPhoto  = '';
                 if ($site !== [] && CounterDesk::hasColumn('counter_locations', 'incharge_photo')) {
                     $upPhoto = $_FILES['incharge_photo'] ?? null;
-                    if (is_array($upPhoto) && ($upPhoto['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-                        require_once INCLUDE_PATH . '/contentpages.php';
-                        $site['incharge_photo'] = ContentPages::saveUpload($upPhoto, 'locations', 'incharge-' . strtolower((string) ($_POST['code'] ?? '')));
+                    $upErr   = is_array($upPhoto) ? (int) ($upPhoto['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
+                    if ($upErr === UPLOAD_ERR_INI_SIZE || $upErr === UPLOAD_ERR_FORM_SIZE) {
+                        $photoWarn = 'फोटो धेरै ठूलो भयो (server limit ' . $photoLimitMb . ' MB) · Photo too big (server limit ' . $photoLimitMb . ' MB) — the photo was not changed.';
+                    } elseif ($upErr !== UPLOAD_ERR_NO_FILE) {
+                        try {
+                            require_once INCLUDE_PATH . '/contentpages.php';
+                            $newPhoto = ContentPages::saveUpload($upPhoto, 'locations', 'incharge-' . strtolower((string) ($_POST['code'] ?? '')));
+                            $site['incharge_photo'] = $newPhoto;
+                        } catch (Throwable $photoErr) {
+                            $photoWarn = 'फोटो राख्न सकिएन · Photo not saved: ' . $photoErr->getMessage();
+                        }
                     } elseif (!empty($_POST['incharge_photo_remove'])) {
                         $site['incharge_photo'] = '';
                     }
@@ -114,7 +141,9 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 // old -> new: a desk's rate and company decide money on every later sale
                 Logger::audit('counter.save', 'counter_location', $code, $before, CounterDesk::get($code),
                     'desk saved by admin #' . (int) $admin['id']);
-                $flash = ['ok', 'Desk ' . $code . ' saved.'];
+                $flash = $photoWarn !== ''
+                    ? ['bad', 'Desk ' . $code . ' saved. ' . $photoWarn]
+                    : ['ok', 'Desk ' . $code . ' saved.'];
             } elseif ($action === 'close') {
                 $code = mb_strtoupper(Security::clean((string) ($_POST['code'] ?? ''), 16));
                 CounterDesk::deactivate($code);
@@ -138,6 +167,9 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
             }
         } catch (Throwable $e) {
+            if (isset($newPhoto) && $newPhoto !== '' && str_starts_with($newPhoto, 'uploads/locations/')) {
+                @unlink(rtrim(defined('UPLOAD_PATH') ? UPLOAD_PATH : ROOT_PATH . '/uploads', '/\\') . '/locations/' . basename($newPhoto));
+            }
             $flash = ['bad', $e->getMessage()];
         }
     }
@@ -425,7 +457,7 @@ $e = static fn($v): string => Security::e((string) $v);
     <?php if (CounterDesk::hasColumn('counter_locations', 'incharge_photo')): ?>
     <?php $inPhoto = CounterDesk::cleanPhotoPath((string) ($editing['incharge_photo'] ?? '')); ?>
     <div class="row">
-      <label>प्रमुखको फोटो · In-charge photo (PNG / JPG / WebP, 8 MB)
+      <label>प्रमुखको फोटो · In-charge photo (PNG / JPG / WebP, <?= (int) $photoLimitMb ?> MB)
         <input type="file" name="incharge_photo" accept="image/png,image/jpeg,image/webp">
       </label>
       <?php if ($inPhoto !== ''): ?>

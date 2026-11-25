@@ -1024,34 +1024,24 @@ final class CounterDesk
         return class_exists('CompanyLocations', false);
     }
 
-    /** The saved Google Maps link of the company place in this town ('' when none). */
+    /** The saved Google Maps link of the town's public company place, office first ('' when none). */
     private static function placeMap(string $town): string
     {
         try {
-            return self::places() ? CompanyLocations::mapForTown($town) : '';
+            $p = self::places() ? CompanyLocations::publicPlaceForTown($town, 'map') : null;
+            return $p !== null ? (string) $p['map'] : '';
         } catch (Throwable $e) {
             return '';
         }
     }
 
-    /** The WhatsApp typed on a company place of this town, as wa.me digits ('' when none). */
+    /** The WhatsApp typed on the town's public company place (office first), as wa.me digits ('' when none). */
     private static function placeWhatsApp(string $town): string
     {
-        $k = self::townKey($town);
-        if ($k === '') {
-            return '';
-        }
         try {
-            if (!self::places()) {
-                return '';
-            }
-            foreach (CompanyLocations::all() as $p) {
-                if (self::townKey((string) $p['town']) === $k && trim((string) $p['whatsapp']) !== '') {
-                    $wa = self::firstDial((string) $p['whatsapp'], 'NP');
-                    if ($wa !== '') {
-                        return $wa;
-                    }
-                }
+            $p = self::places() ? CompanyLocations::publicPlaceForTown($town, 'whatsapp') : null;
+            if ($p !== null) {
+                return self::firstDial((string) $p['whatsapp'], 'NP');
             }
         } catch (Throwable $e) {
             // never fail the office list on the places table
