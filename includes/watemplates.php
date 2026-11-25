@@ -391,6 +391,15 @@ final class WaTemplates
                 throw new RuntimeException('No such departure.');
             }
             $doc  = ($ctx['doc'] ?? '') === 'chalani' ? 'chalani' : 'challan';
+            /* 25 Nov 2026 (release ch review): a chalani page (every passenger, name and
+               mobile) goes out only with chalani.export, as its PNG / PDF / share do on
+               manifest.php; the challan seat picture stays on this purpose's bookings.view */
+            if ($doc === 'chalani') {
+                require_once __DIR__ . '/chalanistrip.php';
+                if (!ChalaniStrip::mayExport()) {
+                    throw new RuntimeException('चलानी पठाउने अनुमति छैन · Sending a chalani page needs the chalani.export permission — ask the office.');
+                }
+            }
             $page = max(1, min(50, (int) ($ctx['page'] ?? 1)));
             $tgt  = (string) ($ctx['target'] ?? 'office');
             if ($tgt === 'driver') {

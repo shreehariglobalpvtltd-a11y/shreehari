@@ -35,6 +35,7 @@ require_once INCLUDE_PATH . '/boarding.php';
 require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/challanpng.php';
 require_once INCLUDE_PATH . '/chalanipng.php';
+require_once INCLUDE_PATH . '/chalanistrip.php';  // 25 Nov 2026 (release ch): chalani.export decides the chalani card + its WhatsApp pages
 require_once INCLUDE_PATH . '/quickticket.php';
 require_once INCLUDE_PATH . '/challanlock.php';   // 29 Oct 2026: finalize, what changed since, history
 $admin = admin_boot('bookings.view');
@@ -128,6 +129,11 @@ if ($trip !== null) {
 }
 
 $q = static fn(array $extra): string => Security::e(http_build_query(array_filter($extra, static fn($v) => $v !== null && $v !== '')));
+/* 25 Nov 2026 (release ch review): the whole-bus chalani (preview, PDF / PNG / print,
+   a chalani page on WhatsApp) only for chalani.export - the same rule manifest.php,
+   download-chalan.php and the chalan_send composer apply. The challan seat picture
+   and the seat-status card stay on bookings.view. */
+$chalaniOk = ChalaniStrip::mayExport();
 /* 19 Nov 2026 (NP-2): one desk's copy of the chalani (a Nepal desk prints NPR) -
    validated against CounterDesk::all(); '' = the whole bus, as before */
 $deskF       = ChalaniPng::deskCode((string) ($_GET['desk'] ?? ''));
@@ -354,6 +360,7 @@ admin_page_head(
     </div>
     <div class="text-xs muted" style="padding:0 16px 12px">Both floors, every berth with name · mobile · pickup — for the driver and the border desk.</div>
   </div>
+  <?php if ($chalaniOk): ?>
   <div class="ch-doc">
     <div class="ch-doc-h"><svg class="a-ic" style="color:var(--orange)"><use href="#a-doc"/></svg>Chalani — बस चलानी (Nepali waybill) <span class="pill st-orange nodot">PDF · PNG</span></div>
     <div class="ch-prev"><a href="<?= $hrefChalaniPng ?>" target="_blank" rel="noopener" title="All pages"><img src="<?= $hrefChalaniP1 ?>" alt="Chalani page 1" loading="lazy"></a></div>
@@ -364,6 +371,12 @@ admin_page_head(
     </div>
     <div class="text-xs muted" style="padding:0 16px 12px">The office's printed form: crew fields, passenger table, cash line, signatures.</div>
   </div>
+  <?php else: ?>
+  <div class="ch-doc" id="chChalaniLocked">
+    <div class="ch-doc-h"><svg class="a-ic" style="color:var(--orange)"><use href="#a-lock"/></svg>Chalani — बस चलानी (Nepali waybill)</div>
+    <div class="text-xs muted" style="padding:12px 16px">चलानी PNG / PDF / सेयर अनुमति छैन · Your login has no chalani.export permission, so the chalani PDF / PNG / print and its WhatsApp pages are not offered here. The passenger list stays on the Manifest page; ask the office for the permission.</div>
+  </div>
+  <?php endif; ?>
   <div class="ch-doc">
     <div class="ch-doc-h"><svg class="a-ic" style="color:var(--wa-600,#128C7E)"><use href="#a-image"/></svg>Seat status card — live colours, no names <span class="pill st-info nodot">PNG</span></div>
     <div class="ch-prev"><a href="<?= $hrefStatus ?>" target="_blank" rel="noopener" title="Open full size"><img src="<?= $hrefStatus ?>" alt="Seat status card" loading="lazy"></a></div>
@@ -382,7 +395,7 @@ admin_page_head(
       <label>Document
         <select id="chDoc">
           <option value="challan">Challan — seat picture</option>
-          <?php for ($p = 1; $p <= $pageCount; $p++): ?>
+          <?php for ($p = 1; $chalaniOk && $p <= $pageCount; $p++): ?>
             <option value="chalani:<?= $p ?>">Chalani page <?= $p ?> of <?= (int) $pageCount ?></option>
           <?php endfor; ?>
         </select>

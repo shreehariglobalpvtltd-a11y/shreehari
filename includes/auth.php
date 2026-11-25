@@ -189,6 +189,8 @@ final class Auth
             // 5 Oct 2026: launch customer campaigns (admin/campaigns.php).
             'marketing.send',
             'tickets.scan', 'waitlist.view',
+            // 25 Nov 2026 (release ch): chalani PNG / PDF / WhatsApp share
+            'chalani.export',
             // 9 Oct 2026: the office side of Office chat (admin/staff-chat.php) -
             // answers every agent / counter thread. Field roles (agent, counter)
             // use bookings.view and only ever see their own threads.
@@ -219,6 +221,7 @@ final class Auth
             'liveops.view', 'liveops.edit', 'messages.view', 'support.view', 'support.reply',
             'tickets.scan', 'waitlist.view',
             'staffmsg.office',   // Office chat, office side (9 Oct 2026)
+            'chalani.export',    // 25 Nov 2026 (release ch): chalani PNG / PDF / share
         ],
         // Viewer (5 Oct 2026): a partner or investor who may LOOK. The dashboard,
         // analytics and the money reports - and nothing that names a passenger
@@ -265,6 +268,7 @@ final class Auth
             'schedules.view', 'schedules.edit',
             'customers.view', 'tickets.scan',
             'messages.view', 'support.view', 'support.reply',
+            'chalani.export',    // 25 Nov 2026 (release ch): chalani PNG / PDF / share
         ],
         // Ticketing agent (Part 2): sells seats and transfers passengers from
         // the Seat Map + Trips board, and can look up any booking for support.
@@ -312,6 +316,8 @@ final class Auth
             'bookings.reassign'   => 'Change who sold a ticket (commission follows)',
             'tickets.scan'        => 'Boarding QR scanner',
             'waitlist.view'       => 'Waitlist',
+            // 25 Nov 2026 (release ch): the whole-bus chalani as PNG / PDF / print + WhatsApp share
+            'chalani.export'      => 'Chalani PNG / PDF / WhatsApp share',
         ],
         'Payments & Refunds' => [
             'payments.view'   => 'Payments queue',
