@@ -366,12 +366,12 @@ final class Ticket
                Nepal -> India trip sold on the India side, a passenger who boards at the
                Nepalgunj office (or whose pickup pin IS the office) or at Rupaidiha border
                parking gets only that pickup QR - no extra Nepal office row. Without a pin
-               on the Nepalgunj pickup the office row stays: it is the chosen place.
+               on that pickup (no pickup QR) the office row stays, never an empty list.
                Switch ticket_np_pickup_only (default on). */
             if ($toIndia && !$npIssued && Settings::getBool('ticket_np_pickup_only', true)) {
                 $tk = Boarding::townKey(self::stopForPrint($label));   // "Rupaidiha Border Parking" -> rupaidihaborderparking
-                if (str_starts_with($tk, 'rupaidiha')
-                    || ($board !== '' && ($board === $np || preg_match('/^nepalg[au]nj/', $tk) === 1))) {
+                if ($board !== '' && (str_starts_with($tk, 'rupaidiha')
+                    || $board === $np || preg_match('/^nepalg[au]nj/', $tk) === 1)) {
                     return $out;
                 }
             }

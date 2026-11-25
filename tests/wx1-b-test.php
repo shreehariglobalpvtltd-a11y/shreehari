@@ -175,6 +175,13 @@ try {
             $k = $kinds(['boarding_stop' => 'Nepalgunj Office · Puspalal Chowk', 'from_city' => 'Nepalgunj', 'to_city' => 'Surat']);
             return $k !== [] && ($k === ['board'] || in_array('nepal', $k, true));
         })());
+    /* review fix: a Rupaidiha pickup with no pin (and no office place in that town) must
+       keep the Nepal office QR - never a ticket with no map QR at all. */
+    $kRupNoPin = $kinds(['boarding_stop' => 'Rupaidiha Border Parking @ 18:00', 'from_city' => 'Rupaidiha', 'to_city' => 'Surat']);
+    check('no pin on the Rupaidiha pickup -> never an empty map QR list (office row stays)',
+        $kRupNoPin === ['nepal'] || $kRupNoPin === ['board'], json_encode($kRupNoPin));
+    check('07-checkout: family share green wins over #ticketCard .btn-wa (!important inline)',
+        str_contains((string) file_get_contents(dirname(__DIR__) . '/assets/js/07-checkout.js'), 'background:#25d366 !important;border-color:#1ebe5b !important;color:#fff !important'));
 
     echo "\n== 3. Nepal pickups: no free-text Other for a customer ==\n";
     $r7 = Database::fetch("SELECT id, from_city, to_city FROM routes WHERE route_code = 'r7' AND is_active = 1");

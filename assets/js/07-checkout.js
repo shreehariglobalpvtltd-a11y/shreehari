@@ -2550,7 +2550,7 @@ function famShareOn() {
 function famShareBtn(url) {
   const u = String(url || '');
   return '<a class="btn btn-wa tk-famshare" data-famshare="' + esc(u) + '" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + u)
-    + '" target="_blank" rel="noopener" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px;margin-top:8px;min-height:44px;background:#25d366;border-color:#1ebe5b;color:#fff;font-weight:700">'
+    + '" target="_blank" rel="noopener" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px;margin-top:8px;min-height:44px;background:#25d366 !important;border-color:#1ebe5b !important;color:#fff !important;font-weight:700">'
     + '🟢 ' + esc(t('tkWhereFam')) + '</a>';
 }
 if (!window.__shgFamShare) { window.__shgFamShare = true; document.addEventListener('click', function (e) {
