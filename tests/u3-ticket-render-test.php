@@ -76,6 +76,10 @@ $setMem([
     'nepal_office'       => ['Pushpalal Chowk, Nepalgunj', 'string'],
     'nepal_office_ne'    => ['पुष्पलाल चोक, नेपालगञ्ज', 'string'],
     'npr_per_inr'        => ['1.6', 'float'],
+    /* 25 Nov 2026 (mp1 tk): this suite guards the TK-1..TK-6 layout and pay QR rule - the clean
+       layout and the Nepal-QR-by-country rule have their own suite (tests/mp1-ticket-test.php). */
+    'ticket_clean_v2_on'       => ['0', 'bool'],
+    'ticket_pay_qr_by_country' => ['0', 'bool'],
 ]);
 
 $out = (string) (getenv('U3_OUT') ?: '');
@@ -325,7 +329,7 @@ try {
     $pngStamp = (string) $ref1->getConstant('PNG_LAYOUT_CHANGED');
     $pdfStamp = (string) $ref1->getConstant('PDF_LAYOUT_CHANGED');
     check('PNG layout stamp moved on (19 Nov, 21 Nov nj1) and is in the past', strcmp($pngStamp, '2026-11-19') >= 0 && strtotime($pngStamp) <= time() + 60, $pngStamp);
-    check('PDF layout stamp moved to 19 Nov and is in the past', str_starts_with($pdfStamp, '2026-11-19') && strtotime($pdfStamp) <= time() + 60, $pdfStamp);
+    check('PDF layout stamp moved on (19 Nov, 25 Nov mp1 tk) and is in the past', strcmp($pdfStamp, '2026-11-19') >= 0 && strtotime($pdfStamp) <= time() + 60, $pdfStamp);
     check('barcode kept on the PNG', str_contains($src, 'Barcode::draw($im, $scanCode'));
     check('PDF seat box is bigger', str_contains($src, '$seatBoxW  = 112.0'));
     check('routes stop edit redraws tickets', str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/routes.php'), 'Settings::touchTicketIdentity()'));

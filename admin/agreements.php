@@ -44,6 +44,13 @@ $admin = admin_boot('customers.view');
 $role    = (string) ($admin['role'] ?? '');
 $canEdit = Auth::isSuperadmin() || $role === 'manager';
 $canKyc  = $canEdit;   // who sees ID, bank and photo in full
+/* 25 Nov 2026 (mp1-lg review, release rule): CREATING a brand-new login (onboarding - "Create login",
+   approve / go-live with mklogin and its first one-time password) stays with the office, as before.
+   CHANGING an existing login - username / email / password (creds), a new password on WhatsApp
+   (sendcreds), a password typed on approve for a login that already exists - is a super-admin's (or a
+   staff.credentials grant). staff_credentials_lock_on = 0 gives those back to staff.manage. */
+$canCreds = $canEdit && Auth::mayEditCredentials('staff.manage');
+$credsNo  = 'पासवर्ड सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the password of an existing login — the password was not changed';
 $selfId  = (int) ($admin['id'] ?? 0);
 $h       = static fn($v): string => Security::e((string) ($v ?? ''));
 $tab     = (string) ($_GET['tab'] ?? 'apps') === 'agents' ? 'agents' : 'apps';
@@ -101,9 +108,18 @@ $agrSendCreds = static function (array $app, string $pw, int $adminId): void {
     Logger::audit('agreement_app.credentials', 'agent_application', (string) ($app['ref'] ?: AgentApplications::refFor((int) $app['id'])),
         null, ['delivered' => $sent === true ? 'whatsapp' : 'link'], 'Sign-in details sent (by admin #' . (int) ($_SESSION[ADMIN_SESSION_KEY]['id'] ?? 0) . ')');
 };
-$agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $agrSendCreds, $selfId): void {
+$agrApproveAll = static function (int $id, string $pw) use ($agrMakeLogin, $agrSendCreds, $selfId, $canCreds): void {
     $now = AgentApplications::find($id);
     if ($now === null || (string) $now['status'] !== 'approved') {
+        return;
+    }
+    if (!empty($now['admin_id']) && $pw !== '' && !$canCreds) {
+        /* 25 Nov 2026 (mp1-lg review): a password typed for a login that ALREADY exists changes an
+           existing sign-in - a super-admin's. The approval stands; the password is not set or sent. */
+        Logger::audit('staff.credentials_denied', 'admin', (string) (int) $now['admin_id'], null,
+            ['action' => 'agreements.approve_password', 'ref' => (string) ($now['ref'] ?: AgentApplications::refFor((int) $now['id']))],
+            'Password on approve for an existing login skipped (super-admin only) for admin #' . $selfId);
+        $_SESSION['agr_login_su'] = true;
         return;
     }
     if (empty($now['admin_id']) && (string) $now['phone'] !== '') {
@@ -226,6 +242,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($app === null || empty($app['admin_id'])) {
                     throw new AgreementError('This application has no login yet.');
                 }
+                if (!$canCreds) {   // 25 Nov 2026 (mp1-lg review): sign-in details are the super-admin's
+                    Logger::audit('staff.credentials_denied', 'admin', (string) (int) $app['admin_id'], null, ['action' => 'agreements.creds'],
+                        'Username / email / password change refused on the agreements page (super-admin only) for admin #' . $selfId);
+                    http_response_code(403);
+                    throw new AgreementError('लगइन विवरण सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the username, email or password. Nothing was changed.');
+                }
                 try {
                     $res = Auth::setStaffCredentials((int) $app['admin_id'], [
                         'username'    => (string) ($_POST['username'] ?? ''),
@@ -243,6 +265,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $app = AgentApplications::find($id);
                 if ($app === null || empty($app['admin_id'])) {
                     throw new AgreementError('This application has no login yet.');
+                }
+                if (!$canCreds) {   // 25 Nov 2026 (mp1-lg review): a new password is the super-admin's
+                    Logger::audit('staff.credentials_denied', 'admin', (string) (int) $app['admin_id'], null, ['action' => 'agreements.sendcreds'],
+                        'New one-time password on WhatsApp refused on the agreements page (super-admin only) for admin #' . $selfId);
+                    http_response_code(403);
+                    throw new AgreementError('पासवर्ड सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can send a new password. Nothing was changed.');
                 }
                 require_once INCLUDE_PATH . '/agentwallet.php';
                 $pw = AgentWallet::tempPassword();
@@ -298,9 +326,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 /* 23 Oct 2026: did the sign-in details reach the person? (set by $agrSendCreds, read once) */
 $waHand = is_string($_SESSION['agr_wa_hand'] ?? null) && str_starts_with((string) $_SESSION['agr_wa_hand'], 'https://wa.me/') ? (string) $_SESSION['agr_wa_hand'] : null;
 $waSent = !empty($_SESSION['agr_wa_sent']);
-unset($_SESSION['agr_wa_hand'], $_SESSION['agr_wa_sent']);
+$loginSu = !empty($_SESSION['agr_login_su']);   // 25 Nov 2026 (mp1-lg review): approve skipped a password for an existing login (set by $agrApproveAll)
+unset($_SESSION['agr_wa_hand'], $_SESSION['agr_wa_sent'], $_SESSION['agr_login_su']);
 if ($flash === null && isset($_GET['saved'])) {
     $flash = (string) $_GET['saved'] === '1' ? ['ok', 'Saved.'] : ['ok', 'Nothing to change.'];
+    if ($loginSu) {
+        $flash[1] .= ' ' . $credsNo . '.';
+    }
     if ($waSent) {
         $flash[1] .= ' ✅ Username, one-time password and agent code sent on WhatsApp — they change the password at the first sign-in.';
     } elseif ($waHand !== null) {
@@ -628,6 +660,9 @@ if (!$ready) {
     <span style="margin-left:auto"><?= (int) $acct['is_active'] === 1 ? '<span class="pill st-ok">🟢 Active</span>' : '<span class="pill st-muted">⚪ Switched off</span>' ?></span></h2>
   <div class="panel-body" style="padding:16px 18px">
     <p class="muted text-xs" style="margin:0 0 10px">Sells tickets at <b>/admin/agent.php</b> and signs in at <b>/team/</b> with mobile <?= $h($acct['phone']) ?> + password<?= !empty($acct['last_login_at']) ? ' · last sign-in ' . $h(date('d M Y H:i', strtotime((string) $acct['last_login_at']) ?: time())) : ' · never signed in yet' ?><?= (int) $acct['must_change_pw'] === 1 ? ' · must change the password at the next sign-in' : '' ?>. <a href="agent-360.php?agent=<?= (int) $acct['id'] ?>">Agent 360 →</a></p>
+    <?php if (!$canCreds): /* 25 Nov 2026 (mp1-lg review): username / email / password are the super-admin's */ ?>
+    <p class="muted text-xs" style="margin:0">🔐 Username <b class="mono"><?= $h($acct['username']) ?></b><?= !empty($acct['email']) ? ' · ' . $h($acct['email']) : '' ?>. लगइन विवरण सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin changes the username, email or password.</p>
+    <?php else: ?>
     <form method="post" action="agreements.php?tab=apps&amp;id=<?= (int) $open['id'] ?>" autocomplete="off">
       <?= $csrfField ?><input type="hidden" name="action" value="creds"><input type="hidden" name="id" value="<?= (int) $open['id'] ?>">
       <div class="form-grid">
@@ -643,6 +678,7 @@ if (!$ready) {
       <button class="btn sm" type="submit" style="background:#25D366;color:#fff">📲 Send a new password on WhatsApp</button>
       <span class="help" style="margin-left:8px">Username, agent code, one-time password and the /team/ link in one message. 23 Oct 2026.</span>
     </form>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>

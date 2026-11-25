@@ -65,7 +65,36 @@ final class ManualQrAdapter implements PaymentAdapter
 
     public function available(): bool
     {
-        return trim(Settings::getString('upi_id', '')) !== '' || trim(Settings::getString('esewa_id', '')) !== '';
+        return trim(Settings::getString('upi_id', '')) !== '' || trim(Settings::getString('esewa_id', '')) !== ''
+            || trim(Settings::getString('nepal_esewa_id', '')) !== '';
+    }
+
+    /**
+     * 25 Nov 2026 (mp1): ONE Nepal QR everywhere - the picture the ticket prints
+     * (Ticket::esewaQrFile(): the NPJ QR uploaded on Owner setup / Payment Management
+     * first, else the fixed esewa-qr files) as an <img> src. An uploaded file is
+     * sent inline (data:) so it shows even where /uploads/ is closed to the web.
+     */
+    public static function esewaQrSrc(): string
+    {
+        if (!class_exists('Ticket') && is_file(__DIR__ . '/ticket.php')) {
+            require_once __DIR__ . '/ticket.php';
+        }
+        $abs = class_exists('Ticket') ? Ticket::esewaQrFile() : '';
+        if ($abs === '') {
+            return '';
+        }
+        $root = rtrim(str_replace('\\', '/', ROOT_PATH), '/') . '/';
+        $rel  = ltrim(str_replace('\\', '/', $abs), '/');
+        $abs2 = str_replace('\\', '/', $abs);
+        if (str_starts_with($abs2, $root)) {
+            $rel = substr($abs2, strlen($root));
+        }
+        if (str_starts_with($rel, 'uploads/')) {
+            $mime = (function_exists('mime_content_type') ? (string) @mime_content_type($abs) : '') ?: 'image/png';
+            return 'data:' . $mime . ';base64,' . base64_encode((string) file_get_contents($abs));
+        }
+        return '/' . $rel;
     }
 
     public function start(array $booking, float $due): array
@@ -73,15 +102,27 @@ final class ManualQrAdapter implements PaymentAdapter
         $pnr     = (string) $booking['pnr'];
         $upiId   = trim(Settings::getString('upi_id', ''));
         $upiName = trim(Settings::getString('upi_name', ''));
-        $link    = $upiId !== '' ? upiLink($upiId, $upiName, $due, $pnr) : '';
-        $npr     = round($due * Settings::getFloat('npr_per_inr', 1.6));
-        $esewaQr = '';
-        foreach (['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'] as $f) {
-            if (is_file(ROOT_PATH . '/' . $f)) {
-                $esewaQr = '/' . $f;
-                break;
-            }
+        /* 25 Nov 2026 (mp1): while the India bank API is live the QR also carries tr=<PNR>,
+           the reference the bank's webhook sends back (BankApi::upiUri). */
+        if (is_file(__DIR__ . '/bankapi.php')) {
+            require_once __DIR__ . '/bankapi.php';
         }
+        $link    = $upiId === '' ? '' : (class_exists('BankApi') && BankApi::upiOn()
+            ? BankApi::upiUri($upiId, $upiName, $due, $pnr) : upiLink($upiId, $upiName, $due, $pnr));
+        /* 25 Nov 2026 (mp1): a Nepal / NPR sale pays the Nepal company's own eSewa
+           (nepal_esewa_id / nepal_esewa_name) - the same id and QR the ticket prints -
+           in the NPR frozen on the sale when there is one, else the INR due x npr_per_inr. */
+        $total   = (float) ($booking['total_amount'] ?? 0);
+        $frozen  = strtoupper((string) ($booking['fx_currency'] ?? '')) === 'NPR' && (float) ($booking['fx_total'] ?? 0) > 0 && $total > 0;
+        $npr     = $frozen ? round((float) $booking['fx_total'] * $due / $total) : round($due * Settings::getFloat('npr_per_inr', 1.6));
+        if (is_file(__DIR__ . '/counterdesk.php')) {
+            require_once __DIR__ . '/counterdesk.php';   // companyFor reads the desk's own entity
+        }
+        $co      = Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''));
+        $npId    = trim(Settings::getString('nepal_esewa_id', ''));
+        $nepal   = $frozen || ($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP';
+        $esewaId = $nepal && $npId !== '' ? $npId : trim(Settings::getString('esewa_id', ''));
+        $esewaNm = $nepal && $npId !== '' ? trim(Settings::getString('nepal_esewa_name', '')) : trim(Settings::getString('esewa_name', ''));
         return [
             'kind'  => 'qr',
             'upi'   => $upiId === '' ? null : [
@@ -90,11 +131,11 @@ final class ManualQrAdapter implements PaymentAdapter
                 'link' => $link,
                 'qr'   => QrCode::dataUri($link, 7, 3),
             ],
-            'esewa' => trim(Settings::getString('esewa_id', '')) === '' ? null : [
-                'id'   => trim(Settings::getString('esewa_id', '')),
-                'name' => trim(Settings::getString('esewa_name', '')),
+            'esewa' => $esewaId === '' ? null : [
+                'id'   => $esewaId,
+                'name' => $esewaNm,
                 'npr'  => $npr,
-                'qr'   => $esewaQr,
+                'qr'   => self::esewaQrSrc(),
             ],
         ];
     }

@@ -24,6 +24,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/aiops.php';   // AiOps::superOnlySetting (payment ids are a super-admin's)
 $admin   = admin_boot('dashboard.view');
 $canEdit = Auth::canManageSettings();
 $flash   = null;
@@ -144,6 +145,12 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         /* An India field left blank keeps the built-in value: a blank
                            company_name would print an empty ticket header. */
                         if ($isIndia && $v === '') {
+                            continue;
+                        }
+                        /* 25 Nov 2026 (mp1): the payment ids (UPI / eSewa) are a super-admin's -
+                           AiOps::superOnlySetting, the same rule as Settings and Payment Management. */
+                        if (!Auth::isSuperadmin() && AiOps::superOnlySetting($key) && $v !== $cur) {
+                            $flash = ['bad', 'भुक्तानी ID सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change payment ids (' . $key . ')'];
                             continue;
                         }
                         if ($v !== $cur) {

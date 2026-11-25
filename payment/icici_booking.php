@@ -231,6 +231,19 @@ function icici_apply_result(array $data, string $source): array
        hash and merchant id were verified above, the booking id is bound into merchantTxnNo and
        the amount equals bookings.total_amount. In PRODUCTION only, PayAuto confirms the booking
        (same gate a person uses; one ticket). UAT / any mismatch: stays in Verify Payments. */
+    /* 25 Nov 2026 (mp1, icici_strict_fields_on, default on): a signed payload that leaves out
+       the amount or the merchant id is never auto-confirmed - the checks above skip a missing
+       field, so PayAuto would have been handed the EXPECTED amount. Both must be present AND
+       equal (ours / the booking's). The currency is checked only when ICICI sends one (nothing
+       shows the PG always returns it): present = INR (or ISO 356), else left for a person.
+       The proof is already recorded; a person approves it in Verify Payments. */
+    $curGiven = strtoupper(trim((string) ($data['currencyCode'] ?? $data['currency'] ?? '')));
+    if (Settings::getBool('icici_strict_fields_on', true)
+        && ($amount === '' || $mid === '' || $mid !== ICICI_MERCHANT_ID || abs((float) $amount - (float) $expected) > 0.009
+            || ($curGiven !== '' && $curGiven !== 'INR' && $curGiven !== '356'))) {
+        icici_log($source . '_AUTOCONFIRM', ['pnr' => $pnr, 'ok' => false, 'why' => 'missing amount / merchant id, or a currency other than INR - left for a person']);
+        return ['state' => 'success', 'booking' => icici_load_booking(null, (int) $booking['id']), 'message' => ''];
+    }
     try {
         require_once INCLUDE_PATH . '/payauto.php';
         $cur = strtoupper((string) ($data['currencyCode'] ?? $data['currency'] ?? 'INR'));

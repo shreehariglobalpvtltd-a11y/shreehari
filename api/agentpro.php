@@ -387,10 +387,11 @@ try {
                         $skipped[(string) $k] = $e->getMessage();
                     }
                 }
-                Response::success(['draft' => ap_draft_view(AgentPro::draft((string) $d['draft_key']) ?? $d, $off), 'skipped' => (object) $skipped]);
+                Response::success(['draft' => ap_draft_view(AgentPro::draft((string) $d['draft_key']) ?? $d, $off), 'skipped' => (object) $skipped], AgentPro::takeNotice());
             }
             $d = AgentPro::saveDraft((string) $d['draft_key'], $in, $off !== null);
-            Response::success(['draft' => ap_draft_view($d, $off)]);
+            // 25 Nov 2026 (mp1-lg review): the rest saved; a live member's login email change left for a super-admin is said
+            Response::success(['draft' => ap_draft_view($d, $off)], AgentPro::takeNotice());
 
         case 'otp_send':
             Security::requirePost();

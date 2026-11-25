@@ -245,8 +245,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                    staff.manage so an agent can never rename or re-mail their
                    own account; Auth::setStaffCredentials validates, enforces
                    uniqueness and writes the audit row. */
-                if (!$canManage) {
-                    throw new RuntimeException('Only a super-admin (or staff manager) can change login credentials.');
+                if (!$canManage || !Auth::mayEditCredentials('staff.manage')) {
+                    // 25 Nov 2026 (mp1-lg, owner plan 8): sign-in details are the super-admin's (or a staff.credentials grant)
+                    http_response_code(403);
+                    throw new RuntimeException('Only a super-admin can change login credentials.');
                 }
                 // 5 Sep 2026: staff.manage is held by managers too — a manager
                 // must never be able to rewrite a super-admin's sign-in and
@@ -1907,7 +1909,7 @@ $ckHave = array_column($badges, 'label');
   </div>
 </div>
 
-<?php if ($canManage): ?>
+<?php if ($canManage && Auth::mayEditCredentials('staff.manage')): /* 25 Nov 2026 (mp1-lg) */ ?>
 <!-- ============ LOGIN CREDENTIALS (4 Sep 2026) ============
      Agents sign in with EMAIL + USERNAME + PASSWORD, all three set here by
      the office. Nothing on this page can read an existing password back —

@@ -243,6 +243,10 @@ const CORE_SUITES = [
     'u2-fb-booking-test.php'          => 'Messenger guided booking only with fb_msgr_form_on + a WhatsApp-proven number, summary + yes first',
     'u2-wa-form-page-test.php'        => 'admin/wa-form.php renders the form status and the dropped-form note',
     'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; pending tickets print the live link, COD tickets no pay QR (wx1)',
+    // 25 Nov 2026 (mp1 tk), registered with the clean ticket + cash / country pay-QR rule it guards.
+    'mp1-ticket-test.php'             => 'clean ticket: paid (cash) = no pay QR + PAID stamp, Nepal QR by country while due, one flag by direction, v2 off = old layout',
+    // 25 Nov 2026 (cp1), the "Booked at" GPS line the clean ticket now prints too.
+    'cp1-bookgeo-test.php'            => 'booking GPS headers -> booked_lat / lng / place (junk / 0,0 / out of range refused), "Booked at" ticket line',
     'u4-desk-test.php'                => 'sales closing clock per route + channel, office never blocked, Nepal desks and quick agent',
     'u5-ag-staff-headcount-test.php'  => 'staff / office logins earn a head count, not new commission; agents and counter unchanged',
     'u5-ag-payout-test.php'           => 'agent withdrawal request + manual office pay / decline, verify tick only when switched on',
@@ -265,8 +269,13 @@ const CORE_SUITES = [
     'wa-form-link-test.php'           => 'WhatsApp booking link (wa.php) + one-message form, agent code credit (19 Nov)',
     'wa87-e2e-test.php'               => '87 WhatsApp sender end to end: name / date → one booking, pay link, UTR never marks paid, one ticket (19 Nov)',
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
+    'mp1-pay-test.php'                => 'Payment Management: ICICI strict fields, one Nepal QR, Gmail bank alerts + bank webhook -> credits ledger, exact-match auto-confirm only (25 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
+    'mp1-login-test.php'              => 'top bar photo / initials + mode badge, login mode cards never change the role, credential actions super-admin only, remember 90 days (25 Nov mp1-lg)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+    'mp1-dayreport-test.php'          => 'seller day = CounterBook (cash + cod, online, due, commission), Nepali bot reply, evening report once, free window only (25 Nov dy)',
+    // 25 Nov 2026 (release ch): starts its own php -S on a free port for the HTTP part (skips it if it cannot)
+    'mp1-chalani-test.php'            => 'uniform chalani: Total | Cash | Online | Due strip = sum of rows, no double counting, live JSON poll, chalani.export per role, counter money',
     'wx1-a-test.php'                  => 'SmartBook: Nepal timezone opens Nepal -> India + swap, ₹ INR | रू NPR frozen on the sale, BS + AD date chips (25 Nov)',
     'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
     'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',

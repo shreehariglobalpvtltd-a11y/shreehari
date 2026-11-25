@@ -1754,6 +1754,20 @@ final class AgentPro
         return class_exists('Auth') ? (int) (Auth::admin()['id'] ?? 0) : 0;
     }
 
+    /** 25 Nov 2026 (mp1-lg review): said when an office save left a live member's login email as it was. */
+    public const EMAIL_SUPER_ONLY = 'लगइन इमेल सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login email';
+
+    /** What the last save skipped and the office should be told ('' = nothing); read once by api/agentpro.php. */
+    private static string $notice = '';
+
+    /** The notice left by the last saveDraft (syncApproved), cleared on read. */
+    public static function takeNotice(): string
+    {
+        $n = self::$notice;
+        self::$notice = '';
+        return $n;
+    }
+
     /**
      * An approved form changed: copy what changed into the live account — the
      * login (name, email, mobile), the profile every older screen reads, the
@@ -1778,6 +1792,7 @@ final class AgentPro
         $has   = static fn(string ...$k): bool => array_intersect($k, $keys) !== [];
 
         $login = [];
+        $emailRefused = false;
         if ($has('full_name', 'org_name')) {
             $name = trim((string) ($isOrg ? $app['org_name'] : $app['full_name']));
             if (mb_strlen($name) >= 2 && $name !== (string) $admin['full_name']) {
@@ -1788,7 +1803,21 @@ final class AgentPro
             $email = (string) ($app['email'] ?? '');
             if ($email !== '' && $email !== (string) $admin['email']
                 && !Database::exists('SELECT 1 FROM admins WHERE email = :e AND id <> :i', ['e' => $email, 'i' => $adminId])) {
-                $login['email'] = $email;
+                /* 25 Nov 2026 (mp1-lg review): the login email of a live member is a sign-in detail - a
+                   super-admin's (or a staff.credentials grant; lock off = staff.manage). Anyone else: the
+                   login email stays AND the form goes back to it (form = admins.email, so a later save
+                   of the same form is no new attempt - one audit line per real try); the rest of the
+                   sync goes on and the caller says why (takeNotice). */
+                if (class_exists('Auth') && Auth::admin() !== null && !Auth::mayEditCredentials('staff.manage')) {
+                    $live = trim((string) ($admin['email'] ?? ''));
+                    Database::update('ap_applications', ['email' => $live !== '' ? $live : null], 'id = :i', ['i' => $appId]);
+                    Logger::audit('staff.credentials_denied', 'admin', (string) $adminId, null, ['action' => 'agentpro.sync_email'],
+                        'Login email change of a live member refused (super-admin only) for admin #' . self::actorId());
+                    self::$notice = self::EMAIL_SUPER_ONLY;
+                    $emailRefused = true;
+                } else {
+                    $login['email'] = $email;
+                }
             }
         }
         if ($has('phone') && (string) ($app['phone'] ?? '') !== '' && normalisePhone((string) $app['phone']) !== normalisePhone((string) $admin['phone'])) {
@@ -1850,8 +1879,11 @@ final class AgentPro
             Database::update('ap_members', $card, 'admin_id = :a', ['a' => $adminId]);
         }
 
-        Logger::audit('agentpro.member_edited', 'admin', (string) $adminId, null, ['fields' => array_values($keys), 'ref' => $app['ref']],
-            'Approved member edited through the office form' . (self::actorId() > 0 ? ' by admin #' . self::actorId() : ''));
+        $edited = $emailRefused ? array_values(array_diff($keys, ['email'])) : array_values($keys);   // a refused email is not an edit
+        if ($edited !== []) {
+            Logger::audit('agentpro.member_edited', 'admin', (string) $adminId, null, ['fields' => $edited, 'ref' => $app['ref']],
+                'Approved member edited through the office form' . (self::actorId() > 0 ? ' by admin #' . self::actorId() : ''));
+        }
     }
 
     /**
@@ -2073,6 +2105,17 @@ final class AgentPro
         $phone = trim($rawPhone) !== '' ? normalisePhone($rawPhone) : (string) ($app['phone'] ?? '');
         if (!Security::isValidPhone($phone, true)) {
             throw new RuntimeException('Enter the mobile number.');
+        }
+        /* 25 Nov 2026 (mp1-lg review): on a LIVE member this writes admins.phone (syncApproved) - the
+           sign-in mobile the /team/ WhatsApp reset and the WhatsApp door send codes to. A super-admin's
+           (or a staff.credentials grant; staff_credentials_lock_on = 0 = the old manager rule). A form
+           not yet approved is onboarding and stays the office's. */
+        if ($app['status'] === 'approved' && !empty($app['admin_id']) && class_exists('Auth') && Auth::admin() !== null
+            && !Auth::mayEditCredentials('staff.manage')
+            && normalisePhone($phone) !== normalisePhone((string) Database::scalar('SELECT phone FROM admins WHERE id = :i', ['i' => (int) $app['admin_id']], ''))) {
+            Logger::audit('staff.credentials_denied', 'admin', (string) (int) $app['admin_id'], null, ['action' => 'agentpro.office_verify'],
+                'Login mobile change of a live member refused (super-admin only) for admin #' . $by);
+            throw new RuntimeException('लगइन मोबाइल super-admin ले मात्र बदल्छ · Only a super-admin changes a live member\'s sign-in mobile.');
         }
         $share = $share || self::shareAgreed($app, $phone);
         self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0), true, $share);

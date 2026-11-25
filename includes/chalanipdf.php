@@ -35,6 +35,7 @@ if (!defined('SHG_APP')) {
 
 require_once INCLUDE_PATH . '/pdf.php';
 require_once INCLUDE_PATH . '/ticket.php';      // Ticket::logoFile()
+require_once INCLUDE_PATH . '/chalanistrip.php'; // 25 Nov 2026 (release ch): Total | Cash | Online | Due
 
 final class ChalaniPdf
 {
@@ -365,13 +366,53 @@ final class ChalaniPdf
             foreach ($lines as $ln) { $txt($M + 8, $ly, $ln, 7.4, false, self::INK); $ly += 10; }
             $y += $bh + 4;
         }
-        $txt($M, $y + 1, 'गुजरात ⇄ रुपैडिहा · यात्रु यात्रा अभिलेख', 8, true, self::NAVY);
-        $txtR($W - $M, $y + 1, 'सिट · नाम · भुक्तानी विवरण', 8, true, self::NAVY);
+        $bandL = 'गुजरात ⇄ रुपैडिहा · यात्रु यात्रा अभिलेख';
+        /* 25 Nov 2026 (release ch, uniform chalani): the band's right side carries the money
+           strip - जम्मा यात्री | नगद | अनलाइन | ड्यू बाँकी - from the same $money / payMark the
+           rows read (ChalaniStrip), in the band's own height so no row moves to another page.
+           Switch chalani_money_strip_on; off = the old words. */
+        $strip = (ChalaniStrip::on() && is_callable($money) && is_callable($fmt['payMark'] ?? null))
+            ? ChalaniStrip::fromRows($rows, $money, $fmt['payMark']) : null;
+        if ($strip !== null) {
+            $segs = [
+                ['जम्मा यात्री ' . $neDigits((string) $strip['passengers']) . ' · ' . $cs . ' ' . number_format($strip['amount']), self::NAVY],
+                ['नगद ' . $cs . ' ' . number_format($strip['cash']), self::GREEN],
+                ['अनलाइन ' . $cs . ' ' . number_format($strip['online']), self::GREEN],
+                ['ड्यू बाँकी ' . $cs . ' ' . number_format($strip['due']) . ($strip['dueN'] > 0 ? ' (' . $neDigits((string) $strip['dueN']) . ' जना)' : ''), $strip['due'] > 0 ? self::RED : self::GREEN],
+            ];
+            /* review 25 Nov 2026: settled but neither cash nor online - its own figure, so
+               the band's figures add up to the total */
+            if (ChalaniStrip::hasOther($strip)) {
+                $segs[] = ['अन्य भुक्तानी ' . $cs . ' ' . number_format($strip['other']), self::NAVY];
+            }
+            /* the strip keeps the band's height: a size that fits beside the left words,
+               else a smaller one, else the strip alone (it is the part that matters) */
+            $segW = static function (float $sz) use ($segs, $width): float {
+                $w = 0.0;
+                foreach ($segs as $si => [$st]) { $w += $width($st, $sz) + ($si > 0 ? 6 + $width('|', $sz) : 0.0); }
+                return $w;
+            };
+            $sz = 8.0;
+            if ($segW($sz) > $inner - $width($bandL, 8) - 10) { $sz = 7.0; }
+            $showL = $segW($sz) <= $inner - $width($bandL, 8) - 10;
+            if ($showL) { $txt($M, $y + 1, $bandL, 8, true, self::NAVY); }
+            $sx = $W - $M;
+            for ($si = count($segs) - 1; $si >= 0; $si--) {
+                [$st, $rgb] = $segs[$si];
+                $txtR($sx, $y + 1, $st, $sz, true, $rgb);
+                $sx -= $width($st, $sz);
+                if ($si > 0) { $txtR($sx - 3, $y + 1, '|', $sz, false, self::MUTE); $sx -= 3 + $width('|', $sz) + 3; }
+            }
+        } else {
+            $txt($M, $y + 1, $bandL, 8, true, self::NAVY);
+            $txtR($W - $M, $y + 1, 'सिट · नाम · भुक्तानी विवरण', 8, true, self::NAVY);
+        }
         $y += 7;
 
         /* ---- table, paginated ---------------------------------------- */
         $limit  = $H - $M - 16;                  // the footer rule sits just below this
-        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit, 'marks' => [], 'sum' => []];
+        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit, 'marks' => [], 'sum' => [],
+            'strip' => $strip !== null ? array_diff_key($strip, ['rows' => 1]) : null];   // 25 Nov 2026 (release ch)
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
            line"): one line per booking with desk extras + blank pen lines.
            Page economy (review): with NO extras on the bus (the usual case) there is

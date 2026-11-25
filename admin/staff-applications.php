@@ -36,6 +36,14 @@ $role      = (string) ($admin['role'] ?? '');
 $selfId    = (int) ($admin['id'] ?? 0);
 $canKyc    = Auth::isSuperadmin() || $role === 'manager';
 $canDecide = Auth::isSuperadmin() || Auth::can('staff.manage');
+/* 25 Nov 2026 (mp1 review): an EXISTING person's sign-in - the portal password (pwset), clearing it
+   (pwclear) and the sign-in mobile (edit: phone / phone_country; /team/ = mobile + password) - is a
+   super-admin's (or a staff.credentials grant; staff_credentials_lock_on = 0 = the old staff.manage
+   rule). Approving (decide do=approve with new_password / counter_login) CREATES the first login:
+   onboarding, still the office's. */
+$mayCreds  = Auth::mayEditCredentials('staff.manage');
+$phNo      = 'मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile';
+$pwNo      = 'पासवर्ड सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can set or clear the portal password';
 $h         = static fn($v): string => Security::e((string) ($v ?? ''));
 $ready     = StaffApps::available();
 $flash     = null;
@@ -68,6 +76,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                 if ($do === 'approve' && $pwIn !== '' && mb_strlen($pwIn) < TeamPortal::PW_MIN) {
                     throw new TeamPortalError('The password must be at least ' . TeamPortal::PW_MIN . ' characters - nothing was approved.');
                 }
+                /* 25 Nov 2026 (mp1 review): approving AGAIN (after suspend / reject / reopen) must not
+                   reset an existing person's portal password unless the signed-in admin may edit
+                   credentials (super-admin). A first approve (no password yet) is onboarding = allowed. */
+                $hadPw = false;
+                if ($do === 'approve') {
+                    $prev  = StaffApps::find($id);
+                    $hadPw = $prev !== null && !empty($prev['password_hash']);
+                }
+                $keepPw = $hadPw && !$mayCreds;
                 $r  = StaffApps::decide($id, $do, $selfId, [
                     'reason'   => (string) ($_POST['reason'] ?? ''),
                     'template' => (string) ($_POST['template'] ?? ''),
@@ -77,7 +94,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                    approve can carry the portal password, and for an office / counter post a counter login on the
                    same mobile. With no password typed they make it at /team/ with a WhatsApp code. */
                 $credsLink = null;
-                if ($do === 'approve') {
+                if ($do === 'approve' && $keepPw) {
+                    Logger::audit('staff.credentials_denied', 'staff_application', (string) $id, null, ['action' => 'approve_reset_password'],
+                        'Re-approve kept the existing portal password (not a credential editor) - admin #' . $selfId);
+                } elseif ($do === 'approve') {
                     $pw = trim((string) ($_POST['new_password'] ?? ''));
                     /* 23 Oct 2026 (owner: "admin approve paxi ID password WhatsApp ma aaune"): no password typed =
                        a one-time one is made here and sent on WhatsApp with the mobile (= username) and the /team/
@@ -108,7 +128,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
                 }
                 // Not delivered by the API: the office gets a tap-to-send link on the next page.
                 $_SESSION['staff_wa_link'] = $credsLink ?? $r['waLink'];
-                Response::redirect('admin/' . $keep(['id' => $id, 'done' => $do, 'wa' => $r['wa'] ? 1 : 0]) . '#detail');
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => ($do === 'approve' && $keepPw) ? 'approvekept' : $do, 'wa' => $r['wa'] ? 1 : 0]) . '#detail');
             } elseif ($act === 'web') {
                 $order = isset($_POST['display_order']) && is_numeric($_POST['display_order']) ? (int) $_POST['display_order'] : null;
                 StaffApps::setWebsite($id, isset($_POST['show']), $order, $selfId,
@@ -120,6 +140,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
             } elseif ($act === 'note') {
                 StaffApps::setNote($id, (string) ($_POST['office_note'] ?? ''));
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'note']) . '#note');
+            } elseif ($act === 'link' && !$mayCreds && !empty((StaffApps::find($id) ?? [])['password_hash'])) {
+                /* 25 Nov 2026 (mp1 review): linking a card that already has a portal password ties that
+                   password to another login (a password change there is copied here) = a credential change. */
+                Logger::audit('staff.credentials_denied', 'staff_application', (string) $id, null, ['action' => 'link'],
+                    'Link refused: the card has a portal password - admin #' . $selfId);
+                http_response_code(403);
+                throw new TeamPortalError('पासवर्ड भएको कार्ड अर्को लगइनसँग जोड्न सुपर-एडमिन चाहिन्छ · Only a super-admin can link a card that already has a portal password.');
             } elseif ($act === 'link') {
                 // 22 Oct 2026: team portal - a ticket-selling account for this person ('' = unlink)
                 TeamPortal::linkAccount($id, (string) ($_POST['account'] ?? ''), $selfId);
@@ -127,11 +154,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
             } elseif ($act === 'edit' && $canKyc) {
                 // 22 Oct 2026 (owner: everything from one record): details, mobile, address, bank
                 $in = array_intersect_key($_POST, TeamPortal::STAFF_EDIT + ['phone' => 1, 'phone_country' => 1]);
+                $phRefused = false;
+                if (!$mayCreds) {
+                    /* 25 Nov 2026 (mp1 review): the sign-in mobile stays as it is (the box is shown
+                       disabled); a changed number posted anyway is refused + audited, the rest saves. */
+                    $cur  = StaffApps::find($id);
+                    $phIn = trim((string) ($in['phone'] ?? ''));
+                    $ccIn = (string) ($in['phone_country'] ?? '');
+                    $phRefused = $cur !== null && (($phIn !== '' && TeamPortal::phone10($phIn) !== (string) $cur['phone'])
+                        || (in_array($ccIn, ['IN', 'NP'], true) && $ccIn !== (string) $cur['phone_country']));
+                    unset($in['phone'], $in['phone_country']);
+                    if ($phRefused) {
+                        Logger::audit('staff.credentials_denied', 'staff_application', (string) ($cur['ref'] ?? $id), null, ['action' => 'staff_apps.edit.phone'],
+                            'Login mobile change refused on staff applications (super-admin only) for admin #' . $selfId . '; the other fields saved');
+                    }
+                }
                 $ch = TeamPortal::officeEditStaff($id, array_map('strval', $in), $selfId);
-                Response::redirect('admin/' . $keep(['id' => $id, 'done' => $ch === [] ? 'nochange' : 'edit']) . '#office');
+                Response::redirect('admin/' . $keep(['id' => $id, 'done' => $phRefused ? ($ch === [] ? 'noph' : 'editnoph') : ($ch === [] ? 'nochange' : 'edit')]) . '#office');
             } elseif ($act === 'kyc' && $canKyc) {
                 TeamPortal::officeKyc($id, (string) ($_POST['kyc_status'] ?? ''), $selfId);
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'kyc']) . '#office');
+            } elseif (($act === 'pwset' || $act === 'pwclear') && !$mayCreds) {
+                // 25 Nov 2026 (mp1 review): an existing person's portal password is the super-admin's
+                $cur = StaffApps::find($id);
+                Logger::audit('staff.credentials_denied', 'staff_application', (string) ($cur['ref'] ?? $id), null, ['action' => 'staff_apps.' . $act],
+                    ($act === 'pwset' ? 'Portal password set' : 'Portal password clear') . ' refused on staff applications (super-admin only) for admin #' . $selfId);
+                http_response_code(403);
+                $flash = ['bad', $pwNo . '. Nothing was changed.'];
             } elseif ($act === 'pwset') {
                 TeamPortal::officeSetStaffPassword($id, (string) ($_POST['new_password'] ?? ''), $selfId);
                 Response::redirect('admin/' . $keep(['id' => $id, 'done' => 'pwset']) . '#login');
@@ -158,8 +207,10 @@ if ($flash === null && isset($_GET['done'])) {
         'approve' => '✅ Approved.' . $wa, 'reject' => 'Rejected.' . $wa, 'suspend' => 'Suspended.' . $wa,
         'info'    => '📨 Request sent.' . $wa, 'review' => 'Marked under review.', 'exit' => 'Marked as exited — off the website.',
         'reopen'  => 'Reopened as pending.', 'web' => 'Website card saved.', 'note' => 'Note saved.',
+        'approvekept' => 'Approved. पुरानो पासवर्ड राखियो · The existing portal password was kept - only a super-admin can reset it.',
         'link'    => 'Ticket-selling account saved.', 'pwclear' => 'Portal password cleared — they make a new one at /team/ with a WhatsApp code.',
         'edit'    => 'Details saved.', 'nochange' => 'Nothing was changed.', 'kyc' => 'KYC saved.',
+        'editnoph' => 'Details saved. ' . $phNo . ' — left as it was.', 'noph' => 'Nothing was changed. ' . $phNo . '.',   // 25 Nov 2026 (mp1 review)
         'pwset'   => 'Portal password set — tell them in person or by phone; they sign in at /team/ with their mobile.',
         'recheck' => 'Documents read again: ' . Security::clean((string) ($_GET['dv'] ?? ''), 12) . '.',
         default   => 'Saved.',
@@ -425,6 +476,9 @@ if (!$ready) {
       <button class="btn sm" type="submit">Save</button>
       <span class="muted text-xs" style="flex:1 1 100%">Empty = no selling. A linked account and this staff card open together at /team/ (one mobile, one password).</span>
     </form>
+    <?php if (!$mayCreds): /* 25 Nov 2026 (mp1 review): set / clear the portal password = the super-admin's */ ?>
+    <p class="muted text-xs" style="margin:6px 0 0">🔐 <?= $h($pwNo) ?>.</p>
+    <?php else: ?>
     <?php if (!empty($open['password_hash'])): ?>
     <form method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="margin-top:6px" onsubmit="return confirm('Clear the portal password? They make a new one at /team/ with a WhatsApp code.')"><?= $csrfField ?><input type="hidden" name="action" value="pwclear"><input type="hidden" name="id" value="<?= $oid ?>">
       <button class="btn ghost sm" type="submit">Clear portal password</button></form>
@@ -435,6 +489,7 @@ if (!$ready) {
       <button class="btn sm" type="submit">Set</button>
       <span class="muted text-xs" style="flex:1 1 100%">For someone without WhatsApp. Tell them in person or by phone — never on WhatsApp. They can change it at /team/.</span>
     </form>
+    <?php endif; ?>
     <?php endif; ?>
     <?php endif; ?>
     <details class="stf-pane" style="margin-top:8px"><summary><b>CV</b> — education &amp; experience</summary><div class="stf-cv"><?= TeamPortal::cvHtml(TeamPortal::cv($open, 'staff'), false) ?></div></details>
@@ -449,7 +504,7 @@ if (!$ready) {
       <span class="muted text-xs" style="flex:1 1 100%"><?= !empty($open['kyc_verified_at']) ? $h('Last decided ' . date('d M Y H:i', strtotime((string) $open['kyc_verified_at']) ?: time())) . ' · ' : '' ?>Verified = you saw the original ID. The automatic document check above stays a score.</span>
     </form>
     <?php endif; ?>
-    <details class="stf-pane" style="margin-top:8px"<?= isset($_GET['done']) && in_array((string) $_GET['done'], ['edit', 'nochange'], true) ? ' open' : '' ?>><summary><b>✏️ Edit details</b> — name, mobile, email, address, emergency contact, bank</summary>
+    <details class="stf-pane" style="margin-top:8px"<?= isset($_GET['done']) && in_array((string) $_GET['done'], ['edit', 'nochange', 'editnoph', 'noph'], true) ? ' open' : '' ?>><summary><b>✏️ Edit details</b> — name, mobile, email, address, emergency contact, bank</summary>
       <form method="post" action="<?= $h($keep(['id' => $oid])) ?>" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:8px 12px;margin-top:10px" autocomplete="off"><?= $csrfField ?><input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="<?= $oid ?>">
         <?php
         $edit = [
@@ -460,13 +515,13 @@ if (!$ready) {
         ];
         foreach ($edit as $k => $lbl): ?>
         <label style="display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700"><?= $h($lbl) ?>
-          <input class="inp" name="<?= $h($k) ?>" maxlength="<?= (int) (TeamPortal::STAFF_EDIT[$k] ?? 16) ?>" value="<?= $h($open[$k] ?? '') ?>"<?= in_array($k, ['phone', 'whatsapp', 'emergency_contact_phone', 'bank_account'], true) ? ' inputmode="numeric"' : '' ?><?= $k === 'email' ? ' type="email"' : '' ?>></label>
-        <?php if ($k === 'phone'): ?>
+          <input class="inp" name="<?= $h($k) ?>" maxlength="<?= (int) (TeamPortal::STAFF_EDIT[$k] ?? 16) ?>" value="<?= $h($open[$k] ?? '') ?>"<?= in_array($k, ['phone', 'whatsapp', 'emergency_contact_phone', 'bank_account'], true) ? ' inputmode="numeric"' : '' ?><?= $k === 'email' ? ' type="email"' : '' ?><?= $k === 'phone' && !$mayCreds ? ' disabled' : '' ?>></label>
+        <?php if ($k === 'phone'): /* 25 Nov 2026 (mp1 review): the sign-in mobile - disabled (not posted) unless a super-admin */ ?>
         <label style="display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700">Mobile country
-          <select class="inp" name="phone_country"><option value="IN"<?= (string) $open['phone_country'] === 'IN' ? ' selected' : '' ?>>🇮🇳 India +91</option><option value="NP"<?= (string) $open['phone_country'] === 'NP' ? ' selected' : '' ?>>🇳🇵 Nepal +977</option></select></label>
+          <select class="inp" name="phone_country"<?= $mayCreds ? '' : ' disabled' ?>><option value="IN"<?= (string) $open['phone_country'] === 'IN' ? ' selected' : '' ?>>🇮🇳 India +91</option><option value="NP"<?= (string) $open['phone_country'] === 'NP' ? ' selected' : '' ?>>🇳🇵 Nepal +977</option></select></label>
         <?php endif; endforeach; ?>
         <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sm" type="submit">Save details</button>
-          <span class="muted text-xs">A new mobile is marked "not proven" until they confirm it; the team-portal login follows the new number.</span></div>
+          <span class="muted text-xs"><?= $mayCreds ? 'A new mobile is marked "not proven" until they confirm it; the team-portal login follows the new number.' : '🔐 ' . $h($phNo) . ' (the team-portal login).' ?></span></div>
       </form>
     </details>
     <?php endif; ?>

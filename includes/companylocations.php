@@ -147,6 +147,19 @@ final class CompanyLocations
         return '';
     }
 
+    /** mp1 (25 Nov 2026): a place's phone for a pickup in its town, for the clean ticket ('' when none is filled). */
+    public static function phoneForTown(string $label): string
+    {
+        $l = mb_strtolower($label);
+        foreach (self::all() as $p) {
+            $t = mb_strtolower(trim($p['town']));
+            if ($t !== '' && trim($p['phone']) !== '' && str_contains($l, $t)) {
+                return trim($p['phone']);
+            }
+        }
+        return '';
+    }
+
     /**
      * For an office card (wx1-c1 review): the best place of this exact town that
      * the office let the customer see (show_public) and that has $field ('map' /

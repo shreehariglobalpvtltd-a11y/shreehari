@@ -10,6 +10,32 @@ $admin = admin_boot('dashboard.view');
 
 // Writing settings is a privileged action.
 $canEdit = Auth::canManageSettings();
+/* 25 Nov 2026 (mp1-lg review): the permission switches (a lock on the managers themselves,
+   AiOps::SUPER_ONLY_SETTINGS - the one list) are a super-admin's: a settings manager's Save
+   skips them (with a note) and their switch is shown read-only. */
+require_once INCLUDE_PATH . '/aiops.php';
+/* 25 Nov 2026 (mp1 review): ...and every row of the 'security' settings group (settings.sgroup:
+   the role matrix role_permissions_override, admin_2fa_ids, PIN lock, device limits, remember-me,
+   the login doors). A settings.manage manager could rewrite them with a plain Save - that also
+   undid the credential lock. The rows are read once (skey => sgroup / stype / svalue). */
+$suRows = null;
+$suRow = static function (string $key) use (&$suRows): ?array {
+    if ($suRows === null) {
+        $suRows = [];
+        try {
+            foreach (Database::fetchAll('SELECT skey, sgroup, stype, svalue FROM settings') as $r) { $suRows[(string) $r['skey']] = $r; }
+        } catch (Throwable $e) {
+            $suRows = [];   // no settings table = nothing to save either
+        }
+    }
+    return $suRows[$key] ?? null;
+};
+$superOnly = static function (string $key) use ($suRow): bool {
+    if (Auth::isSuperadmin()) {
+        return false;
+    }
+    return AiOps::superOnlySetting($key) || strtolower(trim((string) ($suRow($key)['sgroup'] ?? ''))) === 'security';
+};
 
 $flash = null;
 
@@ -77,6 +103,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
         foreach (explode(',', (string) ($_POST['_boolkeys'] ?? '')) as $bk) {
             $bk = trim($bk);
             if ($bk !== '') { $pairs[$bk] = isset($_POST['s'][$bk]) ? '1' : '0'; }
+        }
+        $suSkipped = [];   // 25 Nov 2026 (mp1-lg review): a lock switch / security row posted by a non-super-admin
+        $suJson = static fn(string $v) => trim($v) === '' ? null : (json_decode($v, true) ?? ['#raw' => trim($v)]);
+        foreach (array_keys($pairs) as $sk) {
+            $sk = (string) $sk;
+            if (!$superOnly($sk)) {
+                continue;
+            }
+            $suNew  = (string) $pairs[$sk];
+            $suWas  = $suRow($sk);
+            $suType = (string) ($suWas['stype'] ?? 'bool');
+            $suOld  = (string) ($suWas['svalue'] ?? '');
+            if ($suType === 'bool') {
+                $suChg = in_array(strtolower(trim($suNew)), ['1', 'true', 'yes', 'on'], true) !== Settings::getBool($sk, true);
+            } elseif ($suType === 'json') {
+                $suChg = $suJson($suNew) != $suJson($suOld);
+            } else {
+                $suChg = trim($suNew) !== trim($suOld);
+            }
+            if ($suChg) {
+                $suSkipped[] = $sk;   // said only when it would have changed something
+            }
+            unset($pairs[$sk]);
+        }
+        if ($suSkipped !== []) {
+            Logger::audit('settings.super_only_denied', 'settings', mb_substr(implode(',', $suSkipped), 0, 100), null, ['keys' => $suSkipped],
+                'Settings Save by admin #' . (int) ($admin['id'] ?? 0) . ': super-admin-only rows left as they were');
         }
         /* Fares panel (3 Sep 2026): the private-cabin prices live INSIDE the
            cabin_pricing JSON, so the two number fields are merged into it here
@@ -186,6 +239,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                AFTER the generic rows are saved, so an edited cabin_pricing
                textarea and the two number fields cannot overwrite each other
                (the number fields win, as they are the curated place). */
+            /* 25 Nov 2026 (mp1 tk review): a change to what the ticket prints - the ticket_*
+               switches (clean layout, pay QR by country, no pay QR once paid), the map pins,
+               the company / Nepal lines, the pay ids - redraws cached ticket pictures on their
+               next open (as the JSON import below does), so turning a switch OFF is a rollback. */
+            $tkBefore = [];
+            foreach (array_keys($pairs) as $tk) {
+                if (preg_match('/^(ticket_|company_|nepal_|upi_|esewa_)|^india_hub_map$/', (string) $tk) === 1) {
+                    $tkBefore[(string) $tk] = json_encode(Settings::get((string) $tk));
+                }
+            }
             Settings::setMany($pairs);
             if ($fpSingle > 0 || $fpDouble > 0) {
                 Settings::flush();
@@ -219,8 +282,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                 Settings::set('main_fares', ['toNepal' => (float) $pairs['fare_to_nepal'], 'toIndia' => (float) $pairs['fare_to_india']], 'json', 'pricing', false);
             }
             Settings::flush();
+            foreach ($tkBefore as $tk => $was) {
+                if (json_encode(Settings::get($tk)) !== $was) {
+                    Settings::touchTicketIdentity();
+                    break;
+                }
+            }
             Seats::forgetModeMap();
-            $flash = ['ok', 'Settings saved.' . ($pfSaid !== [] ? ' Seat fares changed: ' . implode('; ', $pfSaid) . '.' : '')];
+            $flash = ['ok', 'Settings saved.' . ($pfSaid !== [] ? ' Seat fares changed: ' . implode('; ', $pfSaid) . '.' : '')
+                . ($suSkipped !== [] ? ' 🔐 सुपर-एडमिन मात्र · Only a super-admin can change ' . implode(', ', $suSkipped) . ' — left as it was.' : '')];
         } catch (InvalidArgumentException $e) {
             // A JSON textarea with a typo: nothing was written (the bulk write
             // is one transaction), so say which key and keep the old values.
@@ -242,7 +312,7 @@ foreach ($rows as $r) { $groups[$r['sgroup'] ?: 'general'][] = $r; }
 ksort($groups);
 
 $boolKeys = array_values(array_map(static fn($r) => $r['skey'],
-    array_filter($rows, static fn($r) => $r['stype'] === 'bool')));
+    array_filter($rows, static fn($r) => $r['stype'] === 'bool' && !$superOnly((string) $r['skey']))));   // a read-only lock switch is not posted
 
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
@@ -623,7 +693,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['import_act
                     $groups = [];
                     foreach ($rows as $r) { $groups[$r['sgroup'] ?: 'general'][] = $r; }
                     ksort($groups);
-                    $boolKeys = array_values(array_map(static fn($r) => $r['skey'], array_filter($rows, static fn($r) => $r['stype'] === 'bool')));
+                    $boolKeys = array_values(array_map(static fn($r) => $r['skey'], array_filter($rows, static fn($r) => $r['stype'] === 'bool' && !$superOnly((string) $r['skey']))));
                 } catch (Throwable $e) {
                     Settings::flush();
                     Logger::error('Settings import failed: ' . $e->getMessage());
@@ -1207,26 +1277,28 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
           <td>
             <?php if ($r['stype'] === 'bool'): ?>
               <label class="set-switch">
-                <input type="checkbox" role="switch" name="s[<?= Security::e($key) ?>]" value="1" <?= $val === '1' ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?> data-saved="<?= $val === '1' ? '1' : '0' ?>">
+                <input type="checkbox" role="switch" name="s[<?= Security::e($key) ?>]" value="1" <?= $val === '1' ? 'checked' : '' ?> <?= $canEdit && !$superOnly($key) ? '' : 'disabled' ?> data-saved="<?= $val === '1' ? '1' : '0' ?>">
                 <span class="set-knob" aria-hidden="true"></span>
                 <span class="set-state"><?= $val === '1' ? 'On' : 'Off' ?></span>
               </label>
+              <?php if ($canEdit && $superOnly($key)): ?><small class="muted" data-su-only>🔐 सुपर-एडमिन मात्र · Only a super-admin can change this switch.</small><?php endif; ?>
             <?php elseif (isset($choiceKeys[$key])): ?>
-              <select name="s[<?= Security::e($key) ?>]" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;min-height:44px" <?= $canEdit ? '' : 'disabled' ?>>
+              <select name="s[<?= Security::e($key) ?>]" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;min-height:44px" <?= $canEdit && !$superOnly($key) ? '' : 'disabled' ?>>
                 <?php foreach ($choiceKeys[$key] as $cv => $cl): ?><option value="<?= Security::e((string) $cv) ?>" <?= $val === (string) $cv ? 'selected' : '' ?>><?= Security::e($cl) ?></option><?php endforeach; ?>
               </select>
             <?php elseif ($isJson): ?>
-              <textarea name="s[<?= Security::e($key) ?>]" rows="2" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>><?= Security::e($val) ?></textarea>
+              <textarea name="s[<?= Security::e($key) ?>]" rows="2" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border:1px solid var(--line);border-radius:8px" <?= !$canEdit ? 'readonly' : ($superOnly($key) ? 'disabled' : '') ?>><?= Security::e($val) ?></textarea>
             <?php elseif ($isSecret): ?>
               <?php /* Write-only: the stored value is never sent to the browser.
                        It used to be printed into value="…" for every dashboard.view
                        role — API keys and the WhatsApp token, readable in the page
                        source by support staff. */ ?>
-              <input type="password" autocomplete="new-password" name="s[<?= Security::e($key) ?>]" value="" placeholder="<?= $val !== '' ? '•••••••• set — leave blank to keep' : 'not set' ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
+              <input type="password" autocomplete="new-password" name="s[<?= Security::e($key) ?>]" value="" placeholder="<?= $val !== '' ? '•••••••• set — leave blank to keep' : 'not set' ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= !$canEdit ? 'readonly' : ($superOnly($key) ? 'disabled' : '') ?>>
               <small class="muted" style="display:block;margin-top:4px;font-size:11.5px"><?= $val !== '' ? 'Set. Type a new value to replace it, or CLEAR to remove it.' : 'Not set.' ?></small>
             <?php else: ?>
-              <input type="text" name="s[<?= Security::e($key) ?>]" value="<?= Security::e($val) ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
+              <input type="text" name="s[<?= Security::e($key) ?>]" value="<?= Security::e($val) ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= !$canEdit ? 'readonly' : ($superOnly($key) ? 'disabled' : '') ?>>
             <?php endif; ?>
+            <?php if ($canEdit && $r['stype'] !== 'bool' && $superOnly($key)): /* 25 Nov 2026 (mp1 review): a security row - shown, not posted */ ?><small class="muted" data-su-only style="display:block;margin-top:4px">🔐 सुपर-एडमिन मात्र · Only a super-admin can change this setting.</small><?php endif; ?>
             <?php if (isset($waHelp[$key])): ?><small class="muted" style="display:block;margin-top:6px;max-width:560px;line-height:1.45"><?= Security::e($waHelp[$key]) ?></small><?php endif; ?>
             <?php /* 14 Oct 2026 (review): a saved channel link or mailbox the site cannot use is
                      said out loud here - the website, footers and search card leave it out. */

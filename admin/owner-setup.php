@@ -17,6 +17,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/aiops.php';   // AiOps::superOnlySetting (payment ids are a super-admin's)
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/driverauth.php';
@@ -104,9 +105,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $on = !empty($_POST['nf_on']) ? '1' : '0';
         Settings::set('normal_fare_json', json_encode($nf), 'json', 'pricing');
         Settings::set('normal_fare_on', $on, 'bool', 'pricing');
+        Settings::touchTicketIdentity();   // mp1 tk: the struck-through normal fare prints on the ticket - cached tickets redraw
         Settings::flush();
         Logger::audit('settings.normal_fare', 'settings', 'owner-setup', null, ['fares' => $nf, 'on' => $on], 'Normal fare (struck-through price)');
         $flash[] = ['ok', 'सामान्य भाडा सेभ भयो · normal fare saved' . ($on === '1' ? ' (ON)' : ' (OFF)')];
+    } elseif ((string) ($_POST['act'] ?? '') === 'esewa_qr' && !Auth::isSuperadmin()) {
+        /* 25 Nov 2026 (mp1): the Nepal payment QR is a super-admin's (Payment Management). */
+        $flash[] = ['bad', 'नेपाली QR सुपर-एडमिनले मात्र राख्न/हटाउन मिल्छ · only a super-admin can change the Nepal QR'];
     } elseif ((string) ($_POST['act'] ?? '') === 'onward') {
         /* 25 Nov 2026 (wx1-c2): onward buses from Nepalgunj for /travel-info#onward. Only
            what the office types is stored; a town with nothing filled is not shown. */
@@ -143,6 +148,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (!empty($_POST['remove'])) {
                 $oldQr = Settings::getString('nepal_esewa_qr', '');
                 Settings::set('nepal_esewa_qr', '', 'string', 'company');
+                Settings::touchTicketIdentity();   // mp1 tk: the Nepal pay QR on due tickets changes - cached tickets redraw
                 Settings::flush();
                 Logger::audit('settings.esewa_qr', 'settings', 'owner-setup', ['file' => $oldQr], ['file' => ''], 'Nepal eSewa QR removed');
                 $flash[] = ['ok', 'eSewa QR हटाइयो · removed'];
@@ -177,6 +183,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
                 $oldQr = Settings::getString('nepal_esewa_qr', '');
                 Settings::set('nepal_esewa_qr', 'uploads/payqr/' . $name, 'string', 'company');
+                Settings::touchTicketIdentity();   // mp1 tk: the Nepal pay QR on due tickets changes - cached tickets redraw
                 Settings::flush();
                 Logger::audit('settings.esewa_qr', 'settings', 'owner-setup', ['file' => $oldQr], ['file' => 'uploads/payqr/' . $name], 'Nepal eSewa QR uploaded');
                 $flash[] = ['ok', 'eSewa QR सेभ भयो · saved — NPR टिकटमा देखिन्छ'];
@@ -189,6 +196,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         foreach ($keys as $k => $spec) {
             if (!array_key_exists($k, $_POST)) { continue; }
             $v = trim((string) $_POST[$k]);
+            /* 25 Nov 2026 (mp1): payment ids / QR are a super-admin's (AiOps::superOnlySetting). */
+            if (!Auth::isSuperadmin() && AiOps::superOnlySetting($k)) {
+                if ($v !== Settings::getString($k, '')) {
+                    $flash[] = ['bad', $k . ': भुक्तानी ID सुपर-एडमिनले मात्र बदल्न मिल्छ · only a super-admin can change it'];
+                }
+                continue;
+            }
             if ($spec[0] === 'secret' && $v === '') { continue; }          // blank = keep the saved secret
             if ($spec[0] === 'map' && $v !== '') {
                 if (Ticket::mapLink($v) === '') {
@@ -212,6 +226,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $changed[] = $k;
         }
         Settings::flush();
+        // mp1 tk: a company / Nepal line (PAN, eSewa id, office, map pins) prints on the ticket - cached tickets redraw
+        if (array_filter($changed, static fn(string $k): bool => !str_starts_with($k, 'icici') && !str_starts_with($k, 'android')) !== []) {
+            Settings::touchTicketIdentity();
+        }
         if ($changed !== []) {
             Logger::audit('settings.owner_setup', 'settings', 'owner-setup', null, ['changed' => $changed], 'Owner setup page');
             $flash[] = ['ok', 'सेभ भयो · saved: ' . implode(', ', $changed)];

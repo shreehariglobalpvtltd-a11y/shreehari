@@ -189,6 +189,8 @@ final class Auth
             // 5 Oct 2026: launch customer campaigns (admin/campaigns.php).
             'marketing.send',
             'tickets.scan', 'waitlist.view',
+            // 25 Nov 2026 (release ch): chalani PNG / PDF / WhatsApp share
+            'chalani.export',
             // 9 Oct 2026: the office side of Office chat (admin/staff-chat.php) -
             // answers every agent / counter thread. Field roles (agent, counter)
             // use bookings.view and only ever see their own threads.
@@ -219,6 +221,7 @@ final class Auth
             'liveops.view', 'liveops.edit', 'messages.view', 'support.view', 'support.reply',
             'tickets.scan', 'waitlist.view',
             'staffmsg.office',   // Office chat, office side (9 Oct 2026)
+            'chalani.export',    // 25 Nov 2026 (release ch): chalani PNG / PDF / share
         ],
         // Viewer (5 Oct 2026): a partner or investor who may LOOK. The dashboard,
         // analytics and the money reports - and nothing that names a passenger
@@ -265,6 +268,7 @@ final class Auth
             'schedules.view', 'schedules.edit',
             'customers.view', 'tickets.scan',
             'messages.view', 'support.view', 'support.reply',
+            'chalani.export',    // 25 Nov 2026 (release ch): chalani PNG / PDF / share
         ],
         // Ticketing agent (Part 2): sells seats and transfers passengers from
         // the Seat Map + Trips board, and can look up any booking for support.
@@ -312,6 +316,8 @@ final class Auth
             'bookings.reassign'   => 'Change who sold a ticket (commission follows)',
             'tickets.scan'        => 'Boarding QR scanner',
             'waitlist.view'       => 'Waitlist',
+            // 25 Nov 2026 (release ch): the whole-bus chalani as PNG / PDF / print + WhatsApp share
+            'chalani.export'      => 'Chalani PNG / PDF / WhatsApp share',
         ],
         'Payments & Refunds' => [
             'payments.view'   => 'Payments queue',
@@ -339,6 +345,8 @@ final class Auth
         ],
         'People & Customers' => [
             'staff.manage'   => 'Staff, agents, logins, team approvals',
+            // 25 Nov 2026 (mp1-lg): no role holds it by default - super-admin only (Auth::mayEditCredentials)
+            'staff.credentials' => 'Change others\' password, login mobile, 2FA, PIN / pattern',
             'customers.view' => 'Customer CRM, agents register, invites',
             'coupons.view'   => 'Offers & coupons (read)',
             'coupons.edit'   => 'Create / edit offers',
@@ -359,6 +367,7 @@ final class Auth
     public const SENSITIVE_PERMISSIONS = [
         'bookings.cancel', 'bookings.reassign', 'refunds.process', 'commissions.pay',
         'staff.manage', 'settings.manage', 'reports.export', 'reports.view', 'marketing.send',
+        'staff.credentials',
     ];
 
     /** Roles the matrix may change. superadmin is everything, always. */
@@ -2338,6 +2347,31 @@ final class Auth
         $admin = self::admin();
 
         return $admin !== null && (string) ($admin['role'] ?? '') === 'superadmin';
+    }
+
+    /**
+     * 25 Nov 2026 (mp1-lg, owner plan 8: "user ko photo / password / PIN / permission edit:
+     * Admin matra"): may the signed-in person change SOMEONE ELSE's sign-in — password,
+     * username / email, login mobile + DOB, two-factor, PIN / pattern (open a reset, issue an
+     * activation code, clear it)? A super-admin always; anyone else only with the permission
+     * 'staff.credentials', which no role holds by default (the super-admin can grant it per
+     * person or per role in admin/permissions.php).
+     *
+     * $legacyPerm: the permission the page used before this release. While the switch
+     * staff_credentials_lock_on is OFF (default ON) that old rule applies again, so the owner
+     * can undo this in one tap. '' = the page was already super-admin-only (no fallback).
+     */
+    public static function mayEditCredentials(string $legacyPerm = ''): bool
+    {
+        if (self::isSuperadmin() || self::can('staff.credentials')) {
+            return true;
+        }
+        try {
+            $locked = Settings::getBool('staff_credentials_lock_on', true);
+        } catch (Throwable $e) {
+            $locked = true;
+        }
+        return !$locked && $legacyPerm !== '' && self::can($legacyPerm);
     }
 
     /**
