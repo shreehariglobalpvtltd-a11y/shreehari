@@ -777,8 +777,13 @@ final class WaSend
                 return $out;
             }
             $pnr  = (string) $b['pnr'];
-            $vars = Notify::ticketVars($b);
-            $img  = (string) ($vars['7'] ?? Ticket::imageUrl($pnr));
+            /* 25 Nov 2026 (mp3-bot, P6): the TEXT body reads the labelled order (ticketTextVars); the Meta template and
+               its image header keep the template's own numbering (ticketVars) — shg_ticket_image / shg_ticket_v2 expect
+               {1 name, 2 from, 3 to, 4 date, 5 seats, 6 PNR}. Switch wa_ticket_text_fix_on (default 1). */
+            $tplVars = Notify::ticketVars($b);
+            $vars = Settings::getBool('wa_ticket_text_fix_on', true) && method_exists('Notify', 'ticketTextVars')
+                ? Notify::ticketTextVars($b) : $tplVars;
+            $img  = (string) ($tplVars['7'] ?? Ticket::imageUrl($pnr));
             $co   = Settings::companyFor((string) ($b['counter_code'] ?? ''), (string) ($b['entity'] ?? ''));
             $role = (string) ($opt['role'] ?? 'customer');
             $text = ($role === 'seller' ? "🧾 टिकट कपी · Ticket copy (please forward to the passenger)\n" : '✅ ' . (string) $co['name'] . " — तपाईंको टिकट · Your ticket\n")
@@ -799,7 +804,7 @@ final class WaSend
                 'no_free' => !empty($opt['no_free']),
                 'dedupe' => $to . '|' . $purpose . '|' . (int) $b['id'] . $bucket,
             ];
-            $msg += self::templateFor('ticket', $vars, $img, '', 'en');
+            $msg += self::templateFor('ticket', $tplVars, $img, '', 'en');
             $q = self::queue($msg);
             $out = ['state' => $q['state'], 'id' => $q['id'], 'message_id' => $q['wamid'], 'error' => $q['error'], 'how' => '', 'to' => $to, 'text' => $text];
             if ($q['id'] <= 0) {

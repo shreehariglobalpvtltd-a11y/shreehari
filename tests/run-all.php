@@ -281,6 +281,8 @@ const CORE_SUITES = [
     'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
     'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',
     'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
+    // 25 Nov 2026 (mp3-bot): the chatbot answers what was asked
+    'mp3-bot-test.php'                => 'bot answers what was asked: directory (every place + CEO line), auto-replies silent, gated PNR (last 4 digits) + name search, desk chalani / halkhabar / person, honest fallback, read-only AI tools',
 ];
 
 /**

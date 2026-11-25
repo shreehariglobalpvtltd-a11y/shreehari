@@ -782,6 +782,25 @@ final class WaEdit
         return ($d !== '' && $d >= date('Y-m-d')) ? $d : '';
     }
 
+    /**
+     * 25 Nov 2026 (mp3-bot, P7: an agent's "✏️ नाम · Name" tap was read by the desk's PNR command and answered
+     * "नयाँ मान बुझिएन"): is this line a ticket-menu button, or is an edit conversation open on this number? Then the
+     * desk (ApWa) steps aside and this class answers.
+     */
+    public static function owns(string $fromRaw, string $body): bool
+    {
+        if (preg_match('/^\s*(?:shg:)?ed\s+(?:name|date|more|agent|cancel|menu|stop)\s+shg-[a-z0-9-]+\s*$/i', $body) === 1) {
+            return true;
+        }
+        try {
+            require_once INCLUDE_PATH . '/waagentroute.php';
+            $intl = WaAgentRoute::intl($fromRaw);
+        } catch (Throwable $e) {
+            return false;
+        }
+        return $intl !== '' && self::ready() && self::state($intl) !== null;
+    }
+
     /** @return array<string,mixed>|null */
     private static function state(string $intl): ?array
     {

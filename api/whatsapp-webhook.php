@@ -141,6 +141,9 @@ try {
     // shared with the Meta Cloud API webhook (whatsapp/webhook.php).
     require_once INCLUDE_PATH . '/wabot.php';
     $reply = WaBot::reply($from, $body);
+    if (WaBot::$silent) {
+        wa_reply();                               // 25 Nov 2026 (mp3-bot, P1): a machine's message gets no reply
+    }
     wa_reply(wa_message($reply['text'], $reply['media']));
 
 } catch (Throwable $e) {

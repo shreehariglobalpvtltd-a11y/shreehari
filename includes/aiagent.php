@@ -441,6 +441,8 @@ final class AiAgent
         $ctx['messageText'] = $text;
         $ctx['raw_text'] = $text;
         $ctx['attachment'] = $attachment;
+        // 25 Nov 2026 (mp3-bot): the WhatsApp desk's hand-off - reading tools only (AiTools::catalogue READ_ONLY_TOOLS)
+        $ctx['readOnly'] = !empty($extra['readOnly']);
 
         /* A person asking questions never reaches these; a loop, a prank or
            a broken integration does. Staff get a wider daily allowance
@@ -491,6 +493,7 @@ final class AiAgent
                         'text' => "🙏 अहिले जवाफ दिन सकिएन। कृपया केही बेरमा फेरि प्रयास गर्नुहोस् वा हाम्रो office मा सम्पर्क गर्नुहोस्"
                                . ($phone !== '' ? " — " . $phone : '') . "।",
                         'media' => null,
+                        'failed' => true,          // 25 Nov 2026 (mp3-bot): the desk's hand-off answers with its own line instead
                     ];
                 }
                 return null;
@@ -2018,7 +2021,7 @@ final class AiAgent
            . "their name once you know it, and react to what they actually said before answering — if they are "
            . "going home for a festival, say something warm about it in half a line.\n"
            . "B. Small talk is allowed and welcome: a greeting, 'kasto cha', thanks, a joke, a festival wish. "
-           . "Answer it like a human would, then gently bring it back to how you can help.\n"
+           . "Answer it like a human would" . (Settings::getBool('ai_answer_asked_rule_on', true) ? " and ask what they need - do not turn it into a ticket offer.\n" : ", then gently bring it back to how you can help.\n")
            . "C. Length follows the question. A yes/no gets one line. 'Tapai ko company ko barema bhannus' or "
            . "'website ma ke cha' may take up to 5 short lines. "
            . "Never pad, never repeat yourself, never send a wall of text.\n"
@@ -2029,7 +2032,9 @@ final class AiAgent
            . ($ceo !== ''
                ? "• " . $ceo . " — our founder and director. If someone asks who runs the company, who the owner "
                  . "or the CEO is, or names him, answer warmly and plainly. Do not share his personal number; "
-                 . "give the office number " . Settings::officePhone() . ".\n"
+                 . (Settings::getBool('wa_dir_ceo_public_on', true) && Settings::getBool('wa_directory_on', true)
+                     ? "when they ask for the CEO's number, give the line our website publishes for him (directory_lookup), plus the office number " . Settings::officePhone() . ".\n"
+                     : "give the office number " . Settings::officePhone() . ".\n")
                : '')
            . "• \"S Hari\", \"Shree Hari\", \"SHG\", \"Hari Global\", \"S Hari Global\" — all the same company, us.\n"
            . "• \"Gorkha\" / \"Gurkha\" — the Nepali community and heritage our passengers and staff come from. "
@@ -2263,6 +2268,30 @@ final class AiAgent
                 : "");
     }
 
+    /**
+     * 25 Nov 2026 (mp3-bot; owner: "ulto ans dinchha, khali ticket matra sodhchha"): the first rule of every chat
+     * briefing. The live history (15-25 Nov) had every fallback and several prompt lines steer a plain question
+     * back to a ticket. Switch ai_answer_asked_rule_on (default 1); '' when off.
+     */
+    private static function answerAskedRules(array $ctx): string
+    {
+        if (!Settings::getBool('ai_answer_asked_rule_on', true)) {
+            return '';
+        }
+        $phone = Settings::officePhone();
+        $out = "ANSWER WHAT WAS ASKED (first rule, it wins over any line below)\n"
+            . "A1. Answer exactly the question the person asked, in their own language and script (Devanagari Nepali, Roman Nepali, Hindi or English - mirror them), using the conversation so far.\n"
+            . "A2. Do not push a booking unless they asked to travel or to book. Never answer a question about an office, a number, a place, a rule, a person or a ticket with a booking prompt.\n"
+            . "A3. Office, counter, parking, pickup, border point, CEO / Nepal office / support numbers: directory_lookup. A ticket by PNR or number: pnr_lookup. "
+            . (in_array((string) ($ctx['role'] ?? ''), ['staff', 'admin'], true) ? "A passenger by name: name_search. " : "Someone else's ticket by name is never searched for a passenger - ask for their own PNR. ")
+            . "Read what the tool returns, never a number it did not return.\n"
+            . "A4. If you are unsure or no tool has it, say so plainly and give the office number " . $phone . ". Never guess.\n";
+        if (!empty($ctx['readOnly'])) {
+            $out .= "A5. In this chat you can only LOOK THINGS UP. To sell, change or cancel a ticket, or for money (withdraw, deposit, payout), tell them to type the desk command (\"ticket\", \"withdraw\", \"<PNR> cancel\") - the desk does it with its own confirmation.\n";
+        }
+        return $out . "\n";
+    }
+
     private static function systemPrompt(array $ctx): string
     {
         $company = Settings::getString('company_name', APP_NAME);
@@ -2276,7 +2305,8 @@ final class AiAgent
            catalogue this caller is actually handed (includes/aimaster.php). */
         require_once INCLUDE_PATH . '/aimaster.php';
         $base = AiMaster::brief($ctx, AiMaster::on() ? AiTools::catalogue($ctx) : [])
-            . ai_system_prompt() . "\n\n"
+            . ai_system_prompt(!$web) . "\n\n"
+            . self::answerAskedRules($ctx)
             . ($web ? self::webChannelRules($ctx) . self::facebookRules($ctx) : self::whatsappChannelRules($ctx))
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
@@ -2342,7 +2372,7 @@ final class AiAgent
             . "BEYOND THE BUS (this replaces 'ANSWER ONLY about this bus service' above, for this chat)\n"
             . "10. People will ask you anything. Do not refuse a harmless question because it is not about the bus. "
             . "Answer general-knowledge, travel, Nepal and India, festival, language or everyday questions in 1–3 "
-            . "short lines, warmly and correctly, then offer help with their journey in half a line.\n"
+            . "short lines, warmly and correctly" . (Settings::getBool('ai_answer_asked_rule_on', true) ? ".\n" : ", then offer help with their journey in half a line.\n")
             . "11. You have NO internet: no news, sports scores, weather, exchange rates or share prices. For anything "
             . "that depends on today's live information, say honestly that you cannot check live updates here and "
             . "where they can look. Never guess a result, a score, a rate or a number.\n"

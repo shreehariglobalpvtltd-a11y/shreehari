@@ -273,6 +273,35 @@ final class WaFaq
     }
 
     /**
+     * 25 Nov 2026 (mp3-bot, WaAnswer): ONLY the border-documents / luggage / child answer, for a question asked before
+     * (or in the middle of) a booking — "luggage kati kg samma?", "border ma k document chahincha?". Same rules as
+     * factAnswer (personal questions return null), remembered in the chat thread. null = none of these.
+     *
+     * @return array{text: string, media: null, intent: string}|null
+     */
+    public static function common(string $fromRaw, string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '' || mb_strlen($text) > 300) {
+            return null;
+        }
+        $t0 = microtime(true);
+        require_once INCLUDE_PATH . '/ticketbot.php';
+        $t = ' ' . self::norm($text) . ' ';
+        if (self::personal($t)) {
+            return null;
+        }
+        $other = self::commonAnswer($t, self::lang($text));
+        if ($other === null) {
+            return null;
+        }
+        $who = normalisePhone($fromRaw);
+        self::remember($who, $text, $other['text']);
+        self::log($fromRaw, $who, 'fact:' . $other['intent'], $t0);
+        return ['text' => $other['text'], 'media' => null, 'intent' => $other['intent']];
+    }
+
+    /**
      * Border documents / luggage (the route pages' published answers) and a child's fare (the office answers — it is
      * not published, so it is never guessed). null = none of these.
      *
@@ -288,7 +317,7 @@ final class WaFaq
         }
         require_once INCLUDE_PATH . '/routepages.php';
         if ($re('document|documents|docs|kagaj|kagat|kaagaj|kagajat|id\s*proof|passport|voter\s*id|aadhar|aadhaar|citizenship|nagarikta|nagrikta|कागज|कागजात|पासपोर्ट|नागरिकता')
-            && $re('border|chahincha|chahinchha|chahiye|chahiyo|chaiyo|lagcha|lagchha|kun|k|ke|kya|chaincha|lagega|लाग्छ|चाहिन्छ|चाहिए|बोर्डर')) {
+            && $re('border|chahincha|chahinchha|chahiye|chahiyo|chaiyo|lagcha|lagchha|kun|k|ke|kya|chaincha|lagega|chahiyega|lagenge|lagne|chahine|need|needed|needs|required|require|requirement|requirements|carry|bring|what|which|travel|travelling|traveling|लाग्छ|चाहिन्छ|चाहिए|बोर्डर|लाग्ने|चाहिने')) {
             $a = RoutePages::faqAnswer('a1', $pageLang);
             if ($a !== '') {
                 return ['text' => '🪪 ' . str_replace(' /travel-info', ' ' . appUrl('travel-info'), $a) . "\n📞 " . $phone, 'intent' => 'documents'];
@@ -330,6 +359,13 @@ final class WaFaq
         }
         $lang = self::lang($text);
         $phone = Settings::officePhone();
+        /* 25 Nov 2026 (mp3-bot): a question is not answered with "send the date and seats" (wa_answer_first_on). */
+        if (Settings::getBool('wa_answer_first_on', true)) {
+            return self::t($lang,
+                "🙏 यसको पक्का जवाफ अफिसले दिन्छ — फोन / WhatsApp: " . $phone . "\nसोध्न मिल्छ: भाडा (\"bhada\") · समय (\"timetable\") · अफिसको नम्बर · मेरो टिकट (PNR)",
+                "🙏 इसका पक्का जवाब ऑफिस देगा — फ़ोन / WhatsApp: " . $phone . "\nपूछ सकते हैं: किराया (\"kiraya\") · समय (\"timetable\") · ऑफिस का नंबर · मेरा टिकट (PNR)",
+                "🙏 The office will answer this for sure — call or WhatsApp: " . $phone . "\nYou can ask: fare (\"fare\") · times (\"timetable\") · office number · my ticket (PNR)");
+        }
         return self::t($lang,
             "🙏 यसको पक्का जवाफ अफिसले दिन्छ — फोन / WhatsApp: " . $phone . "\nटिकट चाहिए भने मिति, कति जना र कहाँबाट चढ्ने लेख्नुहोस्। (समय: \"timetable\" · भाडा: \"bhada\")",
             "🙏 इसका पक्का जवाब ऑफिस देगा — फ़ोन / WhatsApp: " . $phone . "\nटिकट चाहिए तो तारीख, कितने लोग और कहाँ से चढ़ना है, लिखिए। (समय: \"timetable\" · किराया: \"kiraya\")",
