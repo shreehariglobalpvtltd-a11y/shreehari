@@ -990,6 +990,13 @@ final class ApWa
             self::$cmdIntent = ['intent' => 'balance'];
             return self::balance($member, $lang);
         }
+        /* 25 Nov 2026 (release dy, owner plan 7): "hisab" / "हिसाब" / "mero hisab" / "aajako hisab" from a seller
+           is TODAY's own day (SellerDay). "hisab 7", "statement", "khata" stay the ledger statement below. */
+        if (in_array((string) ($ctx['role'] ?? ''), ['staff', 'admin'], true) && Settings::getBool('seller_day_wa_on', true)
+            && preg_match('/^(?:(mero|mera|my|मेरो|मेरा)\s*)?(?:(?:aaja|aja|आज)\s*(?:ko|को)?\s*)?(?:hisab|hisaab|हिसाब)(?:\s*(?:dekhau|dekhaunu|dekhaideu|dekhaunus|dinu|deu|dinus|pathau|pathaunu|kati|kati\s*bhayo|please|plz))?\s*[?!.।]*$/u', $l, $hm) === 1) {
+            self::$cmdIntent = ['intent' => 'report'];
+            return self::report($member, $ctx, $lang, !empty($hm[1]) || $ctx['role'] === 'staff' ? 'own' : '');
+        }
         if (preg_match('/^(?:statement|stmt|hisab|hisaab|हिसाब|स्टेटमेन्ट|स्टेटमेंट|passbook|ledger|khata|खाता)\b\s*(\d{1,3})?/u', $l, $m)) {
             $who = self::otherMember($text, $member, $ctx, $lang);
             if ($who !== null) {
@@ -3001,6 +3008,14 @@ final class ApWa
             }
             return self::out(implode("\n", $lines));
         }
+        /* 25 Nov 2026 (release dy): "नमस्ते <name> जी, आज <BS / AD>: टिकट, नगद, अनलाइन, ड्यू बाँकी,
+           तपाईंको कमिसन" in the desk's money (includes/sellerday.php), then the two running balances,
+           kept apart as before. seller_day_wa_on = 0 -> the old card. */
+        require_once __DIR__ . '/sellerday.php';
+        if (SellerDay::waOn() && is_array($d['figures'] ?? null)) {
+            return self::out('📊 ' . SellerDay::text($d['figures'], (string) ($member['full_name'] ?? ''), $lang === 'en' ? 'en' : 'ne') . "\n"
+                . self::t('rep_agent_tail', $lang, ['c' => (string) $d['commissionDueLabel'], 'h' => (string) $d['cashDueLabel']]));
+        }
         return self::out(self::t('rep_agent', $lang, ['d' => formatDate((string) $d['date'], 'D, j M'), 't' => (string) $d['tickets'],
             's' => (string) $d['seats'], 'v' => (string) $d['amountLabel'], 'c' => (string) $d['commissionDueLabel'], 'h' => (string) $d['cashDueLabel']]));
     }
@@ -4669,6 +4684,7 @@ final class ApWa
             'bus_sold'    => ['ne' => "{n} सिट बिक्री", 'hi' => "{n} सीट बिकी", 'en' => "{n} seats sold"],
             'bus_none'    => ['ne' => "(यो दिन कुनै बस छैन)", 'hi' => "(इस दिन कोई बस नहीं)", 'en' => "(no bus on this day)"],
             'rep_office'  => ['ne' => "📊 कम्पनी — {d}\n🎫 {t} टिकट · {v}\n⏳ भुक्तानी जाँच बाँकी: {p}", 'hi' => "📊 कंपनी — {d}\n🎫 {t} टिकट · {v}\n⏳ भुगतान जाँच बाकी: {p}", 'en' => "📊 Company — {d}\n🎫 {t} tickets · {v}\n⏳ Payments to verify: {p}"],
+            'rep_agent_tail' => ['ne' => "🟢 कमिसन बाँकी (जम्मा): {c}\n🔸 तपाईंसँग नगद (जम्मा): {h}", 'hi' => "🟢 कमीशन बाकी (कुल): {c}\n🔸 आपके पास नकद (कुल): {h}", 'en' => "🟢 Commission due (total): {c}\n🔸 Cash you hold (total): {h}"],
             'rep_agent'   => ['ne' => "📊 तपाईंको दिन — {d}\n🎫 {t} टिकट · {s} सिट · {v}\n🟢 कमिसन बाँकी: {c}\n🔸 तपाईंसँग नगद: {h}", 'hi' => "📊 आपका दिन — {d}\n🎫 {t} टिकट · {s} सीट · {v}\n🟢 कमीशन बाकी: {c}\n🔸 आपके पास नकद: {h}", 'en' => "📊 Your day — {d}\n🎫 {t} tickets · {s} seats · {v}\n🟢 Commission due: {c}\n🔸 Cash you hold: {h}"],
             'pax_head'    => ['ne' => "👥 यात्रु — {d} ({n})", 'hi' => "👥 यात्री — {d} ({n})", 'en' => "👥 Passengers — {d} ({n})"],
             'cancel_quote'=> ['ne' => "❌ {pnr} रद्द गर्दा फिर्ता: *{v}*\n{note}\n\nरद्द गर्ने भए *ho* लेख्नुहोस्।", 'hi' => "❌ {pnr} रद्द करने पर वापसी: *{v}*\n{note}\n\nरद्द करना है तो *ha* लिखें।", 'en' => "❌ Cancelling {pnr} refunds *{v}*\n{note}\n\nReply *yes* to cancel."],

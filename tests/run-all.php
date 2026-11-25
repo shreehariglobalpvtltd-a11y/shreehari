@@ -266,6 +266,7 @@ const CORE_SUITES = [
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+    'mp1-dayreport-test.php'          => 'seller day = CounterBook (cash + cod, online, due, commission), Nepali bot reply, evening report once, free window only (25 Nov dy)',
 ];
 
 /**
