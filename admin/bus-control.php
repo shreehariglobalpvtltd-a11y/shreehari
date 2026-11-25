@@ -129,7 +129,7 @@ if (Security::isPost()) {
                    coach guard, no total_seats sync and told nobody. BusSwap
                    guards, re-mints the tickets and tells the passengers. */
                 require_once INCLUDE_PATH . '/busswap.php';
-                if (BusSwap::on()) {
+                if (BusSwap::on() && (int) ($s['bus_id'] ?? 0) !== $bid) {   // same bus = the old harmless no-op below
                     $sw = BusSwap::swap($sid, $bid, (int) $admin['id'], 'Bus Control', ['via' => 'bus_control']);
                     $back(['ok', '🚌 ' . $sw['message']], $date, 'trip' . $sid);
                 }

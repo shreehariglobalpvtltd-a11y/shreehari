@@ -33,7 +33,15 @@
  *                      working template - and the trip's driver / crew
  *                      (DriverList::crewFor) gets the new number + the list.
  *                      A send that did not go releases its claim, so pressing
- *                      the swap again for the same bus resends only those.
+ *                      the swap again for the same bus resends only those -
+ *                      and only to the bookings that were CONFIRMED on the trip
+ *                      at swap time (their ids ride in the audit row), never to
+ *                      tickets sold on the new bus afterwards. A swap nobody
+ *                      could see (pinning the rotation's own bus) has nothing
+ *                      to resend. The crew notice is for the trip that is close
+ *                      (today / tomorrow, on the road) or the explicit Swap
+ *                      card; a re-plan weeks ahead on the Bus Calendar / Fleet
+ *                      leaves the crew to the usual driver list (DriverList cron).
  *
  * Switches (read inline): bus_swap_v2_on (1), bus_swap_notify_on (1); the
  * passenger notice also honours notify_ticket_edit / wa_ticket_rescue_on.
@@ -165,11 +173,16 @@ final class BusSwap
     /**
      * The latest swap of this trip from the audit trail (seq, from, to, labels).
      *
-     * @return array{count:int, to:int, from:int, seq:int, v2:bool, fromLabel:string, toLabel:string}
+     * 'visible' = the passenger saw a different bus number; 'bids' = the
+     * bookings confirmed on the trip at swap time (null on a row without the
+     * list - such a swap is never resumed).
+     *
+     * @return array{count:int, to:int, from:int, seq:int, v2:bool, fromLabel:string, toLabel:string, visible:bool, bids:?list<int>}
      */
     public static function lastSwap(int $sid): array
     {
-        $out = ['count' => 0, 'to' => 0, 'from' => 0, 'seq' => 0, 'v2' => false, 'fromLabel' => '', 'toLabel' => ''];
+        $out = ['count' => 0, 'to' => 0, 'from' => 0, 'seq' => 0, 'v2' => false, 'fromLabel' => '', 'toLabel' => '',
+                'visible' => false, 'bids' => null];
         try {
             $out['count'] = (int) Database::scalar(
                 "SELECT COUNT(*) FROM audit_logs WHERE action = 'trip.swap_bus' AND entity_type = 'schedule' AND entity_id = :s",
@@ -195,6 +208,14 @@ final class BusSwap
             $out['v2']        = !empty($new['v2']);
             $out['fromLabel'] = (string) ($old['label'] ?? '');
             $out['toLabel']   = (string) ($new['label'] ?? '');
+            $oldEff = (int) (($old['effective_bus_id'] ?? 0) ?: ($old['bus_id'] ?? 0));
+            $out['visible']   = array_key_exists('visible', $new) ? !empty($new['visible']) : ($oldEff !== $out['to']);
+            if ($out['fromLabel'] !== '' && $out['fromLabel'] === $out['toLabel']) {
+                $out['visible'] = false;
+            }
+            if (isset($new['bids']) && is_array($new['bids'])) {
+                $out['bids'] = array_values(array_map('intval', $new['bids']));
+            }
         }
         return $out;
     }
@@ -228,8 +249,11 @@ final class BusSwap
             $errors[] = 'Choose a bus. · बस छान्नुहोस्।';
         } elseif ((int) ($trip['sched_bus_id'] ?? 0) === $newBusId) {
             $last = self::lastSwap($sid);
-            if ($last['v2'] && $last['to'] === $newBusId) {
-                $resume = true;   // the swap is done; pressing again only resends what did not go
+            /* The swap is done; pressing again only resends what did not go -
+               and only when the passengers saw a change (a pin of the
+               rotation's own bus told nobody, so there is nothing to resend). */
+            if ($last['v2'] && $last['to'] === $newBusId && $last['visible'] && $last['bids'] !== null) {
+                $resume = true;
             } else {
                 $errors[] = 'This trip already runs that bus. · यो ट्रिपमा यही बस छ।';
             }
@@ -332,11 +356,13 @@ final class BusSwap
         $last   = self::lastSwap($sid);
 
         $liveRepointed = 0;
+        $onlyBids = null;
         if ($resume) {
             $seq      = max(1, $last['seq']);
             $oldLabel = $last['fromLabel'] !== '' ? $last['fromLabel'] : '—';
             $newLabel = $last['toLabel'] !== '' ? $last['toLabel'] : (string) $pv['newLabel'];
-            $visible  = true;
+            $visible  = $last['visible'];   // preview only resumes a visible swap
+            $onlyBids = $last['bids'] ?? [];
         } else {
             $seq      = $last['count'] + 1;
             $oldLabel = (string) $pv['oldLabel'];
@@ -344,6 +370,17 @@ final class BusSwap
             $oldEff   = (int) ($trip['eff_bus_id'] ?? 0);
             $schedBus = (int) ($trip['sched_bus_id'] ?? 0);
             $visible  = $oldEff !== $newBusId;   // pinning the rotation's own bus changes nothing the passenger sees
+            if ((string) $pv['oldLabel'] !== '—' && (string) $pv['oldLabel'] === (string) $pv['newLabel']) {
+                $visible = false;                 // two coaches, one public number: nothing to tell
+            }
+            /* Who was on the trip at swap time: a re-press never reaches past them. */
+            $bidsAtSwap = [];
+            foreach ($pv['passengers'] as $p) {
+                if ((string) $p['status'] === 'confirmed') {
+                    $bidsAtSwap[(int) $p['bookingId']] = true;
+                }
+            }
+            $bidsAtSwap = array_keys($bidsAtSwap);
 
             $check = Seats::assertBusSwapSafe($sid, $newBusId);
             $liveRepointed = (int) Database::transaction(static function () use ($sid, $newBusId, $check, $schedBus): int {
@@ -377,14 +414,32 @@ final class BusSwap
                  'label' => $oldLabel, 'total_seats' => $trip['total_seats'] ?? null],
                 ['bus_id' => $newBusId, 'label' => $newLabel, 'total_seats' => (int) $check['newTotalSeats'],
                  'bookedCount' => (int) $check['bookedCount'], 'via' => $via, 'v2' => 1, 'seq' => $seq,
-                 'live_trip_repointed' => $liveRepointed, 'trip_status' => (string) $trip['status']],
+                 'live_trip_repointed' => $liveRepointed, 'trip_status' => (string) $trip['status'],
+                 'visible' => $visible ? 1 : 0, 'bids' => $bidsAtSwap],
                 'Bus ' . $oldLabel . ' → ' . $newLabel . ' · ' . $trip['from_city'] . '→' . $trip['to_city'] . ' ' . $trip['travel_date']
                     . ' · ' . $pv['pax'] . ' passengers · via ' . $via . ' · by admin #' . $adminId,
                 $reason);
         }
 
+        /* The crew notice is for a trip that is close or on the road (the
+           breakdown case) and for the explicit Swap card. Re-planning an
+           empty or far-off date on the Bus Calendar / Fleet tells nobody in
+           the cab - the driver list goes out the day before as usual. */
+        $crewWhy = '';
+        if ($crewOn && $visible && $via !== 'trip_dashboard') {
+            $soon = (string) $trip['travel_date'] <= date('Y-m-d', strtotime('+1 day'))
+                 || in_array((string) $trip['status'], ['departed', 'running', 'boarding'], true);
+            if (!$soon || (int) $pv['pax'] === 0) {
+                $crewOn  = false;
+                $crewWhy = (int) $pv['pax'] === 0 ? 'not told (no passengers)' : 'not told yet (driver list goes the day before)';
+            }
+        }
+
         $fan = self::fanOut($sid, $newBusId, $trip, $oldLabel, $newLabel, $seq, $reason, $adminId,
-            $notify && $visible, $crewOn && $visible, $resume);
+            $notify && $visible, $crewOn && $visible, $resume, $onlyBids);
+        if ($fan['crew'] === '' && $crewWhy !== '') {
+            $fan['crew'] = $crewWhy;
+        }
 
         $fan['moved']         = $resume ? 0 : (int) $pv['pax'];
         $fan['passengers']    = (int) $pv['pax'];
@@ -416,7 +471,7 @@ final class BusSwap
      * @return array<string,mixed>
      */
     private static function fanOut(int $sid, int $newBusId, array $trip, string $oldLabel, string $newLabel, int $seq, string $reason,
-                                   int $adminId, bool $notify, bool $crewOn, bool $resume): array
+                                   int $adminId, bool $notify, bool $crewOn, bool $resume, ?array $onlyBids = null): array
     {
         if (PHP_SAPI !== 'cli') {
             @set_time_limit(300);
@@ -429,9 +484,13 @@ final class BusSwap
             require_once __DIR__ . '/notify.php';
         }
 
+        $scope = $onlyBids !== null ? array_fill_keys(array_map('intval', $onlyBids), true) : null;
         foreach (self::bookings($sid) as $r) {
             $bid = (int) $r['id'];
             $pnr = (string) $r['pnr'];
+            if ($scope !== null && !isset($scope[$bid])) {
+                continue;   // sold / confirmed after the swap: they bought on the new bus already
+            }
             $key = 'trip:bus_changed:' . $bid . ':' . $sid . ':' . $newBusId . ':' . $seq;
             $wantMsg = $notify && (string) $r['status'] === 'confirmed' && Notify::usablePhone($r['contact_phone'] ?? '') !== '';
             $claimed = false;
@@ -445,12 +504,14 @@ final class BusSwap
 
             $seatList = array_values(array_filter(array_map('trim', explode(',', (string) ($r['seats'] ?? '')))));
             $seats    = Seats::displayLabels($seatList, $coach, (string) (($r['booking_mode'] ?? '') ?: 'sharing'));
-            $t = TicketSync::afterBookingChange($bid, 'trip_change', ['seats' => 'Bus ' . $newLabel, 'busOld' => $oldLabel, 'busNew' => $newLabel],
-                ['notify' => false, 'reason' => $reason !== '' ? $reason : 'bus swap', 'actor' => 'admin #' . $adminId]);
-            if (!empty($t['ok']) && !empty($t['hadTicket'])) {
-                $out['tickets']++;
-            } elseif (empty($t['ok'])) {
-                $out['ticketFailed']++;
+            if (!$resume) {   // a re-press only resends; the tickets were redrawn at swap time
+                $t = TicketSync::afterBookingChange($bid, 'trip_change', ['seats' => 'Bus ' . $newLabel, 'busOld' => $oldLabel, 'busNew' => $newLabel],
+                    ['notify' => false, 'reason' => $reason !== '' ? $reason : 'bus swap', 'actor' => 'admin #' . $adminId]);
+                if (!empty($t['ok']) && !empty($t['hadTicket'])) {
+                    $out['tickets']++;
+                } elseif (empty($t['ok'])) {
+                    $out['ticketFailed']++;
+                }
             }
 
             if (!$wantMsg) {

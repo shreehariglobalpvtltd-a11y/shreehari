@@ -45,8 +45,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                    preview + confirm card, which re-mints the tickets and tells
                    the passengers. Un-assign (0) keeps the old path below. */
                 if ($busId > 0 && BusSwap::on()) {
-                    $cur = Database::fetch('SELECT bus_id, travel_date FROM schedules WHERE id = :id', ['id' => $sid]);
-                    if ($cur !== null && (int) ($cur['bus_id'] ?? 0) !== $busId) {
+                    /* Pinning the rotation's own bus (effective bus unchanged)
+                       changes nothing a passenger sees: the quiet path below. */
+                    $cur = BusSwap::trip($sid);
+                    if ($cur !== null && (int) ($cur['sched_bus_id'] ?? 0) !== $busId && (int) ($cur['eff_bus_id'] ?? 0) !== $busId) {
                         header('Location: ' . $base . '/admin/trip-dashboard.php?' . http_build_query([
                             'date' => (string) $cur['travel_date'], 'swap' => $sid, 'to' => $busId,
                         ]) . '#bus-swap', true, 303);

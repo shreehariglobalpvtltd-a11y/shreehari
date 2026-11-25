@@ -305,6 +305,38 @@ try {
     Settings::flush();
     check('H switch defaults back to on', BusSwap::notifyOn() === true);
 
+    /* ---- J far-off re-plan: crew left to the driver list; re-press never reaches new sales */
+    Database::update('schedules', ['status' => 'scheduled'], 'id = :id', ['id' => $sid]);
+    $sent = []; $failPnr = $pnr1; $crewBefore = count($crewMsgs);
+    $r6 = BusSwap::swap($sid, $busA, 1, 'Bus Calendar', ['via' => 'bus_calendar']);
+    check('J calendar swap weeks ahead: passengers told (2 sent, 1 failed)', (int) $r6['sent'] === 2 && (int) $r6['failed'] === 1, $r6['message']);
+    check('J calendar swap weeks ahead: crew NOT told', count($crewMsgs) === $crewBefore && str_contains((string) $r6['crew'], 'not told'), (string) $r6['crew']);
+    $b5 = op5_booking($sid, 'L30', 'confirmed', OP5_DATE);   // sold on bus A after the swap
+    $rev5 = $rev($b5);
+    $sent = []; $failPnr = '';
+    $r7 = BusSwap::swap($sid, $busA, 1, 'Bus Calendar');
+    check('J re-press: only the failed booking resent', !empty($r7['resume']) && (int) $r7['sent'] === 1 && count($sent) === 1 && (int) $sent[0]['bid'] === $b1, $r7['message']);
+    check('J re-press: ticket sold after the swap not messaged', !in_array($b5, array_column($sent, 'bid'), true));
+    check('J re-press: ticket sold after the swap not re-minted', $rev($b5) === $rev5, 'rev ' . $rev($b5) . ' vs ' . $rev5);
+    check('J re-press: no ticket redrawn at all', (int) $r7['tickets'] === 0);
+    check('J re-press from the Swap card: crew told at most once for that swap', count($crewMsgs) <= $crewBefore + 1);
+    $sent = []; $crewBefore = count($crewMsgs);
+    $r8 = BusSwap::swap($sid, $busB, 1, 'गाडी बिग्रियो', ['via' => 'trip_dashboard']);
+    check('J explicit Swap card: crew told even weeks ahead', count($crewMsgs) === $crewBefore + 1, (string) $r8['crew']);
+    check('J explicit Swap card: the new booking is on this swap (4 sent)', (int) $r8['sent'] === 4, $r8['message']);
+
+    /* ---- K a swap nobody saw (pin of the same number) has nothing to resend */
+    Logger::audit('trip.swap_bus', 'schedule', (string) $sid, ['bus_id' => null, 'effective_bus_id' => $busB, 'label' => $labelB],
+        ['bus_id' => $busB, 'label' => $labelB, 'v2' => 1, 'seq' => 90, 'visible' => 0, 'bids' => [$b1, $b2]], 'test pin');
+    $pk = BusSwap::preview($sid, $busB);
+    check('K pin: no resume, preview refuses', $pk['ok'] === false && $pk['resume'] === false);
+    $sent = [];
+    refused('K pin: resend refused', fn() => BusSwap::swap($sid, $busB, 1, 'test'));
+    check('K pin: nobody messaged', $sent === []);
+    Logger::audit('trip.swap_bus', 'schedule', (string) $sid, ['bus_id' => $busA, 'label' => $labelA],
+        ['bus_id' => $busB, 'label' => $labelB, 'v2' => 1, 'seq' => 91], 'row without the booking list');
+    check('K row without booking list: never resumed', BusSwap::preview($sid, $busB)['resume'] === false);
+
     /* ---- I the passenger wording (real Notify, local click-to-chat sender) */
     $wasDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
     if ($wasDriver === 'click_to_chat') {
