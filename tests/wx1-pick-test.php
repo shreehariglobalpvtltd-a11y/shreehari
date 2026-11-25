@@ -35,6 +35,16 @@ try {
     $q3 = SmartBook::quote(['direction' => 'toIndia', 'date' => addDaysISO(todayISO(), 1), 'pickup' => 'WXPICK Nepalgunj Office', 'pax' => [['gender' => 'Male', 'band' => 'adult']]], 'customer');
     $chk('chosen office = plan boarding', ($q3['pickup'] ?? '') === 'WXPICK Nepalgunj Office' && stripos((string) $q3['boarding'], 'WXPICK') !== false);
 
+    /* 16:00 office pickup on an 18:00 bus is the SAME day (PRE_DEP_MIN 4 h), not the next */
+    $tom = addDaysISO(todayISO(), 1);
+    $at  = Boarding::stopAt((int) ($q3['routeId'] ?? $rid), $tom, 'WXPICK Nepalgunj Office');
+    $dep = Database::scalar('SELECT dep_time FROM routes WHERE id = :r', ['r' => (int) ($q3['routeId'] ?? $rid)]);
+    if ($dep !== null && substr((string) $dep, 0, 5) > '16:30' && substr((string) $dep, 0, 5) <= '20:00') {
+        $chk('office pickup 1.5 h before the bus = same day', $at !== null && date('Y-m-d H:i', $at) === $tom . ' 16:30');
+    } else {
+        $chk('office pickup time resolves', $at !== null);
+    }
+
     $q4 = SmartBook::quote(['direction' => 'toIndia', 'pickup' => 'Kathmandu fake stop', 'pax' => [['gender' => 'Male', 'band' => 'adult']]], 'customer');
     $chk('unknown pickup text = a real row, never free text', in_array((string) ($q4['pickup'] ?? ''), $names, true));
 

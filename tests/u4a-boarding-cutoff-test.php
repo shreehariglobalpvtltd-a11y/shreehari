@@ -80,7 +80,10 @@ try {
         date('Y-m-d H:i', (int) Boarding::stopAt($rid, $D, 'Mehsana')));
     check('Palanpur 01:45 = NEXT day 01:45', Boarding::stopAt($rid, $D, 'Palanpur') === $at($D1, '01:45'));
     check('a stop 30 min before departure stays the same day (within the hour)', Boarding::stopAt($rid, $D, 'Kamrej') === $at($D, '12:30'));
-    check('a stop 90 min before departure is the next day', Boarding::stopAt($rid, $D, 'Early') === $at($D1, '11:30'));
+    // wx1 (25 Nov 2026): the window is Boarding::PRE_DEP_MIN (4 h, was 60 min) - the Nepalgunj office 16:00 for the 18:00 bus
+    check('a stop 90 min before departure stays the same day (inside the ' . Boarding::PRE_DEP_MIN . ' min window)', Boarding::stopAt($rid, $D, 'Early') === $at($D, '11:30'));
+    $setStop($rid, 'Earlier', '08:30:00');
+    check('a stop 4 h 30 min before departure is the next day', Boarding::stopAt($rid, $D, 'Earlier') === $at($D1, '08:30'));
     check('the label form "Mehsana @ 00:30 [23.6,72.4]" matches the same stop',
         Boarding::stopAt($rid, $D, 'Mehsana · Silver Complex @ 00:30 [23.6,72.4]') === $at($D1, '00:30'));
     check('a label with no stop row falls back to the route departure', Boarding::stopAt($rid, $D, 'Nowhere') === $at($D, '13:00'));
@@ -95,10 +98,10 @@ try {
     $mins = (int) date('G', $now) * 60 + (int) date('i', $now);
     if ($mins <= 23 * 60 + 25) {   // the departure clock (now + 30 min) must not wrap past midnight
         $setRouteDep($rid, date('H:i:00', $now + 30 * 60));
-        $setStop($rid, 'Late Pick', date('H:i:00', $now - 40 * 60));
+        $setStop($rid, 'Late Pick', date('H:i:00', $now - 270 * 60));   // wx1: 5 h before the clock (window is 4 h)
         $st = Boarding::status($rid, $T, 'Late Pick');
-        check('today: a pickup 70 min before the departure clock is NOT closed (next-day roll)', $st['open'] === true,
-            'dep ' . date('H:i', $now + 1800) . ', stop ' . date('H:i', $now - 2400) . ' -> ' . json_encode($st));
+        check('today: a pickup 5 h before the departure clock is NOT closed (next-day roll)', $st['open'] === true,
+            'dep ' . date('H:i', $now + 1800) . ', stop ' . date('H:i', $now - 270 * 60) . ' -> ' . json_encode($st));
         $setStop($rid, 'Gone Pick', date('H:i:00', $now + 10 * 60));   // 20 min before departure: same day, inside the cut-off
         $st = Boarding::status($rid, $T, 'Gone Pick');
         check('today: a pickup 10 min from now closes (cut-off ' . Boarding::cutoffMinutes() . ' min)',
