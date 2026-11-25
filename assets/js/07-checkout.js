@@ -3133,10 +3133,10 @@ function renderStatus(id) {
     ${tkClean ? '' : '<div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ' + esc(tkMantraLine()) + ' <span aria-hidden="true">❖</span></div>'}
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261126b" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261126c" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126b" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126b" width="600" height="312" alt="" decoding="async">'}
+      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126c" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126c" width="600" height="312" alt="" decoding="async">'}
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}
