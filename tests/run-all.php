@@ -286,6 +286,7 @@ const CORE_SUITES = [
     'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',
     'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
     'wx6-test.php'                    => 'Nepal journey (office 4 pm, our auto, 6 pm bus, one service), 5 pm NPT warning, boot coach, ticket styles, nav glide',
+    'easy-login-test.php'             => 'easy login: mode, code / mobile, FirstName@2026 until changed, office reset, never superadmin, drivers',
 ];
 
 /**

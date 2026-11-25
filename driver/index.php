@@ -148,12 +148,12 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
 <!-- 1. Sign in -->
 <section class="card" id="vLogin" hidden>
   <h1>Sign in · लॉग इन</h1>
-  <p class="mut">Use your mobile number and the PIN the office gave you. · ऑफिस से मिला PIN डालें।</p>
+  <p class="mut">मोबाइल नम्बर वा चालक नम्बर, र पासवर्ड वा PIN (कार्यालयले दिएको) · Mobile or driver number, and your password or PIN.</p>
   <form id="fLogin" autocomplete="off">
-    <label for="phone">Mobile number · मोबाइल नंबर</label>
+    <label for="phone">मोबाइल वा नम्बर · Mobile or number</label>
     <input id="phone" type="tel" inputmode="numeric" maxlength="15" required>
-    <label for="pin">PIN</label>
-    <input id="pin" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" required>
+    <label for="pin">पासवर्ड / PIN · Password or PIN</label>
+    <input id="pin" type="password" maxlength="64" required autocomplete="current-password">
     <button class="btn" type="submit" id="bLogin">Sign in · लॉग इन</button>
     <div class="err" id="eLogin" role="alert"></div>
   </form>

@@ -71,22 +71,29 @@ final class DriverAuth
      */
     public static function login(string $phone, string $pin, string $label = ''): ?array
     {
+        /* 25 Nov 2026 (easy login, owner): the mobile OR the driver number ("3", "D3"), and the PIN
+           OR the password - FirstName@2026 while this person is still on the default. */
+        require_once __DIR__ . '/easylogin.php';
+        $raw = $phone;
         $phone = normalisePhone($phone);
-        if ($phone === '' || !self::validPin($pin)) {
+        if (trim($pin) === '' || mb_strlen($pin) > 64) {
             return null;
         }
-        $d = Database::fetch(
-            'SELECT d.id, d.full_name, d.phone, d.role, d.pin_hash FROM drivers d
-              WHERE d.phone = :p AND d.is_active = 1 AND d.pin_hash IS NOT NULL' . self::crewGate(),
-            ['p' => $phone]
+        $found = EasyLogin::findDriver($raw);
+        $d = $found === null ? null : Database::fetch(
+            'SELECT d.* FROM drivers d WHERE d.id = :i AND d.is_active = 1' . self::crewGate(),
+            ['i' => (int) $found['id']]
         );
-        if ($d === null || !Security::verifyPassword($pin, (string) $d['pin_hash'])) {
+        if ($phone === '' && $d !== null) {
+            $phone = (string) $d['phone'];
+        }
+        if ($d === null || !EasyLogin::driverPasswordOk($d, $pin)) {
             // 16 Nov 2026: every failed try is on the record (the PIN itself never is)
             Logger::audit('driver.app_login_fail', 'driver', $d !== null ? (string) $d['id'] : '…' . substr($phone, -4), null,
                 ['reason' => $d !== null ? 'wrong_pin' : 'no_driver'], 'driver app: wrong phone or PIN');
             return null;
         }
-        if (Security::needsRehash((string) $d['pin_hash'])) {   // an older cost-10 PIN hash moves to cost 12 now
+        if ((string) ($d['pin_hash'] ?? '') !== '' && Security::needsRehash((string) $d['pin_hash'])) {   // an older cost-10 PIN hash moves to cost 12 now
             Database::update('drivers', ['pin_hash' => Security::hashPassword($pin)],
                 'id = :id AND pin_hash = :old', ['id' => (int) $d['id'], 'old' => (string) $d['pin_hash']]);
         }
