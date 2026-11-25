@@ -45,7 +45,7 @@ final class WaDirectory
         'mehsana'   => ['mehsana', 'mahesana', 'mehesana', 'mehsaana', 'msa', 'मेहसाना', 'मेहसाणा', 'महेसाणा', 'મહેસાણા'],
         'ahmedabad' => ['ahmedabad', 'amdavad', 'ahmdabad', 'ahemdabad', 'ahmadabad', 'amd', 'chiloda', 'nana chiloda', 'paldi', 'अहमदाबाद', 'अमदावाद', 'चिलोडा', 'અમદાવાદ'],
         'surat'     => ['surat', 'kamrej', 'srt', 'सुरत', 'कामरेज', 'સુરત'],
-        'baroda'    => ['baroda', 'vadodara', 'brd', 'बडोदा', 'वडोदरा', 'વડોદરા'],
+        'baroda'    => ['baroda', 'vadodara', 'barauda', 'brd', 'बडोदा', 'बडौदा', 'वडोदरा', 'બરોડા', 'વડોદરા'],
         'rajkot'    => ['rajkot', 'rjt', 'राजकोट', 'રાજકોટ'],
         'nepalgunj' => ['nepalgunj', 'nepalganj', 'nepalgunja', 'npj', 'नेपालगञ्ज', 'नेपालगंज', 'नेपालगन्ज'],
         'rupaidiha' => ['rupaidiha', 'rupaidiya', 'rupediha', 'rupaideha', 'रुपैडिहा', 'रुपईडीहा', 'रुपैडीहा'],
@@ -102,7 +102,7 @@ final class WaDirectory
                     'name'    => (string) $o['label'],
                     'nameNe'  => (string) ($o['nameNe'] ?? ''),
                     'town'    => (string) $o['city'],
-                    'townKey' => self::townKeyOf((string) $o['city'] . ' ' . (string) $o['label']),
+                    'townKey' => self::placeKey((string) $o['city'], (string) $o['label']),
                     'phone'   => (string) $o['phone'],
                     'wa'      => (string) $o['wa'],
                     'person'  => trim((string) ($o['inchargeName'] ?: $o['contact'])),
@@ -124,7 +124,7 @@ final class WaDirectory
                     $town = CounterDesk::townOf($name);
                     $out[] = [
                         'type' => 'counter', 'name' => $name, 'nameNe' => (string) ($d['name_ne'] ?? ''), 'town' => $town,
-                        'townKey' => self::townKeyOf($town . ' ' . $name),
+                        'townKey' => self::placeKey($town, $name),
                         'phone' => trim((string) ($d['phone'] ?? '')), 'wa' => trim((string) ($d['whatsapp'] ?? '')),
                         'person' => trim((string) ($d['contact_person'] ?? '')), 'personPhone' => trim((string) ($d['incharge_phone'] ?? '')),
                         'map' => trim((string) ($d['map_url'] ?? '')), 'address' => trim((string) ($d['address'] ?? '')),
@@ -143,7 +143,7 @@ final class WaDirectory
                 }
                 $out[] = [
                     'type' => (string) $p['kind'], 'name' => (string) $p['name'], 'nameNe' => (string) $p['nameNe'],
-                    'town' => (string) $p['town'], 'townKey' => self::townKeyOf((string) $p['town'] . ' ' . (string) $p['name']),
+                    'town' => (string) $p['town'], 'townKey' => self::placeKey((string) $p['town'], (string) $p['name']),
                     'phone' => trim((string) $p['phone']), 'wa' => trim((string) $p['whatsapp']),
                     'person' => trim((string) $p['person']), 'personPhone' => '', 'map' => trim((string) $p['map']),
                     'address' => trim((string) $p['address']), 'hours' => trim((string) $p['hours']),
@@ -173,7 +173,9 @@ final class WaDirectory
                   WHERE r.is_active = 1 AND s.stop_type = 'boarding' AND s.is_active = 1
                   ORDER BY r.sort_order, s.sort_order, s.id") as $s) {
                 $name = (string) $s['stop_name'];
-                if ($townKey !== '' && self::townKeyOf($name . ' ' . (string) ($s['landmark'] ?? '')) !== $townKey) {
+                // the stop as written ("Barauda") and as the ticket shows it (Boarding::stopDisplay) — either names the town
+                $shown = (string) (Boarding::stopDisplay($name)['name'] ?? $name);
+                if ($townKey !== '' && self::townKeyOf($name . ' ' . (string) ($s['landmark'] ?? '')) !== $townKey && self::townKeyOf($shown) !== $townKey) {
                     continue;
                 }
                 $k = mb_strtolower(trim($name)) . '|' . (string) $s['from_city'];
@@ -307,9 +309,11 @@ final class WaDirectory
      * @param string $view 'customer' | 'staff' | 'admin' (AiTools::whoIs role)
      * @param string $lang ne | rn (Roman Nepali) | hi | en
      * @param bool $force the AI's directory_lookup tool: the model already decided it is a directory question
+     * @param bool $office an OTP-linked office number (ApWa::isOffice) or a signed-in web office session: only then
+     *                    the agents' / counters' personal mobiles (the desk's 31 Oct rule) — role 'admin' alone is not enough
      * @return array{text:string, kind:string, hits:int}|null
      */
-    public static function lookup(string $text, string $view, string $lang, bool $force = false): ?array
+    public static function lookup(string $text, string $view, string $lang, bool $force = false, bool $office = false): ?array
     {
         if (!self::on() || (!$force && !self::isQuestion($text))) {
             return null;
@@ -328,7 +332,7 @@ final class WaDirectory
         }
         // Agents of a town
         if ($has(self::W_AGENT) && $town !== '') {
-            return self::agentsAnswer($town, $view, $lang);
+            return self::agentsAnswer($town, $view, $lang, $office);
         }
 
         $want = '';
@@ -364,7 +368,17 @@ final class WaDirectory
         if ($town === '' && $want === '') {
             $match = array_values(array_filter($places, static fn(array $p): bool => in_array($p['type'], ['head', 'office'], true) || $p['public']));
         }
-        if ($match === [] && $stops === []) {
+        // Rupaidiha / Kohalpur (no public desk with a number of their own): the Nepalgunj office answers for the
+        // Nepal side, as WaLocal's nepal_office did before the directory ran first
+        $hasNumber = static fn(array $p): bool => trim($p['phone'] . $p['wa']) !== '';
+        $nepalNear = [];
+        if (in_array($town, ['rupaidiha', 'kohalpur'], true) && array_filter($match, $hasNumber) === []) {
+            $nepalNear = array_values(array_filter($places, static fn(array $p): bool => $p['townKey'] === 'nepalgunj' && $p['public']
+                && in_array($p['type'], ['head', 'office'], true) && trim($p['phone'] . $p['wa']) !== ''));
+        }
+        // a town whose desk has no number here: the counters line the documents print (company_counters)
+        $counterLine = $town !== '' && array_filter($match, $hasNumber) === [] ? self::counterLineFor($town) : '';
+        if ($match === [] && $stops === [] && $nepalNear === [] && $counterLine === '') {
             return self::noneAnswer($town, $want, $lang);
         }
 
@@ -378,6 +392,15 @@ final class WaDirectory
         foreach (array_slice($match, 0, 10) as $p) {
             $lines[] = self::placeLine($p, $lang, $internal);
         }
+        if ($counterLine !== '') {
+            $lines[] = '🏪 ' . $counterLine;
+        }
+        if ($nepalNear !== []) {
+            $lines[] = self::t($lang, '🇳🇵 नजिकको अफिस (नेपालगञ्ज):', '🇳🇵 Najik ko office (Nepalgunj):', '🇳🇵 पास का ऑफिस (नेपालगंज):', '🇳🇵 Nearest office (Nepalgunj):');
+            foreach (array_slice($nepalNear, 0, 3) as $p) {
+                $lines[] = self::placeLine($p, $lang, $internal);
+            }
+        }
         foreach (array_slice($stops, 0, 10) as $s) {
             $lines[] = '🚏 ' . $s['name'] . ($s['landmark'] !== '' && !str_contains(mb_strtolower($s['name']), mb_strtolower($s['landmark'])) ? ' (' . $s['landmark'] . ')' : '')
                 . ($s['time'] !== '' ? ' · ' . $s['time'] : '') . ' · ' . $s['route'] . ($s['map'] !== '' ? "\n   🗺 " . $s['map'] : '');
@@ -387,7 +410,8 @@ final class WaDirectory
             $lines[] = self::t($lang, '🏪 सबै काउन्टर: ', '🏪 Sabai counter: ', '🏪 सभी काउंटर: ', '🏪 All counters: ') . (string) Settings::company()['counters'];
         }
         $lines[] = self::t($lang, '📞 मुख्य अफिस: ', '📞 Mukhya office: ', '📞 मुख्य ऑफिस: ', '📞 Head office: ') . Settings::officePhone();
-        return ['text' => implode("\n", $lines), 'kind' => $want !== '' ? $want : 'place', 'hits' => count($match) + count($stops)];
+        return ['text' => implode("\n", $lines), 'kind' => $want !== '' ? $want : 'place',
+            'hits' => count($match) + count($stops) + count($nepalNear) + ($counterLine !== '' ? 1 : 0)];
     }
 
     /* =================================================================
@@ -477,7 +501,7 @@ final class WaDirectory
     }
 
     /** Agents of one town: the public directory for a passenger; name + code + area for staff; + phone for the office. */
-    private static function agentsAnswer(string $town, string $view, string $lang): array
+    private static function agentsAnswer(string $town, string $view, string $lang, bool $office = false): array
     {
         $T = self::townLabel($town);
         $lines = ['🤝 ' . $T . self::t($lang, ' — हाम्रा एजेन्ट', ' — hamra agent', ' — हमारे एजेंट', ' — our agents')];
@@ -509,7 +533,7 @@ final class WaDirectory
                     $code = AgentWallet::agentCodeLabel((int) $a['id']);
                     $ph = trim((string) ($a['phone'] ?: ($a['display_phone'] ?? '')));
                     $lines[] = '• ' . trim((string) $a['full_name']) . ($code !== '' ? ' · ' . $code : '') . ((string) ($a['counter_name'] ?? '') !== '' ? ' · ' . $a['counter_name'] : '')
-                        . ($view === 'admin' && $ph !== '' ? ' · ' . $ph : '') . ((string) $a['role'] === 'counter' ? ' (counter)' : '');
+                        . ($office && $view === 'admin' && $ph !== '' ? ' · ' . $ph : '') . ((string) $a['role'] === 'counter' ? ' (counter)' : '');
                     if (++$n >= 15) {
                         break;
                     }
@@ -560,6 +584,29 @@ final class WaDirectory
         }
         $first = (string) (preg_split('/[\s,—–\-·|(]+/u', trim(self::norm($label))) ?: [''])[0];
         return (string) preg_replace('/[^\p{L}]/u', '', $first);
+    }
+
+    /** A place's town: its own town column first ("Rupaidiha / Nepalgunj border" is Rupaidiha's), then its name. */
+    private static function placeKey(string $town, string $name): string
+    {
+        $k = trim($town) !== '' ? self::townKeyOf($town) : '';
+        if (isset(self::TOWNS[$k])) {
+            return $k;
+        }
+        $k2 = self::townKeyOf($town . ' ' . $name);
+        return isset(self::TOWNS[$k2]) || $k === '' ? $k2 : $k;
+    }
+
+    /** That town's entry in the company counters line ("Baroda +91 97264 01507"), '' = none. */
+    public static function counterLineFor(string $townKey): string
+    {
+        foreach (preg_split('/\s*[·•|;\n]\s*/u', (string) (Settings::company()['counters'] ?? '')) ?: [] as $part) {
+            $part = trim((string) $part);
+            if ($part !== '' && strlen((string) preg_replace('/\D/', '', $part)) >= 8 && self::townKeyOf($part) === $townKey) {
+                return $part;
+            }
+        }
+        return '';
     }
 
     private static function townLabel(string $key): string

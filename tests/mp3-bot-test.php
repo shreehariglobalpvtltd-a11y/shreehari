@@ -21,6 +21,11 @@
  *   H the AI layer: directory_lookup / pnr_lookup / name_search with the same gates, the read-only hand-off,
  *     the "answer what was asked" rule in the chat briefings (the website briefing unchanged)
  *   I switches off = the old paths
+ *   J review round: "<name> ka xan" / "<town> agent" follow directory()'s phone rules (OTP-linked office only for
+ *     agents' mobiles, no crew / staff mobiles to agents); last-4 guesses survive a re-sent PNR and cap at 5 per PNR
+ *     across numbers; Settings office numbers + the pending pay QR; Baroda / Rupaidiha / Kohalpur / border never
+ *     dead-end; how-to-book, "Online ko ticket", English documents; a person's line is never a machine; the Meta
+ *     ticket template keeps its own numbering
  *
  *    php -c .claude/php-dev.ini tests/mp3-bot-test.php
  *  Nothing leaves this machine (Meta constants empty, transports captured, AI keys blank, settings in memory only).
@@ -38,7 +43,7 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 if (!defined('DB_NAME') || DB_NAME !== 'shari_test') { echo "  SKIP  not shari_test\n"; exit(0); }
 foreach (['fare', 'seats', 'qr', 'pdf', 'ticket', 'booking', 'notify', 'agentpro', 'agentpro-wa', 'agentwallet', 'ticketbot', 'quickticket',
           'wabooking', 'wabot', 'waroute', 'waagentroute', 'aitools', 'aiagent', 'aiprompt', 'counterdesk', 'companylocations',
-          'wadirectory', 'walookup', 'waanswer', 'waedit', 'sitefacts'] as $f) {
+          'wadirectory', 'walookup', 'waanswer', 'waedit', 'sitefacts', 'wasend'] as $f) {
     require_once INCLUDE_PATH . '/' . $f . '.php';
 }
 
@@ -130,6 +135,7 @@ $cleanup = static function () use ($CUST): void {
         }
         Database::delete('admins', 'id = :i', ['i' => $id]);
     }
+    try { Database::run("DELETE FROM kv_store WHERE kscope = 'wa_pnr_fail' AND kkey LIKE 'p|SHG-2026-9933%'"); } catch (Throwable $e) {}
     try { Database::run('DELETE FROM counter_locations WHERE code = :c', ['c' => DESK]); } catch (Throwable $e) {}
     CounterDesk::flush();
 };
@@ -208,7 +214,9 @@ check('A "Ahmedabad pickup kaha?" — the Ahmedabad pickup / parking places', $r
 $r = WaDirectory::lookup('Nepalgunj agent', 'staff', 'rn');
 check('A "Nepalgunj agent" (staff) lists the Nepalgunj agent by name + code, never the phone', $r !== null && str_contains($r['text'], 'MP3 Sunil Agenttwo') && !str_contains($r['text'], AG2), (string) ($r['text'] ?? ''));
 $r = WaDirectory::lookup('Nepalgunj agent', 'admin', 'rn');
-check('A …the office also sees the agent\'s number', $r !== null && str_contains($r['text'], AG2), (string) ($r['text'] ?? ''));
+check('A …role admin alone (not OTP-linked) does NOT see the agent\'s number', $r !== null && !str_contains($r['text'], AG2), (string) ($r['text'] ?? ''));
+$r = WaDirectory::lookup('Nepalgunj agent', 'admin', 'rn', false, true);
+check('A …an OTP-linked office does', $r !== null && str_contains($r['text'], AG2), (string) ($r['text'] ?? ''));
 $r = WaDirectory::lookup('Nepalgunj agent', 'customer', 'rn');
 check('A …a passenger never sees a private roster phone', $r !== null && !str_contains($r['text'], AG2), (string) ($r['text'] ?? ''));
 Database::insert('counter_locations', ['code' => DESK, 'name' => 'Palanpur — ZZ Desk', 'country' => 'IN', 'currency' => 'INR', 'fx_rate' => 1,
@@ -421,6 +429,122 @@ setOvr('wa_lookup_on', '0');
 check('I wa_lookup_on = 0: no name search on the desk path either', WaAnswer::forCustomer('+91' . STR, STR, 'Ramesh Bahadur Thapa ko ticket kun bus ma cha?', $cust) === null
     || WaBot::$lastRouter !== 'lookup');
 setOvr('wa_lookup_on', '1');
+
+/* ===================================================================== */
+section('J review round: phones follow the directory rules, guesses are capped, answers do not dead-end');
+$dig = static fn(string $t): string => (string) preg_replace('/\D/', '', $t);
+$supId = $mk('mp3bot_sup', 'MP3 Hemraj Supportone', '7000093304', 'support');
+// J1 "<name> ka xan": crew / staff phones stay with the office; an agent's personal mobile needs an OTP-linked office
+$r = wa(AG1, 'Hemraj ka xan');
+check('J an agent asking "<support staff> ka xan" gets the name, never that person\'s mobile', str_contains(txt($r), 'MP3 Hemraj Supportone') && !str_contains($dig(txt($r)), '7000093304'), txt($r));
+$r = wa(OWN, 'Dalbir ka xan');
+check('J the superadmin by typed admins.phone only (not OTP-linked): an agent\'s personal mobile is NOT shown', str_contains(txt($r), 'MP3 Dalbir Agentone') && !str_contains($dig(txt($r)), AG1), txt($r));
+$r = wa(AG2, 'Dalbir ka xan');
+check('J …another agent: no agent mobile, no today\'s count for someone else', str_contains(txt($r), 'MP3 Dalbir Agentone') && !str_contains($dig(txt($r)), AG1) && !str_contains(txt($r), '🎫'), txt($r));
+$r = wa(OWN, 'Surat agent');
+check('J the unlinked superadmin asking "Surat agent": names + codes, no personal mobiles', str_contains(txt($r), 'MP3 Dalbir Agentone') && !str_contains($dig(txt($r)), AG1), txt($r));
+Database::run('UPDATE admins SET must_change_pw = 1 WHERE id = :i', ['i' => $ag2]);
+$r = wa(AG2, 'Hemraj ka xan');
+check('J a member still on a temporary password cannot use "<name> ka xan"', !str_contains($dig(txt($r)), '7000093304'), txt($r));
+Database::run('UPDATE admins SET must_change_pw = 0 WHERE id = :i', ['i' => $ag2]);
+Database::insert('ap_wa_links', ['phone' => normalisePhone('+91' . OWN), 'admin_id' => $ownId, 'via' => 'otp', 'verified_at' => date('Y-m-d H:i:s')]);
+$r = wa(OWN, 'Dalbir ka xan');
+check('J the OTP-linked office sees the agent\'s mobile and today\'s count', str_contains($dig(txt($r)), AG1) && str_contains(txt($r), '🎫'), txt($r));
+$r = wa(OWN, 'Hemraj ka xan');
+check('J …and the staff member\'s', str_contains($dig(txt($r)), '7000093304'), txt($r));
+$r = wa(OWN, 'Surat agent');
+check('J …and "Surat agent" carries the agents\' numbers', str_contains($dig(txt($r)), AG1), txt($r));
+Database::run('DELETE FROM ap_wa_links WHERE admin_id = :i', ['i' => $ownId]);
+Database::run('DELETE FROM ap_wa_state WHERE phone = :p', ['p' => normalisePhone('+91' . OWN)]);
+
+// J2 the last-4-digits guesses: re-sending the PNR never resets them; 5 wrong from all numbers close the PNR
+$B4 = $book($CUST[50], $ag1, ['Guess Target Mp']);
+$want4 = substr($CUST[50], -4);
+$p1 = $next();
+wa($p1, $B4['pnr']); wa($p1, '0001'); wa($p1, '0002');
+$r = wa($p1, $B4['pnr']);
+check('J sending the PNR again after 2 wrong: still asked, the count is kept', WaLookup::challengeOpen(normalisePhone('+91' . $p1)), txt($r));
+$r = wa($p1, '0003');
+check('J …the 3rd wrong guess locks it (no fresh 3 tries)', str_contains(txt($r), '🔒') && !WaLookup::challengeOpen(normalisePhone('+91' . $p1)), txt($r));
+$r = wa($p1, $B4['pnr']);
+check('J …locked: status only, no new question', !WaLookup::challengeOpen(normalisePhone('+91' . $p1)) && !str_contains(txt($r), 'download-ticket'), txt($r));
+$p2 = $next(); wa($p2, $B4['pnr']); wa($p2, '0004');
+$p3 = $next(); wa($p3, $B4['pnr']);
+$r = wa($p3, '0005');
+check('J the 5th wrong guess for this PNR from ANY number closes it', str_contains(txt($r), '🔒') && !WaLookup::challengeOpen(normalisePhone('+91' . $p3)), txt($r));
+$p4 = $next();
+$r = wa($p4, $B4['pnr']);
+check('J …a fresh number now gets status only, never the digits question', !WaLookup::challengeOpen(normalisePhone('+91' . $p4)) && str_contains(txt($r), '🔒'), txt($r));
+$r = wa($p4, $want4);
+check('J …and even the right 4 digits give nothing', !str_contains(txt($r), 'download-ticket') && !str_contains(txt($r), 'Guess Target'), txt($r));
+$r = wa($CUST[50], $B4['pnr']);
+check('J …the booking\'s own number still gets its card', str_contains(txt($r), 'download-ticket.php'), txt($r));
+
+// J3 the office's Settings numbers read any PNR; a pending booking's own number gets the pay QR + link
+$offNo = $next();
+$origAdminWa = Settings::getString('admin_whatsapp', '');
+setOvr('admin_whatsapp', '+91' . $offNo);
+$r = WaLookup::pnrAnswer($B2['pnr'], ['role' => 'customer'], normalisePhone('+91' . $offNo), 'rn');
+check('J an office number from Settings (admin_whatsapp) gets the full card, as the old PNR path gave', $r['access'] === 'full' && str_contains($r['text'], 'download-ticket.php'), $r['text']);
+setOvr('admin_whatsapp', $origAdminWa);
+$B5 = $book($CUST[49], $ag1, ['Pending Payer Mp'], 'pending');
+setOvr('upi_id', 'mp3test@upi');
+$r = WaLookup::pnrAnswer($B5['pnr'], ['role' => 'customer'], normalisePhone('+91' . $CUST[49]), 'rn');
+check('J a pending booking\'s own number: the pay link + the pay QR picture', str_contains($r['text'], 'pay.php?pnr=') && str_contains((string) $r['media'], 'pay-image.php'), $r['text'] . ' | ' . (string) $r['media']);
+
+// J4 the directory never dead-ends a town it knows
+$r = wa($next(), 'Baroda counter ko number');
+check('J "Baroda counter ko number" — the Baroda counter line (company_counters)', str_contains(txt($r), '97264 01507'), WaBot::$lastRouter . ' :: ' . txt($r));
+$r = WaDirectory::lookup('Vadodara me pickup point kahan hai?', 'customer', 'hi');
+check('J "Vadodara me pickup point kahan hai?" — the Barauda / Baroda stop or counter, not "no details"', $r !== null && $r['hits'] > 0 && !str_contains($r['text'], 'नहीं है'), (string) ($r['text'] ?? 'null'));
+foreach (['Rupaidiha office ko number', 'रुपैडिहा अफिसको नम्बर के हो?', 'Kohalpur office ko number', 'Where is the Rupaidiha parking?'] as $q) {
+    $r = WaDirectory::lookup($q, 'customer', WaAnswer::lang($q));
+    check('J "' . $q . '" — the Nepalgunj office for the Nepal side', $r !== null && (str_contains($r['text'], '9866201375') || str_contains($r['text'], '986-6201375')), (string) ($r['text'] ?? 'null'));
+}
+$r = WaDirectory::lookup('Rupaidiha border kaha?', 'staff', 'rn');
+check('J staff "Rupaidiha border kaha?" — the border place is Rupaidiha\'s (its own town column)', $r !== null && $r['hits'] > 0 && preg_match('/border/i', $r['text']) === 1 && !str_contains($r['text'], 'bibaran hamisanga rakhiyeko chhaina'), (string) ($r['text'] ?? 'null'));
+
+// J5 how to book, "Online ko ticket", the documents question in English
+foreach (['How do I book a ticket?', 'booking kasari garne?'] as $q) {
+    $p = $next();
+    $r = wa($p, $q);
+    check('J "' . $q . '" — the ways to book, no draft, no made-up seat count', WaBot::$lastRouter === 'howto' && $draftsOf($p) === 0 && !$bookPrompt(txt($r)) && str_contains(txt($r), Settings::officePhone()), WaBot::$lastRouter . ' :: ' . txt($r));
+}
+check('J looksLikeBooking: a how-to is not a booking; "2 seat bholi" still is', !WaAnswer::looksLikeBooking('How do I book a ticket?') && WaAnswer::looksLikeBooking('bholi 2 seat chahiyo'));
+check('J "Online ko ticket kasari kinne?" / "Tatkal ko ticket kati?" — no passenger name read', WaLookup::nameIn('Online ko ticket kasari kinne?') === '' && WaLookup::nameIn('Tatkal ko ticket kati?') === ''
+    && WaLookup::nameIn('Ramesh Bahadur Thapa ko ticket kun bus ma cha?') !== '');
+$r = wa($next(), 'Online ko ticket kasari kinne?');
+check('J …and the customer is not given the privacy refusal', WaBot::$lastRouter !== 'lookup' && !str_contains(txt($r), 'Gopaniyata'), WaBot::$lastRouter . ' :: ' . txt($r));
+$r = wa($next(), 'What documents do I need to travel?');
+check('J "What documents do I need to travel?" — the published documents answer', str_contains(txt($r), '🪪'), WaBot::$lastRouter . ' :: ' . txt($r));
+
+// J6 the machine guard: a person's line with one stray phrase is answered
+foreach (['please send 3 tickets for 26 Nov', 'send 2 seats to Surat tomorrow', 'What are your business hours?', 'Is your office currently closed?',
+          'why you don\'t reply my message', 'you do not reply, I sent PNR 3 times', 'we will call you after payment'] as $q) {
+    check('J a person: "' . $q . '" is not a machine', !WaAnswer::automated($q), $q);
+}
+foreach (['*Thank you for using LIC\'s WhatsApp Services* 🙏 just type Hi', 'This is an automated message. Please do not reply.',
+          'Thank you for reaching us. Our team will get back to you during business hours.', 'Auto-reply: we are currently closed.'] as $q) {
+    check('J a machine: "' . mb_substr($q, 0, 40) . '…" is still silent', WaAnswer::automated($q), $q);
+}
+$p = $next();
+$r = wa($p, 'please send 3 tickets for 26 Nov');
+check('J …"please send 3 tickets for 26 Nov" through the bot gets a reply', !WaBot::$silent && txt($r) !== '', txt($r));
+
+// J7 the ticket send: the text body by label, the Meta template in its own numbering
+$bRow = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => $B1['id']]);
+$origTpl = Settings::getString('whatsapp_template_name', '');
+setOvr('whatsapp_template_name', 'shg_ticket_image');
+$tv = Notify::ticketVars($bRow);
+$xv = Notify::ticketTextVars($bRow);
+$sent = WaSend::ticket($B1['pnr'], ['now' => false, 'to' => '+91' . C1, 'purpose' => 'ticket_resend']);
+$row = (int) $sent['id'] > 0 ? Database::fetch('SELECT body, tpl_name, tpl_vars FROM wa_outbox WHERE id = :i', ['i' => (int) $sent['id']]) : null;
+$tplv = $row !== null ? json_decode((string) $row['tpl_vars'], true) : null;
+check('J the text body prints the route under "Route:"', $row !== null && str_contains((string) $row['body'], 'Route: ' . $xv['2']), (string) ($row['body'] ?? json_encode($sent)));
+check('J the template (' . ((string) ($row['tpl_name'] ?? '') ?: 'none in force') . ') keeps {1 name … 6 PNR} (never the PNR as the passenger name)', $row !== null && ((string) $row['tpl_name'] === ''
+    || (is_array($tplv) && (string) ($tplv[0] ?? '') === (string) $tv['1'] && (string) ($tplv[5] ?? '') === (string) $tv['6'] && (string) ($tplv[0] ?? '') !== $B1['pnr'])),
+    json_encode([$row['tpl_name'] ?? '', $tplv, $tv], JSON_UNESCAPED_UNICODE));
+setOvr('whatsapp_template_name', $origTpl);
 
 echo "\nPASSED: $PASS   FAILED: $FAIL\n";
 exit($FAIL === 0 ? 0 : 1);

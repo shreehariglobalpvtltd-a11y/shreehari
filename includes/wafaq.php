@@ -317,7 +317,7 @@ final class WaFaq
         }
         require_once INCLUDE_PATH . '/routepages.php';
         if ($re('document|documents|docs|kagaj|kagat|kaagaj|kagajat|id\s*proof|passport|voter\s*id|aadhar|aadhaar|citizenship|nagarikta|nagrikta|कागज|कागजात|पासपोर्ट|नागरिकता')
-            && $re('border|chahincha|chahinchha|chahiye|chahiyo|chaiyo|lagcha|lagchha|kun|k|ke|kya|chaincha|lagega|लाग्छ|चाहिन्छ|चाहिए|बोर्डर')) {
+            && $re('border|chahincha|chahinchha|chahiye|chahiyo|chaiyo|lagcha|lagchha|kun|k|ke|kya|chaincha|lagega|chahiyega|lagenge|lagne|chahine|need|needed|needs|required|require|requirement|requirements|carry|bring|what|which|travel|travelling|traveling|लाग्छ|चाहिन्छ|चाहिए|बोर्डर|लाग्ने|चाहिने')) {
             $a = RoutePages::faqAnswer('a1', $pageLang);
             if ($a !== '') {
                 return ['text' => '🪪 ' . str_replace(' /travel-info', ' ' . appUrl('travel-info'), $a) . "\n📞 " . $phone, 'intent' => 'documents'];

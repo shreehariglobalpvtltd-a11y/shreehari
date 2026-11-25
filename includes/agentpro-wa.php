@@ -4545,15 +4545,15 @@ final class ApWa
                 }
             }
             // 5. "<name> ka xan" / "where is <name>": that person in the team directory (the desk's own rules)
-            $person = WaAnswer::personWhere($text);
+            $person = $seller ? WaAnswer::personWhere($text) : '';
             if ($person !== '') {
-                $who1 = self::personAnswer($person, $ctx, $lang);
+                $who1 = self::personAnswer($person, $member, $ctx, $lang);
                 if ($who1 !== null) {
                     return $who1;
                 }
             }
             // 6. a place / a contact — "Nepalgunj office ko number?", "CEO ko number", "Surat agent"
-            $dir = WaDirectory::lookup($text, $seller ? $who['role'] : 'customer', $l2);
+            $dir = WaDirectory::lookup($text, $seller ? $who['role'] : 'customer', $l2, false, $seller && !empty($who['office']));
             if ($dir !== null) {
                 return self::out($dir['text']);
             }
@@ -4596,6 +4596,7 @@ final class ApWa
                 'scopeAdminId' => (string) $ctx['role'] === 'admin' ? null : (int) $member['id'],
                 'name' => (string) $member['full_name'], 'phone' => (string) $ctx['phone'],
                 'intl' => (string) ($base['intl'] ?? $ctx['phone']), 'country' => (string) ($base['country'] ?? ''), 'login' => null,
+                'office' => self::isOffice($ctx),
             ];
             $r = AiAgent::handle($fromRaw, $text, 'whatsapp', ['who' => $who, 'readOnly' => true]);
             if ($r === null || trim((string) ($r['text'] ?? '')) === '' || !empty($r['failed'])) {
@@ -4609,38 +4610,73 @@ final class ApWa
     }
 
     /**
-     * "<name> ka xan" (live 25 Nov): that team member — name, code, role, branch, today's tickets; the phone for the
-     * office (role admin) and for office / counter staff (the numbers the desk directory already gives every member).
-     * An agent's personal mobile stays the office's. null = nobody by that name (the line goes on).
+     * "<name> ka xan" (live 25 Nov): that team member — name, code, role, branch. The numbers follow directory()'s
+     * own rules (31 Oct safety review): an agent's personal mobile only to an OTP-linked office number (or with
+     * ap_wa_dir_agents on), else the website's public number when the agent is listed there; a non-agent's number
+     * only when it is an office role or a counter (crew / other staff stay with the office). Today's ticket count:
+     * the office, or the member asking about themself. null = nobody by that name (the line goes on).
      */
-    private static function personAnswer(string $q, array $ctx, string $lang): ?array
+    private static function personAnswer(string $q, array $member, array $ctx, string $lang): ?array
     {
         $q = mb_strtolower(trim($q));
+        if (mb_strlen($q) < 3) {
+            return null;
+        }
         $hits = [];
         foreach (AgentPro::roster() as $r) {
-            if (!$r['active'] || mb_strlen($q) < 3) {
-                continue;
-            }
-            if (str_contains(mb_strtolower($r['name'] . ' ' . $r['idNo']), $q)) {
+            if ($r['active'] && str_contains(mb_strtolower($r['name'] . ' ' . $r['idNo']), $q)) {
                 $hits[] = $r;
             }
         }
         if ($hits === []) {
             return null;
         }
-        $office = (string) ($ctx['role'] ?? '') === 'admin';
-        $lines = [];
-        foreach (array_slice($hits, 0, 6) as $r) {
-            $today = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE (sold_by_admin_id = :a OR booked_by_admin_id = :a2)
-                                              AND created_at >= CURDATE() AND status IN ('confirmed','completed','pending')",
-                ['a' => (int) $r['id'], 'a2' => (int) $r['id']], 0);
-            $showPhone = $office || !$r['isAgent'];
-            $lines[] = '👤 ' . $r['name'] . ($r['idNo'] !== '' ? ' · ' . $r['idNo'] : '') . ' · ' . ($r['designation'] !== '' ? $r['designation'] : $r['roleLabel'])
-                . ($r['branch'] !== '' ? "\n   📍 " . $r['branch'] : '')
-                . ($showPhone && $r['phone'] !== '' ? "\n   📞 " . AgentPro::displayPhone(AgentPro::intlDigits($r['phone'])) : '')
-                . "\n   🎫 " . self::t('pf_today', $lang, ['n' => (string) $today]);
+        $office = self::officeMember($member);
+        $seeAgents = $office || Settings::getBool('ap_wa_dir_agents', false);
+        $hits = array_slice($hits, 0, 6);
+        $publicAgents = [];
+        if (!$seeAgents) {
+            try {
+                require_once __DIR__ . '/agentpro-web.php';
+                $ids = array_values(array_map(static fn(array $r): int => (int) $r['id'], array_filter($hits, static fn(array $r): bool => (bool) $r['isAgent'])));
+                foreach ($ids === [] ? [] : ApWeb::shownMany($ids) as $aid => $shown) {
+                    if ($shown) {
+                        $wa = (string) (AgentPro::member((int) $aid)['wa'] ?? '');
+                        if ($wa !== '') {
+                            $publicAgents[(int) $aid] = $wa;
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                $publicAgents = [];
+            }
         }
-        if (!$office && array_filter($hits, static fn(array $r): bool => (bool) $r['isAgent']) !== []) {
+        $lines = [];
+        $hidden = false;
+        foreach ($hits as $r) {
+            $self = (int) $r['id'] === (int) $member['id'];
+            $phone = '';
+            if ($r['phone'] !== '') {
+                if ($self || ($r['isAgent'] ? $seeAgents : ($office || in_array($r['role'], self::OFFICE, true) || $r['role'] === 'counter'))) {
+                    $phone = AgentPro::intlDigits($r['phone']);
+                } elseif ($r['isAgent'] && isset($publicAgents[(int) $r['id']])) {
+                    $phone = (string) $publicAgents[(int) $r['id']];
+                } else {
+                    $hidden = true;
+                }
+            }
+            $line = '👤 ' . $r['name'] . ($r['idNo'] !== '' ? ' · ' . $r['idNo'] : '') . ' · ' . ($r['designation'] !== '' ? $r['designation'] : $r['roleLabel'])
+                . ($r['branch'] !== '' ? "\n   📍 " . $r['branch'] : '')
+                . ($phone !== '' ? "\n   📞 " . AgentPro::displayPhone($phone) : '');
+            if ($office || $self) {
+                $today = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE (sold_by_admin_id = :a OR booked_by_admin_id = :a2)
+                                                  AND created_at >= CURDATE() AND status IN ('confirmed','completed','pending')",
+                    ['a' => (int) $r['id'], 'a2' => (int) $r['id']], 0);
+                $line .= "\n   🎫 " . self::t('pf_today', $lang, ['n' => (string) $today]);
+            }
+            $lines[] = $line;
+        }
+        if ($hidden) {
             $lines[] = self::t('dir_hidden', $lang, ['phone' => Settings::officePhone()]);
         }
         return self::out(implode("\n", $lines));

@@ -10,9 +10,15 @@
  *    - a CUSTOMER sees the full card only for a booking whose contact
  *      number is the WhatsApp number writing (the rule wabot.php has kept
  *      since day one). Anyone else is asked once for the LAST 4 DIGITS of
- *      the booking's mobile (wa_pnr_last4_on, default 1): right = the card,
- *      3 wrong = status only for an hour. A walk-in's placeholder number is
- *      never proof and never challenged.
+ *      the booking's mobile (wa_pnr_last4_on, default 1): right = the card.
+ *      Wrong guesses are counted per number + PNR AND per PNR across every
+ *      number, for 24 h (kv_store wa_pnr_fail; sending the PNR again never
+ *      resets them): 3 wrong from one number, or 5 wrong from all numbers
+ *      together, = status only for that PNR (the office clears it by
+ *      deleting the wa_pnr_fail rows). A walk-in's placeholder number is
+ *      never proof and never challenged. The office's own Settings numbers
+ *      (admin_whatsapp, company_whatsapp, company_phone, office_phone, the
+ *      office phone) read any PNR, as wabot.php's old PNR path did.
  *    - staff / office (AiTools::whoIs role staff | admin): the same rule as
  *      find_ticket — the office any PNR, an agent / counter only their own
  *      sales (sold_by, or booked_by for a counter). AiVerify::gate applies
@@ -43,7 +49,9 @@ final class WaLookup
     private const CHAL_SCOPE = 'wa_pnr_chal';
     private const CHAL_TTL   = 600;
     private const CHAL_TRIES = 3;
-    private const LOCK_SCOPE = 'wa_pnr_lock';
+    private const FAIL_SCOPE = 'wa_pnr_fail';
+    private const FAIL_TTL   = 86400;
+    private const PNR_FAIL_CAP = 5;
 
     public static function on(): bool
     {
@@ -124,8 +132,12 @@ final class WaLookup
             if (preg_match('/(?<![\p{L}\p{M}])(?:kat\w*|kaat\w*|book\w*|chahiyo|chahiye|chaiyo|chaiye|chahincha|bana\w*|nikal\w*|gar(?:a|nu|idinu|ideu|dinus)?|dinus|dinu|deu|chaahiyo|चाहियो|चाहिए|काट\S*|बुक)(?![\p{L}\p{M}])/u', $tail) === 1) {
                 return '';
             }
+            // a HOW / PRICE question ("Online ko ticket kasari kinne?", "… kati parcha") asks about tickets, not a passenger
+            if (preg_match('/(?<![\p{L}\p{M}])(?:kasari|kasri|kaise|kese|how|process|tarika|tariqa|kati|kitna|kitne|kitni|price|rate|bhada|bhaada|vada|bhara|kin\w*|kharid\w*|milcha|milchha|paincha|lagcha|lagchha|कसरी|कैसे|कति|कितना|भाडा|किन्ने)(?![\p{L}\p{M}])/u', $tail) === 1) {
+                return '';
+            }
             // a question / lookup word must be there ("kun", "kaha", "cha", "check", "khoja", "?")
-            if (preg_match('/(?<![\p{L}\p{M}])(?:kun|kaha|kata|kahan|k|ke|kya|cha|chha|xa|hai|ho|kahile|kab|kati|dekhau\w*|batau\w*|batao|check|khoj\w*|search|status|confirm|bhayo|hera|her\w*|कुन|कहाँ|छ|हो|के|खोज\S*)(?![\p{L}\p{M}])/u', $tail) !== 1
+            if (preg_match('/(?<![\p{L}\p{M}])(?:kun|kaha|kata|kahan|k|ke|kya|cha|chha|xa|hai|ho|kahile|kab|dekhau\w*|batau\w*|batao|check|khoj\w*|search|status|confirm|bhayo|hera|her\w*|कुन|कहाँ|छ|हो|के|खोज\S*)(?![\p{L}\p{M}])/u', $tail) !== 1
                 && !str_contains($text, '?')) {
                 return '';
             }
@@ -141,7 +153,11 @@ final class WaLookup
             'bachha', 'bacha', 'baccha', 'bachcha', 'bachhako', 'bacchako', 'child', 'children', 'kid', 'kids', 'baby', 'infant', 'balak', 'balika', 'chhora',
             'chhori', 'chora', 'chori', 'budo', 'budi', 'buda', 'budhi', 'wife', 'husband', 'family', 'pariwar', 'parivar', 'group', 'student', 'students',
             'senior', 'old', 'lady', 'ladies', 'mahila', 'purush', 'gents', 'ek', 'dui', 'tin', 'char', 'one', 'two', 'three', 'kasko', 'kasai', 'kunai',
-            'arulai', 'aru', 'other', 'others', 'sabaiko', 'hamro', 'hamra', 'unko', 'usko', 'tesko', 'bachhalai', 'बच्चा', 'बच्चाको', 'छोरा', 'छोरी', 'बुढा', 'परिवार'];
+            'arulai', 'aru', 'other', 'others', 'sabaiko', 'hamro', 'hamra', 'unko', 'usko', 'tesko', 'bachhalai', 'बच्चा', 'बच्चाको', 'छोरा', 'छोरी', 'बुढा', 'परिवार',
+            // a way of buying or a kind of ticket, not a passenger ("Online ko ticket kasari kinne?", "Tatkal ko ticket")
+            'online', 'offline', 'tatkal', 'sleeper', 'seater', 'cabin', 'ac', 'nonac', 'non', 'upper', 'lower', 'return', 'single', 'double', 'website',
+            'app', 'whatsapp', 'counter', 'agentko', 'cash', 'upi', 'esewa', 'khalti', 'advance', 'confirm', 'waiting', 'general', 'vip', 'ladies', 'women',
+            'ऑनलाइन', 'अनलाइन', 'तत्काल', 'स्लीपर'];
         $parts = array_values(array_filter(preg_split('/\s+/u', trim($name)) ?: [], static fn(string $w): bool => $w !== '' && !in_array($w, $stop, true)));
         if ($parts === [] || in_array(mb_strtolower(trim($name)), $stop, true)) {
             return '';
@@ -214,6 +230,10 @@ final class WaLookup
                 'यो टिकट तपाईंले बेचेको होइन — पूरा विवरण अफिसबाट।', 'Yo ticket tapaile becheko hoina — pura bibaran office bata.',
                 'यह टिकट आपने नहीं बेचा — पूरी जानकारी ऑफिस से।', 'This is not one of your sales — the office has the full details.'), 'media' => null, 'access' => 'status'];
         }
+        if (!$owns && self::isOfficeNumber($senderDigits)) {
+            self::audit('pnr_lookup', $ctx, $pnr, 1, true, 'full (office number in Settings)', $bid, $t0);
+            return self::card($detail, $lang, true, $who) + ['access' => 'full'];
+        }
         if ($owns) {
             self::clearChallenge($senderDigits);
             self::audit('pnr_lookup', $ctx, $pnr, 1, true, 'full (own number)', $bid, $t0);
@@ -223,7 +243,7 @@ final class WaLookup
         if (Settings::getBool('wa_pnr_last4_on', true) && !isPlaceholderPhone($contact) && strlen(normalisePhone($contact)) >= 10
             && $senderDigits !== '' && !self::locked($senderDigits, $pnr)
             && Security::rateLimit('wa_pnr_chal', $senderDigits, 6, 3600)) {
-            self::setChallenge($senderDigits, $pnr);
+            self::setChallenge($senderDigits, $pnr);         // the wrong-guess count lives in wa_pnr_fail: re-sending never resets it
             self::audit('pnr_lookup', $ctx, $pnr, 1, true, 'challenge: last 4 digits asked', $bid, $t0);
             return ['text' => self::statusLine($detail, $lang) . "\n\n" . self::t($lang,
                 '🔒 पूरा विवरणका लागि: यो बुकिङमा राखेको मोबाइल नम्बरको अन्तिम ४ अंक पठाउनुहोस् (जस्तै 4321)।',
@@ -261,21 +281,25 @@ final class WaLookup
             return null;
         }
         $want = substr(normalisePhone((string) ($detail['contact_phone'] ?? '')), -4);
+        if (self::locked($senderDigits, $pnr)) {
+            // too many wrong guesses already (this number, or every number for this PNR): no more guessing, right or wrong
+            self::clearChallenge($senderDigits);
+            self::audit('pnr_lookup', $ctx, $pnr, 0, false, 'guess while locked', (int) $detail['id'], $t0);
+            return ['text' => self::lockedText($lang), 'media' => null, 'access' => 'locked'];
+        }
         if ($want !== '' && hash_equals($want, $d)) {
             self::clearChallenge($senderDigits);
+            self::clearFails('s|' . $senderDigits . '|' . $pnr);
             self::audit('pnr_lookup', $ctx, $pnr, 1, true, 'full (last 4 digits matched)', (int) $detail['id'], $t0);
             $c = self::card($detail, $lang, false, $who);
             return ['text' => $c['text'], 'media' => null, 'access' => 'full'];
         }
-        $tries = (int) $ch['tries'] + 1;
-        if ($tries >= self::CHAL_TRIES) {
+        $tries = self::addFail('s|' . $senderDigits . '|' . $pnr);
+        $all = self::addFail('p|' . $pnr);
+        if ($tries >= self::CHAL_TRIES || $all >= self::PNR_FAIL_CAP) {
             self::clearChallenge($senderDigits);
-            self::lock($senderDigits, $pnr);
-            self::audit('pnr_lookup', $ctx, $pnr, 0, false, 'last 4 digits wrong ' . $tries . 'x: locked 1 h', (int) $detail['id'], $t0);
-            return ['text' => self::t($lang,
-                '🔒 अंक मिलेन। यो PNR को विवरण अब बुकिङकै मोबाइलबाट मात्र — वा अफिस: ', '🔒 Anka milena. Yo PNR ko bibaran aba booking kai mobile bata matra — wa office: ',
-                '🔒 अंक नहीं मिले। इस PNR की जानकारी अब बुकिंग वाले मोबाइल से ही — या ऑफिस: ', '🔒 The digits did not match. This PNR is now shown only to the booking\'s own number — or call the office: ')
-                . Settings::officePhone(), 'media' => null, 'access' => 'locked'];
+            self::audit('pnr_lookup', $ctx, $pnr, 0, false, 'last 4 digits wrong ' . $tries . 'x (' . $all . 'x all numbers): locked 24 h', (int) $detail['id'], $t0);
+            return ['text' => self::lockedText($lang), 'media' => null, 'access' => 'locked'];
         }
         self::setChallenge($senderDigits, $pnr, $tries);
         self::audit('pnr_lookup', $ctx, $pnr, 0, false, 'last 4 digits wrong (' . $tries . ')', (int) $detail['id'], $t0);
@@ -283,6 +307,14 @@ final class WaLookup
             '❌ Anka milena. Feri prayas garnus (' . (self::CHAL_TRIES - $tries) . ' patak baki).',
             '❌ अंक नहीं मिले। फिर कोशिश करें (' . (self::CHAL_TRIES - $tries) . ' बार बाकी)।', '❌ The digits did not match. Try again (' . (self::CHAL_TRIES - $tries) . ' left).'),
             'media' => null, 'access' => 'challenge'];
+    }
+
+    private static function lockedText(string $lang): string
+    {
+        return self::t($lang,
+            '🔒 अंक मिलेन। यो PNR को विवरण अब बुकिङकै मोबाइलबाट मात्र — वा अफिस: ', '🔒 Anka milena. Yo PNR ko bibaran aba booking kai mobile bata matra — wa office: ',
+            '🔒 अंक नहीं मिले। इस PNR की जानकारी अब बुकिंग वाले मोबाइल से ही — या ऑफिस: ', '🔒 The digits did not match. This PNR is now shown only to the booking\'s own number — or call the office: ')
+            . Settings::officePhone();
     }
 
     public static function challengeOpen(string $senderDigits): bool
@@ -456,6 +488,12 @@ final class WaLookup
         } elseif ($status === 'pending') {
             $lines[] = self::t($lang, '⏳ भुक्तानी जाँच हुँदैछ — पक्का भएपछि टिकट यहीँ आउँछ।', '⏳ Bhuktani janch hudaichha — pakka bhayepachhi ticket yahi aauchha.',
                 '⏳ भुगतान जाँच हो रहा है — पक्का होते ही टिकट यहीं आएगा।', '⏳ The payment is being checked — the ticket comes here once confirmed.');
+            // not paid yet: the way to pay (the QR carries the exact amount) — as wabot.php's PNR path always sent
+            if ($withMedia && !$paid && !$cod && Settings::getString('upi_id', '') !== '' && $total > 0) {
+                $lines[] = self::t($lang, '💰 तिर्न बाँकी छ भने QR स्क्यान गर्नुहोस्, वा यहाँ थिच्नुहोस्: ', '💰 Tirna baki chha bhane QR scan garnus, wa yaha thichnus: ',
+                    '💰 भुगतान बाकी हो तो QR स्कैन करें, या यहाँ दबाइए: ', '💰 To pay, scan the QR or tap: ') . appUrl('pay.php?pnr=' . urlencode($pnr));
+                $media = appUrl('pay-image.php?pnr=' . urlencode($pnr));
+            }
         }
         return ['text' => implode("\n", $lines), 'media' => $media];
     }
@@ -548,24 +586,68 @@ final class WaLookup
         }
     }
 
-    private static function lock(string $who, string $pnr): void
+    /* ---- wrong guesses: per number + PNR and per PNR, 24 h from the first one (kv_store wa_pnr_fail) ---- */
+
+    private static function fails(string $key): int
     {
-        $k = $who . '|' . $pnr;
+        try {
+            $raw = (string) Database::scalar('SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k', ['s' => self::FAIL_SCOPE, 'k' => $key], '');
+        } catch (Throwable $e) {
+            return 0;
+        }
+        $v = $raw !== '' ? json_decode($raw, true) : null;
+        return is_array($v) && (int) ($v['since'] ?? 0) >= time() - self::FAIL_TTL ? (int) ($v['n'] ?? 0) : 0;
+    }
+
+    private static function addFail(string $key): int
+    {
+        $n = self::fails($key);
+        $since = time();
+        if ($n > 0) {
+            try {
+                $old = json_decode((string) Database::scalar('SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k', ['s' => self::FAIL_SCOPE, 'k' => $key], ''), true);
+                $since = (int) ($old['since'] ?? time());
+            } catch (Throwable $e) {
+                $since = time();
+            }
+        }
+        $v = json_encode(['n' => $n + 1, 'since' => $since]);
         try {
             Database::run('INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES (:s, :k, :v, :u) ON DUPLICATE KEY UPDATE kvalue = :v2',
-                ['s' => self::LOCK_SCOPE, 'k' => $k, 'v' => (string) time(), 'u' => 'walookup', 'v2' => (string) time()]);
+                ['s' => self::FAIL_SCOPE, 'k' => $key, 'v' => $v, 'u' => 'walookup', 'v2' => $v]);
+        } catch (Throwable $e) {
+        }
+        return $n + 1;
+    }
+
+    private static function clearFails(string $key): void
+    {
+        try {
+            Database::run('DELETE FROM kv_store WHERE kscope = :s AND kkey = :k', ['s' => self::FAIL_SCOPE, 'k' => $key]);
         } catch (Throwable $e) {
         }
     }
 
+    /** 3 wrong from this number for this PNR, or 5 wrong for this PNR from every number, in 24 h. */
     private static function locked(string $who, string $pnr): bool
     {
-        try {
-            $at = (int) Database::scalar('SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k', ['s' => self::LOCK_SCOPE, 'k' => $who . '|' . $pnr], 0);
-        } catch (Throwable $e) {
+        return self::fails('s|' . $who . '|' . $pnr) >= self::CHAL_TRIES || self::fails('p|' . $pnr) >= self::PNR_FAIL_CAP;
+    }
+
+    /** The office's own numbers in Settings (wabot.php's PNR path read any PNR for these). */
+    private static function isOfficeNumber(string $senderDigits): bool
+    {
+        if ($senderDigits === '') {
             return false;
         }
-        return $at > time() - 3600;
+        foreach (['admin_whatsapp', 'company_whatsapp', 'company_phone', 'office_phone'] as $k) {
+            $d = normalisePhone(Settings::getString($k, ''));
+            if ($d !== '' && $d === $senderDigits) {
+                return true;
+            }
+        }
+        $d = normalisePhone(Settings::officePhone());
+        return $d !== '' && $d === $senderDigits;
     }
 
     private static function ascii(string $s): string

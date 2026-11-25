@@ -95,31 +95,46 @@ final class WaAnswer
             return in_array($kind, ['unsupported', 'unknown', 'system', 'ephemeral'], true);
         }
         $l = mb_strtolower((string) preg_replace('/\s+/u', ' ', $t));
-        $hits = 0;
-        foreach ([
-            '/thank(?:s| you) for (?:using|contacting|reaching|messaging|choosing|connecting|your (?:message|interest|enquiry|inquiry))/u',
-            '/(?:this is an?|is an) (?:automated|automatic|auto[- ]?generated) (?:message|reply|response)/u',
-            '/\b(?:auto[- ]?reply|autoreply|auto[- ]?response|automatic reply|out of (?:the )?office)\b/u',
-            '/\b(?:do not|don\'?t|please do not) reply\b|\bno[- ]?reply\b/u',
-            '/\bjust type\s*["\']?(?:hi|hello|menu)\b/u',
-            '/\b(?:we will|we\'ll|our (?:team|executive|agent) will) (?:get back|contact you|reply|respond|call you)/u',
-            '/play\.google\.com\/store|apps\.apple\.com\//u',
+        $count = static function (array $res) use ($l): int {
+            $n = 0;
+            foreach ($res as $re) {
+                $n += preg_match($re, $l) === 1 ? 1 : 0;
+            }
+            return $n;
+        };
+        // a machine for sure, whatever else the line holds (the LIC loop, the shop's greeting)
+        $very = $count([
+            '/thank(?:s| you) for (?:using|contacting)\b/u',
+            '/\bwhatsapp services\b/u',
             '/\balways for your support\b/u',
             '/\bplease let us inquiry\b/u',
-            '/\b(?:press|reply|type|send) [0-9]\b.{0,20}\b(?:for|to)\b/u',
-            '/\bwhatsapp services\b/u',
-            '/\bbusiness hours\b|\bcurrently (?:closed|unavailable|away)\b/u',
-        ] as $re) {
-            if (preg_match($re, $l) === 1) {
-                $hits++;
-            }
+        ]);
+        if ($very > 0) {
+            return true;
         }
-        if ($hits === 0) {
+        // one is enough — unless the line also reads like a person (a booking word, a question, a date / seat count)
+        $strong = $count([
+            '/thank(?:s| you) for (?:reaching|messaging|choosing|connecting|your (?:message|interest|enquiry|inquiry))/u',
+            '/(?:this is an?|is an) (?:automated|automatic|auto[- ]?generated) (?:message|reply|response)/u',
+            '/\b(?:auto[- ]?reply|autoreply|auto[- ]?response|automatic reply|out of (?:the )?office)\b/u',
+            '/\bjust type\s*["\']?(?:hi|hello|menu)\b/u',
+            '/play\.google\.com\/store|apps\.apple\.com\//u',
+            '/\b(?:press|reply|type) [0-9]\b.{0,20}\b(?:for|to)\b/u',
+        ]);
+        // what a person also writes ("why you don't reply", "we will call you after payment", "business hours?"):
+        // only two of these together, or one with a machine phrase above, count
+        $weak = $count([
+            '/\b(?:do not|don\'?t|please do not) reply\b|\bno[- ]?reply\b/u',
+            '/\b(?:we will|we\'ll|our (?:team|executive|agent) will) (?:get back|contact you|reply|respond|call you)/u',
+            '/\bbusiness hours\b|\bcurrently (?:closed|unavailable|away)\b/u',
+        ]);
+        if ($strong === 0 && $weak < 2) {
             return false;
         }
-        // a real passenger's line with a booking in it is never silenced by one stray phrase
-        if ($hits === 1 && preg_match('/(?<![\p{L}])(?:seat|sit|ticket|tikat|bus|gadi|book|bhada|fare|kati|kaha|chahiyo|chahiye|सिट|टिकट|बस|भाडा)(?![\p{L}])/u', $l) === 1
-            && preg_match('/thank(?:s| you) for (?:using|contacting)|whatsapp services|always for your support|please let us inquiry/u', $l) !== 1) {
+        // a real passenger's line with a booking or a question in it is never silenced by one stray phrase
+        $person = preg_match('/(?<![\p{L}])(?:seats?|sits?|tickets?|tikat|tikats|tiket|bus|buses|gadi|book|booking|bhada|fare|kati|kaha|chahiyo|chahiye|सिट|टिकट|बस|भाडा)(?![\p{L}])/u', $l) === 1
+            || self::isQuestion($t) || self::tripSignal($t);
+        if ($person && $strong + $weak <= 2) {
             return false;
         }
         return true;
@@ -181,6 +196,13 @@ final class WaAnswer
         require_once INCLUDE_PATH . '/wabooking.php';
         $open = WaBooking::isOpen($senderDigits);
 
+        // 4a. "How do I book a ticket?" — the ways to book, never a draft with a made-up seat count
+        if (!$open && self::asksHowToBook($body)) {
+            $how = self::howToBook($body, $lang);
+            self::remember($senderDigits, $body, $how);
+            return ['text' => $how, 'media' => null, 'router' => 'howto'];
+        }
+
         // 4. a place / a contact: "Nepalgunj office ko number?", "Ahmedabad pickup kaha?", "CEO ko number", "Surat agent"
         $dir = WaDirectory::lookup($body, 'customer', $lang);
         if ($dir !== null) {
@@ -236,6 +258,10 @@ final class WaAnswer
     public static function looksLikeBooking(string $text): bool
     {
         $t = ' ' . mb_strtolower(TicketBotAscii::digits($text)) . ' ';
+        // "How do I book a ticket?", "booking kasari garne?": a question about booking, not a request (code map E)
+        if (self::asksHowToBook($text)) {
+            return false;
+        }
         if (preg_match('/\d+\s*(?:seat|seats|sit|ticket|tickets|tikat|jana|jan|log|people|persons?|berth|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $t) === 1) {
             return true;
         }
@@ -244,6 +270,42 @@ final class WaAnswer
         }
         return preg_match('/(?<![\p{L}\p{M}])(?:jane|jaane|janu|jaanu|jana\s*cha|jaana\s*hai|travel|yatra|aaunu|aune|chahiyo|chahiye|chaiyo|chaiye|जाने|जानु|यात्रा|चाहियो|चाहिए)(?![\p{L}\p{M}])/u', $t) === 1
             && self::tripSignal($text);
+    }
+
+    /** "How do I book a ticket?", "booking kasari garne?", "ticket kaise milega" — HOW to book, with no trip in the line. */
+    public static function asksHowToBook(string $text): bool
+    {
+        $t = ' ' . mb_strtolower((string) preg_replace('/[\p{P}]+/u', ' ', TicketBotAscii::digits($text))) . ' ';
+        if (mb_strlen($t) > 120 || preg_match('/\d+\s*(?:seats?|sit|tickets?|tikat|jana|jan|log|people|persons?|berth|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $t) === 1) {
+            return false;
+        }
+        $how = preg_match('/(?<![\p{L}\p{M}])(?:kasari|kasri|kaise|kese|how|process|tarika|tariqa|procedure|steps|कसरी|कैसे|तरिका|प्रक्रिया)(?![\p{L}\p{M}])/u', $t) === 1;
+        $book = preg_match('/(?<![\p{L}\p{M}])(?:tickets?|tikat|tiket|tkt|seats?|booking|book|reserve|reservation|katne|katnu|kaatne|kinne|kharidne|टिकट|सिट|बुक|बुकिङ|बुकिंग)(?![\p{L}\p{M}])/u', $t) === 1;
+        if (!$how || !$book) {
+            return false;
+        }
+        try {
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            $p = TicketBot::parse($text);
+            return (int) ($p['seats'] ?? 0) === 0 && (string) ($p['date'] ?? '') === '' && (string) ($p['phone'] ?? '') === '';
+        } catch (Throwable $e) {
+            return true;
+        }
+    }
+
+    /** The answer to "how do I book?": the three ways, in the writer's language. */
+    public static function howToBook(string $text, string $lang = ''): string
+    {
+        $lang = $lang !== '' ? self::mirror($lang, $text) : self::lang($text);
+        $web = trim((string) (Settings::company()['web'] ?? ''));
+        $web = $web !== '' ? $web : appUrl('');
+        $phone = Settings::officePhone();
+        return match ($lang) {
+            'rn' => "🎫 Ticket katne tarika:\n1. Yahi WhatsApp ma miti + seat sankhya + chadne thau lekhnus (jastai: *bholi 2 seat Surat*)\n2. Website: " . $web . "\n3. Office / counter: " . $phone . " (phone / WhatsApp)",
+            'hi' => "🎫 टिकट बुक करने का तरीका:\n1. यहीं WhatsApp पर तारीख + सीट संख्या + चढ़ने की जगह लिखिए (जैसे: *कल 2 सीट सूरत*)\n2. वेबसाइट: " . $web . "\n3. ऑफिस / काउंटर: " . $phone . " (फ़ोन / WhatsApp)",
+            'en' => "🎫 How to book:\n1. Here on WhatsApp: send the date + number of seats + pickup point (like: *tomorrow 2 seats Surat*)\n2. Website: " . $web . "\n3. Office / counter: " . $phone . " (call / WhatsApp)",
+            default => "🎫 टिकट काट्ने तरिका:\n1. यहीँ WhatsApp मा मिति + सिट संख्या + चढ्ने ठाउँ लेख्नुहोस् (जस्तै: *भोलि २ सिट सुरत*)\n2. वेबसाइट: " . $web . "\n3. अफिस / काउन्टर: " . $phone . " (फोन / WhatsApp)",
+        };
     }
 
     /** The honest last line: no answer here, the office number, and what can be asked — in the writer's language. */

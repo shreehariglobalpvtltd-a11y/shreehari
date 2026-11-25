@@ -1039,7 +1039,10 @@ final class AiTools
         require_once INCLUDE_PATH . '/wadirectory.php';
         require_once INCLUDE_PATH . '/waanswer.php';
         $q = Security::clean((string) ($args['query'] ?? ''), 160);
-        $r = WaDirectory::lookup($q, (string) ($ctx['role'] ?? 'customer'), WaAnswer::lang($q), true);
+        // agents' personal mobiles: a signed-in web office session or an OTP-linked desk number only (role admin alone is not)
+        $office = (string) ($ctx['role'] ?? '') === 'admin'
+            && ((string) ($ctx['channel'] ?? 'whatsapp') === 'web' || !empty($ctx['office']));
+        $r = WaDirectory::lookup($q, (string) ($ctx['role'] ?? 'customer'), WaAnswer::lang($q), true, $office);
         if ($r === null) {
             return self::no('Nothing on file for that place. Give the office number ' . Settings::officePhone() . '.');
         }
