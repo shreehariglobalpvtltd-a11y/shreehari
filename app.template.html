@@ -389,6 +389,7 @@ html,body{margin:0;background:#F4F6FB}
     .cp-pk h3{margin:0 0 8px;font-size:16px;color:var(--fg,#0d1b3e)}
     .cp-picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin:0;padding:0;list-style:none}
     .cp-picks li{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 8px 6px 12px;border-radius:16px;background:color-mix(in srgb,#f07a1e 6%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1)}
+    .cp-picks li[hidden]{display:none}
     .cp-picks .tx{min-width:0;flex:1}
     .cp-picks .tx b{display:block;font-size:14px;line-height:1.25;color:var(--fg,#0d1b3e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .cp-picks .tx small{display:block;font-size:12px;color:var(--muted,#5b6b8c)}
@@ -1011,6 +1012,11 @@ s.addEventListener('click',function(e){e.preventDefault();
               <span class="sb-l" id="sbDateL" data-sbi="date">Date</span>
               <div class="sb-chips" id="sbDates" role="radiogroup" aria-labelledby="sbDateL"><span class="sb-skel"></span><span class="sb-skel"></span></div>
               <input type="date" id="sbDateIn" class="sb-date-in" aria-label="Pick a date">
+            </div>
+            <!-- 25 Nov 2026 (wx1): Nepal -> India pickup chips (Nepalgunj office | Rupaidiha parking), from the route's real boarding rows -->
+            <div class="sb-f sb-f-pick" id="sbPickF" hidden>
+              <span class="sb-l" id="sbPickL">चढ्ने ठाउँ · Pickup</span>
+              <div class="sb-chips" id="sbPicks" role="radiogroup" aria-labelledby="sbPickL"></div>
             </div>
             <div class="sb-f sb-f-point">
               <label class="sb-l" for="sbPoint" id="sbPointL" data-sbi="board">Boarding point</label>
@@ -1771,6 +1777,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="cp-pk" id="cpPicks" hidden>
         <h3 id="cpPickH">मुख्य चढ्ने ठाउँ · Main pickup points</h3>
         <ul class="cp-picks" id="cpPickList"></ul>
+        <p class="cp-more" id="cpPickMoreP" hidden><button type="button" class="cp-btn l" id="cpPickMore">सबै चढ्ने ठाउँ हेर्नुहोस् · Show all</button></p>
       </div>
       <p class="cp-more"><a class="cp-btn l" href="/offices" data-cp="offAll">सबै कार्यालय र पार्किङ नक्सा →</a></p>
     </div>
@@ -4362,6 +4369,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         + '<a class="cp-btn l" href="' + esc(p.map) + '" target="_blank" rel="noopener">📍 ' + esc(ow('mapB')) + '</a></li>';
     }).join('');
     box.hidden = !list.length;
+    /* wx1: first 6 places, the rest behind one tap so the home stays short */
+    var lis = ul.children, mp = D.getElementById('cpPickMoreP'), mb = D.getElementById('cpPickMore');
+    for (var i = 6; i < lis.length; i++) lis[i].hidden = true;
+    if (mp) mp.hidden = lis.length <= 6;
+    if (mb && !mb._w) { mb._w = 1; mb.addEventListener('click', function () { for (var j = 0; j < ul.children.length; j++) ul.children[j].hidden = false; if (mp) mp.hidden = true; }); }
   }
 
   /* ---- 4. verified agents (names + area + phone only) ---- */
@@ -4645,7 +4657,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         var d = res.j && res.j.data;
         if (d && d.status === 'confirmed') {
           stopWatch(); watch.pnr = p; payBar('ok', p); chime();
-          try { var B = window.DB && DB.bookings; if (B) B.forEach(function (b) { if (b && b.id === p) b.status = 'confirmed'; }); } catch (e) {}
+          try { var B = (typeof DB !== 'undefined' && DB) ? DB.bookings : null; if (B) B.forEach(function (b) { if (b && b.id === p) b.status = 'confirmed'; }); } catch (e) {}
           return;
         }
         if (d && d.status && d.status !== 'pending') { stopWatch(); payBar(null); return; }
@@ -4655,7 +4667,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   }
   function scanPending() {
     if (watch.pnr) return;
-    var list = []; try { list = (window.DB && Array.isArray(DB.bookings)) ? DB.bookings : []; } catch (e) {}
+    var list = []; try { list = (typeof DB !== 'undefined' && DB && Array.isArray(DB.bookings)) ? DB.bookings : [];   /* wx1: DB is a script-level let (02-config.js), never window.DB */ } catch (e) {}
     var now = Date.now(), b = null;
     for (var i = 0; i < list.length; i++) {
       var x = list[i]; if (!x || x.status !== 'pending' || String(x.payment || '').toLowerCase() === 'cod') continue;

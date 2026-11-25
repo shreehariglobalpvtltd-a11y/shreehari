@@ -815,7 +815,7 @@ final class SmartBook
         }
 
         $genders = array_values(array_unique(array_filter(array_map(static fn(array $p): ?string => AutoBerth::gender($p['gender']), $req['pax']))));
-        $plan = QuickTicket::plan([
+        $planArgs = [
             'direction' => $req['direction'],
             'date'      => $req['date'],
             'boarding'  => $points['type'] === 'boarding' ? $point : '',
@@ -823,7 +823,19 @@ final class SmartBook
             'gender'    => count($genders) === 1 ? $genders[0] : null,
             'customer'  => $mode === 'customer',
             'phone'     => $req['phone'],
-        ]);
+        ];
+        $plan = QuickTicket::plan($planArgs);
+        /* wx1 (25 Nov 2026): a Nepal -> India bus offers its real pickups (Nepalgunj office |
+           Rupaidiha parking) as chips. The list is the route the plan really chose; a chosen
+           pickup that differs from the plan's default re-plans once with that stop. */
+        $npPicks = $points['type'] === 'drop' ? self::npPickups((int) $plan['routeId']) : [];
+        if ($npPicks !== [] && $req['pickup'] !== '') {
+            $npNames = array_map(static fn(array $p): string => $p['name'], $npPicks);
+            $npPick  = self::matchPoint($req['pickup'], $npNames);
+            if ($npPick !== '' && self::matchPoint((string) $plan['boardingName'], $npNames) !== $npPick) {
+                $plan = QuickTicket::plan(['boarding' => $npPick] + $planArgs);
+            }
+        }
         $route    = Database::fetch('SELECT * FROM routes WHERE id = :id LIMIT 1', ['id' => (int) $plan['routeId']]);
         $schedule = Seats::scheduleById((int) $plan['scheduleId']);
         if ($route === null) {
@@ -989,6 +1001,9 @@ final class SmartBook
             'pointType'    => $points['type'],
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
             'boardingStop' => $boardStop,   // the list name of the pickup really booked ('' on a drop run)
+            // wx1 (25 Nov 2026): the Nepal-side pickups a passenger may choose (>= 2 ON boarding rows on a toIndia bus), and the one booked
+            'pickups'      => count($npPicks) > 1 ? $npPicks : [],
+            'pickup'       => count($npPicks) > 1 ? (self::matchPoint((string) $plan['boardingName'], array_map(static fn(array $p): string => $p['name'], $npPicks)) ?: (string) $plan['boardingName']) : '',
             'pointNote'    => $pointNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null
             // 19 Nov 2026 (NP-3): {label, at, tz, reason} when today's bus is closed by the sales clock and this is a later day
             'clockNote'    => $plan['clockNote'] ?? null,
@@ -1598,6 +1613,29 @@ final class SmartBook
      *  Input
      * ================================================================= */
 
+    /**
+     * wx1 (25 Nov 2026, owner: "Nepal tarfa pickup ma Nepalgunj office ra Rupaidiha parking - duita
+     * matra"): the switched-ON boarding rows of a Nepal -> India bus, so the card can offer them
+     * as chips. The office keeps exactly the real ones in Admin -> Routes; nothing is invented.
+     * Empty when the switch sb_np_pickup_choice_on is off or the route has no row.
+     * @return list<array{name: string, time: string}>
+     */
+    private static function npPickups(int $routeId): array
+    {
+        if ($routeId <= 0 || !Settings::getBool('sb_np_pickup_choice_on', true)) {
+            return [];
+        }
+        $out = [];
+        try {
+            foreach (Boarding::stopsFor($routeId) as $s) {
+                $out[] = ['name' => (string) $s['name'], 'time' => $s['time'] !== null ? substr((string) $s['time'], 0, 5) : ''];
+            }
+        } catch (Throwable $e) {
+            return [];
+        }
+        return $out;
+    }
+
     /** @return array<string, mixed> */
     private static function normalise(array $in, string $mode): array
     {
@@ -1635,6 +1673,7 @@ final class SmartBook
             'direction' => $dir,
             'date'      => Security::isValidDate((string) ($in['date'] ?? '')) ? (string) $in['date'] : '',
             'point'     => Security::clean((string) ($in['point'] ?? ''), 191),
+            'pickup'    => Security::clean((string) ($in['pickup'] ?? ''), 191),   // wx1: Nepal-side pickup (toIndia), see npPickups()
             'pax'       => $pax,
             'type'      => ($in['type'] ?? '') === 'private' ? 'private' : 'sharing',
             'cabin'     => ($in['cabin'] ?? '') === 'double' ? 'double' : 'single',

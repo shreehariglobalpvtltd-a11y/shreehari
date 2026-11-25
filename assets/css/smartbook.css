@@ -819,3 +819,8 @@ html #view-home > #sbDesk{order:-1 !important}
 /* with ⇄ in the middle a 360px phone has ~125px per direction: wrap the town names to two lines, never cut them */
 #smartBook:not([data-staff]) .sb-dir .sb-dir-b{white-space:normal;min-width:0;padding:2px 6px}
 #smartBook:not([data-staff]) .sb-dir .sb-dir-b b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15;text-align:center;overflow-wrap:anywhere}
+/* 25 Nov 2026 (wx1): Nepal -> India pickup chips (Nepalgunj office | Rupaidiha parking) */
+#smartBook .sb-f-pick{grid-column:1/-1}
+#smartBook .sb-f-pick .sb-chips{flex-wrap:wrap}
+#smartBook .sb-f-pick .sb-chip{flex:1 1 150px;min-height:48px;white-space:normal;text-align:left}
+#smartBook .sb-f-pick .sb-chip b{display:block;font-size:13px;line-height:1.25}

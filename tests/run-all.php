@@ -270,6 +270,7 @@ const CORE_SUITES = [
     'wx1-a-test.php'                  => 'SmartBook: Nepal timezone opens Nepal -> India + swap, ₹ INR | रू NPR frozen on the sale, BS + AD date chips (25 Nov)',
     'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
     'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',
+    'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
 ];
 
 /**

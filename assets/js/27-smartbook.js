@@ -689,6 +689,7 @@
     var b = { action: 'quote', direction: S.dir, date: S.date, point: S.point, type: S.type, cabin: S.cabin, berth: S.berth,
       pax: S.pax.map(function (p) { return { gender: p.gender, band: p.band, name: String(p.name || '').trim().slice(0, 60) }; }),
       seats: S.seatMode === 'manual' ? S.manual : [], phone: digits(S.phone) };
+    if (S.dir === 'toIndia' && S.pickup) b.pickup = S.pickup;   // 25 Nov 2026 (wx1): the Nepal-side pickup chip
     if (S.promoOn && S.promo) b.promo = S.promo;   // 15 Nov 2026: the server prices it (and the sale charges the same)
     /* 13 Nov 2026 (mg17): the desk's discount (admin / counter page only — the
        boxes exist nowhere else). The server caps it and prices the ticket. */
@@ -947,8 +948,23 @@
     var allUpper = floors.every(function (f) { return f === 'upper'; });
     return q.seatLabels.join(', ') + (allLower ? ' · ' + tr('lower') : (allUpper ? ' · ' + tr('upper') : ''));
   }
+  /* 25 Nov 2026 (wx1, owner): a Nepal -> India bus with two (or more) real pickups -
+     Nepalgunj office and Rupaidiha parking - shows them as chips; the quote says which
+     one is booked (q.pickup) and that one's map QR goes on the ticket. One row = no chips. */
+  function drawPicks() {
+    var f = $('sbPickF'), box = $('sbPicks'); if (!f || !box) return;
+    var q = S.q, list = (q && q.ok !== false && S.dir === 'toIndia' && Array.isArray(q.pickups)) ? q.pickups : [];
+    if (list.length < 2) { f.hidden = true; box.innerHTML = ''; return; }
+    var cur = S.pickup || q.pickup || '';
+    box.innerHTML = list.map(function (p) {
+      var on = p.name === cur;
+      return '<button type="button" class="sb-chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-pick="' + esc(p.name) + '"><b>' + esc(p.name) + '</b>' + (p.time ? '<small>' + esc(p.time) + '</small>' : '') + '</button>';
+    }).join('');
+    f.hidden = false;
+  }
   function renderQuote(flash) {
     var q = S.q;
+    drawPicks();
     var line = $('sbSeatLine');
     clockLine(q);
     if (q) {
@@ -1080,9 +1096,13 @@
     var b;
     if ((b = e.target.closest('.sb-dir-b'))) {
       var d = b.getAttribute('data-dir'); if (d === S.dir) return;
-      S.dir = d; S.point = firstPoint(d); S.date = ''; S.manual = []; S.seatMode = 'auto'; S.why = {};
+      S.dir = d; S.point = firstPoint(d); S.date = ''; S.manual = []; S.seatMode = 'auto'; S.why = {}; S.pickup = '';
       if (!S.curTouched) S.cur = defaultCur();   // 25 Nov 2026 (wx1): NPR follows Nepal -> India until a chip is tapped
       fill(); applyWords(); changed(); return;
+    }
+    if ((b = e.target.closest('#sbPicks [data-pick]'))) {   // 25 Nov 2026 (wx1): Nepalgunj office | Rupaidiha parking
+      var pk = b.getAttribute('data-pick'); if (pk === S.pickup) return;
+      S.pickup = pk; S.manual = []; drawPicks(); changed('pickup'); return;
     }
     /* 25 Nov 2026 (wx1): ⇄ = a tap on the other direction (the same reset as above) */
     if (e.target.closest('[data-sbswap]')) {
