@@ -23,6 +23,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('payments.view');
+require_once INCLUDE_PATH . '/tripexpense.php';   // 25 Nov 2026 (op5): per-trip cost labels + link
 // Oct 2026: company-wide money (collections, expenses, salaries, agents' cash)
 // is for the accounts roles — the same gate as Payroll. Counter and official
 // desks keep payments.view to verify a customer's payment on Verify Payments.
@@ -409,6 +410,9 @@ try {
             $ex['cat']  = $m[1];
             $ex['note'] = $m[2];
         }
+        if ((string) ($ex['category'] ?? '') !== '') {   // 25 Nov 2026 (op5): a per-trip entry names its own kind
+            $ex['cat'] = (string) $ex['category'];
+        }
         $expenseTotal += (float) $ex['total'];
         $expenseByDay[(string) $ex['expense_date']] = ($expenseByDay[(string) $ex['expense_date']] ?? 0.0) + (float) $ex['total'];
     }
@@ -592,7 +596,7 @@ admin_header('Accounting', 'accounting');
 </div>
 
 <div class="panel" id="expenses">
-  <h2>💸 Expenses · दैनिक खर्च</h2>
+  <h2>💸 Expenses · दैनिक खर्च <?php if (TripExpense::on()): ?><a class="btn ghost no-print" style="margin-left:auto;padding:5px 11px;font-size:12px" href="trip-expenses.php">⛽ ट्रिप-अनुसार खर्च · Per-trip costs</a><?php endif; ?></h2>
   <?php if ($expFlash !== null): ?><div class="flash <?= Security::e($expFlash[0]) ?>" style="margin:0 18px 10px"><?= Security::e($expFlash[1]) ?></div><?php endif; ?>
   <?php if ($canSpend): ?>
   <form method="post" action="#expenses" class="acc-tools no-print" style="padding:0 18px">
@@ -614,7 +618,7 @@ admin_header('Accounting', 'accounting');
     <?php foreach ($expenses as $ex): ?>
       <tr>
         <td><?= Security::e(formatDate((string) $ex['expense_date'])) ?></td>
-        <td><?= Security::e($expCats[$ex['cat']] ?? $ex['cat']) ?></td>
+        <td><?= Security::e($expCats[$ex['cat']] ?? TripExpense::label((string) $ex['cat'], false)) ?></td>
         <td><?= Security::e((string) $ex['note']) ?></td>
         <td class="muted"><?= Security::e((string) ($ex['by_name'] ?: $ex['by_user'] ?: '')) ?></td>
         <td class="acc-num"><?= Security::e(inr((float) $ex['total'])) ?></td>
