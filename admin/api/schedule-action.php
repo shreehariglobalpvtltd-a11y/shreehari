@@ -1028,6 +1028,19 @@ function handleSetBus(int $adminId): void
         jsonErr('That trip is cancelled — reopen it before changing its vehicle.');
     }
 
+    /* 25 Nov 2026 (op5): a change of coach under a trip goes through
+       BusSwap (guard + clash + tickets re-minted + passengers told once). */
+    require_once INCLUDE_PATH . '/busswap.php';
+    if ($busId > 0 && BusSwap::on() && (int) ($before['bus_id'] ?? 0) !== $busId) {
+        try {
+            $sw = BusSwap::swap($sid, $busId, $adminId, 'Bus Calendar', ['via' => 'bus_calendar']);
+        } catch (RuntimeException $e) {
+            jsonErr($e->getMessage());
+        }
+        jsonOk((string) $sw['message'], $sid, ['busId' => $busId, 'totalSeats' => (int) Database::scalar('SELECT total_seats FROM schedules WHERE id = :id', ['id' => $sid], 0),
+            'sent' => (int) $sw['sent'], 'failed' => (int) $sw['failed'], 'tickets' => (int) $sw['tickets']]);
+    }
+
     if ($busId > 0) {
         $check = Seats::assertBusSwapSafe($sid, $busId);
         Database::transaction(static function () use ($sid, $busId, $check): void {
