@@ -1,0 +1,143 @@
+/* =====================================================================
+   assets/css/fx1-fonts.css - self-hosted fonts (fx1, 26 Nov 2026)
+
+   No Google CDN at runtime: every file is under /assets/fonts/.
+   Three family names, used through the --fx-font-* stacks in
+   fx1-tokens.css. The names are new ("FX ..."), so loading this file does
+   not change any page that names 'Noto Sans Devanagari' or 'Poppins' today.
+
+     "FX Deva"   Noto Sans Devanagari 2.006, Devanagari ranges only
+     "FX Latin"  Poppins 4.004, Basic Latin + Latin-1 + punctuation
+     "FX Num"    the same Noto files, limited to digits, the rupee sign and
+                 separators: Noto's digits are all one width (Poppins' are
+                 not, and it has no tnum feature), so money columns line up
+
+   Weights are real: 400 / 500 / 600 / 700.
+     - Noto Sans Devanagari.ttf is a variable font (wght 100-900, wdth
+       62.5-100); the four files are true instances cut from its weight
+       axis at normal width, not synthetic bold.
+     - Poppins ships as four static files; each was subset as-is.
+   There is no italic in either family: do not set font-style:italic on
+   Devanagari (the browser would slant it by machine).
+
+   font-display:swap  text is readable at once in the system font, then
+                      swaps. A browser downloads a file only when a
+                      character in its unicode-range is on the page in that
+                      weight, so a Latin-only admin table never fetches the
+                      Devanagari files, and a weight nobody uses costs 0.
+
+   Not covered (falls through to the system font, by design):
+     arrows such as -> and the two-way arrow (U+2190-21FF), emoji, Latin
+     Extended (a-macron etc.), Cinzel (the wordmark keeps its own inline
+     @font-face in the app shell).
+
+   Sizes (bytes): deva 400 48,484 / 500 51,800 / 600 52,048 / 700 52,060
+                  latin 400 8,848 / 500 8,664 / 600 9,004 / 700 8,756
+   Licence: SIL OFL 1.1 for both - see assets/ASSET-SOURCES.md
+   ===================================================================== */
+
+/* ---- FX Deva: Devanagari, Vedic marks, Devanagari Extended, ZWJ/ZWNJ,
+        rupee sign, dotted circle ------------------------------------- */
+@font-face {
+  font-family: "FX Deva";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-400.woff2) format("woff2");
+  unicode-range: U+0900-097F, U+1CD0-1CFF, U+200C-200D, U+20B9, U+25CC, U+A8E0-A8FF;
+}
+@font-face {
+  font-family: "FX Deva";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-500.woff2) format("woff2");
+  unicode-range: U+0900-097F, U+1CD0-1CFF, U+200C-200D, U+20B9, U+25CC, U+A8E0-A8FF;
+}
+@font-face {
+  font-family: "FX Deva";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-600.woff2) format("woff2");
+  unicode-range: U+0900-097F, U+1CD0-1CFF, U+200C-200D, U+20B9, U+25CC, U+A8E0-A8FF;
+}
+@font-face {
+  font-family: "FX Deva";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-700.woff2) format("woff2");
+  unicode-range: U+0900-097F, U+1CD0-1CFF, U+200C-200D, U+20B9, U+25CC, U+A8E0-A8FF;
+}
+
+/* ---- FX Latin: Basic Latin, Latin-1, common punctuation, euro, rupee,
+        trade mark, minus -------------------------------------------- */
+@font-face {
+  font-family: "FX Latin";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/fx1-latin-400.woff2) format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02BC, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+20B9, U+2122, U+2212, U+2215;
+}
+@font-face {
+  font-family: "FX Latin";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(../fonts/fx1-latin-500.woff2) format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02BC, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+20B9, U+2122, U+2212, U+2215;
+}
+@font-face {
+  font-family: "FX Latin";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/fx1-latin-600.woff2) format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02BC, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+20B9, U+2122, U+2212, U+2215;
+}
+@font-face {
+  font-family: "FX Latin";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/fx1-latin-700.woff2) format("woff2");
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02BC, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+20B9, U+2122, U+2212, U+2215;
+}
+
+/* ---- FX Num: one-width digits for money and tables. Same files as
+        FX Deva (no second download), limited to % + , - . / 0-9 : and the
+        rupee sign. Used by .fx-num / --fx-font-num. --------------------- */
+@font-face {
+  font-family: "FX Num";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-400.woff2) format("woff2");
+  unicode-range: U+0025, U+002B-003A, U+20B9;
+}
+@font-face {
+  font-family: "FX Num";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-500.woff2) format("woff2");
+  unicode-range: U+0025, U+002B-003A, U+20B9;
+}
+@font-face {
+  font-family: "FX Num";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-600.woff2) format("woff2");
+  unicode-range: U+0025, U+002B-003A, U+20B9;
+}
+@font-face {
+  font-family: "FX Num";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/fx1-deva-700.woff2) format("woff2");
+  unicode-range: U+0025, U+002B-003A, U+20B9;
+}
