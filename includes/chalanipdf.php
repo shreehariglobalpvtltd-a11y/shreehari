@@ -35,6 +35,7 @@ if (!defined('SHG_APP')) {
 
 require_once INCLUDE_PATH . '/pdf.php';
 require_once INCLUDE_PATH . '/ticket.php';      // Ticket::logoFile()
+require_once INCLUDE_PATH . '/chalanistrip.php'; // 25 Nov 2026 (release ch): Total | Cash | Online | Due
 
 final class ChalaniPdf
 {
@@ -366,12 +367,35 @@ final class ChalaniPdf
             $y += $bh + 4;
         }
         $txt($M, $y + 1, 'गुजरात ⇄ रुपैडिहा · यात्रु यात्रा अभिलेख', 8, true, self::NAVY);
-        $txtR($W - $M, $y + 1, 'सिट · नाम · भुक्तानी विवरण', 8, true, self::NAVY);
+        /* 25 Nov 2026 (release ch, uniform chalani): the band's right side carries the money
+           strip - जम्मा यात्री | नगद | अनलाइन | ड्यू बाँकी - from the same $money / payMark the
+           rows read (ChalaniStrip), in the band's own height so no row moves to another page.
+           Switch chalani_money_strip_on; off = the old words. */
+        $strip = (ChalaniStrip::on() && is_callable($money) && is_callable($fmt['payMark'] ?? null))
+            ? ChalaniStrip::fromRows($rows, $money, $fmt['payMark']) : null;
+        if ($strip !== null) {
+            $segs = [
+                ['जम्मा यात्री ' . $neDigits((string) $strip['passengers']) . ' · ' . $cs . ' ' . number_format($strip['amount']), self::NAVY],
+                ['नगद ' . $cs . ' ' . number_format($strip['cash']), self::GREEN],
+                ['अनलाइन ' . $cs . ' ' . number_format($strip['online']), self::GREEN],
+                ['ड्यू बाँकी ' . $cs . ' ' . number_format($strip['due']) . ($strip['dueN'] > 0 ? ' (' . $neDigits((string) $strip['dueN']) . ' जना)' : ''), $strip['due'] > 0 ? self::RED : self::GREEN],
+            ];
+            $sx = $W - $M;
+            for ($si = count($segs) - 1; $si >= 0; $si--) {
+                [$st, $rgb] = $segs[$si];
+                $txtR($sx, $y + 1, $st, 8, true, $rgb);
+                $sx -= $width($st, 8);
+                if ($si > 0) { $txtR($sx - 3, $y + 1, '|', 8, false, self::MUTE); $sx -= 3 + $width('|', 8) + 3; }
+            }
+        } else {
+            $txtR($W - $M, $y + 1, 'सिट · नाम · भुक्तानी विवरण', 8, true, self::NAVY);
+        }
         $y += 7;
 
         /* ---- table, paginated ---------------------------------------- */
         $limit  = $H - $M - 16;                  // the footer rule sits just below this
-        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit, 'marks' => [], 'sum' => []];
+        self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit, 'marks' => [], 'sum' => [],
+            'strip' => $strip !== null ? array_diff_key($strip, ['rows' => 1]) : null];   // 25 Nov 2026 (release ch)
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
            line"): one line per booking with desk extras + blank pen lines.
            Page economy (review): with NO extras on the bus (the usual case) there is

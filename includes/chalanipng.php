@@ -40,6 +40,7 @@ if (!defined('SHG_APP')) {
 
 require_once INCLUDE_PATH . '/ticket.php';      // Ticket::logoFile(), Ticket::roman()
 require_once INCLUDE_PATH . '/goldsheet.php';   // the GOLD template + payment QR (9 Oct 2026)
+require_once INCLUDE_PATH . '/chalanistrip.php'; // 25 Nov 2026 (release ch): the Total | Cash | Online | Due strip
 
 final class ChalaniPng
 {
@@ -48,7 +49,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 17;  // 17 = desk copy (NP-2): ?desk= filter, an NPR desk draws NPR (Rs beside the net), the desk in the number (19 Nov 2026)   // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 18;  // 18 = uniform chalani (release ch): Total | Cash | Online | Due strip under the route line, PAID / DUE row chips (25 Nov 2026)   // 17 = desk copy (NP-2): ?desk= filter, an NPR desk draws NPR (Rs beside the net), the desk in the number (19 Nov 2026)   // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -687,6 +688,7 @@ final class ChalaniPng
             'places' => $fmt['placeList'] ?? [],          // 6 Nov 2026
             'bus'    => $fmt['busName'] ?? '',
             'genders' => array_map(static fn(array $r): string => (string) ($r['gender'] ?? ''), $rows),
+            'strip'  => ChalaniStrip::on(),   // 25 Nov 2026 (release ch): the switch redraws the page
         ];
         return md5((string) json_encode($seed));
     }
@@ -1135,7 +1137,37 @@ final class ChalaniPng
             . $roman((string) ($trip['to_city'] ?? 'Rupaidiha')) . '  ·  PASSENGER RECORD'
         ), true);
         self::tR($im, 16, $px1 - 16, $y + 3, $maroon, 'PAGE ' . $page . ' OF ' . $pagesShown, true);
-        GoldSheet::flourish($im, $M + (int) ($stripW / 2), $y + 52, $stripW - 40);
+        /* 25 Nov 2026 (release ch, uniform chalani): the money strip - जम्मा यात्री Total |
+           नगद Cash | अनलाइन Online | ड्यू बाँकी Due - on every page, from the same $money /
+           payMark the table reads (ChalaniStrip: each rupee in one bucket). Switch
+           chalani_money_strip_on; off = the gold flourish, as before. */
+        $strip = (ChalaniStrip::on() && isset($fmt['money'], $fmt['payMark']) && is_callable($fmt['money']) && is_callable($fmt['payMark']))
+            ? ChalaniStrip::fromRows($rows, $fmt['money'], $fmt['payMark']) : null;
+        if ($strip !== null) {
+            $devOk = class_exists('DevShape');   // Devanagari labels only where HarfBuzz shapes them (rule 5: never broken glyphs)
+            $lab   = $devOk ? ['जम्मा यात्री · TOTAL', 'नगद · CASH', 'अनलाइन · ONLINE', 'ड्यू बाँकी · DUE'] : ['TOTAL PASSENGERS', 'CASH', 'ONLINE', 'DUE'];
+            $cl0   = (string) ($fmt['cur']['latin'] ?? 'Rs');
+            $val   = [
+                $strip['passengers'] . '  ·  ' . $cl0 . ' ' . number_format($strip['amount']),
+                $cl0 . ' ' . number_format($strip['cash']),
+                $cl0 . ' ' . number_format($strip['online']),
+                $cl0 . ' ' . number_format($strip['due']) . ($strip['dueN'] > 0 ? '  ·  ' . $strip['dueN'] . ' PAX' : ''),
+            ];
+            $chipW = (int) (($stripW - 3 * 12) / 4);
+            $sy1 = $y + 31; $sy2 = self::TABLE_Y - 7;
+            $dueHot = $strip['due'] > 0;
+            $tone = [[$navy, [255, 253, 246]], [$green, [236, 253, 243]], [$green, [236, 253, 243]],
+                     [$dueHot ? $maroon : $green, $dueHot ? [254, 242, 242] : [236, 253, 243]]];
+            foreach ($lab as $i => $lb) {
+                $bx = $M + $i * ($chipW + 12);
+                GoldSheet::card($im, $bx, $sy1, $bx + $chipW, $sy2, 10, $tone[$i][1], GoldSheet::GOLD, 4);
+                imagefilledrectangle($im, $bx + 2, $sy1 + 8, $bx + 6, $sy2 - 8, $tone[$i][0]);
+                self::t($im, 12, $bx + 16, $sy1 + 4, $goldD, self::fit(12, $lb, $chipW - 24), true);
+                self::t($im, 19, $bx + 16, $sy1 + 22, $tone[$i][0], self::fit(19, $val[$i], $chipW - 24), true);
+            }
+        } else {
+            GoldSheet::flourish($im, $M + (int) ($stripW / 2), $y + 52, $stripW - 40);
+        }
 
         /* ================= table ================= */
         [$startIdx, $rowCount] = $chunks[$page - 1];
@@ -1235,8 +1267,19 @@ final class ChalaniPng
             $mode = (string) ($pm['mode'] ?? '');
             if ($mode !== '' && ($m['cash'] > 0 || $m['online'] > 0)) {
                 $tagCol = $m['cash'] > 0 ? 7 : 8;
-                self::t($im, 10, $cx[$tagCol] + 8, $vy + 8, $mode === 'agent' ? $goldD : ($mode === 'due' ? $maroon : $green),
-                    $mode === 'agent' ? 'AGENT' : ($mode === 'due' ? 'DUE' : 'PAID'), true);
+                $tagTxt = $mode === 'agent' ? 'AGENT' : ($mode === 'due' ? 'DUE' : 'PAID');
+                $tagC   = $mode === 'agent' ? $goldD : ($mode === 'due' ? $maroon : $green);
+                if ($strip !== null) {
+                    /* 25 Nov 2026 (release ch): a filled chip - PAID green, DUE red, AGENT gold -
+                       sized to stay clear of the amount in the same cell */
+                    $room = $cw[$tagCol] - 10 - self::w(18, number_format($tagCol === 7 ? $m['cash'] : $m['online'])) - 12;
+                    $ts   = self::w(10, $tagTxt) + 8 <= $room ? 10 : 8;
+                    $tw   = self::w($ts, $tagTxt);
+                    self::roundRect($im, $cx[$tagCol] + 4, $vy + ($ts === 10 ? 4 : 6), $cx[$tagCol] + 10 + $tw, $vy + ($ts === 10 ? 22 : 20), 5, $tagC, null);
+                    self::t($im, $ts, $cx[$tagCol] + 7, $vy + ($ts === 10 ? 7 : 8), $white, $tagTxt, true);
+                } else {
+                    self::t($im, 10, $cx[$tagCol] + 8, $vy + 8, $tagC, $tagTxt, true);
+                }
             }
             if ($m['cash'] <= 0 && $m['online'] <= 0) {
                 /* Nothing in either money column = the crew still collects (or the

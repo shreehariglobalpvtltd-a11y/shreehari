@@ -30,7 +30,7 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
     $date = todayISO();
 }
 $routeId = (int) ($_GET['route'] ?? 0);
-$format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf', 'payqr'], true) ? (string) $_GET['format'] : 'html';
+$format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf', 'payqr', 'json', 'chalanishare'], true) ? (string) $_GET['format'] : 'html';   // 25 Nov 2026 (release ch): + json (live poll), chalanishare (WhatsApp)
 require_once INCLUDE_PATH . '/chalanipng.php';   // 16 Nov 2026: ChalaniPng::payMode - the pay-at-boarding rule every chalani surface shares
 /* 29 Oct 2026 (management upgrade 3.2): passengers in the order the coach
    picks them up — the route's own boarding-stop order (route_stops.sort_order),
@@ -308,6 +308,22 @@ $pmStaff = static fn(array $pmk, bool $withAmt = true): string => $pmk['mode'] =
     : ChalaniPng::payModeLabel((string) $pmk['mode'], 'staff');
 /* The 💳 QR picture for a booking still due on boarding (format=payqr above). */
 $payQrSrc = static fn(string $pnr): string => $base . '/admin/manifest.php?' . http_build_query(['format' => 'payqr', 'pnr' => $pnr]);
+
+/* 25 Nov 2026 (release ch, owner plan section 6): ?format=json - what the chalani
+   screen polls every 30 s (only while its tab is visible) so an online payment
+   flips the row to PAID and the strip moves without a reload. The SAME gate as
+   this page (admin_boot('bookings.view') above, an agent scoped to its own sales,
+   the ?desk= filter) and the same rows ($dm). Read-only. Switch chalani_live_poll_on. */
+if ($format === 'json') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    if ($trip === null || !ChalaniStrip::pollOn()) {
+        echo json_encode(['ok' => false, 'off' => !ChalaniStrip::pollOn()]);
+        exit;
+    }
+    echo json_encode(ChalaniStrip::livePayload($dm, $pmStaff), JSON_UNESCAPED_UNICODE);
+    exit;
+}
 /* Compact "who sold this seat" for the printed waybill: the seller's SHG
    code, or the channel when there is no numbered agent behind it.
    Ticket::issuedBy() is the one place that decides — the same call the
@@ -613,7 +629,7 @@ if ($format === 'pdf') {
  *  signatures. Data fills what the system knows; the rest stays as
  *  dotted blanks for the pen, same as the paper form.
  * ===================================================================== */
-if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng') {
+if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng' || $format === 'chalanishare') {
     if ($trip === null) {
         exit('No departure on this date.');
     }
@@ -629,6 +645,16 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
         http_response_code(403);
         header('Content-Type: text/plain; charset=utf-8');
         exit('The chalani lists every seat on the bus. An agent login sees only its own sales — use My Passengers.');
+    }
+    /* 25 Nov 2026 (release ch): the whole-bus chalani as PNG / PDF / print / WhatsApp
+       share needs chalani.export (superadmin, counter, manager, operations; anyone
+       else by a per-person grant). An agent's AGENT COPY stays under agent_chalani_on
+       above, but an agent never shares. Switch chalani_export_perm_on (off = bookings.view). */
+    if ((!$agentCopy && !ChalaniStrip::mayExport()) || ($agentCopy && $format === 'chalanishare')) {
+        Logger::audit('manifest.chalani_refused', 'schedule', (string) $trip['schedule_id'], null, null, 'no chalani.export: ' . $format);
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('चलानी PNG / PDF / सेयर अनुमति छैन · You do not have the chalani.export permission — ask the office.');
     }
 
     // Same number the challan picture prints: an extra bus carries its slot.
@@ -849,6 +875,28 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
      *  refuses it: the chalani lists every berth on the bus, and an agent
      *  session is scoped precisely so it reads only its own sales.
      * ================================================================= */
+    /* 25 Nov 2026 (release ch): WhatsApp share - draw the sheet pages fresh (so the
+       signed link serves THIS data), then open wa.me with the text + one signed,
+       expiring link per page (download-chalan.php; chalani_share_link_days, default 2). */
+    if ($format === 'chalanishare') {
+        $sheetPages = ChalaniPng::pageCount($rows);
+        try {
+            for ($p = 1; $p <= $sheetPages; $p++) { ChalaniPng::render($trip, $rows, $date, $totals, $chalaniFmt, $p); }
+        } catch (Throwable $ex) {
+            Logger::error('Chalani share render failed: ' . $ex->getMessage(), ['sid' => $trip['schedule_id'] ?? 0]);
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            exit('The chalani page could not be drawn: ' . $ex->getMessage());
+        }
+        $shStrip = ChalaniStrip::fromRows($rows, $chalaniFmt['money'], $chalaniFmt['payMark']);
+        $links   = ChalaniStrip::shareLinks((int) $trip['schedule_id'], $sheetPages);
+        $waText  = ChalaniStrip::shareText($trip, $date, $chalaniNo, $shStrip, $links, (string) ($chalaniFmt['cur']['code'] ?? 'INR'));
+        Logger::audit('manifest.chalanishare', 'schedule', (string) $trip['schedule_id'], null,
+            ['pages' => $sheetPages, 'desk' => $deskF], 'WhatsApp share opened, ' . count($rows) . ' passengers, ' . $date);
+        header('Location: https://wa.me/?text=' . rawurlencode($waText), true, 302);
+        exit;
+    }
+
     if ($format === 'chalanipng') {
         require_once INCLUDE_PATH . '/chalanipng.php';   // an agent: its AGENT COPY (see above)
 
@@ -949,6 +997,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   .stops { font-size:9.6px; color:#3B4A66; margin:0 0 5px; line-height:1.4; }
   .stops b { color:#12264E; }
   .band { display:flex; justify-content:space-between; font-size:10.5px; color:#12264E; font-weight:600; margin:4px 0 5px; }
+  .band .chs b.ok { color:#15803D; } .band .chs b.bad { color:#B91C1C; }   /* 25 Nov 2026 (release ch) */
   .band .flg { vertical-align:-2px; margin:0 2px; border-radius:1px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 
   table.ps { width:100%; border-collapse:collapse; table-layout:fixed; }
@@ -1049,7 +1098,10 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   </div>
 </div>
 
-<div class="band"><span><?= $flagSvg('IN') ?> गुजरात ⇄ रुपैडिहा <?= $flagSvg('NP', 15) ?> · यात्रु यात्रा अभिलेख</span><span>सिट · नाम · भुक्तानी विवरण</span></div>
+<div class="band"><span><?= $flagSvg('IN') ?> गुजरात ⇄ रुपैडिहा <?= $flagSvg('NP', 15) ?> · यात्रु यात्रा अभिलेख</span><?php
+  /* 25 Nov 2026 (release ch): the same Total | Cash | Online | Due strip as the screen, PDF and PNG */
+  $shStrip = ChalaniStrip::on() ? ChalaniStrip::fromRows($rows, $money, $payMark) : null;
+  if ($shStrip !== null): ?><span class="chs"><b>जम्मा यात्री <?= $e($neDigits((string) $shStrip['passengers'])) ?> · <?= $e($curSym) ?> <?= $e(number_format($shStrip['amount'])) ?></b> | <b class="ok">नगद <?= $e($curSym) ?> <?= $e(number_format($shStrip['cash'])) ?></b> | <b class="ok">अनलाइन <?= $e($curSym) ?> <?= $e(number_format($shStrip['online'])) ?></b> | <b class="<?= $shStrip['due'] > 0 ? 'bad' : 'ok' ?>">ड्यू बाँकी <?= $e($curSym) ?> <?= $e(number_format($shStrip['due'])) ?></b></span><?php else: ?><span>सिट · नाम · भुक्तानी विवरण</span><?php endif; ?></div>
 
 <table class="ps">
   <colgroup>
@@ -1190,8 +1242,55 @@ foreach ($rows as $r) {
     $seenPnr[$r['pnr']] = true;
     $revenue += (float) $r['total_amount'];
 }
+/* 25 Nov 2026 (release ch, uniform chalani): the strip and the row badges, from the
+   same $dm the sheet, PDF and PNG read (ChalaniStrip). A Nepal desk copy in NPR. */
+$chStripOn = ChalaniStrip::on();
+$chCur     = $dm['cur'] !== null ? (string) $dm['cur']['code'] : 'INR';
+$scrStrip  = ChalaniStrip::fromDm($dm, $dm['cur'] !== null);
+$chExport  = $scopeId === null ? ChalaniStrip::mayExport() : Settings::getBool('agent_chalani_on', true);
+$chPoll    = ChalaniStrip::pollOn() && $trip !== null;
+$chCounterView = ChalaniStrip::counterView();
+$chCounter = null;
+if ($chCounterView !== null) {
+    try { $chCounter = ChalaniStrip::counterToday($chCounterView, (int) $admin['id']); } catch (Throwable $ex) { $chCounter = null; }
+}
+$chBadge = static function (array $r) use ($scrStrip): array {
+    $l = $scrStrip['rows'][(int) ($r['pax_id'] ?? 0)] ?? null;
+    return $l === null ? ChalaniStrip::badge('due', false) : ChalaniStrip::badge((string) $l['mode'], (bool) $l['paid']);
+};
+$chLink = static fn(array $extra): string => $base . '/admin/manifest.php?' . http_build_query(array_filter(array_merge(
+    ['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'desk' => $deskF !== '' ? $deskF : null], $extra)));
+$chPaxKey = (static function (array $rows): string {
+    $ids = array_map(static fn(array $x): int => (int) $x['pax_id'], $rows);
+    sort($ids);
+    return md5(implode(',', $ids));
+})($rows);
 ?>
 <style>
+  /* 25 Nov 2026 (release ch): money strip, Paid / Due badge, today's counter money, live note */
+  .mf-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0 0; }
+  @media (max-width:640px) { .mf-strip { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .mf-strip > div { border:1px solid var(--line,#dcdcdc); border-left:5px solid #0B3D91; border-radius:10px; padding:7px 10px; background:var(--card,#fff); min-width:0; }
+  .mf-strip small { display:block; font-size:11.5px; font-weight:700; color:var(--mut,#555); }
+  .mf-strip b { display:block; font-size:17px; font-weight:750; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+  .mf-strip .s-cash, .mf-strip .s-online { border-left-color:#16A34A; } .mf-strip .s-cash b, .mf-strip .s-online b { color:#15803D; }
+  .mf-strip .s-due { border-left-color:#DC2626; } .mf-strip .s-due b { color:#B91C1C; }
+  .mf-strip .s-due.zero { border-left-color:#16A34A; } .mf-strip .s-due.zero b { color:#15803D; }
+  :root[data-theme="dark"] .mf-strip .s-cash b, :root[data-theme="dark"] .mf-strip .s-online b, :root[data-theme="dark"] .mf-strip .s-due.zero b { color:#6EE7A0; }
+  :root[data-theme="dark"] .mf-strip .s-due b { color:#FCA5A5; }
+  .mf-pd { display:inline-block; border-radius:6px; padding:2px 8px; font-size:12px; font-weight:750; margin:0 0 3px; white-space:normal; }
+  .mf-pd.mf-pd-paid { background:#16A34A; color:#fff; } .mf-pd.mf-pd-due { background:#DC2626; color:#fff; }
+  .mf-live { font-size:12px; color:var(--mut,#555); margin-top:6px; }
+  .mf-live button { margin-left:6px; min-height:32px; border-radius:8px; border:1px solid #1D4FA3; background:#EEF4FF; color:#1D4FA3; font:inherit; font-weight:700; padding:0 10px; cursor:pointer; }
+  .mf-live.stale { color:#B45309; font-weight:700; }
+  details.mf-ctr { border:1px solid var(--line,#dcdcdc); border-radius:12px; padding:8px 12px; margin:0 0 12px; background:var(--card,#fff); }
+  details.mf-ctr summary { cursor:pointer; font-weight:750; font-size:15px; padding:4px 0; }
+  .mf-ctr-scroll { overflow-x:auto; }
+  .mf-ctr table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px; }
+  .mf-ctr th, .mf-ctr td { padding:6px 6px; border-bottom:1px solid var(--line,#e4e4e4); text-align:left; }
+  .mf-ctr .r { text-align:right; font-variant-numeric:tabular-nums; }
+  .mf-ctr .due { color:#B91C1C; font-weight:700; } :root[data-theme="dark"] .mf-ctr .due { color:#FCA5A5; }
+  .mf-ctr h4 { margin:10px 0 2px; font-size:13px; color:var(--mut,#555); }
   .mf-tools { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
   .mf-head  { border:1px solid var(--line,#dcdcdc); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
   .mf-head h2 { margin:0 0 4px; font-size:19px; }
@@ -1390,6 +1489,12 @@ foreach ($rows as $r) {
     <a class="btn" href="<?= $base ?>/admin/chalan.php?<?= Security::e(http_build_query(['sid' => (int) $trip['schedule_id']])) ?>"><svg class="a-ic"><use href="#a-doc"/></svg> Bus Chalan (PDF / PNG / WhatsApp)</a>
     <?php endif; ?>
     <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'order' => $order !== 'group' ? $order : null, 'desk' => $deskF !== '' ? $deskF : null, 'format' => 'csv']))) ?>"><?= pc_icon('download') ?> CSV</a>
+    <?php /* 25 Nov 2026 (release ch): PDF + PNG one click, and a WhatsApp share of the PNG links (chalani.export) */ ?>
+    <?php if ($chExport): ?>
+    <a class="btn" href="<?= Security::e($chLink(['format' => 'chalanipdf'])) ?>"><?= pc_icon('download') ?> PDF</a>
+    <a class="btn" href="<?= Security::e($chLink(['format' => 'chalanipng'])) ?>"><?= pc_icon('image') ?> PNG</a>
+    <?php if ($scopeId === null): ?><a class="btn" target="_blank" rel="noopener" href="<?= Security::e($chLink(['format' => 'chalanishare'])) ?>" title="PNG पेजको लिंक WhatsApp मा पठाउनुहोस् · Share the PNG page links on WhatsApp">💬 WhatsApp</a><?php endif; ?>
+    <?php endif; ?>
   <?php endif; ?>
 </form>
 
@@ -1441,7 +1546,54 @@ foreach ($rows as $r) {
         <?= pc_badge('विशेष भुक्तानी · Extras ' . inr($xScreenPaid + $xScreenDue) . ' — भयो ' . inr($xScreenPaid) . ' · बाँकी ' . inr($xScreenDue), $xScreenDue > 0 ? 'warn' : 'ok') ?>
       <?php endif; ?>
     </div>
+    <?php if ($chStripOn): $chL = ChalaniStrip::labels(); ?>
+    <div class="mf-strip" id="mfStrip" aria-live="polite">
+      <div class="s-pax"><small><?= Security::e($chL['pax']) ?></small><b data-strip="pax"><?= Security::e($scrStrip['passengers'] . ' · ' . ChalaniStrip::money($scrStrip['amount'], $chCur)) ?></b></div>
+      <div class="s-cash"><small><?= Security::e($chL['cash']) ?></small><b data-strip="cash"><?= Security::e(ChalaniStrip::money($scrStrip['cash'], $chCur)) ?></b></div>
+      <div class="s-online"><small><?= Security::e($chL['online']) ?></small><b data-strip="online"><?= Security::e(ChalaniStrip::money($scrStrip['online'], $chCur)) ?></b></div>
+      <div class="s-due<?= $scrStrip['due'] > 0 ? '' : ' zero' ?>"><small><?= Security::e($chL['due']) ?></small><b data-strip="due"><?= Security::e(ChalaniStrip::money($scrStrip['due'], $chCur) . ($scrStrip['dueN'] > 0 ? ' · ' . $scrStrip['dueN'] . ' जना' : '')) ?></b></div>
+    </div>
+    <?php endif; ?>
+    <?php if ($chPoll): ?><div class="mf-live no-print" id="mfLive">⟳ हरेक ३० सेकेन्डमा आफैं अपडेट · Updates itself every 30 s<span data-live="at"></span></div><?php endif; ?>
   </div>
+
+  <?php /* 25 Nov 2026 (release ch): आजको काउन्टर हिसाब - today's money at this counter
+           (CounterBook: taken today, cash / online, pay at boarding still to collect) and
+           per person who cut tickets today. Counter and office logins only, never an agent. */ ?>
+  <?php if (is_array($chCounter)): $ct = $chCounter['totals']; ?>
+  <details class="mf-ctr no-print" id="mfCounter">
+    <summary>आजको काउन्टर हिसाब · Today's counter money<?= $chCounter['deskName'] !== '' ? ' — ' . Security::e($chCounter['deskName']) : '' ?>
+      · नगद <?= Security::e(inr((float) $ct['cash'])) ?> · अनलाइन <?= Security::e(inr((float) $ct['online'])) ?> · बाँकी <?= Security::e(inr((float) $ct['due'])) ?></summary>
+    <div class="mf-ctr-scroll"><table>
+      <thead><tr><th>काउन्टर · Counter</th><th class="r">टिकट</th><th class="r">यात्री</th><th class="r">नगद · Cash</th><th class="r">अनलाइन · Online</th><th class="r">बाँकी · Due (बसमा)</th></tr></thead>
+      <tbody>
+      <?php foreach ($chCounter['lines'] as $cl): ?>
+        <tr><td><?= Security::e($cl['label']) ?></td><td class="r"><?= (int) $cl['tickets'] ?></td><td class="r"><?= (int) $cl['pax'] ?></td>
+          <td class="r"><?= Security::e(inr((float) $cl['cash'])) ?><?= $cl['currency'] !== 'INR' && $cl['cashLocal'] > 0 ? ' <small>(' . Security::e(CounterDesk::format((float) $cl['cashLocal'], (string) $cl['currency'])) . ')</small>' : '' ?></td>
+          <td class="r"><?= Security::e(inr((float) $cl['online'])) ?></td>
+          <td class="r<?= $cl['due'] > 0 ? ' due' : '' ?>"><?= Security::e(inr((float) $cl['due'])) ?><?= $cl['dueN'] > 0 ? ' · ' . (int) $cl['dueN'] : '' ?></td></tr>
+      <?php endforeach; ?>
+      <?php if ($chCounter['lines'] === []): ?><tr><td colspan="6" class="muted">आज अहिलेसम्म केही छैन · Nothing taken today yet.</td></tr><?php endif; ?>
+      </tbody>
+    </table></div>
+    <h4>आज टिकट काट्ने · Who cut tickets today (those tickets' money)</h4>
+    <div class="mf-ctr-scroll"><table>
+      <thead><tr><th>नाम · Name</th><th class="r">टिकट</th><th class="r">यात्री</th><th class="r">जम्मा</th><th class="r">नगद · Cash</th><th class="r">अनलाइन · Online</th><th class="r">बाँकी · Due</th></tr></thead>
+      <tbody>
+      <?php foreach ($chCounter['people'] as $pp): ?>
+        <tr><td><?= Security::e((string) ($pp['name'] ?? ('#' . (int) $pp['who']))) ?> <small class="muted"><?= Security::e(trim((string) ($pp['role'] ?? '') . ((string) ($pp['desk'] ?? '') !== '' ? ' · ' . $pp['desk'] : ''))) ?></small></td>
+          <td class="r"><?= (int) $pp['tickets'] ?></td><td class="r"><?= (int) $pp['pax'] ?></td><td class="r"><?= Security::e(inr((float) $pp['amount'])) ?></td>
+          <td class="r"><?= Security::e(inr((float) $pp['cash'])) ?></td><td class="r"><?= Security::e(inr((float) $pp['online'])) ?></td>
+          <td class="r<?= $pp['due'] > 0 ? ' due' : '' ?>"><?= Security::e(inr((float) $pp['due'])) ?></td></tr>
+      <?php endforeach; ?>
+      <?php if ($chCounter['people'] === []): ?><tr><td colspan="7" class="muted">आज कसैले टिकट काटेको छैन · No tickets cut today.</td></tr><?php endif; ?>
+      </tbody>
+    </table></div>
+    <?php if (Auth::can('reports.view')): ?>
+      <p style="margin:8px 0 0"><a class="btn ghost" href="<?= $base ?>/admin/desk-day.php<?= $chCounter['desk'] !== '' ? '?' . Security::e(http_build_query(['desk' => $chCounter['desk']])) : '' ?>">विस्तृत · Desk day detail →</a></p>
+    <?php endif; ?>
+  </details>
+  <?php endif; ?>
 
   <?php if (OpsHub::publicOn()): $mfPub = OpsHub::publicUrl($date); ?>
   <div class="mf-link no-print"><?= pc_icon('link') ?> <b>Live chalani link</b> <span class="muted">login बिना · agent लाई share</span>
@@ -1537,9 +1689,9 @@ foreach ($rows as $r) {
           $gid = (int) $r['booking_id'];
           if ($gid !== $lastGid): $lastGid = $gid; $g = $grp[$gid]; ?>
         <?php $gSt = $mfState[$gid] ?? 'due'; [$gLbl, $gCls] = OpsHub::payLabel($gSt); $gTick = $mfTicks[$gid] ?? null; $gPm = $payMark($r); ?>
-        <tr class="mf-grp mf-st-<?= Security::e($gSt) ?>"><td colspan="11">
-          <span class="mf-tag <?= Security::e($gCls) ?>"><?= Security::e($gLbl) ?></span>
-          <span class="mf-pm pm-<?= Security::e($gPm['mode']) ?>"><?= Security::e($pmStaff($gPm, true)) ?></span>
+        <tr class="mf-grp mf-st-<?= Security::e($gSt) ?>" data-mf-bid="<?= $gid ?>"><td colspan="11">
+          <span class="mf-tag <?= Security::e($gCls) ?>" data-mf-tag><?= Security::e($gLbl) ?></span>
+          <span class="mf-pm pm-<?= Security::e($gPm['mode']) ?>" data-mf-pm><?= Security::e($pmStaff($gPm, true)) ?></span>
           <?php if ($gPm['claim']): ?><span class="mf-pm pm-pending"><?= Security::e(ChalaniPng::payClaimLabel('staff')) ?></span><?php endif; ?>
           <b><?= Security::e($g['lead']) ?></b> — <?= (int) $g['n'] ?> passenger<?= $g['n'] === 1 ? '' : 's' ?>
           — <?= Security::e($stopNow) ?> → <?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?>
@@ -1578,7 +1730,7 @@ foreach ($rows as $r) {
           <?php endif; ?>
         <?php endif; ?>
         <?php $rowWs = $isWomanSingle($r); $rSt = $mfState[(int) $r['booking_id']] ?? 'due'; ?>
-        <tr class="mf-st-<?= Security::e($rSt) ?><?= $rowWs ? ' mf-ws' : '' ?>">
+        <tr class="mf-st-<?= Security::e($rSt) ?><?= $rowWs ? ' mf-ws' : '' ?>" data-mf-pax="<?= (int) $r['pax_id'] ?>">
           <td class="seat"><?= Security::e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) ?></td>
           <td>
             <?= $rowWs ? '<b style="color:#C2185B" title="Woman on a single sleeper">♀ </b>' : '' ?><?= Security::e((string) $r['full_name']) ?>
@@ -1625,16 +1777,21 @@ foreach ($rows as $r) {
                      only a confirmed booking has a ticket the composer will send. */ ?>
             <?php if ((string) ($r['pnr'] ?? '') !== '' && (string) ($r['booking_status'] ?? '') === 'confirmed'): ?><?= admin_wa_button('booking_ticket', ['pnr' => (string) $r['pnr']], '💬', ['class' => 'btn ghost sm', 'title' => 'Send the ticket to this passenger on WhatsApp — opens a preview first']) ?><?php endif; ?>
           </td>
-          <td><?php [$rLbl, $rCls] = OpsHub::payLabel($rSt); ?><span class="mf-tag <?= Security::e($rCls) ?>"><?= Security::e($rLbl) ?></span>
+          <td><?php if ($chStripOn): $rBd = $chBadge($r); ?><span class="mf-pd mf-pd-<?= Security::e($rBd['cls']) ?>" data-mf-pd><?= Security::e($rBd['ne'] . ' · ' . $rBd['en']) ?></span><br><?php endif; ?>
+            <?php [$rLbl, $rCls] = OpsHub::payLabel($rSt); ?><span class="mf-tag <?= Security::e($rCls) ?>" data-mf-tag><?= Security::e($rLbl) ?></span>
             <br><small class="muted"><?= Security::e($payLabel($r)) ?><?= !empty($r['pay_method']) ? ' · ' . Security::e(strtoupper((string) $r['pay_method'])) : '' ?></small>
             <?php /* 16 Nov 2026: how this row pays (the amount once per booking), and for a
                      pay-at-boarding passenger still due the crew's 💳 QR to their pay page */ ?>
-            <?php $rPm = $payMark($r); ?><br><span class="mf-pm pm-<?= Security::e($rPm['mode']) ?>"><?= Security::e($pmStaff($rPm, $rPm['first'])) ?></span><?php if ($rPm['claim']): ?> <span class="mf-pm pm-pending"><?= Security::e(ChalaniPng::payClaimLabel('staff')) ?></span><?php endif; ?>
+            <?php $rPm = $payMark($r); ?><br><span class="mf-pm pm-<?= Security::e($rPm['mode']) ?>" data-mf-pm><?= Security::e($pmStaff($rPm, $rPm['first'])) ?></span><?php if ($rPm['claim']): ?> <span class="mf-pm pm-pending"><?= Security::e(ChalaniPng::payClaimLabel('staff')) ?></span><?php endif; ?>
             <?php if ($rPm['mode'] === 'boarding'): ?><button type="button" class="mf-qr no-print" data-payqr
               data-pnr="<?= Security::e((string) $r['pnr']) ?>" data-name="<?= Security::e($pmLead[(int) $r['booking_id']] ?? (string) $r['full_name']) ?>"
               data-amt="<?= Security::e(inr((float) $rPm['amt'])) ?>" data-link="<?= Security::e(ChalaniPng::payLink((string) $r['pnr'], true)) ?>"
               data-qr="<?= Security::e($payQrSrc((string) $r['pnr'])) ?>" title="यात्रुलाई अनलाइन तिर्ने QR देखाउनुहोस् · Show the passenger a QR to pay online (free)">💳 QR</button><?php endif; ?></td>
           <td><?= Security::e($sourceLabel($r)) ?>
+            <?php /* 25 Nov 2026 (release ch): who cut it, by name (the seller login) */ ?>
+            <?php if (!empty($r['sold_by_admin_id']) && (string) (($r['agent_name'] ?? '') ?: ($r['agent_user'] ?? '')) !== ''): ?>
+              <br><small>बुक गर्ने · by <b><?= Security::e((string) (($r['agent_name'] ?? '') ?: ($r['agent_user'] ?? ''))) ?></b></small>
+            <?php endif; ?>
             <?php if ($bookedTime($r) !== ''): ?>
               <br><small<?= $isLate($r) ? ' style="color:#8a1111;font-weight:700"' : ' class="muted"' ?>><?= $isLate($r) ? '⚠ after dep · ' : 'booked ' ?><?= Security::e($bookedTime($r)) ?></small>
             <?php endif; ?>
@@ -1686,6 +1843,68 @@ foreach ($rows as $r) {
       });
     })();
     </script>
+  <?php endif; ?>
+  <?php /* 25 Nov 2026 (release ch): the live poll - every 30 s while this tab is visible,
+           ?format=json (same gate, same rows) refreshes the row colours, Paid / Due badges and
+           the strip; a passenger added or removed offers a reload instead of jumping the page. */ ?>
+  <?php if ($chPoll): ?>
+  <script>
+  (function () {
+    var url = <?= json_encode($chLink(['format' => 'json', 'order' => $order !== 'group' ? $order : null]), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    var key = <?= json_encode($chPaxKey) ?>;
+    var live = document.getElementById('mfLive'), last = '', busy = false;
+    var swap = function (el, prefix, val) {
+      if (!el) { return; }
+      el.className = el.className.split(' ').filter(function (c) { return c.indexOf(prefix) !== 0; }).concat([prefix + val]).join(' ');
+    };
+    var apply = function (d) {
+      if (!d || !d.ok || d.fp === last) { return; }
+      last = d.fp;
+      var s = d.strip || {}, t = s.txt || {};
+      ['pax', 'cash', 'online', 'due'].forEach(function (k) {
+        var b = document.querySelector('#mfStrip [data-strip="' + k + '"]');
+        if (b && typeof t[k] === 'string') { b.textContent = t[k]; }
+      });
+      var dueBox = document.querySelector('#mfStrip .s-due');
+      if (dueBox) { dueBox.classList.toggle('zero', !(s.due > 0)); }
+      (d.rows || []).forEach(function (r) {
+        var tr = document.querySelector('tr[data-mf-pax="' + r.p + '"]');
+        if (!tr) { return; }
+        swap(tr, 'mf-st-', r.st);
+        var tg = tr.querySelector('[data-mf-tag]'); if (tg) { tg.textContent = r.lbl; tg.className = 'mf-tag ' + r.cls; }
+        var pm = tr.querySelector('[data-mf-pm]'); if (pm) { pm.textContent = r.pmTxt; pm.className = 'mf-pm pm-' + r.pm; }
+        var pd = tr.querySelector('[data-mf-pd]'); if (pd) { pd.textContent = r.pdTxt; pd.className = 'mf-pd mf-pd-' + r.pd; }
+      });
+      (d.groups || []).forEach(function (g) {
+        var tr = document.querySelector('tr[data-mf-bid="' + g.b + '"]');
+        if (!tr) { return; }
+        swap(tr, 'mf-st-', g.st);
+        var tg = tr.querySelector('[data-mf-tag]'); if (tg) { tg.textContent = g.lbl; tg.className = 'mf-tag ' + g.cls; }
+        var pm = tr.querySelector('[data-mf-pm]'); if (pm) { pm.textContent = g.pmTxt; pm.className = 'mf-pm pm-' + g.pm; }
+      });
+      if (live) {
+        var at = live.querySelector('[data-live="at"]'); if (at) { at.textContent = ' · ' + (d.at || ''); }
+        if (d.key !== key && !live.querySelector('button')) {
+          live.classList.add('stale');
+          live.appendChild(document.createTextNode(' — नयाँ / रद्द बुकिङ · Passenger list changed '));
+          var rb = document.createElement('button'); rb.type = 'button'; rb.textContent = 'Reload';
+          rb.addEventListener('click', function () { location.reload(); });
+          live.appendChild(rb);
+        }
+      }
+    };
+    var poll = function () {
+      if (busy || document.visibilityState !== 'visible') { return; }
+      busy = true;
+      fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' }, cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(apply, function () {})
+        .then(function () { busy = false; }, function () { busy = false; });
+    };
+    setInterval(poll, 30000);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { poll(); } });
+  })();
+  </script>
   <?php endif; ?>
 <?php endif; ?>
 <?php

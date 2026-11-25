@@ -266,6 +266,8 @@ const CORE_SUITES = [
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+    // 25 Nov 2026 (release ch): starts its own php -S on a free port for the HTTP part (skips it if it cannot)
+    'mp1-chalani-test.php'            => 'uniform chalani: Total | Cash | Online | Due strip = sum of rows, no double counting, live JSON poll, chalani.export per role, counter money',
 ];
 
 /**
