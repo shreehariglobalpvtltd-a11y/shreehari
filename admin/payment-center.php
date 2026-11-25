@@ -104,19 +104,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($host !== '' && preg_match('/^[A-Za-z0-9.\-]+$/', $host) !== 1) {
             $bad[] = 'IMAP host मिलेन';
         }
+        if (array_key_exists('bankmail_account_hint', $_POST)) {
+            $_POST['bankmail_account_hint'] = (string) preg_replace('/[\s\-]+/', '', (string) $_POST['bankmail_account_hint']);
+            if ($_POST['bankmail_account_hint'] !== '' && preg_match('/^\d{4,6}$/', $_POST['bankmail_account_hint']) !== 1) {
+                $bad[] = 'खाताको अन्तिम ४ देखि ६ अंक मात्र · last 4-6 digits of our account only';
+            }
+        }
         if ($bad !== []) {
             foreach ($bad as $b) { $flash[] = ['bad', $b]; }
         } else {
             $changed = $saveKeys([
                 'nepal_esewa_id' => ['text', 80], 'nepal_esewa_name' => ['text', 120],
                 'bankmail_host' => ['text', 120], 'bankmail_user' => ['text', 190], 'bankmail_app_password' => ['secret', 80],
-                'bankmail_from' => ['text', 500], 'bankmail_dkim_domain' => ['text', 120], 'pay_bankmail_autoconfirm_on' => ['bool', 0],
+                'bankmail_from' => ['text', 500], 'bankmail_dkim_domain' => ['text', 120], 'bankmail_account_hint' => ['text', 6],
+                'pay_bankmail_autoconfirm_on' => ['bool', 0],
             ]);
             $want = (string) ($_POST['enable'] ?? '');
             if ($want === '1' || $want === '0') {
                 $cfg = BankMail::config();
-                if ($want === '1' && ($cfg['user'] === '' || $cfg['pass'] === '' || $cfg['from'] === [] || $cfg['dkim'] === '' || !$ready)) {
-                    $flash[] = ['bad', 'चालु गर्न Gmail, app password, sender र DKIM domain चाहिन्छ' . ($ready ? '' : ' (र migration)') . ' · fill all four first'];
+                if ($want === '1' && ($cfg['user'] === '' || $cfg['pass'] === '' || $cfg['from'] === [] || $cfg['dkim'] === '' || PayCredits::accountHint() === '' || !$ready)) {
+                    $flash[] = ['bad', 'चालु गर्न Gmail, app password, sender, DKIM domain र हाम्रो खाताको अन्तिम ४-६ अंक चाहिन्छ' . ($ready ? '' : ' (र migration)') . ' · fill all five first'];
                 } elseif ($want !== (BankMail::on() ? '1' : '0')) {
                     Settings::set('bankmail_on', $want, 'bool', 'payments');
                     Settings::flush();
@@ -298,7 +305,8 @@ $credits = static function (string $src) use ($e, $stateTxt): void {
         echo '<div class="pc-cr-meta">Txn <code>' . $e($r['txn_id'] ?? '—') . '</code>'
            . ($r['ref_text'] ? ' · ' . $e(mb_substr((string) $r['ref_text'], 0, 90)) : '')
            . ($r['booking_pnr'] ? ' · <a href="booking-view.php?pnr=' . rawurlencode((string) $r['booking_pnr']) . '">' . $e($r['booking_pnr']) . '</a>' : '')
-           . ($r['source'] === 'gmail' ? ' · ' . ((int) $r['dkim_ok'] === 1 ? '<span style="color:#0a7c2f">DKIM ✔</span>' : '<span style="color:#b3261e">DKIM ✖</span>') . ' ' . $e($r['sender'] ?? '') : '')
+           . ($r['source'] === 'gmail' ? ' · ' . ((int) $r['dkim_ok'] === 1 ? '<span style="color:#0a7c2f">DKIM ✔</span>' : '<span style="color:#b3261e">DKIM ✖</span>') . ' ' . $e($r['sender'] ?? '')
+               . (!empty($r['credit_account']) ? ' · A/C ' . $e((string) $r['credit_account'] === '?' ? '? (two accounts)' : '…' . substr((string) $r['credit_account'], -6)) : '') : '')
            . '</div>';
         if (!empty($r['note'])) {
             echo '<div class="pc-cr-note">' . $e($r['note']) . ($r['acted_name'] ? ' — ' . $e($r['acted_name']) : '') . '</div>';
@@ -373,7 +381,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_save"><input type="hidden" name="tab" value="np">
     <h2>📧 Gmail बाट बैंक alert · Global IME credit alerts</h2>
-    <p class="hint">बैंकको credit alert मात्र आउने छुट्टै Gmail राख्नुहोस्। Google Account → Security → 2-Step → <b>App passwords</b> बाट १६ अक्षरको password। Mailbox मा केही बदलिँदैन (read-only)। पैसा, PNR र रकम ठ्याक्कै मिलेमा मात्र टिकट आफैं PAID हुन्छ; नत्र तल "व्यक्ति चाहिन्छ" मा आउँछ।</p>
+    <p class="hint">बैंकको credit alert मात्र आउने छुट्टै Gmail राख्नुहोस्। Google Account → Security → 2-Step → <b>App passwords</b> बाट १६ अक्षरको password। Mailbox मा केही बदलिँदैन (read-only)। Alert मा <b>हाम्रै खाता</b> (अन्तिम अंक), PNR र रकम ठ्याक्कै मिलेमा मात्र टिकट आफैं PAID हुन्छ; नत्र तल "व्यक्ति चाहिन्छ" मा आउँछ।</p>
     <div class="pc-f">
       <label>eSewa / bank ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa / खाता नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
@@ -381,6 +389,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
       <label>App password <?= $val('bankmail_app_password') !== '' ? '<span class="pc-ok">✔ saved</span>' : '' ?><input name="bankmail_app_password" type="password" value="" autocomplete="new-password" placeholder="<?= $val('bankmail_app_password') !== '' ? '•••• (बदल्न मात्र लेख्नुहोस्)' : 'xxxx xxxx xxxx xxxx' ?>"></label>
       <label>बैंकको sender (comma) · allowed senders<input name="bankmail_from" value="<?= $e($val('bankmail_from')) ?>" placeholder="alerts@gibl.com.np, @gibl.com.np"></label>
       <label>DKIM domain (बैंकको)<input name="bankmail_dkim_domain" value="<?= $e($val('bankmail_dkim_domain')) ?>" placeholder="gibl.com.np"></label>
+      <label>हाम्रो Global IME खाताको अन्तिम ४–६ अंक · our account's last 4–6 digits<input name="bankmail_account_hint" value="<?= $e($val('bankmail_account_hint')) ?>" inputmode="numeric" maxlength="8" pattern="[0-9 ]{4,8}" placeholder="9012"></label>
       <label>IMAP host<input name="bankmail_host" value="<?= $e($val('bankmail_host', 'imap.gmail.com')) ?>"></label>
       <label style="display:flex;gap:8px;align-items:center;color:inherit"><input type="checkbox" name="pay_bankmail_autoconfirm_on" value="1" style="width:auto;min-height:0" <?= Settings::getBool('pay_bankmail_autoconfirm_on', true) ? 'checked' : '' ?>> मिलेमा आफैं PAID · auto-confirm a full match</label>
     </div>

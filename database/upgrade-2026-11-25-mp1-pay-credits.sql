@@ -6,7 +6,10 @@
 -- as 'unmatched' for admin/payment-center.php ("Link to PNR" / Ignore).
 -- dkim_ok = the source was authenticated: gmail = DKIM pass from the bank's domain,
 --           bankapi = the HMAC signature on the webhook body was verified.
--- Code checks that this table exists, so nothing breaks before this file is applied.
+-- credit_account = the account the bank alert says was credited, masked to its last digits
+--           (XXXXXXX789012); a Gmail credit auto-confirms only when it ends with
+--           bankmail_account_hint ('?' = two different accounts in one alert).
+-- Code checks that this table (and credit_account) exists, so nothing breaks before this file is applied.
 CREATE TABLE IF NOT EXISTS bank_credits (
     id           INT UNSIGNED   NOT NULL AUTO_INCREMENT PRIMARY KEY,
     source       ENUM('gmail','bankapi') NOT NULL,
@@ -16,6 +19,7 @@ CREATE TABLE IF NOT EXISTS bank_credits (
     ref_text     VARCHAR(255)   NULL,
     pnr          VARCHAR(40)    NULL,
     sender       VARCHAR(190)   NULL,
+    credit_account VARCHAR(40)  NULL,
     dkim_ok      TINYINT(1)     NOT NULL DEFAULT 0,
     message_id   VARCHAR(255)   NULL,
     received_at  DATETIME       NULL,
@@ -31,3 +35,6 @@ CREATE TABLE IF NOT EXISTS bank_credits (
     KEY idx_bank_credits_state (state, created_at),
     KEY idx_bank_credits_booking (booking_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- a database that already had bank_credits from an earlier copy of this file
+ALTER TABLE bank_credits ADD COLUMN IF NOT EXISTS credit_account VARCHAR(40) NULL AFTER sender;

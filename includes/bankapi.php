@@ -222,7 +222,6 @@ final class BankApi
             return $out(503, ['ok' => false, 'error' => 'not ready'], 'bank_credits missing');
         }
         $sandbox = self::mode() !== 'live';
-        $before  = (int) Database::scalar("SELECT id FROM bank_credits WHERE source = 'bankapi' AND txn_id = :t LIMIT 1", ['t' => mb_substr($utr, 0, 80)], 0);
         $id = PayCredits::record([
             'source' => 'bankapi', 'currency' => 'INR', 'amount' => (float) $amtRaw, 'txn_id' => $utr,
             'ref_text' => $f('reference'), 'sender' => trim(Settings::getString('bankapi_bank_name', '')) ?: 'bank api',
@@ -230,9 +229,13 @@ final class BankApi
             'raw_excerpt' => mb_substr($raw, 0, 1500), 'state' => $sandbox ? 'test' : 'new',
             'note' => $sandbox ? 'Sandbox test - never confirms' : '',
         ]);
-        if ($before > 0) {
+        $outcome = PayCredits::lastOutcome();
+        if ($outcome === 'replay') {   // the same notice again (same UTR, amount and reference)
             $row = PayCredits::get($id);
             return $out(200, ['ok' => true, 'state' => 'duplicate', 'id' => $id, 'credit' => (string) ($row['state'] ?? '')], 'duplicate utr');
+        }
+        if ($outcome === 'conflict') {   // same UTR, another amount / reference: kept for a person, bell rung
+            return $out(200, ['ok' => true, 'state' => $sandbox ? 'test' : 'unmatched', 'id' => $id], 'utr seen before with another amount / reference');
         }
         if ($sandbox) {
             return $out(200, ['ok' => true, 'state' => 'test', 'id' => $id], 'sandbox');

@@ -15,17 +15,26 @@
  *  = bankmail_dkim_domain), the text (quoted-printable / base64, HTML made
  *  text), then a generic credit-alert reader: amount (NPR / NRs / Rs / रु,
  *  commas, Devanagari digits), transaction / reference id, remarks /
- *  narration and any PNR in it. Only credit (deposit / credited) alerts
- *  are kept; a debit is ignored. bankmail_amount_regex / bankmail_txn_regex
+ *  narration and any PNR in it, and the CREDITED ACCOUNT (masked to its last
+ *  digits; never read from the remarks the payer types). Only credit
+ *  (deposit / credited) alerts are kept; a debit is ignored.
+ *  bankmail_amount_regex / bankmail_txn_regex / bankmail_account_regex
  *  (capture group 1) let the owner fix the reading for the bank's real
  *  wording without a code change.
  *
  *  A credit goes to PayCredits::record() + tryAutoConfirm() - which, not
- *  this file, decides whether money may confirm a ticket.
+ *  this file, decides whether money may confirm a ticket (it needs the
+ *  credited account to end with bankmail_account_hint).
+ *
+ *  One odd message never stops the reader: each message is handled on its
+ *  own; one that fails is logged, raises an admin bell and is stepped over
+ *  (bankmail_last_uid always moves on). An unknown charset, an absurd
+ *  amount or raw 8-bit header bytes are made harmless before the insert.
  *
  *  Settings: bankmail_on (off), bankmail_host (imap.gmail.com), bankmail_user,
  *  bankmail_app_password (secret), bankmail_from (allowed senders: addresses
- *  or @domains, comma list), bankmail_dkim_domain, bankmail_authserv
+ *  or @domains, comma list), bankmail_dkim_domain, bankmail_account_hint
+ *  (last 4-6 digits of our Global IME account), bankmail_authserv
  *  (mx.google.com), pay_bankmail_autoconfirm_on (on), bankmail_last_uid,
  *  bankmail_uidvalidity, bankmail_last_poll (JSON, for the admin page).
  * =====================================================================
@@ -261,18 +270,19 @@ final class BankMail
      * ================================================================= */
 
     /**
-     * @param array<string,string>|null $opts dkim_domain, authserv, amount_regex, txn_regex (null = from Settings)
+     * @param array<string,string>|null $opts dkim_domain, authserv, amount_regex, txn_regex, account_regex (null = from Settings)
      * @return array<string,mixed> from, message_id, date, subject, dkim_ok, dkim_domains, text,
-     *         is_credit, is_debit, amount, currency, txn_id, remarks, pnrs, pnr, why
+     *         is_credit, is_debit, amount, currency, txn_id, remarks, pnrs, pnr, account, why
      */
     public static function parse(string $raw, ?array $opts = null): array
     {
         if ($opts === null) {
             $opts = [
-                'dkim_domain'  => strtolower(trim(Settings::getString('bankmail_dkim_domain', ''))),
-                'authserv'     => strtolower(trim(Settings::getString('bankmail_authserv', 'mx.google.com'))),
-                'amount_regex' => Settings::getString('bankmail_amount_regex', ''),
-                'txn_regex'    => Settings::getString('bankmail_txn_regex', ''),
+                'dkim_domain'   => strtolower(trim(Settings::getString('bankmail_dkim_domain', ''))),
+                'authserv'      => strtolower(trim(Settings::getString('bankmail_authserv', 'mx.google.com'))),
+                'amount_regex'  => Settings::getString('bankmail_amount_regex', ''),
+                'txn_regex'     => Settings::getString('bankmail_txn_regex', ''),
+                'account_regex' => Settings::getString('bankmail_account_regex', ''),
             ];
         }
         [$headers, $body] = self::splitMessage($raw);
@@ -285,13 +295,16 @@ final class BankMail
             return '';
         };
         $from = self::address(self::decodeHeader($h1('from')));
-        $msgId = trim($h1('message-id'));
+        $msgId = mb_scrub(trim($h1('message-id')), 'UTF-8');
         if (preg_match('/<([^>]{1,250})>/', $msgId, $m) === 1) {
             $msgId = $m[1];
         }
         $dateRaw = trim($h1('date'));
         $ts = $dateRaw !== '' ? strtotime($dateRaw) : false;
-        $subject = self::decodeHeader($h1('subject'));
+        if ($ts !== false && ($ts < 946684800 || $ts > time() + 7 * 86400)) {
+            $ts = false;   // year 99999 and friends
+        }
+        $subject = mb_scrub(self::decodeHeader($h1('subject')), 'UTF-8');   // raw 8-bit header bytes
 
         /* DKIM: ONLY the topmost Authentication-Results, and only when it was written by
            the receiving server (authserv-id) - a header the sender typed lower down counts for nothing */
@@ -332,6 +345,7 @@ final class BankMail
         if ($pnrs === []) {
             $pnrs = PayCredits::pnrsIn($all);
         }
+        $account = self::accountIn($all, (string) ($opts['account_regex'] ?? ''));
         $why = '';
         if ($isDebit) {
             $why = 'debit alert';
@@ -354,6 +368,7 @@ final class BankMail
             'remarks'      => mb_substr($remarks !== '' ? $remarks : $subject, 0, 255),
             'pnrs'         => $pnrs,
             'pnr'          => count($pnrs) === 1 ? $pnrs[0] : '',
+            'account'      => $account,
             'why'          => $why,
         ];
     }
@@ -475,16 +490,44 @@ final class BankMail
             $body = quoted_printable_decode($body);
         }
         $cs = preg_match('/charset\s*=\s*"?([A-Za-z0-9_\-]+)"?/i', $ct, $m) === 1 ? strtoupper($m[1]) : 'UTF-8';
-        if ($cs !== 'UTF-8' && $cs !== 'US-ASCII') {
-            $conv = @mb_convert_encoding($body, 'UTF-8', $cs);
-            if (is_string($conv)) {
-                $body = $conv;
-            }
+        if ($cs !== 'UTF-8' && $cs !== 'US-ASCII' && $cs !== 'ASCII') {
+            $body = self::toUtf8($body, $cs);
         }
         if (!mb_check_encoding($body, 'UTF-8')) {
             $body = mb_convert_encoding($body, 'UTF-8', 'ISO-8859-1');
         }
         return $isHtml ? self::htmlToText($body) : $body;
+    }
+
+    /**
+     * One part's text into UTF-8. An unknown charset ("x-unknown-cs") makes
+     * mb_convert_encoding() throw a ValueError that @ does not stop - it would
+     * have stopped the whole reader - so: mbstring, else iconv, else as it is
+     * (the caller's UTF-8 / ISO-8859-1 check takes it from there).
+     */
+    public static function toUtf8(string $s, string $cs): string
+    {
+        $cs = strtoupper(trim($cs));
+        if ($cs === '' || in_array($cs, ['BASE64', 'UUENCODE', 'HTML-ENTITIES', 'HTML', 'QUOTED-PRINTABLE', 'QPRINT', '7BIT', '8BIT', 'PASS', 'AUTO', 'WCHAR'], true)) {
+            return $s;   // transfer encodings / pseudo-charsets, not character sets
+        }
+        try {
+            $conv = @mb_convert_encoding($s, 'UTF-8', $cs);
+            if (is_string($conv)) {
+                return $conv;
+            }
+        } catch (Throwable $e) {
+            // mbstring does not know it
+        }
+        try {
+            $conv = function_exists('iconv') ? @iconv($cs, 'UTF-8//IGNORE', $s) : false;
+            if (is_string($conv)) {
+                return $conv;
+            }
+        } catch (Throwable $e) {
+            // nor iconv
+        }
+        return $s;
     }
 
     public static function htmlToText(string $html): string
@@ -510,8 +553,18 @@ final class BankMail
         return round((float) str_replace(',', '', $s), 2);
     }
 
-    /** The credited amount (0 = none found). */
+    /**
+     * The credited amount (0 = none found). A figure that is not a positive
+     * amount below PayCredits::MAX_AMOUNT (NPR 1 crore) is 0 - unreadable, never
+     * "the next number" - so 'NPR 99999999999999' cannot break the insert.
+     */
     public static function amountIn(string $t, string $override = ''): float
+    {
+        $v = self::amountRaw($t, $override);
+        return ($v > 0 && $v < PayCredits::MAX_AMOUNT) ? $v : 0.0;
+    }
+
+    private static function amountRaw(string $t, string $override): float
     {
         if (trim($override) !== '') {
             $r = @preg_match($override, $t, $m);
@@ -568,6 +621,75 @@ final class BankMail
         return '';
     }
 
+    /**
+     * The account the alert says was credited, masked to its last (up to 6)
+     * digits: 'XXXXXXX789012', 'XXXX9012'. '' = none written, '?' = two
+     * different accounts (e.g. "from A/C … to A/C …") - neither ever matches
+     * our account, so such a credit waits for a person.
+     *
+     * The remarks / narration line is cut out first: the PAYER types it, so an
+     * "A/C XXXX9012" written there must never count.
+     */
+    public static function accountIn(string $t, string $override = ''): string
+    {
+        $t = (string) preg_replace('/(?:\b(?:remarks?|narration|narrative|purpose|particulars)\b\s*[:\-]?|\b(?:description|message)\s*[:\-])[^\n]*/iu', ' ', $t);
+        if (trim($override) !== '') {
+            $r = @preg_match($override, $t, $m);
+            if ($r === 1 && isset($m[1])) {
+                return self::maskAccount((string) $m[1]);
+            }
+            if ($r !== false) {
+                return '';   // the owner's rule decides; no guessing past it
+            }
+        }
+        $mk  = '[0-9Xx*#•]';
+        $key = '(?<![a-z])(?:a\/c|acct|account|खाता)(?![a-z])';
+        $tokens = [];
+        if (preg_match_all('/' . $key . '\s*(?:no\.?|number|num|#|नं\.?|नम्बर)?\s*[:\-]?\s*(' . $mk . '{3,30}(?:-' . $mk . '{1,30}){0,4})(?![0-9Xx*#•])/iu', $t, $mm) > 0) {
+            foreach ($mm[1] as $x) {
+                $tokens[] = self::maskAccount((string) $x);
+            }
+        }
+        if (preg_match_all('/' . $key . '[^\n]{0,24}?\bend(?:ing|s)\s*(?:with|in)?\s*[:\-]?\s*(\d{3,6})(?![0-9])/iu', $t, $mm) > 0) {
+            foreach ($mm[1] as $x) {
+                $tokens[] = 'XXXX' . $x;
+            }
+        }
+        $tokens = array_values(array_filter($tokens, static fn(string $s): bool => $s !== ''));
+        if ($tokens === []) {
+            return '';
+        }
+        $vis = static fn(string $s): int => preg_match('/(\d+)$/', $s, $m) === 1 ? strlen($m[1]) : 0;
+        usort($tokens, static fn(string $a, string $b): int => $vis($b) <=> $vis($a));
+        foreach ($tokens as $x) {
+            if (!self::sameAccount($tokens[0], $x)) {
+                return '?';
+            }
+        }
+        return $tokens[0];
+    }
+
+    /** "0123456789012" -> "XXXXXXX789012", "****9012" -> "XXXX9012"; '' when fewer than 3 digits end it. */
+    public static function maskAccount(string $s): string
+    {
+        $s = strtoupper(str_replace(['-', ' ', '•', '*', '#'], ['', '', 'X', 'X', 'X'], trim($s)));
+        if (preg_match('/^[0-9X]{3,60}$/', $s) !== 1 || preg_match('/(\d+)$/', $s, $m) !== 1 || strlen($m[1]) < 3) {
+            return '';
+        }
+        $keep = min(6, strlen($m[1]));
+        return substr(str_repeat('X', strlen($s) - $keep) . substr($s, -$keep), -40);
+    }
+
+    /** Two masked accounts agree on every digit both show at the end. */
+    public static function sameAccount(string $a, string $b): bool
+    {
+        if (preg_match('/(\d+)$/', $a, $x) !== 1 || preg_match('/(\d+)$/', $b, $y) !== 1) {
+            return false;
+        }
+        $n = min(strlen($x[1]), strlen($y[1]));
+        return $n >= 3 && substr($x[1], -$n) === substr($y[1], -$n);
+    }
+
     /* =================================================================
      *  the poll (cron/bank-mail.php) and the Test button
      * ================================================================= */
@@ -593,14 +715,22 @@ final class BankMail
     }
 
     /**
-     * Read new alerts. $imap is for tests (an already-connected client).
+     * Read new alerts. $imap is for tests (an already-connected client); so is
+     * $each (callable(string $raw, array &$res): void, in place of handle()).
+     *
+     * A message that fails on its own (bad bytes, a value the database refuses,
+     * anything thrown while handling it) is logged, raises an admin bell and is
+     * stepped over - bankmail_last_uid still moves past it, so one odd e-mail
+     * can never stop every later credit alert from being read. A failure of the
+     * IMAP connection or of the database itself (saving bankmail_last_uid)
+     * still ends the poll without moving on, and the next run tries again.
      *
      * @return array<string,mixed> counts + ok / msg
      */
-    public static function poll(int $max = 50, ?BankMailImap $imap = null): array
+    public static function poll(int $max = 50, ?BankMailImap $imap = null, ?callable $each = null): array
     {
         $res = ['ok' => true, 'msg' => '', 'seen' => 0, 'credits' => 0, 'new' => 0, 'duplicates' => 0, 'debits' => 0,
-                'other' => 0, 'confirmed' => 0, 'unmatched' => 0, 'last_uid' => Settings::getInt('bankmail_last_uid', 0)];
+                'other' => 0, 'confirmed' => 0, 'unmatched' => 0, 'failed' => 0, 'last_uid' => Settings::getInt('bankmail_last_uid', 0)];
         if (!self::on()) {
             return ['ok' => true, 'msg' => 'off'] + $res;
         }
@@ -634,16 +764,30 @@ final class BankMail
             $uids = array_values(array_filter($imap->uidSearch($crit), static fn(int $u): bool => $u > $last));
             $uids = array_slice($uids, 0, max(1, min(200, $max)));
             foreach ($uids as $uid) {
-                $raw = $imap->uidFetch($uid);
+                $raw = $imap->uidFetch($uid);   // a broken connection ends the poll here: retried next run
                 $res['seen']++;
                 if ($raw !== '') {
-                    self::handle($raw, $res);
+                    try {
+                        if ($each !== null) {
+                            $each($raw, $res);
+                        } else {
+                            self::handle($raw, $res);
+                        }
+                    } catch (Throwable $e) {
+                        $res['failed']++;
+                        $why = self::scrub(PayCredits::text($e->getMessage(), 300), $cfg['pass']);
+                        Logger::warning('BankMail: message could not be read, stepped over', ['uid' => $uid, 'err' => $why], 'payment');
+                        PayCredits::alert('Bank mail could not be read · UID ' . $uid,
+                            'Gmail message UID ' . $uid . ' could not be read and was stepped over (' . $why . '). If it is a credit alert, open it in Gmail and check the bank statement by hand.',
+                            null, 'np');
+                    }
                 }
                 $last = max($last, $uid);
                 Settings::set('bankmail_last_uid', (string) $last, 'int', 'payments');
             }
             $res['last_uid'] = $last;
-            $res['msg'] = $res['seen'] . ' read · ' . $res['credits'] . ' credits · ' . $res['confirmed'] . ' confirmed · ' . $res['unmatched'] . ' need a person';
+            $res['msg'] = $res['seen'] . ' read · ' . $res['credits'] . ' credits · ' . $res['confirmed'] . ' confirmed · ' . $res['unmatched'] . ' need a person'
+                . ($res['failed'] > 0 ? ' · ' . $res['failed'] . ' could not be read' : '');
         } catch (Throwable $e) {
             $res['ok']  = false;
             $res['msg'] = self::scrub($e->getMessage(), $cfg['pass']);
@@ -655,8 +799,12 @@ final class BankMail
         return self::finish($res);
     }
 
-    /** @param array<string,mixed> $res */
-    private static function handle(string $raw, array &$res): void
+    /**
+     * One message: parse, store, try to confirm.
+     *
+     * @param array<string,mixed> $res
+     */
+    public static function handle(string $raw, array &$res): void
     {
         $p = self::parse($raw);
         if ($p['is_debit']) {
@@ -672,7 +820,18 @@ final class BankMail
             'source' => 'gmail', 'currency' => 'NPR', 'amount' => $p['amount'], 'txn_id' => $p['txn_id'],
             'ref_text' => $p['remarks'], 'pnr' => $p['pnr'], 'sender' => $p['from'], 'dkim_ok' => $p['dkim_ok'],
             'message_id' => $p['message_id'], 'received_at' => $p['date'], 'raw_excerpt' => $p['subject'] . "\n" . mb_substr($p['text'], 0, 1500),
+            'credit_account' => $p['account'],
         ]);
+        $outcome = PayCredits::lastOutcome();
+        if ($outcome === 'conflict') {
+            $res['new']++;
+            $res['unmatched']++;   // same txn id, another e-mail: kept for a person, bell rung by record()
+            return;
+        }
+        if ($outcome === 'replay') {
+            $res['duplicates']++;
+            return;
+        }
         $row = PayCredits::get($id);
         if ($row === null || (string) $row['state'] !== 'new') {
             $res['duplicates']++;
@@ -726,6 +885,9 @@ final class BankMail
             }
             if ($cfg['dkim'] === '') {
                 $warn[] = 'no DKIM domain yet (nothing can auto-confirm)';
+            }
+            if (PayCredits::accountHint() === '') {
+                $warn[] = 'our account digits not saved yet (nothing can auto-confirm)';
             }
             return ['ok' => true, 'msg' => 'Logged in to ' . $cfg['host'] . ' · INBOX has ' . $box['exists'] . ' messages' . ($warn !== [] ? ' · ' . implode(', ', $warn) : '')];
         } catch (Throwable $e) {
