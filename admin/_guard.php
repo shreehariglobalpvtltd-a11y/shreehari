@@ -148,6 +148,7 @@ function admin_nav(): array
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat / Berth Layout Map','perm' => 'schedules.view',   'section' => $S3],
         ['href' => 'extra-seats.php',  'icon' => 'seat',      'label' => 'Extra Seats',            'perm' => 'bookings.view',    'section' => $S3],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani',     'perm' => 'bookings.view',    'section' => $S3],
+        ['href' => 'parcels.php',      'icon' => 'clipboard', 'label' => '📦 पार्सल · Parcels',      'perm' => 'bookings.edit', 'section' => $S3],   // 25 Nov 2026 (op5): small register per bus
         ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Boarding QR',       'perm' => 'tickets.scan',     'section' => $S3],
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts',     'perm' => 'payments.view',    'section' => $S3],
         ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customer CRM',           'perm' => 'customers.view',   'section' => $S3],

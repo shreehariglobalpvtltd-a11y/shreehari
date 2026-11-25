@@ -4060,13 +4060,19 @@ final class Notify
                 'whatsapp' => "⏰ " . $company . "\n"
                     . "2 ghanta ma bus aaunchha / 2 घंटे में बस — booking " . $pnr . "\n"
                     . $routeLn . ($when !== '' ? "Pickup / चढ्ने समय: " . $when . "\n" : '') . $seatLine . $boardLn
+                    /* 25 Nov 2026 (op5): the passenger's own pickup map + that place's phone +
+                       the ticket picture (it carries the pickup QR) - TripNotify::reminderExtras() */
+                    . (($f['pickupMap'] ?? '') !== '' ? "📍 चढ्ने ठाउँ · Pickup map: " . $f['pickupMap'] . "\n" : '')
+                    . (($f['pickupPhone'] ?? '') !== '' ? "📞 त्यहाँको फोन · Place phone: " . $f['pickupPhone'] . "\n" : '')
+                    . (($f['withTicket'] ?? '') === '1' && ($tl2 = self::tripTicketLink($pnr)) !== '' ? "🎫 टिकट (QR सहित) · Ticket: " . $tl2 . "\n" : '')
                     . "\n🎒 Boarding point ma samayamai pugnuhos.\n"
                     . "Please reach the boarding point on time.\n"
                     . ($helpline !== '' ? "Help: " . $helpline : ''),
                 'sms' => $company . ': Your bus reaches your stop in about 2 hours. ' . $pnr . '.'
                     . ($when !== '' ? ' ' . $when . '.' : '')
                     . ($f['seats'] !== '' ? ' Seat ' . $f['seats'] . '.' : '')
-                    . ' Please reach the boarding point on time.',
+                    . ' Please reach the boarding point on time.'
+                    . (($f['pickupMap'] ?? '') !== '' ? ' Map: ' . $f['pickupMap'] : ''),
             ],
             'delayed' => [
                 'whatsapp' => "⏳ " . $company . "\n"

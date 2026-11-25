@@ -270,6 +270,7 @@ const CORE_SUITES = [
     'op5-credit-test.php'             => 'agent credit limit + Stop selling: refused at the limit on every agent door, settlement unblocks, counter never (25 Nov)',
     'op5-trip-expenses-test.php'      => 'trip costs: sum per trip, NPR -> INR, P&L = income - expenses, agent refused (25 Nov op5)',
     'op5-busswap-test.php'            => 'bus swap: guard / smaller bus refused, tickets re-minted, live trip follows, every passenger told once (25 Nov op5)',
+    'op5-pax-parcel-reminder-test.php' => 'optional border ID on the desk card + chalani tag, parcel register (CRUD / totals / gate), 2 h reminder pickup map once (25 Nov)',
 ];
 
 /**

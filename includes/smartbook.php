@@ -42,6 +42,7 @@ require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/sitefacts.php';
 require_once __DIR__ . '/normalfare.php';         // 20 Nov 2026 (nf1): the route's real normal fare
 require_once __DIR__ . '/emergencycontact.php';   // 15 Nov 2026 (P7): the optional emergency contact
+require_once __DIR__ . '/paxid.php';              // 25 Nov 2026 (op5): the optional passenger ID on the desk card
 
 /** An idempotency key presented with another request / by another browser: the card makes a new key. */
 final class SmartBookKeyReused extends RuntimeException
@@ -1325,6 +1326,12 @@ final class SmartBook
                 'gender'  => AutoBerth::gender($p['gender'] ?? null),
                 'special' => $band !== 'adult' ? $band : null,
             ];
+            // 25 Nov 2026 (op5): BookingService::create stores it (paxIdField); blank stays NULL
+            if ($mode !== 'customer' && PaxId::enabled() && ($p['idNum'] ?? '') !== '') {
+                $last = (int) array_key_last($passengers);
+                $passengers[$last]['idType'] = (string) ($p['idType'] ?? 'Other');
+                $passengers[$last]['idNum']  = (string) $p['idNum'];
+            }
         }
         $request = [
             'routeId'         => (int) $q['routeId'],
@@ -1592,11 +1599,21 @@ final class SmartBook
             if (!is_array($p)) {
                 continue;
             }
-            $pax[] = [
+            $row = [
                 'gender' => (string) (AutoBerth::gender($p['gender'] ?? '') ?? ''),
                 'band'   => AutoBerth::band($p['band'] ?? 'adult'),
                 'name'   => Security::clean((string) ($p['name'] ?? ''), 120),
             ];
+            /* 25 Nov 2026 (op5): the optional per-passenger ID for the border - a staff
+               desk only (switch pax_id_field_on); a customer card never sends one. */
+            if ($mode !== 'customer' && isset($p['idNum']) && PaxId::enabled()) {
+                $id = PaxId::clean($p['idType'] ?? '', $p['idNum']);
+                if ($id !== null) {
+                    $row['idType'] = $id['type'];
+                    $row['idNum']  = $id['num'];
+                }
+            }
+            $pax[] = $row;
         }
         if ($pax === []) {
             $pax[] = ['gender' => '', 'band' => 'adult', 'name' => ''];
