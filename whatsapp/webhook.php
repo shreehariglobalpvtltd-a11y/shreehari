@@ -553,14 +553,19 @@ function wh_process_inbound(array $msg): void
         $reply['text'] = $heard . "\n" . $reply['text'];
     }
 
-    $r = wh_send_reply($from, $reply, $heard);
+    /* 25 Nov 2026 (mp3-bot, P1): a machine's message (an auto-reply, a bank bot's menu) - nothing is sent; the
+       ai_turns row below still says so (router "autoskip"). */
+    $r = ['success' => true, 'message_id' => '', 'error' => ''];
+    if (!WaBot::$silent) {
+        $r = wh_send_reply($from, $reply, $heard);
 
-    Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
-        'provider' => 'cloud_api',
-        'sid'      => $r['message_id'],
-        'purpose'  => 'bot_reply',
-        'error'    => $r['success'] ? null : $r['error'],
-    ]);
+        Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
+            'provider' => 'cloud_api',
+            'sid'      => $r['message_id'],
+            'purpose'  => 'bot_reply',
+            'error'    => $r['success'] ? null : $r['error'],
+        ]);
+    }
 
     /* P7-9a (16 Nov 2026): one ai_turns row — which branch answered, the
        tools it ran, sent or not, and how long the turn took. No message

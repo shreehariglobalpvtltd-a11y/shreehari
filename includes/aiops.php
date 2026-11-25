@@ -1860,7 +1860,9 @@ final class AiOps
      * tickets nobody paid for; one who could change the UPI / eSewa id could send customers'
      * money elsewhere. Prefixes, so a new bankapi_* / bankmail_* key is covered by default.
      */
-    public const SUPER_ONLY_SETTING_PREFIXES = ['bankapi_', 'bankmail_', 'pay_bankmail_', 'india_upi_', 'nepal_esewa_', 'icici_', 'upi_', 'esewa_'];
+    public const SUPER_ONLY_SETTING_PREFIXES = ['bankapi_', 'bankmail_', 'pay_bankmail_', 'india_upi_', 'nepal_esewa_', 'icici_', 'upi_', 'esewa_',
+        /* 25 Nov 2026 (mp2 "bank Gmail"): the Google OAuth client that signs a bank Gmail box in */
+        'google_oauth_'];
 
     /** Is $key one of SUPER_ONLY_SETTINGS (or under a SUPER_ONLY_SETTING_PREFIXES prefix)? */
     public static function superOnlySetting(string $key): bool

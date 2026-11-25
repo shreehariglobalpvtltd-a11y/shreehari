@@ -149,9 +149,10 @@ sudo systemctl restart php8.3-fpm
 # Log rotation, Sundays 03:00.
 0 3 * * 0 /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/rotate.php >/dev/null 2>&1
 
-# Nepal online payments (25 Nov 2026, mp1): read new Global IME Bank credit
-# alerts from the Gmail box, every 2 minutes. Exits at once while
-# bankmail_on is off (Admin -> Payment Management -> Nepal tab).
+# Online payments (25 Nov 2026, mp1 + mp2): read new bank credit alerts from
+# every active bank Gmail box (Admin -> Payment Management -> Nepal / India
+# tab -> "Bank Gmail accounts"), every 2 minutes. Exits at once while no box
+# is active (before the mp2 migration: while bankmail_on is off).
 */2 * * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/bank-mail.php >/dev/null 2>&1
 # Evening day report on WhatsApp (release dy): from seller_day_report_hour
 # (default 20 IST) each seller with a ticket today gets their own day once,
@@ -167,6 +168,45 @@ means abandoned checkouts hold seats until their lock expires:
 ```bash
 grep -c expire /var/log/syslog
 ```
+
+### 7a. Bank Gmail (Google login) — 25 Nov 2026, mp2
+
+The owner adds each bank's Gmail box on **Payment Management** (Nepal tab = NPR
+Global IME alerts, India tab = INR alerts until the bank API credentials come):
+"🔐 Google बाट Login गर्नुहोस् (browser जस्तै)" or an app password. Needs the
+migration `database/upgrade-2026-11-25-mp2-bank-gmail.sql` and PHP `ext-sodium`
+(tokens / app passwords are sealed with `APP_KEY`; without sodium nothing is
+stored). The old single-box settings (`bankmail_user` + app password) become
+account #1 by themselves on the first run.
+
+One-time Google Cloud setup (the panel shows the same steps + a Copy button):
+
+1. <https://console.cloud.google.com/> → create a project (e.g. "S Hari Bank Mail").
+2. APIs & Services → Library → **Gmail API** → Enable.
+3. **Google Auth Platform** (APIs & Services → OAuth consent screen) → **Get started**:
+   app name + your e-mail, Audience **External**, contact e-mail → **Create**.
+   Then in the left menu: **Data access** → **Add or remove scopes** →
+   `https://www.googleapis.com/auth/gmail.readonly` → Save; **Audience** → **Test users**:
+   add the bank Gmail, then **Publish app** → In production — otherwise Google signs
+   the box out every 7 days.
+4. **Clients** → **Create client** (or Credentials → Create credentials → **OAuth
+   client ID**) → **Web application** → Authorized redirect URIs, exactly:
+
+   ```text
+   https://<the .network admin host>/admin/gmail-oauth.php
+   ```
+
+   (live: `https://shreehariglobal.network/admin/gmail-oauth.php`; the panel prints
+   the exact value — override with setting `google_oauth_redirect` only if needed).
+5. Paste **Client ID** + **Client Secret** in the panel's setup box → Save
+   (settings `google_oauth_client_id`, `google_oauth_client_secret`; super-admin only).
+
+When signing in Google shows "Google hasn't verified this app": Advanced → Go to …
+(it is the owner's own app). Only read-only Gmail access is asked for. Each box
+then needs its bank **DKIM domain** and **our account's last 4–6 digits** (Edit)
+before it makes suggestions; until then it only logs what arrives. Gmail credits
+stay suggestions (`pay_bankmail_autoconfirm_on` off): a person checks the bank app
+and presses Confirm.
 
 ## 8. Off-server backups
 

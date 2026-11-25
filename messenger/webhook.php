@@ -123,6 +123,9 @@ function msgr_handle(array $m): void
         } finally {
             WaBooking::$saleNote = $saleNoteWas;
         }
+        if (WaBot::$silent) {
+            return;                               // 25 Nov 2026 (mp3-bot, P1): a machine's message gets no reply
+        }
         $r = Messenger::send($psid, (string) ($reply['text'] ?? ''), $reply['media'] ?? null,
             is_array($reply['ui'] ?? null) ? $reply['ui'] : null);
 

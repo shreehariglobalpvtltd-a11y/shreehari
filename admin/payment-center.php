@@ -17,6 +17,17 @@
  *   💵 नगद — read-only cash for one day: per counter (CounterBook, the day close) and per
  *        person (counter cash, boarding cash, handed over, balance), with links to the books.
  *
+ * 25 Nov 2026 (mp2 "bank Gmail"): on BOTH online tabs a card "📧 बैंक Gmail खाताहरू · Bank Gmail
+ * accounts" - every bank Gmail box of that country (BankMailAccounts): Google login / App password,
+ * ✓ जोडिएको / ✗ why, last checked, today's credits, "अहिले जाँच्नुहोस् · Check now", पज / चालु,
+ * फेरि जोड्नुहोस् (Google), हटाउनुहोस्, Edit (senders / DKIM domain / our account digits / label),
+ * "📬 पछिल्लो mail" (the last 20 mails the box looked at = the owner's "sabai update"), and
+ * "➕ Gmail जोड्नुहोस्": "🔐 Google बाट Login गर्नुहोस् (browser जस्तै)" (admin/gmail-oauth.php; the
+ * one-time Google Cloud setup box with the exact redirect URI while the client is not saved) or an
+ * app password. It replaces the old single Gmail form (those settings become account #1 by
+ * themselves). The India tab reads Indian bank alerts the same way until the bank API credentials
+ * come; each tab's credits table shows its currency from every source and box.
+ *
  * Every POST is CSRF-checked and audited; a secret is never shown back (blank keeps it).
  * Money is confirmed ONLY through PayCredits (BookingService gates) - never here directly.
  */
@@ -24,7 +35,7 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/counterdesk.php';
-require_once INCLUDE_PATH . '/bankmail.php';
+require_once INCLUDE_PATH . '/bankmail.php';   // + BankMailAccounts, GoogleOAuth, SecretBox
 require_once INCLUDE_PATH . '/bankapi.php';
 
 $admin = admin_boot('payments.view');
@@ -40,6 +51,16 @@ if (!Auth::isSuperadmin()) {
 $me    = (int) $admin['id'];
 $tab   = in_array((string) ($_GET['tab'] ?? $_POST['tab'] ?? ''), ['np', 'in', 'cash'], true) ? (string) ($_GET['tab'] ?? $_POST['tab']) : 'np';
 $flash = [];
+/* the Google sign-in (admin/gmail-oauth.php) comes back here with its result */
+if (isset($_SESSION['pc_flash']) && is_array($_SESSION['pc_flash'])) {
+    foreach ($_SESSION['pc_flash'] as $f) {
+        if (is_array($f) && count($f) === 2) {
+            $flash[] = [(string) $f[0] === 'ok' ? 'ok' : 'bad', (string) $f[1]];
+        }
+    }
+    unset($_SESSION['pc_flash']);
+}
+$mailReady = BankMailAccounts::ready();
 $val   = static fn(string $k, string $d = ''): string => Settings::getString($k, $d);
 $ready = PayCredits::ready();
 
@@ -89,68 +110,181 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
         $flash[] = ['bad', 'Session expired — फेरि खोल्नुहोस्।'];
     } elseif ($act === 'np_save') {
+        /* the eSewa / bank id + name (the Gmail boxes have their own card since mp2) */
         $tab = 'np';
-        $bad = [];
-        if (trim((string) ($_POST['bankmail_user'] ?? '')) !== '' && filter_var(trim((string) $_POST['bankmail_user']), FILTER_VALIDATE_EMAIL) === false) {
+        $changed = $saveKeys(['nepal_esewa_id' => ['text', 80], 'nepal_esewa_name' => ['text', 120]]);
+        if ($changed !== []) {
+            Logger::audit('settings.payment_center', 'settings', 'payment-center', null, ['tab' => 'np', 'changed' => $changed], 'Payment Management (Nepal)');
+            $flash[] = ['ok', 'सेभ भयो · saved: ' . implode(', ', $changed)];
+        } else {
+            $flash[] = ['ok', 'केही बदलिएन · nothing changed'];
+        }
+    } elseif (in_array($act, ['acct_check', 'acct_toggle', 'acct_remove', 'acct_edit'], true)) {
+        /* one bank Gmail box (mp2) */
+        $acct = $mailReady ? BankMailAccounts::get((int) ($_POST['id'] ?? 0)) : null;
+        if ($acct === null) {
+            $flash[] = ['bad', 'Gmail खाता भेटिएन · account not found'];
+        } else {
+            $tab = BankMailAccounts::tabFor((string) $acct['country']);
+            $aid = (int) $acct['id'];
+            $who = (string) $acct['email'];
+            if ($act === 'acct_check' && (int) $acct['is_active'] !== 1) {
+                $flash[] = ['bad', $who . ': ⏸ पज छ — पहिले "▶ चालु" थिच्नुहोस् · paused, resume it first.'];
+            } elseif ($act === 'acct_check') {
+                $r = BankMail::pollAccount($acct, 50);
+                Logger::audit('bank_mail.check', 'bank_mail_account', (string) $aid, null,
+                    ['ok' => (bool) $r['ok'], 'seen' => (int) $r['seen'], 'credits' => (int) $r['credits'], 'suggested' => (int) $r['suggested']], 'Check now: ' . $who);
+                $flash[] = [$r['ok'] ? 'ok' : 'bad', ($r['ok'] ? '✔ ' : '✖ ') . $who . ': ' . (string) $r['msg']];
+            } elseif ($act === 'acct_toggle') {
+                $on = (int) $acct['is_active'] !== 1;
+                BankMailAccounts::setActive($aid, $on);
+                Logger::audit('bank_mail.' . ($on ? 'resume' : 'pause'), 'bank_mail_account', (string) $aid, ['is_active' => (int) $acct['is_active']], ['is_active' => $on ? 1 : 0], $who);
+                $flash[] = ['ok', $who . ': ' . ($on ? '▶ चालु · on — cron ले हरेक २ मिनेट हेर्छ' : '⏸ पज · paused — mail पढिँदैन')];
+            } elseif ($act === 'acct_remove') {
+                /* Google withdraws the WHOLE grant on revoke: the same Gmail on the other tab would lose access too */
+                $shared = (string) $acct['method'] === 'google' && (int) Database::scalar(
+                    "SELECT COUNT(*) FROM bank_mail_accounts WHERE email = :e AND method = 'google' AND id <> :i", ['e' => $who, 'i' => $aid], 0) > 0;
+                if ((string) $acct['method'] === 'google' && !$shared) {
+                    GoogleOAuth::revoke($acct);   // best effort; the row and its sealed tokens go either way
+                }
+                /* the migrated mp1 box: its plaintext app password in settings goes too */
+                $legacy = $aid === (int) Settings::getString(BankMailAccounts::LEGACY_KEY, '0');
+                if ($legacy && Settings::getString('bankmail_app_password', '') !== '') {
+                    Settings::set('bankmail_app_password', '', 'string', 'payments');
+                    Settings::flush();
+                }
+                BankMailAccounts::remove($aid);
+                Logger::audit('bank_mail.remove', 'bank_mail_account', (string) $aid, ['email' => $who, 'country' => (string) $acct['country'], 'method' => (string) $acct['method']],
+                    ['revoked' => (string) $acct['method'] === 'google' && !$shared, 'legacy_password_cleared' => $legacy], 'Bank Gmail removed (tokens deleted)');
+                $flash[] = ['ok', $who . ' हटाइयो · removed (token / password मेटियो; पुराना credits ledger मा रहन्छन्)'];
+            } else {
+                $bad = BankMailAccounts::badSenders((string) ($_POST['senders'] ?? ''));
+                $dk  = strtolower(trim((string) ($_POST['dkim_domain'] ?? '')));
+                if (!BankMailAccounts::goodDomain($dk)) {
+                    $bad[] = 'DKIM domain: जस्तै gibl.com.np · a plain domain';
+                }
+                $hint = BankMailAccounts::cleanHint((string) ($_POST['account_hint'] ?? ''));
+                if ($hint === null) {
+                    $bad[] = 'खाताको अन्तिम ४ देखि ६ अंक मात्र · last 4-6 digits of our account only';
+                }
+                $newPw = str_replace(' ', '', (string) ($_POST['app_password'] ?? ''));
+                if ($newPw !== '' && preg_match('/^[A-Za-z0-9]{16}$/', $newPw) !== 1) {
+                    $bad[] = 'App password: १६ अक्षर · 16 letters';
+                }
+                if ($newPw !== '' && !SecretBox::available()) {
+                    $bad[] = SecretBox::whyNot();
+                }
+                if ($bad !== []) {
+                    foreach ($bad as $b) { $flash[] = ['bad', $b]; }
+                } else {
+                    $rules = [
+                        'label' => mb_substr(Security::clean((string) ($_POST['label'] ?? ''), 80), 0, 80),
+                        'senders' => implode(', ', array_filter(array_map(static fn(string $s): string => strtolower(trim($s)), explode(',', (string) ($_POST['senders'] ?? ''))))),
+                        'dkim_domain' => $dk, 'account_hint' => (string) $hint,
+                    ];
+                    $changed = [];
+                    foreach ($rules as $k => $v) {
+                        if ((string) ($acct[$k] ?? '') !== $v) {
+                            $changed[] = $k;
+                        }
+                    }
+                    BankMailAccounts::updateRules($aid, $rules);
+                    if ($newPw !== '' && (string) $acct['method'] === 'app_password') {
+                        Database::update('bank_mail_accounts', ['secret_enc' => SecretBox::seal($newPw, 'bankmail')], 'id = :i', ['i' => $aid]);
+                        $changed[] = 'app_password (new)';
+                    }
+                    if ($changed !== []) {
+                        Logger::audit('bank_mail.edit', 'bank_mail_account', (string) $aid, null, ['changed' => $changed, 'senders' => $rules['senders'], 'dkim_domain' => $dk, 'account_hint' => (string) $hint], $who);
+                    }
+                    $now = BankMailAccounts::get($aid) ?? $acct;
+                    if (!BankMailAccounts::isReady($acct) && BankMailAccounts::isReady($now)) {
+                        BankMailAccounts::rereadIncomplete($aid);   // now ready: read the last 2-3 days again, nothing lost
+                        Logger::audit('bank_mail.reread', 'bank_mail_account', (string) $aid, null, ['from' => 'start'], 'Box ready: recent mail read again');
+                    }
+                    $flash[] =['ok', $who . ': ' . ($changed !== [] ? 'सेभ भयो · saved: ' . implode(', ', $changed) : 'केही बदलिएन · nothing changed')
+                        . (BankMailAccounts::isReady($now) ? ' · ✓ तयार · ready' : ' · अधुरो: DKIM domain र खाताको अन्तिम अंक दुवै चाहिन्छ')];
+                }
+            }
+        }
+    } elseif ($act === 'acct_add_pw') {
+        /* (B) a box with a Google app password (IMAP, read-only) */
+        $country = (string) ($_POST['country'] ?? 'NP') === 'IN' ? 'IN' : 'NP';
+        $tab   = BankMailAccounts::tabFor($country);
+        $email = strtolower(trim((string) ($_POST['email'] ?? '')));
+        $pw    = str_replace(' ', '', (string) ($_POST['app_password'] ?? ''));
+        $bad   = [];
+        if (!$mailReady) {
+            $bad[] = 'Migration upgrade-2026-11-25-mp2-bank-gmail.sql बाँकी · run the migration first';
+        }
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false || strlen($email) > 190) {
             $bad[] = 'Gmail ठेगाना मिलेन · not an e-mail address';
         }
-        foreach (array_filter(array_map('trim', explode(',', (string) ($_POST['bankmail_from'] ?? '')))) as $f) {
-            if (preg_match('/^(@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}|[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})$/', $f) !== 1) {
-                $bad[] = 'Sender "' . $f . '": ठेगाना वा @domain चाहिन्छ';
-            }
+        if (preg_match('/^[A-Za-z0-9]{16}$/', $pw) !== 1) {
+            $bad[] = 'App password: Google ले दिएको १६ अक्षर · the 16 letters Google shows';
         }
-        $dk = trim((string) ($_POST['bankmail_dkim_domain'] ?? ''));
-        if ($dk !== '' && preg_match('/^[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/', $dk) !== 1) {
-            $bad[] = 'DKIM domain: जस्तै gimebank.com';
+        $dk   = strtolower(trim((string) ($_POST['dkim_domain'] ?? '')));
+        $hint = BankMailAccounts::cleanHint((string) ($_POST['account_hint'] ?? ''));
+        $bad  = array_merge($bad, BankMailAccounts::badSenders((string) ($_POST['senders'] ?? '')));
+        if (!BankMailAccounts::goodDomain($dk)) {
+            $bad[] = 'DKIM domain: जस्तै gibl.com.np · a plain domain';
         }
-        $host = trim((string) ($_POST['bankmail_host'] ?? ''));
-        if ($host !== '' && preg_match('/^[A-Za-z0-9.\-]+$/', $host) !== 1) {
-            $bad[] = 'IMAP host मिलेन';
+        if ($hint === null) {
+            $bad[] = 'खाताको अन्तिम ४ देखि ६ अंक मात्र · last 4-6 digits of our account only';
         }
-        if (array_key_exists('bankmail_account_hint', $_POST)) {
-            $_POST['bankmail_account_hint'] = (string) preg_replace('/[\s\-]+/', '', (string) $_POST['bankmail_account_hint']);
-            if ($_POST['bankmail_account_hint'] !== '' && preg_match('/^\d{4,6}$/', $_POST['bankmail_account_hint']) !== 1) {
-                $bad[] = 'खाताको अन्तिम ४ देखि ६ अंक मात्र · last 4-6 digits of our account only';
-            }
+        if ($bad === [] && !SecretBox::available()) {
+            $bad[] = SecretBox::whyNot();
         }
         if ($bad !== []) {
             foreach ($bad as $b) { $flash[] = ['bad', $b]; }
         } else {
-            $changed = $saveKeys([
-                'nepal_esewa_id' => ['text', 80], 'nepal_esewa_name' => ['text', 120],
-                'bankmail_host' => ['text', 120], 'bankmail_user' => ['text', 190], 'bankmail_app_password' => ['secret', 80],
-                'bankmail_from' => ['text', 500], 'bankmail_dkim_domain' => ['text', 120], 'bankmail_account_hint' => ['text', 6],
-            ]);
-            /* Gmail auto-PAID is never switched from this page (owner-safety: suggestions only until the real
-               Global IME alert template is locked). The row is only created, OFF, so Settings can show it later. */
-            if (Settings::get('pay_bankmail_autoconfirm_on', null) === null) {
-                Settings::set('pay_bankmail_autoconfirm_on', '0', 'bool', 'payments');
-                Settings::flush();
-                $changed[] = 'pay_bankmail_autoconfirm_on=0 (default)';
-            }
-            $want = (string) ($_POST['enable'] ?? '');
-            if ($want === '1' || $want === '0') {
-                $cfg = BankMail::config();
-                if ($want === '1' && ($cfg['user'] === '' || $cfg['pass'] === '' || $cfg['from'] === [] || $cfg['dkim'] === '' || PayCredits::accountHint() === '' || !$ready)) {
-                    $flash[] = ['bad', 'चालु गर्न Gmail, app password, sender, DKIM domain र हाम्रो खाताको अन्तिम ४-६ अंक चाहिन्छ' . ($ready ? '' : ' (र migration)') . ' · fill all five first'];
-                } elseif ($want !== (BankMail::on() ? '1' : '0')) {
-                    Settings::set('bankmail_on', $want, 'bool', 'payments');
-                    Settings::flush();
-                    $changed[] = 'bankmail_on=' . $want;
-                }
-            }
-            if ($changed !== []) {
-                Logger::audit('settings.payment_center', 'settings', 'payment-center', null, ['tab' => 'np', 'changed' => $changed], 'Payment Management (Nepal)');
-                $flash[] = ['ok', 'सेभ भयो · saved: ' . implode(', ', $changed)];
-            } elseif (!array_filter($flash, static fn($f) => $f[0] === 'bad')) {
-                $flash[] = ['ok', 'केही बदलिएन · nothing changed'];
+            try {
+                $aid = BankMailAccounts::save([
+                    'country' => $country, 'email' => $email, 'method' => 'app_password', 'secret_enc' => SecretBox::seal($pw, 'bankmail'),
+                    'senders' => implode(', ', array_filter(array_map(static fn(string $s): string => strtolower(trim($s)), explode(',', (string) ($_POST['senders'] ?? ''))))),
+                    'dkim_domain' => $dk, 'account_hint' => (string) $hint,
+                ], $me);
+                Logger::audit('bank_mail.app_password_add', 'bank_mail_account', (string) $aid, null, ['country' => $country, 'email' => $email, 'method' => 'app_password'], 'Bank Gmail added with an app password');
+                $flash[] = ['ok', '✅ ' . $email . ' जोडियो · added (app password, read-only). "🔄 अहिले जाँच्नुहोस्" थिचेर login जाँच्नुहोस्।'];
+            } catch (Throwable $ex) {
+                $flash[] = ['bad', $ex->getMessage()];
             }
         }
-    } elseif ($act === 'np_test') {
-        $tab = 'np';
-        $r = BankMail::testConnection();
-        Logger::audit('payment_center.test', 'settings', 'bankmail', null, ['ok' => $r['ok']], 'Gmail test connection');
-        $flash[] = [$r['ok'] ? 'ok' : 'bad', ($r['ok'] ? '✔ ' : '✖ ') . $r['msg']];
+    } elseif ($act === 'google_save') {
+        /* the one-time Google Cloud OAuth client (super-admin only settings: AiOps prefix google_oauth_) */
+        $tab = ($_POST['tab'] ?? '') === 'in' ? 'in' : 'np';
+        $bad = [];
+        $cid = trim((string) ($_POST['google_oauth_client_id'] ?? ''));
+        $sec = trim((string) ($_POST['google_oauth_client_secret'] ?? ''));
+        $red = trim((string) ($_POST['google_oauth_redirect'] ?? ''));
+        if ($cid !== '' && preg_match('/^[A-Za-z0-9\-_.]{6,200}\.apps\.googleusercontent\.com$/', $cid) !== 1) {
+            $bad[] = 'Client ID: …apps.googleusercontent.com मा सकिनुपर्छ';
+        }
+        if ($sec !== '' && preg_match('/^[A-Za-z0-9\-_]{10,120}$/', $sec) !== 1) {
+            $bad[] = 'Client Secret मिलेन (जस्तै GOCSPX-…)';
+        }
+        if ($red !== '' && preg_match('#^https://[A-Za-z0-9.\-]+(:\d+)?/[^\s<>"\']*$#', $red) !== 1) {
+            $bad[] = 'Redirect URI: https:// ले सुरु हुनुपर्छ (खाली = आफैं)';
+        }
+        if ($bad !== []) {
+            foreach ($bad as $b) { $flash[] = ['bad', $b]; }
+        } else {
+            $changed = [];
+            foreach (['google_oauth_client_id' => $cid, 'google_oauth_redirect' => $red] as $k => $v) {
+                if (array_key_exists($k, $_POST) && $v !== Settings::getString($k, '')) {
+                    Settings::set($k, $v, 'string', 'payments');
+                    $changed[] = $k;
+                }
+            }
+            if ($sec !== '' && $sec !== Settings::getString('google_oauth_client_secret', '')) {   // blank keeps the saved one
+                Settings::set('google_oauth_client_secret', $sec, 'string', 'payments');
+                $changed[] = 'google_oauth_client_secret';
+            }
+            Settings::flush();
+            if ($changed !== []) {
+                Logger::audit('settings.google_oauth', 'settings', 'payment-center', null, ['changed' => $changed], 'Google sign-in client for bank Gmail');
+            }
+            $flash[] = ['ok', $changed !== [] ? 'Google client सेभ भयो · saved: ' . implode(', ', $changed) . (GoogleOAuth::configured() ? ' — अब "🔐 Google बाट Login" थिच्नुहोस्' : '') : 'केही बदलिएन · nothing changed'];
+        }
     } elseif ($act === 'np_qr') {
         /* the same handler as admin/owner-setup.php act=esewa_qr: re-encoded PNG, setting nepal_esewa_qr */
         $tab = 'np';
@@ -266,9 +400,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($act === 'confirm') {
         /* a Gmail SUGGESTION: the person checked the bank app; the same gate as Link to PNR
            (PayCredits::link -> approveReviewed via 'queue': PaymentRisk + the person stay in the loop) */
-        $tab = 'np';
         $id = (int) ($_POST['id'] ?? 0);
         $c  = PayCredits::get($id);
+        $tab = (string) ($c['currency'] ?? 'NPR') === 'INR' ? 'in' : 'np';
         try {
             if (!PayCredits::isSuggestion($c) || (string) ($c['source'] ?? '') !== 'gmail') {
                 throw new RuntimeException('यो अब सुझाव होइन · this credit is no longer a suggestion (already confirmed or changed) — पेज फेरि खोल्नुहोस्।');
@@ -288,7 +422,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($act === 'link' || $act === 'ignore') {
         $id = (int) ($_POST['id'] ?? 0);
         $c  = PayCredits::get($id);
-        $tab = $c !== null && (string) $c['source'] === 'bankapi' ? 'in' : 'np';
+        $tab = $c !== null && ((string) $c['source'] === 'bankapi' || (string) $c['currency'] === 'INR') ? 'in' : 'np';
         try {
             if ($act === 'link') {
                 $r = PayCredits::link($id, (string) ($_POST['pnr'] ?? ''), $me, !empty($_POST['bank_checked']), (string) ($_POST['note'] ?? ''));
@@ -310,13 +444,17 @@ if (is_string($lastPoll)) {
 }
 $lastPoll = is_array($lastPoll) ? $lastPoll : [];
 $lastHook = BankApi::lastWebhook();
+if ($mailReady && $tab !== 'cash') {
+    BankMailAccounts::migrateLegacy();   // the old single Gmail settings become account #1, once
+}
 
 $stateTxt = [
     'new' => ['नयाँ · new', '#185bed'], 'matched' => ['✔ Auto PAID', '#0a7c2f'], 'linked' => ['✔ Linked', '#0a7c2f'],
     'unmatched' => ['⏳ व्यक्ति चाहिन्छ · needs a person', '#b26a00'], 'ignored' => ['Ignored', '#667085'], 'test' => ['TEST (sandbox)', '#7a4b00'],
 ];
-$credits = static function (string $src) use ($e, $stateTxt): void {
-    $rows = PayCredits::listRecent(['source' => $src, 'limit' => 60]);
+/* $cur: NPR (Nepal tab: the Gmail boxes + the old single box) | INR (India tab: bank API + the India Gmail boxes) */
+$credits = static function (string $cur) use ($e, $stateTxt): void {
+    $rows = PayCredits::listRecent(['currency' => $cur, 'limit' => 60]);
     if (!PayCredits::ready()) {
         echo '<p class="pc-warn">⚠️ <b>database/upgrade-2026-11-25-mp1-pay-credits.sql</b> चलाइएको छैन — credits table छैन। · Run the migration first.</p>';
         return;
@@ -331,11 +469,14 @@ $credits = static function (string $src) use ($e, $stateTxt): void {
         [$lbl, $col] = $sv !== null ? ['💡 सुझाव · Suggested — Confirm चाहिन्छ', '#185bed']
             : ($stateTxt[(string) $r['state']] ?? [(string) $r['state'], '#667085']);
         $open = in_array((string) $r['state'], ['new', 'unmatched'], true);
+        $kind = (string) ($r['match_kind'] ?? '');
         echo '<div class="pc-cr">';
         echo '<div class="pc-cr-top"><b>' . $e($r['currency'] . ' ' . number_format((float) $r['amount'], 2)) . '</b>'
            . ' <span class="pc-st" style="color:' . $e($col) . ';border-color:' . $e($col) . '">' . $e($lbl) . '</span>'
+           . ($kind === 'amount' ? ' <span class="pc-chip warn">रकम मात्र · amount only</span>' : ($kind === 'pnr' ? ' <span class="pc-chip ok">PNR</span>' : ''))
            . ' <small class="muted">#' . (int) $r['id'] . ' · ' . $e(substr((string) ($r['received_at'] ?? $r['created_at']), 0, 16)) . '</small></div>';
-        echo '<div class="pc-cr-meta">Txn <code>' . $e($r['txn_id'] ?? '—') . '</code>'
+        echo '<div class="pc-cr-meta">' . ($r['source'] === 'gmail' ? '📧 ' . $e((string) (($r['mail_email'] ?? '') !== '' ? $r['mail_email'] : (!empty($r['mail_account_id']) ? 'box #' . (int) $r['mail_account_id'] . ' (removed)' : 'Gmail (old settings)'))) : '🔗 Bank API') . ' · '
+           . 'Txn <code>' . $e($r['txn_id'] ?? '—') . '</code>'
            . ($r['ref_text'] ? ' · ' . $e(mb_substr((string) $r['ref_text'], 0, 90)) : '')
            . ($r['booking_pnr'] ? ' · <a href="booking-view.php?pnr=' . rawurlencode((string) $r['booking_pnr']) . '">' . $e($r['booking_pnr']) . '</a>' : '')
            . ($r['source'] === 'gmail' ? ' · ' . ((int) $r['dkim_ok'] === 1 ? '<span style="color:#0a7c2f">DKIM ✔</span>' : '<span style="color:#b3261e">DKIM ✖</span>') . ' ' . $e($r['sender'] ?? '')
@@ -362,9 +503,14 @@ $credits = static function (string $src) use ($e, $stateTxt): void {
                 echo $chip($ct, $cok);
             }
             echo $chip('रकम मिल्यो · amount', $sv['amount_ok']) . '</div>';
+            if (($sv['kind'] ?? 'pnr') === 'amount') {
+                /* mp2: the alert had NO PNR - only the amount matched this one booking */
+                echo '<p class="pc-warn" style="margin:8px 0 0">⚠️ <b>PNR छैन — रकम मात्र मिल्यो</b> · amount-only match: यात्रीको नाम / फोन'
+                   . ($sv['phone'] !== '' ? ' (<b>' . $e($sv['phone']) . '</b>)' : '') . ' र बैंक app मा पठाउनेको नाम मिलाएर मात्र Confirm गर्नुहोस्।</p>';
+            }
             if ($sv['can_confirm']) {
                 echo '<form method="post" class="pc-confirm">' . Security::csrfField()
-                   . '<input type="hidden" name="act" value="confirm"><input type="hidden" name="tab" value="np"><input type="hidden" name="id" value="' . (int) $r['id'] . '">'
+                   . '<input type="hidden" name="act" value="confirm"><input type="hidden" name="tab" value="' . ($sv['currency'] === 'INR' ? 'in' : 'np') . '"><input type="hidden" name="id" value="' . (int) $r['id'] . '">'
                    . '<label class="pc-chk"><input type="checkbox" name="bank_checked" value="1" required> बैंक app मा यो पैसा आएको देखें · I saw this money in the bank app</label>'
                    . '<button class="btn btn-orange pc-big" type="submit">✅ Confirm · पुष्टि गर्नुहोस्</button></form>';
             } else {
@@ -391,6 +537,141 @@ $credits = static function (string $src) use ($e, $stateTxt): void {
         echo '</div>';
     }
     echo '</div>';
+};
+
+/* ---------------- 📧 bank Gmail boxes (mp2) ---------------- */
+$outTxt = [
+    'suggestion' => ['💡 सुझाव', 'info'], 'suggestion-amount' => ['💡 सुझाव (रकम मात्र)', 'info'], 'confirmed' => ['✔ PAID', 'ok'],
+    'unmatched' => ['⏳ व्यक्ति चाहिन्छ', 'warn'], 'duplicate' => ['दोहोरो · duplicate', 'mut'], 'debit-ignored' => ['डेबिट · ignored', 'mut'],
+    'not-credit' => ['credit होइन', 'mut'], 'not-bank-sender' => ['बैंकको होइन · not bank sender', 'mut'],
+    'setup-incomplete' => ['अधुरो · setup incomplete', 'warn'], 'unreadable' => ['✖ पढ्न सकिएन', 'no'], 'gone' => ['हटाइएको · gone', 'mut'],
+];
+/** The one-time Google Cloud setup: numbered Nepali steps + the exact redirect URI + the client form. */
+$googleSetup = static function (string $tabKey, bool $open) use ($e): void {
+    $uri = GoogleOAuth::redirectUri();
+    echo ($open ? '' : '<details class="pc-adv"><summary>🔧 Google setup (एकपटकको) · steps + redirect URI</summary>')
+       . '<div class="pc-gsetup">'
+       . '<p class="hint" style="margin:0 0 6px"><b>एकपटकको Google setup</b> (करिब १० मिनेट) — यसपछि जुनसुकै बैंक Gmail एक click मा जोडिन्छ:</p>'
+       . '<ol class="pc-steps">'
+       . '<li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">console.cloud.google.com</a> मा project बनाउनुहोस् (जस्तै "S Hari Bank Mail")।</li>'
+       . '<li>APIs &amp; Services → Library → <b>"Gmail API"</b> खोजेर <b>Enable</b> गर्नुहोस्।</li>'
+       . '<li><b>Google Auth Platform</b> (APIs &amp; Services → OAuth consent screen) → <b>Get started</b>: app name + आफ्नो email, Audience: <b>External</b>, contact email → <b>Create</b>। '
+       . 'अनि बायाँ menu: <b>Data access</b> → <b>Add or remove scopes</b> → <code>…/auth/gmail.readonly</code> → <b>Save</b>। '
+       . '<b>Audience</b> → <b>Test users</b> मा bank Gmail थप्नुहोस्, अनि <b>"Publish app"</b> → In production — नत्र Google ले हरेक ७ दिनमा logout गर्छ।</li>'
+       . '<li><b>Clients</b> → <b>Create client</b> (वा Credentials → Create credentials → <b>OAuth client ID</b>) → <b>Web application</b> → Authorized redirect URIs मा ठ्याक्कै यो राख्नुहोस्:'
+       . '<span class="pc-copy"><input class="pc-url" readonly value="' . $e($uri) . '" onclick="this.select()" aria-label="Redirect URI">'
+       . '<button class="btn" type="button" onclick="pcCopy(this)">📋 Copy</button></span></li>'
+       . '<li><b>Client ID</b> र <b>Client Secret</b> तल राखेर Save गर्नुहोस्।</li>'
+       . '</ol>'
+       . '<p class="hint">Login गर्दा Google ले <b>"Google hasn\'t verified this app"</b> देखाउँछ — <b>Advanced</b> → <b>Go to … (unsafe)</b> थिच्नुहोस् (यो तपाईंकै app हो)। Gmail पढ्न मात्र (read-only) अनुमति माग्छ; mailbox मा केही बदलिँदैन।</p>'
+       . '<details class="pc-adv"' . ($open ? ' open' : '') . '><summary>🔧 Google Client ID / Secret</summary>'
+       . '<form method="post" class="pc-f" autocomplete="off">' . Security::csrfField()
+       . '<input type="hidden" name="act" value="google_save"><input type="hidden" name="tab" value="' . $e($tabKey) . '">'
+       . '<label>Client ID<input name="google_oauth_client_id" value="' . $e(GoogleOAuth::clientId()) . '" placeholder="1234-abc.apps.googleusercontent.com"></label>'
+       . '<label>Client Secret ' . (Settings::getString('google_oauth_client_secret', '') !== '' ? '<span class="pc-ok">✔ saved</span>' : '')
+           . '<input name="google_oauth_client_secret" type="password" value="" autocomplete="new-password" placeholder="' . (Settings::getString('google_oauth_client_secret', '') !== '' ? '•••• (बदल्न मात्र लेख्नुहोस्)' : 'GOCSPX-…') . '"></label>'
+       . '<label>Redirect URI (खाली = माथिको) <input name="google_oauth_redirect" value="' . $e(Settings::getString('google_oauth_redirect', '')) . '" placeholder="' . $e($uri) . '"></label>'
+       . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn btn-orange" type="submit">सेभ · Save</button></div>'
+       . '</form></details></div>'
+       . ($open ? '' : '</details>');
+};
+/** The card on a tab: the boxes of one country + "➕ Gmail जोड्नुहोस्". */
+$mailCard = static function (string $country) use ($e, $outTxt, $googleSetup, $mailReady): void {
+    $tabKey = $country === 'IN' ? 'in' : 'np';
+    $ph = $country === 'IN'
+        ? ['senders' => 'alerts@icicibank.com, @hdfcbank.net', 'dkim' => 'icicibank.com', 'mail' => 'shg.indiabank@gmail.com']
+        : ['senders' => 'alerts@gibl.com.np, @gibl.com.np', 'dkim' => 'gibl.com.np', 'mail' => 'shg.bankalerts@gmail.com'];
+    echo '<div class="pc-card" id="pc-mail-' . $e($country) . '">'
+       . '<h2>📧 बैंक Gmail खाताहरू · Bank Gmail accounts</h2>'
+       . '<p class="hint">बैंकको credit alert आउने Gmail यहीँ जोड्नुहोस्। हरेक २ मिनेटमा नयाँ mail पढिन्छ (read-only)। Alert मा <b>हाम्रै खाता</b> (अन्तिम अंक), PNR र रकम ठ्याक्कै मिलेमा <b>💡 सुझाव</b> आउँछ — बैंक app मा हेरेर Confirm थिच्नुहोस्। PNR नभए पनि रकम एउटै टिकटसँग मात्र मिले <b>रकम मात्र</b> सुझाव आउँछ।</p>';
+    if (!$mailReady) {
+        echo '<p class="pc-warn">⚠️ Migration <b>database/upgrade-2026-11-25-mp2-bank-gmail.sql</b> बाँकी — Gmail खाता अहिले जोड्न सकिँदैन · run the migration first.</p></div>';
+        return;
+    }
+    $accts = BankMailAccounts::all($country);
+    if ($accts === []) {
+        echo '<p class="muted">अहिलेसम्म कुनै Gmail जोडिएको छैन · no Gmail connected yet.</p>';
+    }
+    foreach ($accts as $a) {
+        $aid = (int) $a['id'];
+        $ready = BankMailAccounts::isReady($a);
+        $on = (int) $a['is_active'] === 1;
+        $okv = $a['last_ok'] === null ? null : (int) $a['last_ok'];
+        $status = $okv === null ? '<span class="pc-chip mut">… अहिलेसम्म जाँचिएको छैन · not checked yet</span>'
+            : ($okv === 1 ? '<span class="pc-chip ok">✓ जोडिएको · connected</span>' : '<span class="pc-chip no">✗ ' . $e(mb_substr((string) ($a['last_result'] ?? ''), 0, 140)) . '</span>');
+        $post = static fn(string $act, string $label, string $cls = 'btn', string $extra = ''): string =>
+            '<form method="post" class="pc-inline"' . $extra . '>' . Security::csrfField()
+            . '<input type="hidden" name="act" value="' . $e($act) . '"><input type="hidden" name="tab" value="' . $e($tabKey) . '"><input type="hidden" name="id" value="' . $aid . '">'
+            . '<button class="' . $e($cls) . '" type="submit">' . $label . '</button></form>';
+        echo '<div class="pc-acc" id="pc-acc-' . $aid . '">'
+           . '<div class="pc-acc-top"><b class="pc-acc-mail">' . $e($a['email']) . '</b>'
+           . ' <span class="pc-chip info">' . $e(BankMailAccounts::methodLabel($a)) . '</span> ' . $status
+           . ($ready ? '' : ' <span class="pc-chip warn">अधुरो · setup incomplete</span>')
+           . ($on ? '' : ' <span class="pc-chip mut">⏸ पज · paused</span>') . '</div>'
+           . '<div class="pc-acc-meta">' . (trim((string) ($a['label'] ?? '')) !== '' ? $e($a['label']) . ' · ' : '')
+           . 'अन्तिम जाँच · checked ' . $e(!empty($a['last_poll_at']) ? timeAgo((string) $a['last_poll_at']) : '—')
+           . ' · आज credit · today: <b>' . BankMailAccounts::creditsToday($aid) . '</b>'
+           . ' · DKIM ' . $e(BankMailAccounts::dkimDomain($a) !== '' ? BankMailAccounts::dkimDomain($a) : '—')
+           . ' · A/C …' . $e(BankMailAccounts::hint($a) !== '' ? substr(BankMailAccounts::hint($a), -4) : '—') . '</div>';
+        if (!$ready) {
+            echo '<p class="pc-warn" style="margin:6px 0 0;font-size:12.5px">अधुरो: तल "Edit" मा बैंकको <b>DKIM domain</b> र हाम्रो खाताको <b>अन्तिम ४–६ अंक</b> राख्नुहोस्। त्यतिन्जेल यो box को mail <b>पढिँदैन</b> (केही छुट्दैन) — Save गरेपछि पछिल्लो २–३ दिनको mail पढिन्छ।</p>';
+        }
+        echo '<div class="pc-btns pc-acc-btns">'
+           . $post('acct_check', '🔄 अहिले जाँच्नुहोस् · Check now', 'btn btn-orange')
+           . $post('acct_toggle', $on ? '⏸ पज · Pause' : '▶ चालु · Resume')
+           . ((string) $a['method'] === 'google'
+               ? '<a class="btn" href="gmail-oauth.php?start=1&amp;country=' . $e($a['country']) . '&amp;account=' . $aid . '">🔁 फेरि जोड्नुहोस् · Reconnect</a>' : '')
+           . $post('acct_remove', '🗑 हटाउनुहोस् · Remove', 'btn', ' onsubmit="return confirm(' . $e((string) json_encode('यो Gmail हटाउने? Token / password मेटिन्छ। · Remove ' . $a['email'] . '?', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)) . ')"')
+           . '</div>';
+        echo '<details class="pc-adv"><summary>✏️ Edit · नियम (sender / DKIM / खाता अंक)</summary>'
+           . '<form method="post" class="pc-f" autocomplete="off">' . Security::csrfField()
+           . '<input type="hidden" name="act" value="acct_edit"><input type="hidden" name="tab" value="' . $e($tabKey) . '"><input type="hidden" name="id" value="' . $aid . '">'
+           . '<label>नाम · label<input name="label" maxlength="80" value="' . $e($a['label'] ?? '') . '" placeholder="' . ($country === 'IN' ? 'ICICI current a/c' : 'Global IME NPJ') . '"></label>'
+           . '<label>बैंकको sender (comma; खाली = DKIM domain बाट जुनसुकै) · allowed senders<input name="senders" maxlength="500" value="' . $e($a['senders'] ?? '') . '" placeholder="' . $e($ph['senders']) . '"></label>'
+           . '<label>DKIM domain (बैंकको)<input name="dkim_domain" maxlength="120" value="' . $e($a['dkim_domain'] ?? '') . '" placeholder="' . $e($ph['dkim']) . '"></label>'
+           . '<label>हाम्रो खाताको अन्तिम ४–६ अंक · our account\'s last 4–6 digits<input name="account_hint" inputmode="numeric" maxlength="8" value="' . $e($a['account_hint'] ?? '') . '" placeholder="9012"></label>'
+           . ((string) $a['method'] === 'app_password'
+               ? '<label>नयाँ App password (खाली = पुरानै)<input name="app_password" type="password" value="" autocomplete="new-password" placeholder="xxxx xxxx xxxx xxxx"></label>' : '')
+           . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn" type="submit">सेभ · Save</button></div>'
+           . '</form></details>';
+        $log = BankMailAccounts::recentLog($aid, 20);
+        echo '<details class="pc-adv pc-log"><summary>📬 पछिल्लो mail · Latest mails (' . count($log) . ')</summary>';
+        if ($log === []) {
+            echo '<p class="muted" style="font-size:12.5px">अहिलेसम्म कुनै mail हेरिएको छैन · nothing read yet.</p>';
+        } else {
+            echo '<ul class="pc-loglist">';
+            foreach ($log as $l) {
+                [$ot, $oc] = $outTxt[(string) $l['outcome']] ?? [(string) $l['outcome'], 'mut'];
+                echo '<li><small class="muted">' . $e(substr((string) ($l['received_at'] ?? $l['created_at']), 5, 11)) . '</small> '
+                   . '<span class="pc-chip ' . $e($oc) . '">' . $e($ot) . '</span> '
+                   . '<span class="pc-subj">' . $e(trim((string) ($l['subject'] ?? '')) !== '' ? $l['subject'] : '(no subject)') . '</span>'
+                   . (!empty($l['credit_id']) ? ' <small class="muted">credit #' . (int) $l['credit_id'] . '</small>' : '') . '</li>';
+            }
+            echo '</ul>';
+        }
+        echo '</details></div>';
+    }
+    /* ➕ add a box */
+    echo '<div class="pc-add"><h3>➕ Gmail जोड्नुहोस् · Add Gmail</h3>';
+    if (GoogleOAuth::configured()) {
+        echo '<a class="btn btn-orange pc-big pc-glogin" href="gmail-oauth.php?start=1&amp;country=' . $e($country) . '">🔐 Google बाट Login गर्नुहोस् (browser जस्तै)</a>'
+           . '<p class="hint" style="margin:6px 0 0">Google को page खुल्छ: बैंकको Gmail छान्नुहोस् (वा "Use another account"), "Google hasn\'t verified this app" आए <b>Advanced → Go to …</b> (तपाईंकै app), अनि <b>Continue</b>। पढ्न मात्र अनुमति।</p>';
+        $googleSetup($tabKey, false);
+    } else {
+        echo '<p class="pc-warn" style="margin:0 0 8px">🔐 "Google बाट Login" को लागि पहिले एकपटक Google Client ID / Secret चाहिन्छ:</p>';
+        $googleSetup($tabKey, true);
+    }
+    echo '<details class="pc-adv"><summary>🔑 App Password ले जोड्नुहोस् · with an app password</summary>'
+       . '<p class="hint" style="margin:0 0 8px">Google Account → Security → 2-Step Verification → <b>App passwords</b> → १६ अक्षरको password। (IMAP, read-only)</p>'
+       . '<form method="post" class="pc-f" autocomplete="off">' . Security::csrfField()
+       . '<input type="hidden" name="act" value="acct_add_pw"><input type="hidden" name="tab" value="' . $e($tabKey) . '"><input type="hidden" name="country" value="' . $e($country) . '">'
+       . '<label>Gmail ठेगाना · address<input name="email" type="email" required maxlength="190" placeholder="' . $e($ph['mail']) . '"></label>'
+       . '<label>App password<input name="app_password" type="password" required autocomplete="new-password" placeholder="xxxx xxxx xxxx xxxx"></label>'
+       . '<label>DKIM domain (बैंकको)<input name="dkim_domain" maxlength="120" placeholder="' . $e($ph['dkim']) . '"></label>'
+       . '<label>हाम्रो खाताको अन्तिम ४–६ अंक<input name="account_hint" inputmode="numeric" maxlength="8" placeholder="9012"></label>'
+       . '<label style="grid-column:1/-1">बैंकको sender (comma, optional)<input name="senders" maxlength="500" placeholder="' . $e($ph['senders']) . '"></label>'
+       . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn" type="submit">➕ जोड्नुहोस् · Add</button></div>'
+       . '</form></details></div></div>';
 };
 
 admin_header('पेमेन्ट म्यानेजमेन्ट · Payment Management', 'payment-center');
@@ -431,7 +712,27 @@ admin_header('पेमेन्ट म्यानेजमेन्ट · Paym
 .pc-tbl th:first-child,.pc-tbl td:first-child{text-align:left;white-space:normal}
 .pc-scroll{overflow-x:auto;max-width:100%}
 details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
+.pc-chip.info{color:#185bed;border-color:#185bed}.pc-chip.warn{color:#8a5a00;border-color:#d99a00;background:#fff7e0}.pc-chip.mut{color:var(--mut,#637491);border-color:var(--line,#e0e8f2)}
+.pc-acc{border:1px solid var(--line,#e0e8f2);border-radius:12px;padding:10px 12px;margin:0 0 10px;min-width:0;overflow-wrap:anywhere}
+.pc-acc-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pc-acc-mail{font-size:15px;min-width:0;overflow-wrap:anywhere}
+.pc-acc-meta{font-size:12.5px;color:var(--mut,#637491);margin-top:4px}
+.pc-acc-btns{margin-top:8px}.pc-acc-btns .btn{min-height:44px}
+.pc-add{border-top:1px dashed var(--line,#e0e8f2);margin-top:6px;padding-top:10px;min-width:0}.pc-add h3{margin:0 0 8px;font-size:15px}
+.pc-glogin{display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;box-sizing:border-box;padding:10px 14px}
+.pc-gsetup{margin-top:10px;min-width:0}
+.pc-steps{margin:0 0 8px;padding-left:20px;font-size:13px;line-height:1.55}.pc-steps li{margin:0 0 6px;overflow-wrap:anywhere}
+.pc-copy{display:flex;gap:6px;margin-top:6px;min-width:0}.pc-copy .pc-url{flex:1 1 auto;min-width:0}.pc-copy .btn{flex:0 0 auto;min-height:40px}
+.pc-loglist{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:12.5px}
+.pc-loglist li{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-bottom:1px solid var(--line,#e0e8f2);padding:4px 0;min-width:0}
+.pc-subj{flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
+:root[data-theme="dark"] .pc-chip.info{color:#9CC0FF;border-color:rgba(59,130,246,.35)}
+:root[data-theme="dark"] .pc-chip.warn{background:rgba(245,158,11,.14);color:#FBC56B;border-color:rgba(245,158,11,.35)}
+:root[data-theme="dark"] .pc-chip.no{color:#FCA5A5;border-color:rgba(220,38,38,.35)}
+:root[data-theme="dark"] .pc-chip.ok{color:#6EE7A0;border-color:rgba(34,197,94,.35)}
 </style>
+<script>
+function pcCopy(b){var i=b.previousElementSibling;if(!i)return;i.select();try{if(navigator.clipboard){navigator.clipboard.writeText(i.value);}else{document.execCommand('copy');}b.textContent='✔ Copied';}catch(x){}}
+</script>
 <div class="pc-wrap">
   <nav class="pc-tabs" aria-label="Payment tabs">
     <a href="?tab=np" class="<?= $tab === 'np' ? 'on' : '' ?>">🇳🇵 नेपाली अनलाइन</a>
@@ -441,7 +742,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
   <?php foreach ($flash as [$t, $m]): ?><div class="pc-flash <?= $e($t) ?>"><?= $e($m) ?></div><?php endforeach; ?>
   <?php if (!$ready && $tab !== 'cash'): ?><div class="pc-warn">⚠️ Migration <b>upgrade-2026-11-25-mp1-pay-credits.sql</b> बाँकी — Gmail / bank API अहिले बन्द रहन्छ · runs quietly off until it is applied.</div><?php endif; ?>
 
-<?php if ($tab === 'np'): $qrNow = Ticket::esewaQrFile(); $mailOn = BankMail::on(); $autoOn = PayCredits::gmailAutoOn(); ?>
+<?php if ($tab === 'np'): $qrNow = Ticket::esewaQrFile(); $autoOn = PayCredits::gmailAutoOn(); ?>
   <div class="pc-card pc-note" role="note">
     <h2>💡 Gmail बाट आएको पैसा · Gmail credits</h2>
     <?php if ($autoOn): ?>
@@ -449,6 +750,12 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
     <?php else: ?>
     <p class="hint" style="margin:0">Gmail बाट आएको पैसा अहिले सुझावको रूपमा आउँछ; बैंक app मा हेरेर Confirm थिच्नुहोस्। Global IME को साँचो alert email को नमुना मिलाएपछि Auto-PAID खोल्न सकिन्छ। <span class="pc-no">(Auto-PAID: बन्द · OFF)</span></p>
     <?php endif; ?>
+    <div class="pc-auto" id="pc-auto-state" style="margin-top:8px">
+      <b>Gmail Auto-PAID</b> <span class="<?= $autoOn ? 'pc-ok' : 'pc-no' ?>"><?= $autoOn ? '● चालु · ON' : '○ बन्द · OFF' ?></span> <small class="muted">(पढ्न मात्र · read-only · <code>pay_bankmail_autoconfirm_on</code>)</small>
+      <p><?= $autoOn
+          ? 'सबै जाँच मिलेको Gmail credit आफैं PAID हुन्छ (PNR भएको मात्र; "रकम मात्र" सधैं सुझाव)। बन्द गर्न: Settings → Payments → pay_bankmail_autoconfirm_on।'
+          : 'बन्द: सबै मिलेको credit 💡 सुझाव मात्र हुन्छ, टिकट PAID हुँदैन — बैंक app मा हेरेर तल Confirm थिच्नुहोस्। यहाँबाट खोलिँदैन; साँचो Global IME alert को नमुना मिलाएपछि मात्र Settings → Payments मा खोल्नुहोस्।' ?></p>
+    </div>
   </div>
   <form method="post" enctype="multipart/form-data" class="pc-card">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_qr"><input type="hidden" name="tab" value="np">
@@ -464,45 +771,31 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
 
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_save"><input type="hidden" name="tab" value="np">
-    <h2>📧 Gmail बाट बैंक alert · Global IME credit alerts</h2>
-    <p class="hint">बैंकको credit alert मात्र आउने छुट्टै Gmail राख्नुहोस्। Google Account → Security → 2-Step → <b>App passwords</b> बाट १६ अक्षरको password। Mailbox मा केही बदलिँदैन (read-only)। Alert मा <b>हाम्रै खाता</b> (अन्तिम अंक), PNR र रकम ठ्याक्कै मिलेमा तल <b>💡 सुझाव</b> आउँछ (Auto-PAID चालु भए मात्र आफैं PAID); नत्र "व्यक्ति चाहिन्छ" मा आउँछ।</p>
+    <h2>🪪 eSewa / bank ID</h2>
     <div class="pc-f">
       <label>eSewa / bank ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa / खाता नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
-      <label>Gmail ठेगाना · address<input name="bankmail_user" type="email" value="<?= $e($val('bankmail_user')) ?>" placeholder="shg.bankalerts@gmail.com"></label>
-      <label>App password <?= $val('bankmail_app_password') !== '' ? '<span class="pc-ok">✔ saved</span>' : '' ?><input name="bankmail_app_password" type="password" value="" autocomplete="new-password" placeholder="<?= $val('bankmail_app_password') !== '' ? '•••• (बदल्न मात्र लेख्नुहोस्)' : 'xxxx xxxx xxxx xxxx' ?>"></label>
-      <label>बैंकको sender (comma) · allowed senders<input name="bankmail_from" value="<?= $e($val('bankmail_from')) ?>" placeholder="alerts@gibl.com.np, @gibl.com.np"></label>
-      <label>DKIM domain (बैंकको)<input name="bankmail_dkim_domain" value="<?= $e($val('bankmail_dkim_domain')) ?>" placeholder="gibl.com.np"></label>
-      <label>हाम्रो Global IME खाताको अन्तिम ४–६ अंक · our account's last 4–6 digits<input name="bankmail_account_hint" value="<?= $e($val('bankmail_account_hint')) ?>" inputmode="numeric" maxlength="8" pattern="[0-9 ]{4,8}" placeholder="9012"></label>
-      <label>IMAP host<input name="bankmail_host" value="<?= $e($val('bankmail_host', 'imap.gmail.com')) ?>"></label>
-      <div class="pc-auto" id="pc-auto-state">
-        <b>Gmail Auto-PAID</b> <span class="<?= $autoOn ? 'pc-ok' : 'pc-no' ?>"><?= $autoOn ? '● चालु · ON' : '○ बन्द · OFF' ?></span> <small class="muted">(पढ्न मात्र · read-only · <code>pay_bankmail_autoconfirm_on</code>)</small>
-        <p><?= $autoOn
-            ? 'सबै जाँच मिलेको Gmail credit आफैं PAID हुन्छ। बन्द गर्न: Settings → Payments → pay_bankmail_autoconfirm_on।'
-            : 'बन्द: सबै मिलेको credit 💡 सुझाव मात्र हुन्छ, टिकट PAID हुँदैन — बैंक app मा हेरेर तल Confirm थिच्नुहोस्। यहाँबाट खोलिँदैन; साँचो Global IME alert को नमुना मिलाएपछि मात्र Settings → Payments मा खोल्नुहोस्।' ?></p>
-      </div>
     </div>
-    <div class="pc-btns">
-      <button class="btn" type="submit">सेभ · Save</button>
-      <?php if ($mailOn): ?><button class="btn" type="submit" name="enable" value="0">⏸ बन्द · Turn off</button>
-      <?php else: ?><button class="btn btn-orange" type="submit" name="enable" value="1">Save &amp; Enable</button><?php endif; ?>
-      <button class="btn" type="submit" name="act" value="np_test" formnovalidate>🔌 Test connection</button>
-    </div>
-    <div class="pc-kv" style="margin-top:10px">
-      <b>Status</b><span class="<?= $mailOn ? 'pc-ok' : 'pc-no' ?>"><?= $mailOn ? '● चालु · ON' : '○ बन्द · OFF' ?></span>
-      <b>Last poll</b><span><?= $lastPoll !== [] ? $e(($lastPoll['at'] ?? '') . ' · ' . (!empty($lastPoll['ok']) ? '✔ ' : '✖ ') . ($lastPoll['msg'] ?? '')) : '—' ?></span>
-      <b>Last UID</b><span><?= (int) Settings::getInt('bankmail_last_uid', 0) ?></span>
-      <b>Cron</b><span><code>cron/bank-mail.php</code> हरेक २ मिनेट</span>
-    </div>
+    <div class="pc-btns"><button class="btn" type="submit">सेभ · Save</button></div>
   </form>
 
+  <?php $mailCard('NP'); ?>
+  <div class="pc-kv pc-card" style="margin-top:-4px">
+    <b>Last run</b><span><?= $lastPoll !== [] ? $e(($lastPoll['at'] ?? '') . ' · ' . (!empty($lastPoll['ok']) ? '✔ ' : '✖ ') . ($lastPoll['msg'] ?? '')) : '—' ?></span>
+    <b>Cron</b><span><code>cron/bank-mail.php</code> हरेक २ मिनेट · every 2 min</span>
+  </div>
+
   <div class="pc-card">
-    <h2>🏦 Credits (Gmail)</h2>
-    <p class="hint"><b>💡 सुझाव</b>: बैंक app मा पैसा आएको हेरेर "✅ Confirm" थिच्नुहोस् (Payment risk जाँच पनि हुन्छ)। "Link to PNR": रकम ठ्याक्कै मिल्नुपर्छ। Ignore: हाम्रो होइन / refund / बैंक app मा छैन।</p>
-    <?php $credits('gmail'); ?>
+    <h2>🏦 Credits (Gmail) · NPR</h2>
+    <p class="hint"><b>💡 सुझाव</b>: बैंक app मा पैसा आएको हेरेर "✅ Confirm" थिच्नुहोस् (Payment risk जाँच पनि हुन्छ)। <b>रकम मात्र</b>: alert मा PNR थिएन — नाम / फोन मिलाउनुहोस्। "Link to PNR": रकम ठ्याक्कै मिल्नुपर्छ। Ignore: हाम्रो होइन / refund / बैंक app मा छैन।</p>
+    <?php $credits('NPR'); ?>
   </div>
 
 <?php elseif ($tab === 'in'): $apiOn = BankApi::on(); $map = BankApi::fieldMap(); ?>
+  <div class="pc-card pc-note" role="note">
+    <p class="hint" style="margin:0"><b>💡</b> बैंक API credential नआउन्जेल Gmail bank alert बाट पैसा आएको हेर्न सकिन्छ (सुझाव + Confirm)। · Until the bank API credentials come, Indian bank alerts in Gmail show the money (suggestion + Confirm).</p>
+  </div>
+  <?php $mailCard('IN'); ?>
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="in_save"><input type="hidden" name="tab" value="in">
     <h2>🇮🇳 UPI + bank API</h2>
@@ -543,8 +836,8 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
   </form>
 
   <div class="pc-card">
-    <h2>🏦 Credits (bank API)</h2>
-    <?php $credits('bankapi'); ?>
+    <h2>🏦 Credits (INR · bank API + Gmail)</h2>
+    <?php $credits('INR'); ?>
   </div>
 
 <?php else:

@@ -60,6 +60,19 @@
  *  (last 4-6 digits of our Global IME account), bankmail_authserv
  *  (mx.google.com), pay_bankmail_autoconfirm_on (OFF = suggestions only), bankmail_last_uid,
  *  bankmail_uidvalidity, bankmail_last_poll (JSON, for the admin page).
+ *
+ *  MANY BOXES (25 Nov 2026, mp2 "bank Gmail"): the owner adds each bank Gmail box on
+ *  Payment Management (BankMailAccounts, table bank_mail_accounts): "Google बाट Login"
+ *  (GoogleOAuth + GmailApi, read-only Gmail API) or an app password (the IMAP reader
+ *  below, imap.gmail.com). poll() loops the active boxes; each box's OWN rules (country
+ *  -> currency NP=NPR / IN=INR, senders, DKIM domain, our account digits) are used for
+ *  its mail - parse() / handle() / PayCredits never read the bankmail_* settings for a
+ *  box. Every mail a box looks at is written to bank_mail_log (its "updates"). A box
+ *  that is not READY (no DKIM domain or no account digits) logs what arrives and stores
+ *  no credit. The bankmail_* settings above are the OLD single box: once the mp2
+ *  migration ran they become account #1 (BankMailAccounts::migrateLegacy) and are read
+ *  only through it; poll() with an injected IMAP client (tests) or before the migration
+ *  still reads them directly (pollLegacy).
  * =====================================================================
  */
 declare(strict_types=1);
@@ -70,6 +83,8 @@ if (!defined('SHG_APP')) {
 }
 
 require_once __DIR__ . '/paycredits.php';
+require_once __DIR__ . '/bankmailaccounts.php';
+require_once __DIR__ . '/googleoauth.php';
 
 /** A tiny IMAP4rev1 client: just what a read-only poll needs. */
 final class BankMailImap
@@ -293,7 +308,27 @@ final class BankMail
      * ================================================================= */
 
     /**
-     * @param array<string,string>|null $opts dkim_domain, authserv, amount_regex, txn_regex, account_regex (null = from Settings)
+     * A box's own parse rules (BankMailAccounts row): its DKIM domain and currency, Gmail's
+     * own authserv-id, no global regex overrides - never the bankmail_* settings.
+     *
+     * @param array<string,mixed> $acct
+     * @return array<string,string>
+     */
+    public static function optsFor(array $acct): array
+    {
+        return [
+            'dkim_domain'   => BankMailAccounts::dkimDomain($acct),
+            'authserv'      => 'mx.google.com',
+            'amount_regex'  => '',
+            'txn_regex'     => '',
+            'account_regex' => '',
+            'currency'      => (string) ($acct['currency'] ?? '') === 'INR' ? 'INR' : 'NPR',
+        ];
+    }
+
+    /**
+     * @param array<string,string>|null $opts dkim_domain, authserv, amount_regex, txn_regex, account_regex,
+     *                                        currency (NPR default; INR for an India box) (null = from Settings)
      * @return array<string,mixed> from, message_id, date, subject, dkim_ok, dkim_domains, dkim_why, text,
      *         is_credit, is_debit, mixed, amount, amounts, currency, txn_id, txns, remarks, pnrs, pnr,
      *         account, hold ('' or why a person must check it), why
@@ -378,15 +413,16 @@ final class BankMail
         }
         $account = self::accountIn($all, (string) ($opts['account_regex'] ?? ''));
 
+        $cur  = (string) ($opts['currency'] ?? 'NPR') === 'INR' ? 'INR' : 'NPR';
         $hold = '';
         $one  = count($amounts) === 1 ? $amounts[0] : 0.0;
         if ($mixed) {
             $hold = 'The alert has both credit and debit words — check the bank statement';
         } elseif (count($amounts) > 1) {
-            $hold = 'Different amounts in one alert (NPR ' . implode(', NPR ', array_map(static fn(float $v): string => number_format($v, 2), array_slice($amounts, 0, 4)))
+            $hold = 'Different amounts in one alert (' . $cur . ' ' . implode(', ' . $cur . ' ', array_map(static fn(float $v): string => number_format($v, 2), array_slice($amounts, 0, 4)))
                 . ') — the payer may have typed one; check the bank statement';
         } elseif ($amount <= 0 && $one > 0 && $one < PayCredits::MAX_AMOUNT && trim($amountRe) !== '') {
-            $hold = 'bankmail_amount_regex does not agree with the amount in the alert (NPR ' . number_format($one, 2) . ') — check the bank statement';
+            $hold = 'bankmail_amount_regex does not agree with the amount in the alert (' . $cur . ' ' . number_format($one, 2) . ') — check the bank statement';
         } elseif (count($txns) > 1) {
             $hold = 'Different transaction / reference ids in one alert (' . implode(', ', array_slice($txns, 0, 4)) . ') — check the bank statement';
         }
@@ -412,7 +448,7 @@ final class BankMail
             'mixed'        => $mixed,
             'amount'       => $amount,
             'amounts'      => $amounts,
-            'currency'     => 'NPR',
+            'currency'     => $cur,
             'txn_id'       => $txn,
             'txns'         => $txns,
             'remarks'      => mb_substr($ref, 0, 255),
@@ -991,8 +1027,11 @@ final class BankMail
         $ok = static fn(string $v): bool => preg_match('/\d/', $v) === 1 && stripos($v, 'SHG') !== 0 && strlen($v) >= 6;
         $t = self::normDigits($t);
         $found = [];
-        if (preg_match_all('/(?:(?<![A-Za-z])(?:txn|transaction|trans\.|ref(?:erence)?|trace|utr|rrn)(?![A-Za-z])|ट्रान्जेक्सन|कारोबार|सन्दर्भ)[\s.]*'
-                . '(?:(?:id|no|number|num|nr|#|नं|नम्बर|आईडी)(?![A-Za-z])\.?[ \t]*){0,2}\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{5,40})/iu', $t, $mm, PREG_SET_ORDER) > 0) {
+        /* 25 Nov 2026 (mp2): the Indian bank labels too - UPI Ref No, UPI Ref, IMPS Ref No, NEFT Ref, Ref No,
+           RRN, UTR, "reference number is …"; the id must carry a digit IN the pattern, so a word after a label
+           ("transaction reference number is 4321…") never hides the label that follows it */
+        if (preg_match_all('/(?:(?<![A-Za-z])(?:(?:upi|imps|neft|rtgs)[ \t]+ref(?:erence)?|txn|transaction|trans\.|ref(?:erence)?|trace|utr|rrn)(?![A-Za-z])|ट्रान्जेक्सन|कारोबार|सन्दर्भ)[\s.]*'
+                . '(?:(?:id|no|number|num|nr|#|नं|नम्बर|आईडी)(?![A-Za-z])\.?[ \t]*){0,2}\s*[:#\-]?\s*(?:is[ \t]+)?(?=[A-Z\-\/]*[0-9])([A-Z0-9][A-Z0-9\-\/]{5,40})/iu', $t, $mm, PREG_SET_ORDER) > 0) {
             foreach ($mm as $x) {
                 $found[] = rtrim($x[1], '-/');
             }
@@ -1111,9 +1150,191 @@ final class BankMail
         return $c;
     }
 
+    /** The counters one poll reports. */
+    private static function counters(): array
+    {
+        return ['ok' => true, 'msg' => '', 'seen' => 0, 'credits' => 0, 'new' => 0, 'duplicates' => 0, 'debits' => 0,
+                'other' => 0, 'confirmed' => 0, 'suggested' => 0, 'unmatched' => 0, 'failed' => 0, 'incomplete' => 0, 'last_uid' => 0];
+    }
+
+    /** One line for the panel / cron log. */
+    private static function summary(array $res): string
+    {
+        return $res['seen'] . ' read · ' . $res['credits'] . ' credits · ' . $res['confirmed'] . ' confirmed · '
+            . ($res['suggested'] > 0 ? $res['suggested'] . ' suggested (press Confirm) · ' : '') . $res['unmatched'] . ' need a person'
+            . (($res['incomplete'] ?? 0) > 0 ? ' · ' . $res['incomplete'] . ' credit(s) not stored: setup incomplete' : '')
+            . ($res['failed'] > 0 ? ' · ' . $res['failed'] . ' could not be read' : '');
+    }
+
     /**
-     * Read new alerts. $imap is for tests (an already-connected client); so is
-     * $each (callable(string $raw, array &$res): void, in place of handle()).
+     * Has the cron anything to do? Before the mp2 migration: the old switch bankmail_on.
+     * After it: an active box, or old settings waiting to become account #1.
+     */
+    public static function anythingToRun(): bool
+    {
+        if (!BankMailAccounts::ready()) {
+            return self::on();
+        }
+        return BankMailAccounts::legacyPending()
+            || array_filter(BankMailAccounts::active(), static fn(array $a): bool => BankMailAccounts::isReady($a)) !== [];
+    }
+
+    /**
+     * Read new alerts.
+     *
+     * Every active bank Gmail box (BankMailAccounts) once the mp2 migration ran - a
+     * Google box through the Gmail API (GmailApi), an app-password box through IMAP -
+     * each with its own rules (pollAccount). A Google box marked "reconnect" is left
+     * alone by the cron until the owner signs in again (Check now still tries it).
+     *
+     * $imap is for tests (an already-connected client); so is $each (callable(string
+     * $raw, array &$res): void, in place of handle()): with either one - or before the
+     * migration - the OLD single box (the bankmail_* settings) is read (pollLegacy).
+     *
+     * @return array<string,mixed> counts + ok / msg (+ accounts: how many boxes were read)
+     */
+    public static function poll(int $max = 50, ?BankMailImap $imap = null, ?callable $each = null): array
+    {
+        if ($imap !== null || $each !== null || !BankMailAccounts::ready()) {
+            return self::pollLegacy($max, $imap, $each);
+        }
+        $res = self::counters() + ['accounts' => 0];
+        if (!PayCredits::ready()) {
+            return self::finish(['ok' => false, 'msg' => 'bank_credits table missing (migration not applied)'] + $res);
+        }
+        BankMailAccounts::migrateLegacy();
+        $msgs = [];
+        foreach (BankMailAccounts::active() as $a) {
+            if ((string) $a['method'] === 'google' && (int) ($a['last_ok'] ?? 1) === 0 && (string) ($a['last_result'] ?? '') === GoogleOAuth::RECONNECT) {
+                $msgs[] = $a['email'] . ': ' . GoogleOAuth::RECONNECT;
+                continue;
+            }
+            $r = self::pollAccount($a, $max);
+            $res['accounts']++;
+            foreach (['seen', 'credits', 'new', 'duplicates', 'debits', 'other', 'confirmed', 'suggested', 'unmatched', 'failed', 'incomplete'] as $k) {
+                $res[$k] += (int) ($r[$k] ?? 0);
+            }
+            if (!$r['ok']) {
+                $res['ok'] = false;
+            }
+            $msgs[] = $a['email'] . ': ' . ($r['ok'] ? '' : '✖ ') . $r['msg'];
+        }
+        $res['msg'] = $msgs === [] ? 'no active bank Gmail account' : mb_substr(implode(' | ', $msgs), 0, 500);
+        return self::finish($res);
+    }
+
+    /**
+     * Read one box now (the cron, or "अहिले जाँच्नुहोस् · Check now"). $imap is a test hook for an
+     * app-password box. The box's last_poll_at / last_ok / last_result say how it went.
+     *
+     * @param array<string,mixed> $a the bank_mail_accounts row
+     * @return array<string,mixed> counts + ok / msg
+     */
+    public static function pollAccount(array $a, int $max = 50, ?BankMailImap $imap = null): array
+    {
+        $res = self::counters();
+        $id  = (int) $a['id'];
+        if (!PayCredits::ready()) {
+            return ['ok' => false, 'msg' => 'bank_credits table missing (migration not applied)'] + $res;
+        }
+        if (!BankMailAccounts::isReady($a)) {
+            /* no DKIM domain / account digits yet: read NOTHING, so no alert is used up before the
+               rules exist - the first read after Edit -> Save starts from the last 2-3 days */
+            $res['msg'] = BankMailAccounts::NOT_READY_MSG;
+            BankMailAccounts::note($id, false, $res['msg']);
+            return $res;
+        }
+        $secret = '';
+        try {
+            if ((string) $a['method'] === 'google') {
+                require_once __DIR__ . '/gmailapi.php';
+                GmailApi::poll($a, $max, $res);
+            } else {
+                $secret = BankMailAccounts::secret($a);
+                self::pollImapAccount($a, $max, $res, $imap, $secret);
+            }
+            $res['msg'] = self::summary($res);
+            BankMailAccounts::note($id, true, $res['msg']);
+        } catch (Throwable $e) {
+            $res['ok']  = false;
+            $res['msg'] = self::scrub($e->getMessage(), $secret);
+            if (!($e instanceof GoogleReconnect)) {
+                BankMailAccounts::note($id, false, $res['msg']);
+            }
+            Logger::warning('BankMail: box check failed', ['account' => $id, 'err' => $res['msg']], 'payment');
+        }
+        return $res;
+    }
+
+    /**
+     * An app-password box over IMAP (imap.gmail.com, the box's address + its sealed app password),
+     * read-only, from its own last_uid / uidvalidity, FROM its senders (else its DKIM domain).
+     *
+     * @param array<string,mixed> $res
+     */
+    private static function pollImapAccount(array $a, int $max, array &$res, ?BankMailImap $imap, string $pass): void
+    {
+        $id   = (int) $a['id'];
+        $mine = $imap === null;
+        if ($imap === null) {
+            if ($pass === '') {
+                throw new RuntimeException('App password खुलेन / छैन — Edit मा फेरि राख्नुहोस् · the app password could not be opened, save it again.');
+            }
+            $imap = BankMailImap::connect('imap.gmail.com');
+        }
+        try {
+            if ($mine) {
+                $imap->login((string) $a['email'], $pass);
+            }
+            $box  = $imap->examine('INBOX');
+            $last = (int) ($a['last_uid'] ?? 0);
+            $was  = (string) ($a['uidvalidity'] ?? '');
+            if ($box['uidvalidity'] !== '' && $was !== $box['uidvalidity']) {
+                if ($was !== '') {
+                    $last = 0;   // the box was rebuilt: UIDs mean something else now (Message-ID still dedupes)
+                }
+                Database::update('bank_mail_accounts', ['uidvalidity' => mb_substr($box['uidvalidity'], 0, 20)], 'id = :i', ['i' => $id]);
+            }
+            $senders = BankMailAccounts::senders($a);
+            if ($senders === [] && BankMailAccounts::dkimDomain($a) !== '') {
+                $senders = [BankMailAccounts::dkimDomain($a)];
+            }
+            $crit = trim(($last > 0 ? 'UID ' . ($last + 1) . ':*' : 'SINCE ' . date('j-M-Y', time() - 2 * 86400)) . ' ' . self::fromCriteria($senders));
+            $uids = array_values(array_filter($imap->uidSearch($crit), static fn(int $u): bool => $u > $last));
+            $uids = array_slice($uids, 0, max(1, min(200, $max)));
+            foreach ($uids as $uid) {
+                $raw = $imap->uidFetch($uid);   // a broken connection ends the run here: retried next time
+                $res['seen']++;
+                if ($raw !== '') {
+                    try {
+                        self::handle($raw, $res, $a, 'uid:' . $uid);
+                    } catch (Throwable $e) {
+                        $res['failed']++;
+                        $why = self::scrub(PayCredits::text($e->getMessage(), 300), $pass);
+                        Logger::warning('BankMail: message could not be read, stepped over', ['account' => $id, 'uid' => $uid, 'err' => $why], 'payment');
+                        BankMailAccounts::log($id, 'unreadable', '', null, null, 'uid:' . $uid);
+                        PayCredits::alert('Bank mail could not be read · ' . (string) $a['email'] . ' UID ' . $uid,
+                            'Gmail message UID ' . $uid . ' in ' . (string) $a['email'] . ' could not be read and was stepped over (' . $why . '). If it is a credit alert, open it in Gmail and check the bank statement by hand.',
+                            null, BankMailAccounts::tabFor((string) $a['country']));
+                    }
+                } else {
+                    BankMailAccounts::log($id, 'gone', '', null, null, 'uid:' . $uid);
+                }
+                $last = max($last, $uid);
+                Database::update('bank_mail_accounts', ['last_uid' => $last], 'id = :i', ['i' => $id]);
+            }
+            $res['last_uid'] = $last;
+        } finally {
+            if ($mine) {
+                $imap->logout();
+            }
+        }
+    }
+
+    /**
+     * The OLD single box (the bankmail_* settings) - tests with an injected client, and
+     * every run before the mp2 migration. $imap is for tests (an already-connected client);
+     * so is $each (callable(string $raw, array &$res): void, in place of handle()).
      *
      * A message that fails on its own (bad bytes, a value the database refuses,
      * anything thrown while handling it) is logged, raises an admin bell and is
@@ -1124,10 +1345,9 @@ final class BankMail
      *
      * @return array<string,mixed> counts + ok / msg
      */
-    public static function poll(int $max = 50, ?BankMailImap $imap = null, ?callable $each = null): array
+    private static function pollLegacy(int $max = 50, ?BankMailImap $imap = null, ?callable $each = null): array
     {
-        $res = ['ok' => true, 'msg' => '', 'seen' => 0, 'credits' => 0, 'new' => 0, 'duplicates' => 0, 'debits' => 0,
-                'other' => 0, 'confirmed' => 0, 'suggested' => 0, 'unmatched' => 0, 'failed' => 0, 'last_uid' => Settings::getInt('bankmail_last_uid', 0)];
+        $res = ['last_uid' => Settings::getInt('bankmail_last_uid', 0)] + self::counters();
         if (!self::on()) {
             return ['ok' => true, 'msg' => 'off'] + $res;
         }
@@ -1200,39 +1420,71 @@ final class BankMail
     /**
      * One message: parse, store, try to confirm.
      *
-     * @param array<string,mixed> $res
+     * $acct = the bank Gmail box it came from (BankMailAccounts row): its own rules parse it
+     * (optsFor), its sender rule is checked first ('not-bank-sender' stores nothing), a box that
+     * is not READY stores no credit ('setup-incomplete'), the credit carries mail_account_id and
+     * the box's currency, and one bank_mail_log row says what became of the mail ($msgRef =
+     * "g:<gmail id>" / "uid:<n>", so it is read once). null = the old single box (no log).
+     *
+     * @param array<string,mixed>      $res
+     * @param array<string,mixed>|null $acct
      */
-    public static function handle(string $raw, array &$res): void
+    public static function handle(string $raw, array &$res, ?array $acct = null, string $msgRef = ''): void
     {
-        $p = self::parse($raw);
+        $p = self::parse($raw, $acct !== null ? self::optsFor($acct) : null);
+        $log = static function (string $outcome, ?int $creditId = null) use ($acct, $p, $msgRef): void {
+            if ($acct !== null) {
+                BankMailAccounts::log((int) $acct['id'], $outcome, (string) $p['subject'], $p['date'] !== '' ? (string) $p['date'] : null, $creditId, $msgRef);
+            }
+        };
+        if ($acct !== null && BankMailAccounts::senderRule($acct, (string) $p['from']) === false) {
+            $res['other']++;   // the search already asks for the bank's senders: this is someone else
+            $log('not-bank-sender');
+            return;
+        }
         if ($p['is_debit']) {   // debit words only (credit AND debit words = is_credit + mixed: kept)
             $res['debits']++;
+            $log('debit-ignored');
             return;
         }
         if (!$p['is_credit']) {
             $res['other']++;
+            $log('not-credit');
+            return;
+        }
+        if ($acct !== null && !BankMailAccounts::isReady($acct)) {
+            $res['other']++;
+            $res['incomplete'] = (int) ($res['incomplete'] ?? 0) + 1;   // no DKIM domain / account digits yet: logged, no credit, no suggestion
+            /* (pollAccount does not read a box that is not ready; this is only a race with Edit)
+               no msg_ref: the mail is read again once the box is ready (BankMailAccounts::rereadIncomplete) */
+            if ($acct !== null) {
+                BankMailAccounts::log((int) $acct['id'], 'setup-incomplete', (string) $p['subject'], $p['date'] !== '' ? (string) $p['date'] : null, null, '');
+            }
             return;
         }
         $res['credits']++;
         $id = PayCredits::record([
-            'source' => 'gmail', 'currency' => 'NPR', 'amount' => $p['amount'], 'txn_id' => $p['txn_id'],
+            'source' => 'gmail', 'currency' => $acct !== null ? (string) $acct['currency'] : 'NPR', 'amount' => $p['amount'], 'txn_id' => $p['txn_id'],
             'ref_text' => $p['remarks'], 'pnr' => $p['pnr'], 'sender' => $p['from'], 'dkim_ok' => $p['dkim_ok'],
             'message_id' => $p['message_id'], 'received_at' => $p['date'], 'raw_excerpt' => $p['subject'] . "\n" . mb_substr($p['text'], 0, 1500),
-            'credit_account' => $p['account'],
+            'credit_account' => $p['account'], 'mail_account_id' => $acct !== null ? (int) $acct['id'] : null,
         ]);
         $outcome = PayCredits::lastOutcome();
         if ($outcome === 'conflict') {
             $res['new']++;
             $res['unmatched']++;   // same txn id, another e-mail: kept for a person, bell rung by record()
+            $log('unmatched', $id);
             return;
         }
         if ($outcome === 'replay') {
             $res['duplicates']++;
+            $log('duplicate', $id);
             return;
         }
         $row = PayCredits::get($id);
         if ($row === null || (string) $row['state'] !== 'new') {
             $res['duplicates']++;
+            $log('duplicate', $id > 0 ? $id : null);
             return;
         }
         $res['new']++;
@@ -1246,10 +1498,15 @@ final class BankMail
         $r = $hold !== '' ? PayCredits::hold($id, $hold) : PayCredits::tryAutoConfirm($id);
         if ($r['ok']) {
             $res['confirmed']++;
+            $log('confirmed', $id);
         } elseif ($r['why'] === 'suggested') {
             $res['suggested']++;   // every check passed, Gmail auto-PAID is off: a person presses Confirm
+            $log(($r['kind'] ?? 'pnr') === 'amount' ? 'suggestion-amount' : 'suggestion', $id);
         } elseif ($r['state'] === 'unmatched') {
             $res['unmatched']++;
+            $log('unmatched', $id);
+        } else {
+            $log('unmatched', $id);
         }
     }
 

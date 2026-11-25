@@ -270,6 +270,7 @@ const CORE_SUITES = [
     'wa87-e2e-test.php'               => '87 WhatsApp sender end to end: name / date → one booking, pay link, UTR never marks paid, one ticket (19 Nov)',
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'mp1-pay-test.php'                => 'Payment Management: ICICI strict fields, one Nepal QR, Gmail bank alerts + bank webhook -> credits ledger, exact-match auto-confirm only (25 Nov)',
+    'mp2-bankgmail-test.php'          => 'bank Gmail boxes from Payment Management: Google sign-in (OAuth+PKCE, sealed tokens), Gmail API reader, per-box rules, Indian INR alerts, amount-only suggestions, never auto (25 Nov mp2)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'mp1-login-test.php'              => 'top bar photo / initials + mode badge, login mode cards never change the role, credential actions super-admin only, remember 90 days (25 Nov mp1-lg)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
@@ -285,6 +286,8 @@ const CORE_SUITES = [
     'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
     'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',
     'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
+    // 25 Nov 2026 (mp3-bot): the chatbot answers what was asked
+    'mp3-bot-test.php'                => 'bot answers what was asked: directory (every place + CEO line), auto-replies silent, gated PNR (last 4 digits) + name search, desk chalani / halkhabar / person, honest fallback, read-only AI tools',
     'wx6-test.php'                    => 'Nepal journey (office 4 pm, our auto, 6 pm bus, one service), 5 pm NPT warning, boot coach, ticket styles, nav glide',
     'easy-login-test.php'             => 'easy login: mode, code / mobile, FirstName@2026 until changed, office reset, never superadmin, drivers',
 ];
@@ -297,6 +300,7 @@ const CORE_SUITES = [
  */
 const SUITE_EXT = [
     'u5-ag-payout-test.php' => ['sodium'],
+    'mp2-bankgmail-test.php' => ['sodium'],
 ];
 
 /**

@@ -402,9 +402,11 @@ try {
        purpose — an unclassified tool fails this eval. */
     $CUSTOMER = ['find_ticket', 'my_tickets', 'knowledge_lookup', 'company_docs_search', 'company_doc_send', 'handoff_to_staff',
         'handoff_status', 'plan_ticket', 'issue_ticket', 'refund_quote', 'cancel_ticket', 'resend_ticket', 'payment_info',
-        'rename_passenger', 'quote_ticket_fix', 'fix_ticket', 'bus_eta', 'record_feedback'];
+        'rename_passenger', 'quote_ticket_fix', 'fix_ticket', 'bus_eta', 'record_feedback',
+        // 25 Nov 2026 (mp3-bot): read-only, gated inside (own booking / last 4 digits; directory = public rows for a customer)
+        'directory_lookup', 'pnr_lookup'];
     $STAFF = ['verify_identity', 'staff_sell', 'bulk_quote', 'bulk_issue', 'agent_day', 'agent_passengers', 'my_sales', 'my_wallet',
-        'request_payout', 'sales_report', 'occupancy_report'];
+        'request_payout', 'sales_report', 'occupancy_report', 'name_search'];
     $OFFICE = ['site_visitors', 'agent_leaderboard', 'office_agent', 'office_agents', 'office_customer', 'office_payout_requests',
         'office_day', 'finance_day', 'office_search', 'office_alerts', 'marketing_draft', 'marketing_preview', 'marketing_send',
         'marketing_status', 'office_confirm', 'office_settle_cod', 'office_reject', 'office_agent_status'];

@@ -1025,9 +1025,11 @@ if ($pcRow !== null) { $credIds[] = (int) $pcRow['id']; }
 $pcId = (int) ($pcRow['id'] ?? 0);
 check('H a fresh suggestion for the page (switch not stored = OFF): matched, booking pending', $resPc['suggested'] === 1 && PayCredits::isSuggestion($pcRow) && $status($pc) === 'pending', json_encode($resPc));
 $h = $page($SUP, ['tab' => 'np']);
-check('H Nepal tab renders (QR card, Gmail box, Test button, credits), no PHP warning',
-    !$warn($h) && str_contains($h, 'नेपाली QR') && str_contains($h, 'name="bankmail_app_password"') && str_contains($h, 'value="np_test"') && str_contains($h, 'Credits (Gmail)')
-    && str_contains($h, 'name="bankmail_account_hint"')
+/* 25 Nov 2026 (mp2 "bank Gmail"): the old single Gmail form (bankmail_user / bankmail_app_password / np_test) is
+   REPLACED by the "📧 बैंक Gmail खाताहरू" card (Google login / app password per box, tests/mp2-bankgmail-test.php) */
+check('H Nepal tab renders (QR card, eSewa id, bank Gmail accounts card, credits), no PHP warning',
+    !$warn($h) && str_contains($h, 'नेपाली QR') && str_contains($h, 'name="nepal_esewa_id"') && str_contains($h, 'बैंक Gmail खाताहरू · Bank Gmail accounts')
+    && str_contains($h, 'value="acct_add_pw"') && str_contains($h, 'Credits (Gmail)') && !str_contains($h, 'name="bankmail_app_password"')
     && !str_contains($h, 'whsec_mp1_local_test'), substr((string) preg_replace('/\s+/', ' ', strip_tags($h)), 0, 300));
 check('H Nepal tab: the Nepali note + the auto switch shown read-only (○ बन्द · OFF), no toggle for it on this page',
     str_contains($h, 'Gmail बाट आएको पैसा अहिले सुझावको रूपमा आउँछ; बैंक app मा हेरेर Confirm थिच्नुहोस्। Global IME को साँचो alert email को नमुना मिलाएपछि Auto-PAID खोल्न सकिन्छ।')
@@ -1062,7 +1064,7 @@ check('H India tab renders with the webhook address and never prints a secret', 
 $h = $page($SUP, ['tab' => 'cash', 'day' => $TD]);
 check('H Cash tab renders (per counter + per staff, links to the books)', !$warn($h) && str_contains($h, 'Per counter / desk') && str_contains($h, 'Per staff') && str_contains($h, 'cash-book.php'));
 $h = $page($MGR, ['tab' => 'np']);
-check('H a manager is refused (super-admin only)', !str_contains($h, 'name="bankmail_app_password"') && (str_contains($h, 'super-admin only') || str_contains($h, '<!--HTTP:403-->')), substr(strip_tags($h), 0, 200));
+check('H a manager is refused (super-admin only)', !str_contains($h, 'बैंक Gmail खाताहरू') && !str_contains($h, 'value="acct_add_pw"') && (str_contains($h, 'super-admin only') || str_contains($h, '<!--HTTP:403-->')), substr(strip_tags($h), 0, 200));
 $navS = json_decode(trim(substr($p1 = $page($SUP, [], true), (int) strrpos($p1, '['))), true) ?: [];
 $navM = json_decode(trim(substr($p2 = $page($MGR, [], true), (int) strrpos($p2, '['))), true) ?: [];
 check('H the menu line shows for the super-admin only', in_array('payment-center.php', $navS, true) && !in_array('payment-center.php', $navM, true), json_encode([count($navS), count($navM)]));

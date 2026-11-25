@@ -817,8 +817,40 @@ final class AiTools
             }
         }
 
+        /* 25 Nov 2026 (mp3-bot; owner: "har ek location ko name number, PNR le search, name le database check"):
+           the same three deterministic answers the WhatsApp desk gives (includes/wadirectory.php, walookup.php), with
+           the same gates - a customer only their own booking (or the last-4-digits check), an agent only their own
+           sales, the office everything; every PNR / name search rate-limited and written to ai_agent_calls. */
+        if (Settings::getBool('wa_directory_on', true)) {
+            $t[] = self::spec('directory_lookup',
+                'Our offices, counters, parkings, pickup points, the border point and the PUBLISHED contacts (CEO line, Nepal office, 24x7 line): name, phone, WhatsApp, in-charge, address and Google Maps link, read from the live tables. Use it for "office ko number", "<town> pickup kaha", "CEO ko number", "<town> agent", "address / map". Read the returned text back; never add a number it did not return.',
+                ['query' => ['string', "The person's question in their own words, e.g. 'Nepalgunj office ko number'"]], ['query']);
+        }
+        if (Settings::getBool('wa_lookup_on', true)) {
+            $t[] = self::spec('pnr_lookup',
+                'One booking by its PNR or short number (SHG-2026-00963, "963"): status, date, route, seats, boarding point + time, paid / due, ticket link. A customer sees only a booking on their own number (anyone else is asked for the last 4 digits of the booking mobile); an agent / counter only their own sales; the office any.',
+                ['pnr' => ['string', 'The PNR (SHG-2026-00963) or its number (963)']], ['pnr']);
+            if ($staff) {
+                $t[] = self::spec('name_search',
+                    'Find a passenger\'s bookings by NAME (last 30 days + upcoming, at most 10, phones masked): PNR, date, route, seat, status. The office searches the whole register; an agent / counter only their own sales.',
+                    ['name' => ['string', 'The passenger name or part of it, at least 3 letters']], ['name']);
+            }
+        }
+
+        /* 25 Nov 2026 (mp3-bot): the WhatsApp desk hands a member's free question to this assistant READ-ONLY -
+           selling, changing a ticket and money stay with the desk's own commands and their "ho". */
+        if (!empty($ctx['readOnly'])) {
+            $t = array_values(array_filter($t, static fn(array $s): bool => in_array((string) $s['name'], self::READ_ONLY_TOOLS, true)));
+        }
+
         return $t;
     }
+
+    /** The tools the desk's read-only hand-off may use (25 Nov 2026, mp3-bot). */
+    private const READ_ONLY_TOOLS = ['find_ticket', 'my_tickets', 'knowledge_lookup', 'company_docs_search', 'payment_info', 'bus_eta', 'refund_quote',
+        'agent_day', 'agent_passengers', 'my_sales', 'my_wallet', 'office_day', 'finance_day', 'office_search', 'office_alerts', 'office_agent',
+        'office_agents', 'office_customer', 'office_payout_requests', 'sales_report', 'occupancy_report', 'site_visitors', 'agent_leaderboard',
+        'handoff_status', 'directory_lookup', 'pnr_lookup', 'name_search'];
 
     /** One tool spec in the Anthropic shape. */
     private static function spec(string $name, string $desc, array $props, array $required = []): array
@@ -939,6 +971,9 @@ final class AiTools
                 'occupancy_report' => self::occupancyReport($args, $ctx),
                 'site_visitors'    => self::siteVisitors($args, $ctx),
                 'agent_leaderboard' => self::salesReport(['period' => (string) ($args['period'] ?? 'month'), 'group_by' => 'agent'], $ctx),
+                'directory_lookup' => self::directoryLookup($args, $ctx),
+                'pnr_lookup'       => self::pnrLookup($args, $ctx),
+                'name_search'      => self::nameSearch($args, $ctx),
                 default            => $out,
             };
         } catch (RuntimeException $e) {
@@ -995,6 +1030,48 @@ final class AiTools
             'data'  => $data,
             'media' => $media,
         ];
+    }
+
+    /* ---- 25 Nov 2026 (mp3-bot): directory, PNR and name search for the model, with the desk's own gates ---- */
+
+    private static function directoryLookup(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/wadirectory.php';
+        require_once INCLUDE_PATH . '/waanswer.php';
+        $q = Security::clean((string) ($args['query'] ?? ''), 160);
+        // agents' personal mobiles: a signed-in web office session or an OTP-linked desk number only (role admin alone is not)
+        $office = (string) ($ctx['role'] ?? '') === 'admin'
+            && ((string) ($ctx['channel'] ?? 'whatsapp') === 'web' || !empty($ctx['office']));
+        $r = WaDirectory::lookup($q, (string) ($ctx['role'] ?? 'customer'), WaAnswer::lang($q), true, $office);
+        if ($r === null) {
+            return self::no('Nothing on file for that place. Give the office number ' . Settings::officePhone() . '.');
+        }
+        return ['ok' => true, 'say' => 'Directory entries (' . $r['hits'] . '). Read them back exactly; never add a number that is not here.',
+            'data' => ['text' => $r['text'], 'kind' => $r['kind'], 'hits' => $r['hits']], 'media' => null];
+    }
+
+    private static function pnrLookup(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/walookup.php';
+        require_once INCLUDE_PATH . '/waanswer.php';
+        $raw = Security::clean((string) ($args['pnr'] ?? ''), 40);
+        $pnr = WaLookup::pnrIn(preg_match('/^\d{3,6}$/', $raw) === 1 ? 'PNR ' . $raw : $raw);
+        if ($pnr === '') {
+            return self::no('That is not a PNR. Ask for the code that starts with SHG- (like SHG-2026-00963).');
+        }
+        $r = WaLookup::pnrAnswer($pnr, $ctx, (string) ($ctx['phone'] ?? ''), WaAnswer::lang((string) ($ctx['messageText'] ?? $raw)));
+        return ['ok' => true, 'say' => 'Lookup result (access: ' . $r['access'] . '). Read it back exactly; if it asks for the last 4 digits, ask the person for them.',
+            'data' => ['text' => $r['text'], 'access' => $r['access']], 'media' => $r['media'] ?? null];
+    }
+
+    private static function nameSearch(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/walookup.php';
+        require_once INCLUDE_PATH . '/waanswer.php';
+        $name = Security::clean((string) ($args['name'] ?? ''), 60);
+        $r = WaLookup::byName($name, $ctx, (string) ($ctx['phone'] ?? ''), WaAnswer::lang((string) ($ctx['messageText'] ?? $name)));
+        return ['ok' => $r['access'] !== 'refused', 'say' => 'Name search: ' . $r['count'] . ' result(s), access ' . $r['access'] . '. Read the list back exactly.',
+            'data' => ['text' => $r['text'], 'count' => $r['count']], 'media' => null];
     }
 
     private static function myTickets(array $args, array $ctx): array
