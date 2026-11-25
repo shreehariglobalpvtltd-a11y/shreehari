@@ -400,10 +400,10 @@ admin_header('पेमेन्ट म्यानेजमेन्ट · Paym
 .pc-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
 .pc-tabs a{flex:0 0 auto;padding:10px 14px;border:1px solid var(--line,#e0e8f2);border-radius:999px;text-decoration:none;color:inherit;font-weight:700;min-height:44px;display:flex;align-items:center;background:var(--card,#fff)}
 .pc-tabs a.on{background:#185bed;border-color:#185bed;color:#fff}
-.pc-card{background:var(--surface,#fff);border:1px solid var(--line,#e0e8f2);border-radius:14px;padding:14px 16px;min-width:0}
-.pc-card h2{margin:0 0 4px;font-size:16px}.pc-card p.hint{margin:0 0 10px;color:var(--muted,#637491);font-size:12.5px}
+.pc-card{background:var(--card,#fff);color:var(--ink,#0b1220);border:1px solid var(--line,#e0e8f2);border-radius:14px;padding:14px 16px;min-width:0}
+.pc-card h2{margin:0 0 4px;font-size:16px}.pc-card p.hint{margin:0 0 10px;color:var(--mut,#637491);font-size:12.5px}
 .pc-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-.pc-f label{font-size:12px;color:var(--muted,#637491);min-width:0}
+.pc-f label{font-size:12px;color:var(--mut,#637491);min-width:0}
 .pc-f input,.pc-f select,.pc-f textarea{display:block;width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line,#e0e8f2);border-radius:9px;min-height:42px;font:inherit}
 .pc-btns{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}.pc-btns .btn{min-height:44px}
 .pc-flash{padding:9px 12px;border-radius:10px;overflow-wrap:anywhere}.pc-flash.ok{background:#e9f8ee;color:#0a7c2f}.pc-flash.bad{background:#fdecec;color:#b3261e}
@@ -413,19 +413,19 @@ admin_header('पेमेन्ट म्यानेजमेन्ट · Paym
 .pc-list{display:grid;gap:8px}
 .pc-cr{border:1px solid var(--line,#e0e8f2);border-radius:12px;padding:10px 12px;min-width:0;overflow-wrap:anywhere}
 .pc-cr-top b{font-size:16px}.pc-st{display:inline-block;border:1px solid;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700}
-.pc-cr-meta,.pc-cr-note{font-size:12.5px;color:var(--muted,#637491);margin-top:4px}.pc-cr-note{color:#7a4b00}
+.pc-cr-meta,.pc-cr-note{font-size:12.5px;color:var(--mut,#637491);margin-top:4px}.pc-cr-note{color:#7a4b00}
 .pc-cr-act{display:grid;gap:6px;margin-top:8px}
 .pc-inline{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pc-inline input[type=text],.pc-inline input:not([type]){flex:1 1 160px;min-width:0;padding:8px 10px;border:1px solid var(--line,#e0e8f2);border-radius:9px;min-height:42px;font:inherit}
 .pc-chk{font-size:12px;display:flex;gap:6px;align-items:center}
 .pc-sug{margin-top:8px;padding:10px;border:1px solid #b9cdfb;border-radius:12px;background:var(--hover,#f3f7ff)}
 .pc-sug-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
-.pc-sug-grid div{min-width:0}.pc-sug-grid small{display:block;font-size:11.5px;color:var(--muted,#637491)}.pc-sug-grid b{display:block;font-size:15px;overflow-wrap:anywhere}
+.pc-sug-grid div{min-width:0}.pc-sug-grid small{display:block;font-size:11.5px;color:var(--mut,#637491)}.pc-sug-grid b{display:block;font-size:15px;overflow-wrap:anywhere}
 .pc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .pc-chip{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid}.pc-chip.ok{color:#0a7c2f;border-color:#0a7c2f}.pc-chip.no{color:#b3261e;border-color:#b3261e}
 .pc-confirm{display:grid;gap:8px;margin-top:10px}
 .pc-big{min-height:52px;font-size:17px;font-weight:800;width:100%}
 .pc-auto{grid-column:1/-1;border:1px dashed var(--line,#e0e8f2);border-radius:10px;padding:8px 10px;font-size:13px;color:inherit}
-.pc-auto p{margin:4px 0 0;font-size:12.5px;color:var(--muted,#637491)}
+.pc-auto p{margin:4px 0 0;font-size:12.5px;color:var(--mut,#637491)}
 .pc-url{display:block;width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--line,#e0e8f2);border-radius:8px;font-size:13px}
 .pc-tbl{width:100%;border-collapse:collapse;font-size:13px}.pc-tbl th,.pc-tbl td{padding:6px 6px;border-bottom:1px solid var(--line,#e0e8f2);text-align:right;white-space:nowrap}
 .pc-tbl th:first-child,.pc-tbl td:first-child{text-align:left;white-space:normal}
@@ -607,7 +607,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
 ?>
   <form method="get" class="pc-card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
     <input type="hidden" name="tab" value="cash">
-    <label style="font-size:12px;color:var(--muted,#637491)">मिति · Day<input type="date" name="day" value="<?= $e($day) ?>" style="display:block;min-height:42px;padding:6px 10px;border:1px solid var(--line,#e0e8f2);border-radius:9px"></label>
+    <label style="font-size:12px;color:var(--mut,#637491)">मिति · Day<input type="date" name="day" value="<?= $e($day) ?>" style="display:block;min-height:42px;padding:6px 10px;border:1px solid var(--line,#e0e8f2);border-radius:9px"></label>
     <button class="btn" type="submit" style="min-height:44px">हेर्नुहोस् · Show</button>
     <span class="muted" style="font-size:12px">पढ्न मात्र · read-only. सच्याउन तलका पेज।</span>
   </form>
