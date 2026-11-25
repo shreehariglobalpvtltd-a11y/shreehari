@@ -912,7 +912,17 @@ function initSimpleSearch() {
   if (b && !b._wired) { b._wired = true; b.addEventListener('click', () => setSearchDir('back')); }
   if (p && !p._wired) { p._wired = true; p.addEventListener('change', applyDirection); }
   setSearchDir(searchDir);   // first paint: fill towns + sync hidden selects
-  if (!applyCampaignLink()) applyLastSearch();
+  if (!applyCampaignLink() && !applyLastSearch()) {
+    /* 25 Nov 2026 (wx1, owner: "Nepal bata kholda Nepal -> India"): no last search and no
+       campaign / deep link - a browser on Nepal time opens on Rupaidiha -> Gujarat.
+       Switch: geo_direction_on (public setting, default on). */
+    try {
+      const st = (window.SHG_BOOT && window.SHG_BOOT.settings) || {}, gv = st.geo_direction_on;
+      const tz = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+      if (!(gv === false || gv === 0 || gv === '0') && /^Asia\/Katha?mandu$/.test(tz)
+          && !/[?&](from|to|dir|town|counter)=/.test(location.search || '')) setSearchDir('back');
+    } catch (e) {}
+  }
   try { ShgAds.landing(); } catch (e) {}
 }
 

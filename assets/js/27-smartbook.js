@@ -271,9 +271,10 @@
   function money(n) { return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
   /* 20 Nov 2026 (nf1): the route's REAL normal fare struck through + the saving -
      only when the server sent {normal, save} (office-set, higher than this price). */
-  function nfHtml(nf) {
+  function nfHtml(nf, fmt) {
     if (!nf || !(Number(nf.save) >= 1)) return '';
-    return '<span class="sb-nf"><s title="' + esc(tr('nfNormal')) + '">' + esc(money(nf.normal)) + '</s> <em>' + esc(tr('nfSave')) + ' ' + esc(money(nf.save)) + '</em></span>';
+    fmt = fmt || money;   // 25 Nov 2026 (wx1): NPR chosen -> the normal fare and the saving in NPR too
+    return '<span class="sb-nf"><s title="' + esc(tr('nfNormal')) + '">' + esc(fmt(nf.normal)) + '</s> <em>' + esc(tr('nfSave')) + ' ' + esc(fmt(nf.save)) + '</em></span>';
   }
   function npr(n) { return 'NPR ' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
   function say(m) { try { if (typeof toast === 'function') toast(m); } catch (e) {} }
@@ -298,8 +299,28 @@
     verify: { address: '', idType: '', idNum: '', altPhone: '', altCc: 'NP' },
     /* 15 Nov 2026 (P7): the emergency contact - memory only (another person's number never
        sits in localStorage on a shared phone). Nepal by default: the family at home. */
-    emOn: false, relations: [], em: { name: '', phone: '', cc: 'NP', rel: '', touched: false }
+    emOn: false, relations: [], em: { name: '', phone: '', cc: 'NP', rel: '', touched: false },
+    /* 25 Nov 2026 (wx1): the money a customer pays in - ₹ INR | रू NPR (server switch
+       customer_currency_choice_on -> boot.curChoice). curTouched = the person tapped a chip. */
+    curChoice: false, cur: 'INR', curTouched: false
   };
+  /* 25 Nov 2026 (wx1): no server geo - the browser's own timezone says "opened from Nepal" */
+  var TZ = (function () { try { return String(Intl.DateTimeFormat().resolvedOptions().timeZone || ''); } catch (e) { return ''; } })();
+  var NP_TZ = /^Asia\/Katha?mandu$/.test(TZ);
+  function defaultCur() { return S.dir === 'toIndia' || NP_TZ ? 'NPR' : 'INR'; }
+  function inNpr() { return !!(S.curChoice && S.cur === 'NPR'); }
+  /* an INR amount in the money the customer chose (NPR at the quote's own rate, price.npr / price.total) */
+  function curAmt(inr, q) {
+    var p = q && q.price;
+    if (!inNpr() || !p || !(Number(p.total) > 0)) return money(inr);
+    return npr(Math.round(Number(p.npr) * (Number(inr) || 0) / Number(p.total)));
+  }
+  /* the other money, small: "≈ ₹X" under an NPR total, "≈ NPR X" under an INR one */
+  function altAmt(inr, q) {
+    var p = q && q.price;
+    if (inNpr()) return money(inr);
+    return npr(p && Number(p.total) > 0 ? Math.round(Number(p.npr) * (Number(inr) || 0) / Number(p.total)) : 0);
+  }
   var store = {
     get: function () { try { return JSON.parse(localStorage.getItem('sb:v1') || 'null') || {}; } catch (e) { return {}; } },
     set: function () {
@@ -352,7 +373,7 @@
     retargetBookLinks();
     steerClassic();
     var saved = store.get();
-    api({ action: 'boot', phone: saved.phone || '', direction: saved.dir || '' })
+    api({ action: 'boot', phone: saved.phone || '', direction: saved.dir || '', tz: TZ })
       .then(function (d) {
         S.dirs = d.directions || [];
         S.points = d.points || {};
@@ -383,6 +404,7 @@
            every visit opens on Sharing; Private is one tap (the 🔒 chip / the Full form). */
         S.type = 'sharing'; S.cabin = 'single'; S.berth = saved.berth || df.berth || 'any';
         if (!S.allowCod) $('sbCash').hidden = true;
+        S.curChoice = !STAFF && !!d.curChoice; S.cur = defaultCur();   // 25 Nov 2026 (wx1)
         fill(); applyWords(); applyQuick(); requote(0);
         /* 13 Nov 2026 (mg20): a ticket order typed in the Home AI box ("Ram 98…, Surat bholi 2 jana")
            arrives as ?order= — read into the card here; the person checks it and taps Book. */
@@ -431,7 +453,17 @@
     seg('sbType', S.type); seg('sbCabin', S.cabin); seg('sbBerth', S.berth); seg('sbSeatMode', S.seatMode);
     $('sbCabin').hidden = S.type !== 'private';
     nearSync();   // P4-1f: the 📍 button only where it can answer
+    renderCur();
     renderPax(); renderDates();
+  }
+  /* 25 Nov 2026 (wx1): the ₹ INR | रू NPR chips (customer card, owner's switch on) */
+  function renderCur() {
+    var box = $('sbCur'); if (!box) return;
+    box.hidden = !S.curChoice;
+    box.querySelectorAll('[data-cur]').forEach(function (b) {
+      var on = b.getAttribute('data-cur') === S.cur;
+      b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
   }
   function seg(id, v) {
     $(id).querySelectorAll('button').forEach(function (b) { var on = b.getAttribute('data-v') === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
@@ -452,10 +484,19 @@
     var list = [first, isoAdd(first, 1)];
     if (a.length && list.indexOf(a[0]) < 0) list = [first, a[0]];
     var h = '';
+    /* 25 Nov 2026 (wx1, owner): both calendars, clearly - BS "मंसिर ९, २०८३ वि.सं." (bold)
+       and AD "25 Nov 2026 ई.सं." on their own lines; AD alone outside the BS table. */
     list.forEach(function (iso) {
-      var d = new Date(iso + 'T00:00:00');
-      h += '<button type="button" class="sb-chip' + (iso === cur ? ' on' : '') + '" role="radio" aria-checked="' + (iso === cur) + '" data-date="' + iso + '">'
-        + '<b>' + esc(dayLabel(iso)) + '</b><small>' + d.getDate() + ' ' + d.toLocaleDateString('en-IN', { month: 'short' }) + esc(bsShort(iso, ' · ')) + '</small></button>';
+      if (STAFF) {   // the staff desk keeps its compact one-line chip (wx1 = customer card only)
+        var d = new Date(iso + 'T00:00:00');
+        h += '<button type="button" class="sb-chip' + (iso === cur ? ' on' : '') + '" role="radio" aria-checked="' + (iso === cur) + '" data-date="' + iso + '">'
+          + '<b>' + esc(dayLabel(iso)) + '</b><small>' + d.getDate() + ' ' + d.toLocaleDateString('en-IN', { month: 'short' }) + esc(bsShort(iso, ' · ')) + '</small></button>';
+        return;
+      }
+      var bs = bsFull(iso);
+      h += '<button type="button" class="sb-chip sb-chip-2d' + (iso === cur ? ' on' : '') + '" role="radio" aria-checked="' + (iso === cur) + '" data-date="' + iso + '">'
+        + '<b>' + esc(dayLabel(iso)) + '</b>' + (bs ? '<span class="sb-d-bs">' + esc(bs) + ' वि.सं.</span>' : '')
+        + '<span class="sb-d-ad">' + esc(adFull(iso)) + ' ई.सं.</span></button>';
     });
     h += '<button type="button" class="sb-chip sb-chip-cal" data-date="cal" aria-label="' + esc(tr('pickDate')) + '">📅</button>';
     box.innerHTML = h;
@@ -469,6 +510,12 @@
   }
   function bsFull(iso, sep) {
     try { var t = typeof nepaliBSFull === 'function' ? nepaliBSFull(iso) : ''; return t ? (sep || '') + t : ''; } catch (e) { return ''; }
+  }
+  /* 25 Nov 2026 (wx1): "25 Nov 2026" - the English (AD) date written out in full */
+  function adFull(iso) {
+    var d = new Date(iso + 'T00:00:00'); if (isNaN(d.getTime())) return String(iso || '');
+    var m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+    return d.getDate() + ' ' + m + ' ' + d.getFullYear();
   }
   /* 17 Oct 2026 (owner): every passenger may carry a name - optional, the lead
      name stays the one typed above; blank = "<lead> (2)" as before (server) */
@@ -943,21 +990,23 @@
         row = document.createElement('div'); row.className = 'sbx-disc-row'; row.innerHTML = '<dt></dt><dd></dd>'; dl.appendChild(row);
       }
       var fr2 = dl.querySelector('.sbx-fare-row');
-      fr2.firstChild.textContent = tr('sFare'); fr2.lastChild.textContent = money(q.price.base);
-      row.firstChild.textContent = '🏷️ ' + tr('sDisc'); row.lastChild.textContent = '− ' + money(d) + (pct > 0 ? ' (' + pct + '%)' : '');
+      fr2.firstChild.textContent = tr('sFare'); fr2.lastChild.textContent = curAmt(q.price.base, q);   // wx1: in the chosen money
+      row.firstChild.textContent = '🏷️ ' + tr('sDisc'); row.lastChild.textContent = '− ' + curAmt(d, q) + (pct > 0 ? ' (' + pct + '%)' : '');
     })();
-    var tot = q && q.ok && q.price ? money(q.price.total) : '—';
+    /* 25 Nov 2026 (wx1): the chosen money big, the other one small (NPR = the server's own rate) */
+    var tot = q && q.ok && q.price ? (inNpr() ? npr(q.price.npr) : money(q.price.total)) : '—';
+    var altM = q && q.ok && q.price ? '≈ ' + (inNpr() ? money(q.price.total) : npr(q.price.npr)) : '';
     $('sbTotal').textContent = tot;
-    $('sbNpr').textContent = q && q.ok && q.price ? '≈ ' + npr(q.price.npr) : '';
+    $('sbNpr').textContent = altM;
     (function () {   // 20 Nov 2026 (nf1)
-      var host = $('sbTotal').parentNode, el = $('sbNf'), h = q && q.ok && q.price ? nfHtml(q.price.normal) : '';
+      var host = $('sbTotal').parentNode, el = $('sbNf'), h = q && q.ok && q.price ? nfHtml(q.price.normal, function (n) { return curAmt(n, q); }) : '';
       if (!h) { if (el) el.remove(); return; }
       if (!el) { el = document.createElement('div'); el.id = 'sbNf'; host.appendChild(el); }
       el.innerHTML = h;
     })();
     $('sbBarTotal').textContent = tot;
-    try { $('sbBarTotal').setAttribute('data-nf', q && q.ok && q.price && q.price.normal ? money(q.price.normal.normal) : ''); } catch (e) {}
-    $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ≈ ' + npr(q.price.npr) : '')) : (q && q.error ? q.error : tr('loading'));
+    try { $('sbBarTotal').setAttribute('data-nf', q && q.ok && q.price && q.price.normal ? curAmt(q.price.normal.normal, q) : ''); } catch (e) {}
+    $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ' + altM : '')) : (q && q.error ? q.error : tr('loading'));
     syncPoint();
     renderQLine();
     renderPromo();
@@ -1010,11 +1059,16 @@
     var el = $('sbQLine'); if (!el) return;
     var q = S.q, parts = [];
     parts.push((S.dir === 'toIndia' ? '🇳🇵→🇮🇳 ' : '🇮🇳→🇳🇵 ') + (q ? q.from + ' → ' + q.to : ''));
-    if (q && q.dateLabel) parts.push('📅 ' + q.dateLabel + bsShort(q.date, ' · ') + (q.depTime ? ' · ' + q.depTime : ''));
+    /* 25 Nov 2026 (wx1): the full Nepali (BS) date first, then the English (AD) one (dateLabel), both named */
+    var dI = -1, bsQ = q && q.date ? bsFull(q.date) : '';
+    if (STAFF && q && q.dateLabel) parts.push('📅 ' + q.dateLabel + bsShort(q.date, ' · ') + (q.depTime ? ' · ' + q.depTime : ''));   // desk: as before
+    else if (q && q.dateLabel) { dI = parts.length; parts.push('📅 ' + (bsQ ? bsQ + ' वि.सं. · ' : '') + q.dateLabel + ' ई.सं.' + (q.depTime ? ' · ' + q.depTime : '')); }
     if (q) parts.push('📍 ' + (q.pointType === 'drop' ? (q.point || '') : (q.boardingName || '')));
     parts.push('👤 ' + tr('paxN', { n: S.pax.length }) + ' ' + S.pax.map(function (p) { return p.gender === 'Female' ? '♀' : (p.gender === 'Male' ? '♂' : ''); }).join('') + (S.pax[0] && S.pax[0].ai ? ' 🤖' : ''));
     if (q && q.ok) parts.push('🛏 ' + seatSummary(q));
-    el.innerHTML = parts.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('')
+    /* 25 Nov 2026 (wx1, owner: "mathi one-click swap"): ⇄ right after the route on the Quick line too */
+    var swapQ = STAFF ? '' : '<button type="button" class="sb-q-swap" data-sbswap="1" aria-label="रुट साट्नुहोस् · Swap route" title="रुट साट्नुहोस् · Swap route">⇄</button>';
+    el.innerHTML = parts.map(function (t, i) { return '<span' + (i === dI ? ' class="sb-ql-date"' : '') + '>' + esc(t) + '</span>' + (i === 0 ? swapQ : ''); }).join('')
       + '<button type="button" class="sb-q-priv' + (S.type === 'private' ? ' on' : '') + '" data-q="private" aria-pressed="' + (S.type === 'private') + '">'
       + esc(S.type === 'private' ? '🔒 ' + tr('private') + ' ✓' : '🔒 ' + tr('private') + '?') + '</button>'
       + '<button type="button" data-q="full">' + esc(tr('qChange')) + '</button>';
@@ -1027,7 +1081,17 @@
     if ((b = e.target.closest('.sb-dir-b'))) {
       var d = b.getAttribute('data-dir'); if (d === S.dir) return;
       S.dir = d; S.point = firstPoint(d); S.date = ''; S.manual = []; S.seatMode = 'auto'; S.why = {};
+      if (!S.curTouched) S.cur = defaultCur();   // 25 Nov 2026 (wx1): NPR follows Nepal -> India until a chip is tapped
       fill(); applyWords(); changed(); return;
+    }
+    /* 25 Nov 2026 (wx1): ⇄ = a tap on the other direction (the same reset as above) */
+    if (e.target.closest('[data-sbswap]')) {
+      var o = root.querySelector('.sb-dir-b:not(.on)'); if (o) o.click();
+      return;
+    }
+    if ((b = e.target.closest('#sbCur [data-cur]'))) {   // 25 Nov 2026 (wx1): ₹ INR | रू NPR
+      S.cur = b.getAttribute('data-cur') === 'NPR' ? 'NPR' : 'INR'; S.curTouched = true;
+      renderCur(); renderQuote(); return;
     }
     if ((b = e.target.closest('#sbDates .sb-chip'))) {
       var v = b.getAttribute('data-date');
@@ -1273,7 +1337,7 @@
      only the passenger's Cash / Online tap books. */
   function fillFromText(text) {
     return api({ action: 'parse', text: text }).then(function (f) {
-      if (f.direction && f.direction !== S.dir) { S.dir = f.direction; S.point = firstPoint(S.dir); }
+      if (f.direction && f.direction !== S.dir) { S.dir = f.direction; S.point = firstPoint(S.dir); if (!S.curTouched) S.cur = defaultCur(); }
       if (f.point) S.point = f.point;
       if (f.date) S.date = f.date;
       if (f.phone) { S.phone = f.phone; if (f.country) S.cc = f.country; }
@@ -1496,6 +1560,7 @@
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
     if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
     if (verify) body.verify = verify;
+    if (inNpr()) body.cur = 'NPR';   // 25 Nov 2026 (wx1): the server freezes the NPR total on the ticket
     if (STAFF && ticketNote()) body.ticketNote = ticketNote();
     var dx = deskExtras(pay);   // P8-3f / P4-4d: luggage / lap infant (desk seller only; 0 = not sent)
     if (dx.lug > 0) body.luggagePieces = dx.lug;
@@ -1602,10 +1667,10 @@
     if (q.busNumber) rows.push([tr('sBus'), q.busNumber]);
     if (STAFF && q.price && !(Number(q.price.discount) > 0)) rows.push(['🏷️ ' + tr('sDisc'), tr('noDisc')]);   // 15 Nov 2026: the desk sees "no discount" before it confirms
     if (q.price && Number(q.price.discount) > 0) {
-      rows.push([tr('sFare'), money(q.price.base)]);
+      rows.push([tr('sFare'), curAmt(q.price.base, q)]);   // wx1: curAmt = ₹ as before, NPR when the customer chose it
       var dPct = Number(q.price.base) > 0 ? Math.round(Number(q.price.discount) / Number(q.price.base) * 1000) / 10 : 0;   // 15 Nov 2026: and how much that is
-      rows.push([tr('sDisc'), '− ' + money(q.price.discount) + (dPct > 0 ? ' (' + dPct + '%)' : '') + (q.price.offer ? ' · ' + q.price.offer : '')
-        + (Number(q.price.returnDiscount) > 0 ? ' · फिर्ती छुट / Return ' + money(q.price.returnDiscount) : '')]);   // P4-5d
+      rows.push([tr('sDisc'), '− ' + curAmt(q.price.discount, q) + (dPct > 0 ? ' (' + dPct + '%)' : '') + (q.price.offer ? ' · ' + q.price.offer : '')
+        + (Number(q.price.returnDiscount) > 0 ? ' · फिर्ती छुट / Return ' + curAmt(q.price.returnDiscount, q) : '')]);   // P4-5d
     }
     /* P8-3f / P4-4d: the desk's extras on this Cash sale, added after the fare */
     var dxS = deskExtras('cash');
@@ -1625,8 +1690,9 @@
     if (STAFF && altDigits() && !altErr()) rows.push(['📱 दोस्रो नम्बर · 2nd number', (($('sbAltCc') || {}).value === 'NP' ? '+977 ' : '+91 ') + altDigits()]);
     if (STAFF) { var cnS = cashNoteText(cashNote()); if (cnS) rows.push(['💵 पैसा कहिले? · When will they pay', cnS]); }
     if (q.clockNote && q.clockNote.label) rows.push(['⛔ ' + q.clockNote.label, q.dateLabel || q.date || '']);
-    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? money(Number(q.price.total) + dxS.amt) : '—') + '</b>'
-      + (q.price ? '<span>≈ ' + esc(npr(dxS.amt > 0 && Number(q.price.total) > 0 ? Math.round(Number(q.price.npr) * (Number(q.price.total) + dxS.amt) / Number(q.price.total)) : q.price.npr)) + '</span>' : '') + '</div><dl>'
+    /* 25 Nov 2026 (wx1): the chosen money big, the other small (curAmt / altAmt = ₹ big as before unless NPR chosen) */
+    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? curAmt(Number(q.price.total) + dxS.amt, q) : '—') + '</b>'
+      + (q.price ? '<span>≈ ' + esc(altAmt(Number(q.price.total) + dxS.amt, q)) + '</span>' : '') + '</div><dl>'
       + rows.filter(function (r) { return String(r[1] || '').replace(/[\s·→+]/g, '') !== ''; })
           .map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('')
       + '</dl></div>';
@@ -1636,7 +1702,7 @@
   var okPrint = false, okGo = false;
   function openOk(wantPrint) {
     var box = cashSheet(), q = S.q || {};
-    var tot = q.price ? money(Number(q.price.total) + deskExtras('cash').amt) : '';   // P8-3f / P4-4d: + the desk's extras
+    var tot = q.price ? curAmt(Number(q.price.total) + deskExtras('cash').amt, q) : '';   // P8-3f / P4-4d: + the desk's extras; wx1: NPR when chosen
     okPrint = !!wantPrint;
     box.setAttribute('data-kind', 'ok');
     box.innerHTML = '<form class="sb-cv-in sb-ok" novalidate>'
@@ -1670,7 +1736,7 @@
     var box = cashSheet(), q = S.q || {}, v = S.verify;
     var types = (S.idTypes && S.idTypes.length ? S.idTypes : ['Aadhaar Card', 'Nepali Citizenship Card', 'Voter ID', 'Driving Licence', 'Passport']);
     if (!v.idType) v.idType = S.cc === 'NP' ? 'Nepali Citizenship Card' : (S.dir === 'toNepal' ? 'Aadhaar Card' : '');
-    var tot = q.price ? money(q.price.total) : '';
+    var tot = q.price ? curAmt(q.price.total, q) : '';   // wx1: NPR when the customer chose it
     /* details already on file (a verified profile, or typed earlier this visit): one line + Edit */
     var onFile = !field && cvComplete();
     var idTail = String(v.idNum || '').replace(/[^A-Za-z0-9]/g, '').slice(-4);
@@ -1742,6 +1808,7 @@
   function openPay(r) {
     closePay(true);
     PAY = { r: r, d: r.pay || {}, tab: (r.pay && r.pay.upi) ? 'upi' : ((r.pay && r.pay.esewa) ? 'esewa' : 'gw'), end: 0, tick: 0, poll: 0, state: 'pay' };
+    if (inNpr() && r.pay && r.pay.esewa) PAY.tab = 'esewa';   // 25 Nov 2026 (wx1): NPR chosen -> eSewa first, INR -> UPI first
     var box = $('sbPayOv');
     if (!box) {
       box = document.createElement('div'); box.id = 'sbPayOv'; box.className = 'sb-pyo';
@@ -2168,9 +2235,11 @@
       + '<button type="button" class="sb-x" data-tk="close" aria-label="Close" style="margin-left:auto">✕</button></div>'
       + '<div class="sb-tk-pnr">' + esc(tr('pnr')) + ' ' + esc(r.pnr) + '</div>'
       + (t.view ? '<div class="sb-tk-imgw" data-tkimg><img class="sb-tk-img" src="' + esc(t.view) + '" alt="Ticket ' + esc(r.pnr) + '" loading="eager" decoding="async"><span class="sb-tk-wait">' + esc(tr('making')) + '</span></div>' : '')
-      + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(r.totalLabel || '') + ' <small>(≈ ' + esc(npr(r.npr)) + ')</small>' + nfHtml(r.normal) + '</div>'
+      /* 25 Nov 2026 (wx1): NPR chosen -> the NPR total big (as the ticket prints it), ₹ small */
+      + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || '')) + ' <small>(≈ ' + esc(inNpr() && r.npr ? (r.totalLabel || '') : npr(r.npr)) + ')</small>'
+      + (inNpr() ? '' : nfHtml(r.normal)) + '</div>'
       + (r.boardingTime ? '<div class="sb-tk-row">' + esc(r.boarding || '') + ' · <small>' + esc(tr('report')) + ' ' + esc(r.reportTime || '') + '</small></div>' : '')
-      + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(r.totalLabel || '') + '</div>' : '')
+      + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || '')) + '</div>' : '')
       /* staff desks: who the sale was credited to and what it earned (the server
          answers these only to a staff session; a customer's answer has neither) */
       + (STAFF && r.agent ? '<div class="sb-tk-agent">🤝 ' + esc(tr('credited')) + ' ' + esc(r.agent.code + ' · ' + r.agent.name)

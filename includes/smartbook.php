@@ -363,6 +363,18 @@ final class SmartBook
                 $why['direction'] = self::why('Same as your last trip', 'पिछली यात्रा जैसा', 'पहिलेको यात्रा जस्तै');
             }
         }
+        /* 25 Nov 2026 (wx1, owner: "Nepal bata kholda Nepal -> India rute khulos"): no server
+           geo - the browser's own timezone (tz). Customer card only, after an explicit / saved
+           direction and the phone's history: Asia/Kathmandu opens on Rupaidiha -> Gujarat.
+           Switch: geo_direction_on (default on). An office "fixed" direction (Default Rules)
+           still wins: then the timezone stays out and DefaultRules::apply() sets it as before. */
+        if ($dir === '' && $mode === 'customer' && self::nepalTz((string) ($in['tz'] ?? ''))
+            && Settings::getBool('geo_direction_on', true)
+            && !self::officeFixedDirection()
+            && in_array('toIndia', array_column(self::directions(), 'direction'), true)) {
+            $dir = 'toIndia';
+            $why['direction'] = self::why('नेपालबाट खोलिएको · Opened from Nepal', 'नेपाल से खोला गया · Opened from Nepal', 'नेपालबाट खोलिएको · Opened from Nepal');
+        }
         if ($dir === '') {
             $dir = self::mostUsedDirection();
         }
@@ -1352,6 +1364,11 @@ final class SmartBook
             'referralCode'    => $mode !== 'customer' ? Security::clean((string) ($in['referralCode'] ?? ''), 20) : '',
             'paymentMethod'   => $cod ? 'cod' : 'upi',
             'isCod'           => $cod && $seller === null,
+            /* 25 Nov 2026 (wx1, owner: "Nepal ka passenger INR pani bokchan - NPR / INR choose"):
+               the money a CUSTOMER chose to pay in. NPR = create() freezes the NPR total on the
+               sale (the ticket then prints NPR big); the books stay INR. Switch:
+               customer_currency_choice_on (default on). */
+            'payCurrency'     => self::payCurrency($in, $mode, $seller),
         ];
         if ($seller !== null) {
             $seller['paymentMethod'] = $cod ? 'cash' : (string) ($seller['paymentMethod'] ?? 'upi');
@@ -1640,7 +1657,35 @@ final class SmartBook
         ];
     }
 
+    /**
+     * 25 Nov 2026 (wx1): 'NPR' when a customer (never a desk) chose to pay in NPR and the
+     * owner's switch customer_currency_choice_on is on; '' otherwise (= INR, as before).
+     *
+     * @param array<string, mixed> $in
+     * @param array<string, mixed>|null $seller
+     */
+    public static function payCurrency(array $in, string $mode, ?array $seller): string
+    {
+        return $mode === 'customer' && $seller === null
+            && strtoupper(trim((string) ($in['cur'] ?? ''))) === 'NPR'
+            && Settings::getBool('customer_currency_choice_on', true) ? 'NPR' : '';
+    }
+
+    /** 25 Nov 2026 (wx1): is this browser timezone Nepal's? (both IANA spellings) */
+    public static function nepalTz(string $tz): bool
+    {
+        return in_array(trim($tz), ['Asia/Kathmandu', 'Asia/Katmandu'], true);
+    }
+
+    /** 25 Nov 2026 (wx1): has the office fixed the card's direction in Default Rules? */
+    private static function officeFixedDirection(): bool
+    {
+        require_once __DIR__ . '/defaultrules.php';
+        return isset(DefaultRules::config()['fixed']['direction']);
+    }
+
     /** @return array{en: string, hi: string, ne: string} */
+
     private static function why(string $en, string $hi, string $ne): array
     {
         return ['en' => $en, 'hi' => $hi, 'ne' => $ne];
