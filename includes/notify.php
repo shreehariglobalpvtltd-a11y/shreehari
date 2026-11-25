@@ -2343,7 +2343,54 @@ final class Notify
     private static function pickupMapLine(array $booking): string
     {
         $url = self::pickupMapUrl($booking);
-        return $url !== '' ? "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $url . "\n" : '';
+        return ($url !== '' ? "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $url . "\n" : '') . self::nepalJourneyLines($booking);
+    }
+
+    /**
+     * wx6 (25 Nov 2026, owner): a Nepal -> India ticket's WhatsApp text carries the journey -
+     * office 4 pm with ID -> our auto across Jamunaha-Rupaidiha -> 6 pm bus - and that the auto
+     * and the bus are ONE S Hari service (TravelGuide::nepalJourney, from the route rows).
+     * Boarding at Rupaidiha: only the bus step + the one-service line. '' otherwise / on error.
+     * Switch wa_np_journey_on (default on).
+     */
+    private static function nepalJourneyLines(array $booking): string
+    {
+        try {
+            if (!Settings::getBool('wa_np_journey_on', true)) {
+                return '';
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            if ($bid > 0 && (!isset($booking['from_city']) || !isset($booking['boarding_stop']))) {
+                $leg = Database::fetch(
+                    "SELECT l.boarding_stop, r.from_city, r.to_city FROM booking_legs l
+                       JOIN schedules s ON s.id = l.schedule_id JOIN routes r ON r.id = s.route_id
+                      WHERE l.booking_id = :b AND l.leg_type = 'outbound' LIMIT 1",
+                    ['b' => $bid]
+                );
+                if ($leg !== null) {
+                    $booking = array_merge($booking, $leg);
+                }
+            }
+            if (!class_exists('Boarding')) {
+                require_once __DIR__ . '/boarding.php';
+            }
+            $route = ['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')];
+            if ($route['from_city'] === '' || Boarding::routeDirection($route) !== 'toIndia') {
+                return '';
+            }
+            require_once __DIR__ . '/travelguide.php';
+            $j = TravelGuide::nepalJourney('ne');
+            if ($j === [] || ($j['steps'] ?? []) === []) {
+                return '';
+            }
+            $steps = $j['steps'];
+            if (preg_match('/nepal\s*g[au]n[jg]/i', (string) ($booking['boarding_stop'] ?? '')) !== 1 && count($steps) > 1) {
+                $steps = [end($steps)];   // boards at Rupaidiha: only the bus step
+            }
+            return implode("\n", $steps) . "\nℹ️ " . $j['one'] . "\n";
+        } catch (Throwable) {
+            return '';
+        }
     }
 
     /** The {{1}}..{{7}} ticket template variables — public for WaTemplates. */

@@ -832,3 +832,27 @@ html #view-home > #sbDesk{order:-1 !important}
 #smartBook .sb-f-pick .sb-chips{flex-wrap:wrap}
 #smartBook .sb-f-pick .sb-chip{flex:1 1 150px;min-height:48px;white-space:normal;text-align:left}
 #smartBook .sb-f-pick .sb-chip b{display:block;font-size:13px;line-height:1.25}
+/* 25 Nov 2026 (wx6): Nepal -> India journey steps + one-service line */
+#smartBook .sb-f-journey{grid-column:1/-1;margin:-2px 0 2px}
+#smartBook .sb-journey{list-style:none;margin:0;padding:8px 10px;border-radius:14px;background:color-mix(in srgb,#f07a1e 8%,var(--sb-panel,#fff));border:1px dashed color-mix(in srgb,#f07a1e 45%,transparent);display:grid;gap:6px;font-size:13px;line-height:1.35}
+#smartBook .sb-journey li{position:relative;padding-left:2px}
+#smartBook .sb-journey li.dim{opacity:.55}
+#smartBook .sb-journey a{text-decoration:none;font-size:15px;padding:0 4px}
+#smartBook .sb-one{margin:6px 2px 0;font-size:12px;font-weight:700;color:var(--sb-text,#0a1b3d)}
+/* 25 Nov 2026 (wx6): ticket-creation styles in turn - spin (as before), coin, flip, stamp.
+   transform/opacity/clip-path only; the calm / reduced-motion rules above still cut them to a fade. */
+.tkm-s-coin .tkm-card{animation:tkmCoin 1.5s cubic-bezier(.2,.75,.25,1) both}
+.tkm-s-flip .tkm-card{animation:tkmFlip 1.15s cubic-bezier(.2,.85,.3,1.1) both;backface-visibility:hidden}
+.tkm-s-stamp .tkm-card{animation:tkmRise .7s cubic-bezier(.2,.9,.3,1) both,tkmThud .26s 1.42s ease-out}
+.tkm-s-stamp .tkm-seal{width:74px;height:74px;font-size:30px;animation:tkmStamp .75s .9s cubic-bezier(.3,1.5,.5,1) both}
+.tkm-s-coin .tkm-seal{animation-delay:1.6s}.tkm-s-coin .tkm-ok{animation-delay:1.8s}
+@keyframes tkmCoin{0%{opacity:0;transform:scale(.22) rotateY(0deg);clip-path:circle(22% at 50% 50%)}
+  20%{opacity:1}55%{transform:scale(.38) rotateY(1080deg);clip-path:circle(22% at 50% 50%)}
+  80%{transform:scale(1.04) rotateY(1080deg);clip-path:circle(75% at 50% 50%)}100%{transform:scale(1) rotateY(1080deg);clip-path:circle(100% at 50% 50%)}}
+@keyframes tkmFlip{0%{opacity:0;transform:translateY(-70px) rotateX(-180deg) scale(.75)}45%{opacity:1}
+  65%{transform:rotateX(16deg) scale(1.02)}82%{transform:rotateX(-5deg)}100%{transform:none}}
+@keyframes tkmRise{0%{opacity:0;transform:translateY(46px) scale(.92)}100%{opacity:1;transform:none}}
+@keyframes tkmThud{0%{transform:none}30%{transform:translateY(3px) scale(.985)}60%{transform:translateY(-1px)}100%{transform:none}}
+@keyframes tkmStamp{0%{opacity:0;transform:scale(3.2) rotate(-400deg)}70%{opacity:1;transform:scale(.9) rotate(-14deg)}100%{opacity:1;transform:scale(1) rotate(-8deg)}}
+html[data-tier="low"] .tkm{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+html[data-tier="low"] .tkm-name span,html[data-tier="low"] .tkm-ph span,html[data-tier="low"] .tkm-route span{filter:none!important}

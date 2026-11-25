@@ -1648,9 +1648,9 @@ function registerTiles(meta) {
   function grab(url, opts) {
     if (!inflight[url]) {
       inflight[url] = (async function () {
-        if (LS.get('shg:nm:off', null) || !navigator.onLine) {
-          try { var c = await caches.open(OFFLINE_CACHE); var hit = await c.match(url); if (hit) return await hit.arrayBuffer(); } catch (e) {}
-        }
+        /* wx6: a tile the rider saved offline opens from the phone FIRST, always - no wait on weak
+           border-town 3G (was: only when offline mode was on or the phone said it was offline) */
+        try { var c = await caches.open(OFFLINE_CACHE); var hit = await c.match(url); if (hit) return await hit.arrayBuffer(); } catch (e) {}
         var r = await fetch(url, opts);
         return r.status === 200 ? await r.arrayBuffer() : null;
       })().finally(function () { setTimeout(function () { delete inflight[url]; }, 0); });
@@ -2034,7 +2034,7 @@ function startGeo() {
     ingestFix({ lng: c.longitude, lat: c.latitude, acc: c.accuracy || 30, speed: c.speed, heading: c.heading, t: p.timestamp || Date.now() });
   }, function (err) {
     if (err.code === 1) { S.watchId = null; toast('Allow location to see where you are', 3600); S.fixWait.splice(0).forEach(function (f) { f(null); }); }
-  }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 25000 });
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 });   /* wx6: every fix fresh (was a 1.5 s old one allowed) */
 }
 function waitFix(ms) {
   if (S.me) return Promise.resolve(S.me);
@@ -2098,11 +2098,44 @@ function ingestFix(f) {
   S.fixWait.splice(0).forEach(function (fn) { fn(f); });
   locUI();
   if (S.nav && !S.nav.preview) { navFix(f); return; }
-  S.markers.me.setLngLat([f.lng, f.lat]);
+  glideMe(f, prev);                                     /* wx6: glide, never jump (see glideMe) */
   meHeadingUI();
   put('acc', f.acc > 15 ? FC([circle([f.lng, f.lat], Math.min(f.acc, 1500))]) : EMPTY);
   if (S.pendingLocate) { S.pendingLocate = false; S.follow = 'follow'; locUI(); S.map.flyTo({ center: [f.lng, f.lat], zoom: Math.max(S.map.getZoom(), 15.5), duration: 1100, essential: true }); }
   else if (S.follow !== 'none' && !S.map.isMoving()) S.map.easeTo({ center: [f.lng, f.lat], duration: 700, easing: easeOut });
+}
+/* 25 Nov 2026 (wx6, owner: "live location every 0.1 s, smooth"): a phone's GPS gives a new fix about
+   once a second, so between fixes the blue dot GLIDES every animation frame (~60 fps, far finer than
+   0.1 s): first it eases from where it is drawn to the new fix over the time the last fix took, then
+   it keeps moving on the phone's speed + heading (dead reckoning, up to 3 s, never when the motion
+   sensor says the phone is still) until the next fix pulls it back. Turn-by-turn has its own glide. */
+var GL = { raf: 0, from: null, to: null, t0: 0, dur: 900, fix: null };
+function glideMe(f, prev) {
+  var m = S.markers.me; if (!m) return;
+  var cur = m.getLngLat();
+  GL.from = cur ? [cur.lng, cur.lat] : [f.lng, f.lat];
+  GL.to = [f.lng, f.lat]; GL.fix = f; GL.t0 = performance.now();
+  var gap = prev && prev.t ? f.t - prev.t : 1000;
+  GL.dur = clamp(isFinite(gap) ? gap : 1000, 250, 1500);
+  if (hav(GL.from, GL.to) > 400 || document.hidden) { m.setLngLat(GL.to); GL.from = GL.to.slice(); }   /* a real jump: no slide across town */
+  if (!GL.raf) GL.raf = requestAnimationFrame(glideTick);
+}
+function glideTick(now) {
+  GL.raf = 0;
+  var m = S.markers.me, f = GL.fix;
+  if (!m || !f || (S.nav && !S.nav.preview) || !GL.to) return;
+  var k = (now - GL.t0) / GL.dur, p;
+  if (k < 1) {
+    var e = k * (2 - k);
+    p = [GL.from[0] + (GL.to[0] - GL.from[0]) * e, GL.from[1] + (GL.to[1] - GL.from[1]) * e];
+  } else {
+    var ex = (now - GL.t0 - GL.dur) / 1000, sp = (f.speed > 1.2 && !S.still && f.heading != null && !isNaN(f.heading)) ? f.speed : 0;
+    if (!sp || ex > 3) { m.setLngLat(GL.to); return; }
+    var dm = sp * ex, hr = f.heading * D2R;
+    p = [GL.to[0] + dm * Math.sin(hr) / (111320 * Math.cos(GL.to[1] * D2R)), GL.to[1] + dm * Math.cos(hr) / 111320];
+  }
+  m.setLngLat(p);
+  GL.raf = requestAnimationFrame(glideTick);
 }
 function meHeadingUI() {
   if (!meEl || (S.nav && !S.nav.preview)) return;
@@ -4763,7 +4796,7 @@ var KB = (function () {
         gate: [81.6120, 28.0160], hours: B.hours, vehicles: B.veh, docs: BD, money: B.money,
         atm: { india: L('रूपैडिहा बजारमा ATM (लगभग)', 'रुपईडीहा बाज़ार में ATM (लगभग)', 'ATMs in Rupaidiha bazaar (approx.)'), nepal: L('नेपालगञ्ज शहरमा धेरै ATM (लगभग)', 'नेपालगंज शहर में कई ATM (लगभग)', 'Many ATMs in Nepalgunj city (approx.)') },
         tips: bt([
-          L('S Hari Global को बस रूपैडिहा (भारततर्फ) मा रोकिन्छ/सुरु हुन्छ — नेपालगञ्जसम्म आफैँ जानुपर्छ, लगभग २–३ km (ई-रिक्सा)', 'S Hari Global की बस रुपईडीहा (भारत की ओर) पर रुकती/शुरू होती है — नेपालगंज तक खुद जाना होता है, लगभग २–३ km (ई-रिक्शा)', 'The S Hari Global coach ends/starts at Rupaidiha (India side) — cross to Nepalgunj on your own, ≈ 2–3 km (e-rickshaw)'),
+          L('बस सिमाना पार गर्न पाउँदैन: गुजरात जाँदा दिउँसो ४ बजे नेपालगञ्ज कार्यालय (पुष्पलाल चोक) बाट हाम्रै अटोले जमुनाहा–रुपैडिहा पार गराउँछ, साँझ ६ बजे रुपैडिहाबाट बस — एउटै S Hari सेवा (परिचयपत्र साथमा)। भारतबाट आउँदा रुपैडिहाबाट ई-रिक्सा, लगभग २–३ km', 'बस बॉर्डर पार नहीं कर सकती: गुजरात जाते समय दोपहर 4 बजे नेपालगंज ऑफ़िस (पुष्पलाल चौक) से हमारा ऑटो जमुनाहा–रुपईडीहा पार कराता है, शाम 6 बजे रुपईडीहा से बस — एक ही S Hari सेवा (पहचान पत्र साथ)। भारत से आते समय रुपईडीहा से ई-रिक्शा, लगभग 2–3 km', 'A bus cannot cross the border: to Gujarat, our auto takes you from the Nepalgunj office (Puspalal Chowk, 4 PM) across Jamunaha–Rupaidiha to the 6 PM bus — one S Hari service (carry photo ID). Arriving from India: e-rickshaw from Rupaidiha, ≈ 2–3 km'),
           L('अन्य देशका यात्रीलाई जमुनहामा आगमन भिसा; रूपैडिहा भारतको अधिकृत ICP हो', 'अन्य देशों के यात्रियों को जमुनहा पर आगमन वीज़ा; रुपईडीहा भारत का अधिकृत ICP है', 'Visa on arrival at Jamunaha for most other nationals; Rupaidiha is an authorised Indian ICP')
         ]),
         shg: true, approx: true, aliases: ['rupaidiha', 'rupaidiya', 'rupediha', 'nepalgunj', 'nepalganj', 'jamunaha', 'रूपैडिहा', 'रुपईडीहा', 'नेपालगञ्ज', 'नेपालगंज', 'जमुनहा'] },
@@ -4834,7 +4867,7 @@ var KB = (function () {
     shg: {
       name: 'S Hari Global', company: '', phone: '', tel: '', wa: '',
       corridor: L('{from} – {to}', 0, '{from} – {to}'),
-      coach: L('बस रूपैडिहा (भारततर्फ) सम्म मात्र — नेपालगञ्ज आफैँ पार गर्नुस्, लगभग २–३ km', 'बस रुपईडीहा (भारत की ओर) तक ही — नेपालगंज खुद पार करें, लगभग २–३ km', 'The coach ends/starts at Rupaidiha (India side) — cross to Nepalgunj on your own, ≈ 2–3 km'),
+      coach: L('बस रुपैडिहासम्म मात्र — नेपालगञ्ज कार्यालयदेखि रुपैडिहासम्म हाम्रै अटो, एउटै S Hari सेवा', 'बस रुपईडीहा तक ही — नेपालगंज ऑफ़िस से रुपईडीहा तक हमारा ऑटो, एक ही S Hari सेवा', 'The coach ends/starts at Rupaidiha — our auto links the Nepalgunj office and Rupaidiha, one S Hari service'),
       site: 'https://www.shreehariglobal.in/', book: '/', track: '/#/track'
     },
 
@@ -5069,7 +5102,7 @@ var AI_S = {
   board: aiL3('नजिकको बोर्डिङ', 'नज़दीकी बोर्डिंग', 'Nearest boarding'),
   tomorrow: aiL3('भोलि', 'कल', 'tomorrow'),
   busNoData: aiL3('🚌 S Hari बसको समय अहिले लोड भएन। Website मा हेर्नुस् वा office लाई सोध्नुस्।', '🚌 S Hari बस का समय अभी लोड नहीं हुआ। Website पर देखें या office से पूछें।', '🚌 The S Hari bus timetable did not load. See the website or ask the office.'),
-  coach: aiL3('बस रूपैडिहा (भारततर्फ) सम्म मात्र — नेपालगञ्ज आफैँ पार गर्नुस्, लगभग २–३ km', 'बस रुपईडीहा (भारत की ओर) तक ही — नेपालगंज खुद पार करें, लगभग २–३ km', 'The coach ends/starts at Rupaidiha (India side) — cross to Nepalgunj on your own, ≈ 2–3 km'),
+  coach: aiL3('बस रुपैडिहासम्म मात्र — नेपालगञ्ज कार्यालयदेखि रुपैडिहासम्म हाम्रै अटो, एउटै S Hari सेवा', 'बस रुपईडीहा तक ही — नेपालगंज ऑफ़िस से रुपईडीहा तक हमारा ऑटो, एक ही S Hari सेवा', 'The coach ends/starts at Rupaidiha — our auto links the Nepalgunj office and Rupaidiha, one S Hari service'),
   trackAns: aiL3('🛰️ तपाईंको S Hari बस अहिले कहाँ छ — तल **मेरो बस ट्र्याक** थिच्नुस्, live देखिन्छ।\n❓ नदेखिए office लाई सोध्नुस्।',
     '🛰️ आपकी S Hari बस अभी कहाँ है — नीचे **मेरी बस ट्रैक करें** दबाएँ, live दिखेगी।\n❓ न दिखे तो office से पूछें।',
     '🛰️ Where your S Hari bus is right now — tap **Track my bus** below to see it live.\n❓ If it does not show, ask the office.'),
@@ -7079,7 +7112,7 @@ var BD_S = {
   time:      { ne: 'नेपाली समय = IST + 15 मिनेट', hi: 'नेपाली समय = IST + 15 मिनट', en: 'Nepal time = IST + 15 min' },
   /* P4: the coach never crosses; it ends / starts at the India-side stop and the rider walks over */
   shgEnd:    { ne: 'S Hari Global: {route}कोच {stop} ({side}) मा टुङ्गिन्छ · {nepal} सम्म आफैँ जानुहोस्{d}', hi: 'S Hari Global: {route}कोच {stop} ({side}) पर ख़त्म होती है · {nepal} तक खुद जाएँ{d}', en: 'S Hari Global: the {route}coach ends at {stop} ({side}) · cross to {nepal} on your own{d}' },
-  shgStart:  { ne: 'S Hari Global: {route}कोच {stop} ({side}) बाट छुट्छ · {nepal} बाट आफैँ आउनुहोस्{d}', hi: 'S Hari Global: {route}कोच {stop} ({side}) से चलती है · {nepal} से खुद आएँ{d}', en: 'S Hari Global: the {route}coach starts at {stop} ({side}) · come over from {nepal} on your own{d}' },
+  shgStart:  { ne: 'S Hari Global: {route}कोच {stop} ({side}) बाट छुट्छ · {nepal} कार्यालयबाट हाम्रै अटो, एउटै सेवा{d}', hi: 'S Hari Global: {route}कोच {stop} ({side}) से चलती है · {nepal} ऑफ़िस से हमारा ऑटो, एक ही सेवा{d}', en: 'S Hari Global: the {route}coach starts at {stop} ({side}) · our auto from the {nepal} office, one service{d}' },
   far:       { ne: 'अगाडि {d} किलोमिटरमा अन्तर्राष्ट्रिय सीमा छ — कागजात तयार राख्नुहोस्', hi: 'आगे {d} किलोमीटर पर अंतर्राष्ट्रीय सीमा है — दस्तावेज़ तैयार रखें', en: 'International border in {d} kilometres — keep your documents ready' },
   near:      { ne: '800 मिटर अगाडि सीमा नाका छ — बिस्तारै चलाउनुहोस्, परिचयपत्र तयार राख्नुहोस्', hi: '800 मीटर आगे सीमा चौकी है — धीरे चलें, पहचान पत्र तैयार रखें', en: 'Border checkpost in 800 metres — slow down and have your ID ready' },
   welcomeNP: { ne: 'नेपालमा स्वागत छ 🙏 · ₹100 का नोट चल्छन्, ₹200/₹500 चल्दैनन्', hi: 'नेपाल में स्वागत है 🙏 · ₹100 के नोट चलते हैं, ₹200/₹500 नहीं', en: 'Welcome to Nepal 🙏 · ₹100 notes are accepted, ₹200/₹500 are not' },
@@ -7582,7 +7615,7 @@ var SR_S = {
   book:     { ne: 'सिट बुक गर्नुस्', hi: 'सीट बुक करें', en: 'Book a seat' },
   track:    { ne: 'मेरो बस कहाँ?', hi: 'मेरी बस कहाँ?', en: 'Track my bus' },
   call:     { ne: 'Office लाई फोन', hi: 'Office को फ़ोन', en: 'Call office' },
-  border:   { ne: 'बस {n} सम्म मात्र जान्छ — सिमाना आफैँ पार गर्नुहोस्{x}', hi: 'बस {n} तक ही जाती है — सीमा खुद पार करें{x}', en: 'The coach ends / starts at {n} — cross the border on your own{x}' },
+  border:   { ne: 'बस {n} सम्म मात्र जान्छ — नेपालगञ्ज कार्यालय र {n} बीच हाम्रै अटो (एउटै सेवा){x}', hi: 'बस {n} तक ही जाती है — नेपालगंज ऑफ़िस और {n} के बीच हमारा ऑटो (एक ही सेवा){x}', en: 'The coach ends / starts at {n} — our auto links the Nepalgunj office and {n} (one service){x}' },
   borderX:  { ne: ' ({n} ≈ 2–3 किमी)', hi: ' ({n} ≈ 2–3 किमी)', en: ' ({n} ≈ 2–3 km)' },
   snapped:  { ne: 'पिन सीमा नाकामा राखिएको (लगभग)', hi: 'पिन सीमा गेट पर रखा गया (लगभग)', en: 'Pin placed at the border gate (approx.)' },
   halt: {
@@ -8165,18 +8198,29 @@ var GUJ_RUPAIDIHA_STOPS = [
   { name: 'Lucknow (Kamta Chauraha / Alambagh)', lat: 26.8467, lng: 80.9462, city: 'Lucknow', state: 'UP', km: 1610, meal: 'dinner' },
   { name: 'Bahraich (Dargah Bypass)', lat: 27.5706, lng: 81.5977, city: 'Bahraich', state: 'UP', km: 1730 },
   { name: 'Nanpara (Highway Cut)', lat: 27.8631, lng: 81.5034, city: 'Nanpara', state: 'UP', km: 1765 },
-  { name: 'Rupaidiha (Nepal Border Gate)', lat: 28.0110, lng: 81.6215, city: 'Rupaidiha', state: 'UP', km: 1805, border: true }
+  { name: 'Rupaidiha (S Hari bus parking)', lat: 27.9996732, lng: 81.5867382, city: 'Rupaidiha', state: 'UP', km: 1805, border: true }
 ];
 
-/* Cache corridor stops in local storage for 100% offline access */
-try {
-  LS.set('shg:nm:corridor_stops', GUJ_RUPAIDIHA_STOPS);
-} catch (e) {}
+/* 25 Nov 2026 (wx6): the corridor stops come from the LIVE timetable (SHG.stops(), the office's own
+   Admin -> Routes rows: the Nepalgunj office 16:00, our Rupaidiha parking 18:00, every Gujarat pickup);
+   the last good copy is kept for offline; the typed list above is only the first-run fallback. */
+function corStops() {
+  try {
+    var l = SHG.stops();
+    if (l && l.length) {
+      var m = l.map(function (st) { return { name: st.name, lat: st.lat, lng: st.lng, city: st.landmark || '', state: '', km: st.km, border: !!st.isBorder }; });
+      LS.set('shg:nm:corridor_live', m);
+      return m;
+    }
+  } catch (e) {}
+  var c = LS.get('shg:nm:corridor_live', null);
+  return (c && c.length) ? c : GUJ_RUPAIDIHA_STOPS;
+}
 
 function checkCorridorProximity(p, N) {
   if (!N || N.preview || !p) return;
   var bestStop = null, bestDist = 999999;
-  GUJ_RUPAIDIHA_STOPS.forEach(function (st) {
+  corStops().forEach(function (st) {
     var d = hav(p, [st.lng, st.lat]);
     if (d < bestDist) { bestDist = d; bestStop = st; }
   });
@@ -8284,11 +8328,11 @@ function openGoogleNavDrawer() {
   var corSec = $('#gdCorridorSection'), corList = $('#gdCorridorList');
   if (corSec && corList && S.mode === 'bus') {
     corSec.hidden = false;
-    corList.innerHTML = GUJ_RUPAIDIHA_STOPS.map(function (st) {
+    corList.innerHTML = corStops().map(function (st) {
       return '<div class="g-step-row">' +
         '<div class="g-step-ic" style="background:rgba(212,168,67,.2);color:#FDE047">🚌</div>' +
         '<div class="g-step-main"><div class="g-step-t">' + esc(st.name) + '</div>' +
-        '<div class="g-step-d">' + st.city + ', ' + st.state + (st.km != null ? ' · ' + st.km + ' km' : '') + '</div></div></div>';
+        '<div class="g-step-d">' + esc([st.city, st.state].filter(Boolean).join(', ')) + (st.km != null ? ' · ' + st.km + ' km' : '') + '</div></div></div>';
     }).join('');
   } else if (corSec) {
     corSec.hidden = true;

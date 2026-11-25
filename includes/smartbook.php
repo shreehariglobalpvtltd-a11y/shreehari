@@ -1021,11 +1021,14 @@ final class SmartBook
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
             'boardingStop' => $boardStop,   // the list name of the pickup really booked ('' on a drop run)
             // wx1 (25 Nov 2026): the Nepal-side pickups a passenger may choose (>= 2 ON boarding rows on a toIndia bus), and the one booked
+            // wx6 (25 Nov 2026): the Nepal -> India journey (office -> our auto -> Rupaidiha bus) + the one-service line, ne/hi/en
+            'journey'      => $points['type'] === 'drop' ? self::npJourney() : null,
             'pickups'      => count($npPicks) > 1 ? $npPicks : [],
             'pickup'       => count($npPicks) > 1 ? (self::matchPoint((string) $plan['boardingName'], array_map(static fn(array $p): string => $p['name'], $npPicks)) ?: (string) $plan['boardingName']) : '',
             'pointNote'    => $pointNote ?? $npNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null (wx1: also a closed Nepal-side pickup)
             // 19 Nov 2026 (NP-3): {label, at, tz, reason} when today's bus is closed by the sales clock and this is a later day
             'clockNote'    => $plan['clockNote'] ?? null,
+            'clockSoon'    => !empty($plan['isToday']) && Settings::getBool('sales_clock_warn_on', true) ? ($plan['clockSoon'] ?? null) : null,   // wx6
             'coach'        => $coach,
             'type'         => $mode2 ?? 'seater',
             'cabin'        => $req['cabin'],
@@ -1631,6 +1634,27 @@ final class SmartBook
     /* =================================================================
      *  Input
      * ================================================================= */
+
+    /** wx6: TravelGuide::nepalJourney in the three card languages, or null (switch off / no rows). */
+    private static function npJourney(): ?array
+    {
+        try {
+            require_once __DIR__ . '/travelguide.php';
+            $out = [];
+            foreach (['ne', 'hi', 'en'] as $l) {
+                $j = TravelGuide::nepalJourney($l);
+                if ($j === [] || ($j['steps'] ?? []) === []) {
+                    return null;
+                }
+                $out[$l] = ['steps' => $j['steps'], 'one' => $j['one']];
+            }
+            $j = TravelGuide::nepalJourney('en');
+            $out['maps'] = ['office' => $j['office']['map'] ?? '', 'bus' => $j['bus']['map'] ?? ''];
+            return $out;
+        } catch (Throwable) {
+            return null;
+        }
+    }
 
     /**
      * wx1 (25 Nov 2026, owner: "Nepal tarfa pickup ma Nepalgunj office ra Rupaidiha parking - duita

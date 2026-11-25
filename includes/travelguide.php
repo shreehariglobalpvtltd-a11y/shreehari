@@ -225,4 +225,104 @@ final class TravelGuide
         }
         return '';
     }
+
+    /** wx6: show the Nepal -> India journey steps (office -> our auto -> Rupaidiha bus). */
+    public static function journeyOn(): bool
+    {
+        return Settings::getBool('np_journey_steps_on', true);
+    }
+
+    /**
+     * wx6 (25 Nov 2026, owner): "4 baje Nepalgunj Puspalal Chowk office, ID card saath, auto
+     * chadhera Jamunaha-Rupaidiha border paar, 6 baje Rupaidiha (bus pickup)" and "the bus cannot
+     * cross the border, so the Nepalgunj-Rupaidiha auto and the bus after Rupaidiha are ONE
+     * S Hari service". The times and pins come from the active Nepal -> India boarding rows
+     * (route_stops); nothing is typed here. [] when switched off or no row can be read.
+     *
+     * @return array{office:?array{name:string,time:string,map:string},bus:?array{name:string,time:string,map:string},steps:list<string>,one:string}|array{}
+     */
+    public static function nepalJourney(string $lang = 'ne'): array
+    {
+        if (!self::journeyOn()) {
+            return [];
+        }
+        $lang = in_array($lang, ['ne', 'hi', 'en'], true) ? $lang : 'ne';
+        try {
+            $routes = Database::fetchAll('SELECT * FROM routes WHERE is_active = 1 ORDER BY id ASC');
+        } catch (Throwable) {
+            return [];
+        }
+        $office = null;
+        $bus = null;
+        foreach ($routes as $r) {
+            if (Boarding::routeDirection($r) !== 'toIndia') {
+                continue;
+            }
+            try {
+                $rows = Database::fetchAll(
+                    "SELECT stop_name, stop_time, latitude, longitude FROM route_stops
+                      WHERE route_id = :r AND stop_type = 'boarding' AND is_active = 1 ORDER BY sort_order ASC, id ASC",
+                    ['r' => (int) $r['id']]
+                );
+            } catch (Throwable) {
+                continue;
+            }
+            foreach ($rows as $s) {
+                $nm  = trim((string) ($s['stop_name'] ?? ''));
+                $tm  = substr((string) ($s['stop_time'] ?? ''), 0, 5);
+                $map = ($s['latitude'] !== null && $s['longitude'] !== null)
+                    ? 'https://www.google.com/maps?q=' . rawurlencode((string) (float) $s['latitude'] . ',' . (string) (float) $s['longitude']) : '';
+                $row = ['name' => $nm, 'time' => preg_match('/^\d\d:\d\d$/', $tm) === 1 ? $tm : '', 'map' => $map];
+                if ($office === null && preg_match('/nepal\s*g[au]n[jg]/i', $nm) === 1) {
+                    $office = $row;
+                } elseif ($bus === null && stripos($nm, 'rupaidiha') !== false) {
+                    $bus = $row;
+                }
+            }
+            if ($office !== null && $bus !== null) {
+                break;
+            }
+        }
+        if ($office === null && $bus === null) {
+            return [];
+        }
+        $dev = static fn(string $t): string => $lang === 'ne' ? strtr($t, ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९']) : $t;
+        $hm = static function (string $t) use ($lang, $dev): string {
+            if ($t === '') {
+                return '';
+            }
+            [$h, $m] = array_map('intval', explode(':', $t));
+            $h12 = $h % 12 === 0 ? 12 : $h % 12;
+            $s = $h12 . ($m > 0 ? ':' . str_pad((string) $m, 2, '0', STR_PAD_LEFT) : '');
+            $part = $h < 12 ? 0 : ($h < 17 ? 1 : ($h < 20 ? 2 : 3));   // morning / afternoon / evening / night
+            return $lang === 'ne' ? ['बिहान', 'दिउँसो', 'साँझ', 'राति'][$part] . ' ' . $dev($s) . ' बजे'
+                : ($lang === 'hi' ? ['सुबह', 'दोपहर', 'शाम', 'रात'][$part] . ' ' . $s . ' बजे' : $s . ($h >= 12 ? ' PM' : ' AM'));
+        };
+        $W = [
+            'ne' => ['off' => '🏢 {T} नेपालगञ्ज कार्यालय, पुष्पलाल चोक पुग्नुहोस् — नागरिकता वा पासपोर्ट (परिचयपत्र) साथमा।',
+                     'auto' => '🛺 हाम्रो अटोमा जमुनाहा–रुपैडिहा नाका पार (परिचयपत्र जाँच)।',
+                     'bus' => '🚌 {T} रुपैडिहा बस पार्किङबाट मुख्य बस गुजरात तर्फ।',
+                     'one' => 'बस सिमाना पार गर्न पाउँदैन — त्यसैले नेपालगञ्ज–रुपैडिहा अटो र रुपैडिहापछिको बस एउटै S Hari सेवा हो।',
+                     'tz' => '(नेपाली समय)'],
+            'hi' => ['off' => '🏢 {T} नेपालगंज ऑफ़िस, पुष्पलाल चौक पहुँचें — नागरिकता या पासपोर्ट (पहचान पत्र) साथ रखें।',
+                     'auto' => '🛺 हमारे ऑटो से जमुनाहा–रुपईडीहा बॉर्डर पार (पहचान पत्र जाँच)।',
+                     'bus' => '🚌 {T} रुपईडीहा बस पार्किंग से मुख्य बस गुजरात की ओर।',
+                     'one' => 'बस बॉर्डर पार नहीं कर सकती — इसलिए नेपालगंज–रुपईडीहा ऑटो और रुपईडीहा के बाद की बस एक ही S Hari सेवा है।',
+                     'tz' => '(नेपाल समय)'],
+            'en' => ['off' => '🏢 {T} Reach our Nepalgunj office, Puspalal Chowk — carry your citizenship card or passport (photo ID).',
+                     'auto' => '🛺 Our auto takes you across the Jamunaha–Rupaidiha border (ID check).',
+                     'bus' => '🚌 {T} The main bus leaves from our Rupaidiha bus parking towards Gujarat.',
+                     'one' => 'A bus cannot cross the border, so the Nepalgunj–Rupaidiha auto and the bus after Rupaidiha are ONE S Hari service.',
+                     'tz' => '(Nepal time)'],
+        ][$lang];
+        $steps = [];
+        if ($office !== null) {
+            $steps[] = trim(str_replace('{T}', $office['time'] !== '' ? $hm($office['time']) . ' ' . $W['tz'] . ':' : '', $W['off']));
+            $steps[] = $W['auto'];
+        }
+        if ($bus !== null) {
+            $steps[] = trim(str_replace('{T}', $bus['time'] !== '' ? $hm($bus['time']) . ' ' . $W['tz'] . ':' : '', $W['bus']));
+        }
+        return ['office' => $office, 'bus' => $bus, 'steps' => $steps, 'one' => $W['one']];
+    }
 }

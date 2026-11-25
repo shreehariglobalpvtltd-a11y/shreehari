@@ -301,8 +301,9 @@ try {
     CounterDesk::flush();
 
     $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
-    check('travel-info: Nepalgunj boarding line from the route rows', $r7 === 0 || str_contains($html, 'Coming from Nepalgunj? Board at <b>TEST Nepalgunj Stop</b> (15:58), else at <b>Rupaidiha</b>'), $r7 === 0 ? '' : (string) (preg_match('/Coming from Nepalgunj\?[^<]*(?:<b>[^<]*<\/b>[^<]*)*/', $html, $mm) ? $mm[0] : 'missing'));
-    check('travel-info: Nepali line in Devanagari digits', $r7 === 0 || str_contains($html, '<b>TEST Nepalgunj Stop</b> (१५:५८) बाट चढ्नुहोस्'));
+    // wx6: with a Nepalgunj stop the line is the journey (office time -> our auto -> bus), from the same rows
+    check('travel-info: Nepalgunj boarding line from the route rows', $r7 === 0 || (str_contains($html, 'Going to Gujarat?') && str_contains($html, '3:58 PM (Nepal time)')), $r7 === 0 ? '' : (string) (preg_match('/Coming from Nepalgunj\?[^<]*(?:<b>[^<]*<\/b>[^<]*)*/', $html, $mm) ? $mm[0] : 'missing'));
+    check('travel-info: Nepali line in Devanagari digits', $r7 === 0 || str_contains(page(['page' => 'travel-info.php', 'get' => ['lang' => 'ne']]), 'दिउँसो ३:५८ बजे'));
     check('travel-info: no placeholder left', !str_contains($html, '{NPJBOARD}') && !str_contains($html, '{A}'));
     $ul = preg_match('#<h4>(?:(?!</h4>).)*Counters(?:(?!</h4>).)*</h4><ul class="plain">(.*?)</ul>#s', $html, $m) === 1 ? $m[1] : '';
     $offs = CounterDesk::publicOffices();

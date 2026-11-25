@@ -325,6 +325,7 @@ final class QuickTicket
     private static function nextDeparture(array $route, string $wantDate, string $wantStop, int $count, ?string $gender, array $exclude, bool $customer = false, array $prefer = [], string $phone = '', string $channel = ''): ?array
     {
         $clockNote = null;   // why today's bus was skipped by the sales closing clock
+        $clockSoon = null;   // wx6: today's bus is still on sale - when its clock closes (shown before it does)
         $routeId  = (int) $route['id'];
         $today    = todayISO();
         $now      = time();
@@ -370,6 +371,14 @@ final class QuickTicket
                     }
                     $clockNote = ['label' => $clock['label'], 'at' => $clock['at'], 'tz' => $clock['tz'], 'reason' => $clock['reason']];
                     continue;
+                }
+                if ($clock !== null && !$clock['closed']) {
+                    /* 25 Nov 2026 (wx6, owner: "nepal ko samay anusaar saanjh 5 baje booking band"):
+                       say it BEFORE it closes - the card counts down the last hour. */
+                    $zoneNe = $clock['tz'] === 'Asia/Kathmandu' ? 'नेपाली समय' : ($clock['tz'] === 'Asia/Kolkata' ? 'भारतीय समय' : $clock['tz']);
+                    $zoneEn = $clock['tz'] === 'Asia/Kathmandu' ? 'Nepal time' : ($clock['tz'] === 'Asia/Kolkata' ? 'India time' : $clock['tz']);
+                    $clockSoon = ['at' => $clock['at'], 'tz' => $clock['tz'], 'closesAt' => $clock['closesAt'],
+                        'label' => 'आजको बसको बुकिङ ' . $clock['at'] . ' (' . $zoneNe . ') मा बन्द हुन्छ · Booking for today’s bus closes at ' . $clock['at'] . ' ' . $zoneEn];
                 }
             }
             $depTime = !empty($schedule['dep_time_override'])
@@ -508,6 +517,7 @@ final class QuickTicket
                 'departsInMin'   => $chosen['ts'] !== null ? (int) floor(($chosen['ts'] - $now) / 60) : null,
                 'matchedDesk'    => $matchedDesk,
                 'clockNote'      => $clockNote,   // set when today's bus was closed by the clock and this is a later day
+                'clockSoon'      => $clockSoon,   // wx6: set while today's bus is still on sale and has a closing clock
                 'seats'          => $seatPick['seats'],
                 'seatCount'      => count($seatPick['seats']),
                 'seatsLeft'      => $seatPick['seatsLeft'],

@@ -270,11 +270,12 @@ try {
     $u = (string) $rm->invoke(null, $bk);
     check('pickupMapUrl = the ticket PICKUP QR payload', $u !== '' && $u === $board, $u);
     check('pickupMapUrl = the pinned place', $u === 'https://maps.google.com/?q=27.999673,81.586738', $u);   // mapLink: 6 decimals
-    check('pickupMapLine carries the url', (string) $rl->invoke(null, $bk) === "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $u . "\n");
+    // wx6: a Nepal -> India booking's line goes on with the journey (office -> our auto -> bus)
+    check('pickupMapLine carries the url', str_starts_with((string) $rl->invoke(null, $bk), "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $u . "\n"));
     $setMem(['wa_pickup_map_link_on' => ['0', 'bool']]);
-    check('switch wa_pickup_map_link_on off -> no map line', (string) $rm->invoke(null, $bk) === '' && (string) $rl->invoke(null, $bk) === '');
+    check('switch wa_pickup_map_link_on off -> no map line', (string) $rm->invoke(null, $bk) === '' && !str_contains((string) $rl->invoke(null, $bk), 'Pickup map:'));
     $setMem(['wa_pickup_map_link_on' => ['1', 'bool'], 'ticket_maps_qr' => ['0', 'bool']]);
-    check('ticket_maps_qr off -> no map line (same as the ticket)', (string) $rl->invoke(null, $bk) === '');
+    check('ticket_maps_qr off -> no map line (same as the ticket)', !str_contains((string) $rl->invoke(null, $bk), 'Pickup map:'));
     $setMem(['ticket_maps_qr' => ['1', 'bool']]);
     check('helper never throws on an empty booking', (string) $rm->invoke(null, []) === '');
 

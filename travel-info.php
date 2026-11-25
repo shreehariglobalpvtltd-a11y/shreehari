@@ -117,10 +117,9 @@ $C = [
     'borderH' => 'At the border: Rupaidiha ⇄ Nepalgunj',
     'border' => [
         'Our coach ends at <b>Rupaidiha</b>, on the Indian side. Your ticket shows the exact drop point.',
-        'Cross on foot or by e-rickshaw / tanga. ID and bags may be checked at the Indian post (SSB) and the Nepal post at Jamunaha.',
+        'Arriving from India: cross on foot or by e-rickshaw / tanga. ID and bags may be checked at the Indian post (SSB) and the Nepal post at Jamunaha.',
         'Nepalgunj town is a short ride beyond the border — agree the fare before you get in.',
         'Nepal time is 15 minutes ahead of Indian time.',
-        'Going to Gujarat? The coach leaves from Rupaidiha: cross early — queues can be long — and reach the pickup by the reporting time on your ticket.',
         '{NPJBOARD}',
     ],
     'npjB' => ['Coming from Nepalgunj? Board at our Nepalgunj office at the time on your ticket, else at the Rupaidiha border parking.', 'Coming from Nepalgunj? Board at {A} at the time on your ticket.', 'Coming from Nepalgunj? Board at {A}, else at {B} — at the time on your ticket.'],
@@ -180,10 +179,9 @@ $C = [
     'borderH' => 'बॉर्डर पर: रूपईडीहा ⇄ नेपालगंज',
     'border' => [
         'हमारी बस भारतीय तरफ़ <b>रूपईडीहा</b> में रुकती है। उतरने की सही जगह टिकट पर लिखी है।',
-        'पैदल या ई-रिक्शा / तांगे से बॉर्डर पार करें। भारतीय चौकी (SSB) और नेपाल की जमुनाहा चौकी पर ID और सामान की जाँच हो सकती है।',
+        'भारत से आ रहे हैं: पैदल या ई-रिक्शा / तांगे से बॉर्डर पार करें। भारतीय चौकी (SSB) और नेपाल की जमुनाहा चौकी पर ID और सामान की जाँच हो सकती है।',
         'नेपालगंज शहर बॉर्डर से थोड़ी दूरी पर है — बैठने से पहले किराया तय करें।',
         'नेपाल का समय भारत से 15 मिनट आगे है।',
-        'गुजरात जाना है? बस रूपईडीहा से चलती है: जल्दी पार करें — कतार लंबी हो सकती है — और टिकट पर लिखे रिपोर्टिंग समय तक पिकअप पर पहुँचें।',
         '{NPJBOARD}',
     ],
     'npjB' => ['नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर हमारे नेपालगंज ऑफ़िस से चढ़ें, नहीं तो रूपईडीहा बॉर्डर पार्किंग से।', 'नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर {A} से चढ़ें।', 'नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर {A} से चढ़ें, नहीं तो {B} से।'],
@@ -243,10 +241,9 @@ $C = [
     'borderH' => 'बोर्डरमा: रुपैडिहा ⇄ नेपालगञ्ज',
     'border' => [
         'हाम्रो बस भारततर्फ <b>रुपैडिहा</b> मा रोकिन्छ। ओर्लने ठ्याक्कै ठाउँ टिकटमा लेखिएको हुन्छ।',
-        'पैदल वा ई-रिक्सा / टाँगाबाट बोर्डर पार गर्नुहोस्। भारतीय चौकी (SSB) र नेपालको जमुनाहा चौकीमा ID र सामान जाँच हुन सक्छ।',
+        'भारतबाट आउँदा: पैदल वा ई-रिक्सा / टाँगाबाट बोर्डर पार गर्नुहोस्। भारतीय चौकी (SSB) र नेपालको जमुनाहा चौकीमा ID र सामान जाँच हुन सक्छ।',
         'नेपालगञ्ज बजार बोर्डरबाट नजिकै छ — चढ्नुअघि भाडा तय गर्नुहोस्।',
         'नेपालको समय भारतभन्दा १५ मिनेट अगाडि छ।',
-        'गुजरात जाँदै हुनुहुन्छ? बस रुपैडिहाबाट छुट्छ: चाँडै पार गर्नुहोस् — लाइन लामो हुन सक्छ — र टिकटमा लेखिएको रिपोर्टिङ समयसम्म चढ्ने ठाउँमा पुग्नुहोस्।',
         '{NPJBOARD}',
     ],
     'npjB' => ['नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा हाम्रो नेपालगञ्ज कार्यालयबाट चढ्नुहोस्, नभए रुपैडिहा बोर्डर पार्किङबाट।', 'नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा {A} बाट चढ्नुहोस्।', 'नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा {A} बाट चढ्नुहोस्, नभए {B} बाट।'],
@@ -300,6 +297,14 @@ $lug = TravelGuide::luggage();   // 25 Nov 2026 (wx1-c2): luggage_free_kg / cabi
 $npjStops = TravelGuide::nepalBoarding();
 foreach ($C as $l => $c) {
     $C[$l]['npjLine'] = TravelGuide::boardingLine($npjStops, $c['npjB'], !empty($c['dev']));
+    /* 25 Nov 2026 (wx6, owner): going to Gujarat = office 4 pm with ID -> our auto across Jamunaha-Rupaidiha
+       -> 6 pm bus, and 'one S Hari service' - built from the route rows (TravelGuide::nepalJourney). */
+    $jl = TravelGuide::nepalJourney($l === 'hi' ? 'hi' : ($l === 'ne' ? 'ne' : 'en'));
+    if ($jl !== [] && ($jl['steps'] ?? []) !== []) {
+        $head = ['ne' => 'गुजरात जाँदै हुनुहुन्छ?', 'hi' => 'गुजरात जाना है?', 'en' => 'Going to Gujarat?'][$l] ?? 'Going to Gujarat?';
+        $C[$l]['npjLine'] = '<b>' . $e($head) . '</b><br>' . implode('<br>', array_map(static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8'), $jl['steps']))
+            . '<br><b>' . htmlspecialchars((string) $jl['one'], ENT_QUOTES, 'UTF-8') . '</b>';
+    }
 }
 $fill = static function (string $s, array $c) use ($peg, $lug): string {
     $pegTxt = $peg > 0 ? str_replace('{PEG}', number_format($peg, 2), $c['pegTxt']) : '';

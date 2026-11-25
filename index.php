@@ -172,6 +172,9 @@ $boot['settings']['nepal_esewa_qr_url']       = (static function (): string {
    -> India customer picks only the route's own pickups, the big family-share button. */
 $boot['settings']['ticket_cod_no_payqr']   = Settings::getBool('ticket_cod_no_payqr', true);
 $boot['settings']['customer_currency_choice_on'] = Settings::getBool('customer_currency_choice_on', true);   // wx4: the classic checkout's INR | NPR chips follow the switch
+$boot['settings']['app_boot_bus_on']    = Settings::getBool('app_boot_bus_on', true);    // wx6: 3D coach in the boot scene
+$boot['settings']['ticket_magic_on']    = Settings::getBool('ticket_magic_on', true);    // wx6: ticket animation on PayWatch confirm
+$boot['settings']['app_perm_card_on']   = Settings::getBool('app_perm_card_on', true);   // wx6: one-tap permission card in the app
 $boot['settings']['ticket_maps_qr']        = Settings::getBool('ticket_maps_qr', true);
 $boot['settings']['nepal_pickup_two_only'] = Settings::getBool('nepal_pickup_two_only', true);
 $boot['settings']['family_share_btn_on']   = Settings::getBool('family_share_btn_on', true);

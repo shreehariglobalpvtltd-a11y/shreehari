@@ -397,7 +397,8 @@
         S.dir = saved.dir || df.direction || 'toNepal';
         S.point = (saved.point && hasPoint(S.dir, saved.point)) ? saved.point : (df.point || '');
         if (S.dir !== df.direction && !hasPoint(S.dir, S.point)) S.point = firstPoint(S.dir);
-        S.cc = saved.cc || 'IN'; S.phone = saved.phone || ''; S.name = saved.name || df.name || '';
+        /* 25 Nov 2026 (wx6, owner: 'type almost nothing'): a phone on Nepal time starts on +977 */
+        S.cc = saved.cc || (NP_TZ && !STAFF ? 'NP' : 'IN'); S.phone = saved.phone || ''; S.name = saved.name || df.name || '';
         S.pax = (saved.pax && saved.pax.length ? saved.pax : (df.pax && df.pax.length ? df.pax : S.pax)).slice(0, S.maxPax)
           .map(function (p) { return { gender: p.gender === 'Female' || p.gender === 'Male' ? p.gender : '', band: p.band || 'adult' }; });
         /* 16 Oct 2026 (owner: "badi jaso sharing use hunx - default sharing, private clickable option"):
@@ -951,6 +952,24 @@
   /* 25 Nov 2026 (wx1, owner): a Nepal -> India bus with two (or more) real pickups -
      Nepalgunj office and Rupaidiha parking - shows them as chips; the quote says which
      one is booked (q.pickup) and that one's map QR goes on the ticket. One row = no chips. */
+  /* 25 Nov 2026 (wx6, owner): the Nepal -> India journey under the pickup - office 4 pm with ID,
+     our auto across Jamunaha-Rupaidiha, the 6 pm bus - and 'one S Hari service'. Text + times
+     come from the quote (TravelGuide::nepalJourney, built from the route's own rows). */
+  function drawJourney() {
+    var f = $('sbJourneyF'), ol = $('sbJourney'), one = $('sbOne'); if (!f || !ol) return;
+    var q = S.q, j = (q && q.ok !== false && S.dir === 'toIndia' && q.journey) ? q.journey : null;
+    var L = j ? (j[lang()] || j.ne || j.en) : null;
+    if (!L || !L.steps || !L.steps.length) { f.hidden = true; ol.innerHTML = ''; if (one) one.textContent = ''; return; }
+    var maps = j.maps || {}, onBus = q.pickup && !/nepal\s*g[au]n[jg]/i.test(q.pickup) && L.steps.length > 1;
+    ol.innerHTML = L.steps.map(function (s, i) {
+      var last = i === L.steps.length - 1, map = i === 0 && L.steps.length > 1 ? maps.office : (last ? maps.bus : '');
+      var dim = onBus && !last;   // boarding at Rupaidiha: the office + auto steps are greyed, not hidden
+      return '<li' + (dim ? ' class="dim"' : '') + '>' + esc(s)
+        + (map && /^https:\/\//.test(map) ? ' <a href="' + esc(map) + '" target="_blank" rel="noopener">📍</a>' : '') + '</li>';
+    }).join('');
+    if (one) one.textContent = L.one || '';
+    f.hidden = false;
+  }
   function drawPicks() {
     var f = $('sbPickF'), box = $('sbPicks'); if (!f || !box) return;
     var q = S.q, list = (q && q.ok !== false && S.dir === 'toIndia' && Array.isArray(q.pickups)) ? q.pickups : [];
@@ -967,6 +986,7 @@
   function renderQuote(flash) {
     var q = S.q;
     drawPicks();
+    drawJourney();
     var line = $('sbSeatLine');
     clockLine(q);
     if (q) {
@@ -1032,7 +1052,30 @@
   /* 19 Nov 2026 (NP-3): today's bus was closed by the sales clock and the quote moved to a
      later day (quote.clockNote {label, reason}) - say so loudly above the quick line, never
      a silent jump. Shown in Quick and Full mode; gone again when the note is. */
+  /* 25 Nov 2026 (wx6): today's bus still on sale - a calm blue line 'closes at 17:00 Nepal time',
+     a live countdown in the last hour, and a fresh quote when it closes (-> tomorrow + the orange note). */
+  var clockTimer = null;
+  function clockSoonLine(q) {
+    var cs = q && q.clockSoon, el = $('sbClockSoon');
+    clearInterval(clockTimer); clockTimer = null;
+    if (!cs || !cs.closesAt || (q && q.clockNote)) { if (el) { el.hidden = true; el.textContent = ''; } return; }
+    if (!el) {
+      var at = $('sbQLine'); if (!at || !at.parentNode) return;
+      el = document.createElement('p'); el.id = 'sbClockSoon'; el.className = 'sb-clock-soon'; el.setAttribute('aria-live', 'polite');
+      el.style.cssText = 'margin:0 0 8px;padding:7px 10px;border-radius:9px;background:#EAF2FF;border:1px solid #9CC0F5;color:#0B3B8C;font-weight:700;font-size:12.5px;line-height:1.35';
+      at.parentNode.insertBefore(el, at);
+    }
+    var tick = function () {
+      var left = Math.floor((cs.closesAt * 1000 - Date.now()) / 60000);
+      if (left < 0) { clearInterval(clockTimer); clockTimer = null; el.hidden = true; requote(0); return; }
+      el.textContent = '⏰ ' + (cs.label || '') + (left < 60 ? '  ·  ⏳ ' + left + ' मिनेट बाँकी · min left' : '');
+      el.hidden = false;
+    };
+    tick();
+    clockTimer = setInterval(tick, 30000);
+  }
   function clockLine(q) {
+    clockSoonLine(q);
     var cn = q && q.clockNote, el = $('sbClock');
     if (!cn || !(cn.label || cn.reason)) { if (el) { el.hidden = true; el.innerHTML = ''; } return; }
     if (!el) {
@@ -2199,7 +2242,16 @@
       for (var k = 0; k < 18; k++) sparks += '<i style="--a:' + (k * 20) + 'deg;--r:' + (120 + (k % 3) * 40) + 'px;--d:' + (0.9 + (k % 4) * 0.06).toFixed(2) + 's"></i>';
       var el = document.createElement('div');
       el.id = 'tkMagic';
-      el.className = 'tkm' + (calm ? ' tkm-calm' : '') + (STAFF ? ' tkm-desk' : '');
+      /* 25 Nov 2026 (wx6, owner: 'ticket bandaa bibhinna style ma ghumne animation'): each new ticket
+         gets the next style in turn - spin (the 3D turn), coin (a medallion spinning in rounds and opening
+         into the ticket), flip (drops face down and flips over), stamp (rises flat, a round CONFIRMED
+         stamp spins down onto it). The desk keeps the short spin. */
+      var tkStyles = ['spin', 'coin', 'flip', 'stamp'], tkSt = 'spin';
+      if (!STAFF && !calm) {
+        try { var tkN = (parseInt(localStorage.getItem('shg:tkmN') || '0', 10) || 0) + 1; localStorage.setItem('shg:tkmN', String(tkN)); tkSt = tkStyles[tkN % tkStyles.length]; } catch (e) { tkSt = tkStyles[Math.floor(Math.random() * tkStyles.length)]; }
+      }
+      el.className = 'tkm' + (calm ? ' tkm-calm' : '') + (STAFF ? ' tkm-desk' : '') + ' tkm-s-' + tkSt;
+
       el.setAttribute('role', 'status');
       el.setAttribute('aria-live', 'polite');
       el.innerHTML = '<div class="tkm-glow" aria-hidden="true"></div><div class="tkm-sparks" aria-hidden="true">' + sparks + '</div>'
@@ -2651,6 +2703,8 @@
   });
   new MutationObserver(function () { cbSync(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
 
+  /* 25 Nov 2026 (wx6): the ticket animation for other paths (PayWatch: an online ticket just confirmed). */
+  window.shgTicketMagic = function (r, o) { o = o || {}; try { tkMagic(r, o.name || S.name, o.phone || S.phone, o.cc || S.cc); } catch (e) {} };
   window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, resetForNext: resetForNext, mode: MODE,
     errors: errs, canBook: canBook, book: book,
     setAgent: function (code) { setAgent(code, true); } };
