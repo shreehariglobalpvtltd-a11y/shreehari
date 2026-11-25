@@ -82,6 +82,12 @@ final class Boarding
     ];
 
     /** @var array<string, array<int, array<string, mixed>>> per-request stop cache */
+    /** wx1 (25 Nov 2026): how far BEFORE the timetable departure a pickup may be and still
+     *  be the same run. Was 60 min; the Nepalgunj office pickup is 16:00 for the 18:00
+     *  Rupaidiha bus (owner: "4 baje office, 6 baje bus"), so 4 h. A later-day pickup is
+     *  still 20 h+ after departure, far outside this. */
+    public const PRE_DEP_MIN = 240;
+
     private static array $stopCache = [];
 
     /** @var array<string, mixed>|null per-request Boarding::locations() cache */
@@ -345,7 +351,7 @@ final class Boarding
         // than an hour "before" departure is past midnight on the same run).
         $toMin = static fn(string $t): int => (int) substr($t, 0, 2) * 60 + (int) substr($t, 3, 2);
         $off   = (($toMin($pick) - $toMin($base)) % 1440 + 1440) % 1440;
-        if ($off > 1380) {
+        if ($off > 1440 - self::PRE_DEP_MIN) {
             $off -= 1440;
         }
         $ts = strtotime($travelDate . ' ' . $dep);
@@ -719,9 +725,9 @@ final class Boarding
             $ts = strtotime($travelDate . ' ' . self::minToHm($stop));
             return $ts === false ? null : (int) $ts;
         }
-        // Offset from the timetable departure: -60 min .. +23 h (pickupTs()).
+        // Offset from the timetable departure: -PRE_DEP_MIN .. +20 h (pickupTs()).
         $off = (($stop - $base) % 1440 + 1440) % 1440;
-        if ($off > 1380) {
+        if ($off > 1440 - self::PRE_DEP_MIN) {
             $off -= 1440;
         }
         $dep = self::hmToMin($override) ?? $base;
@@ -1394,7 +1400,7 @@ final class Boarding
                 if ($t !== null && $dep !== null) {
                     $off = (($t - $dep) % 1440 + 1440) % 1440;
                     if ($type === 'boarding') {
-                        if ($off > 1380) {
+                        if ($off > 1440 - self::PRE_DEP_MIN) {
                             $off -= 1440;
                         }
                     } else {

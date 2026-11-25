@@ -45,6 +45,10 @@ if (preg_match('~<section class="sb" id="smartBook"[^>]*>.*?</section>~s', $tpl,
     // un-hide the section itself only (its sheet / modal / ticket stay hidden until used)
     $card = SiteFacts::apply((string) preg_replace('~(<section class="sb" id="smartBook"[^>]*?)\s+hidden>~', '$1>', $m[0], 1));
     $card = (string) preg_replace('/<!--.*?-->/s', '', $card);
+    /* 25 Nov 2026 (wx1): the ⇄ route swap is the customer card's - the desk keeps its own
+       two-button direction row (data-staff scopes the wx1 CSS to the customer face) */
+    $card = (string) preg_replace('~<button type="button" class="sb-dir-swap"[^>]*>.*?</button>\s*~s', '', $card, 1);
+    $card = (string) preg_replace('~<section class="sb" id="smartBook"~', '$0 data-staff="1"', $card, 1);
 }
 /* The agent field lives in THIS file, not in the template: the customer page
    can never carry it (smartbook-ui-test keeps the template free of it).

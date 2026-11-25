@@ -14,7 +14,8 @@
  *    exp   unix expiry      k     substr(HMAC(APP_KEY, 'chalan-dl|sid|doc|page|exp'), 0, 20)
  *
  *  A signed-in office user (bookings.view, not a scoped agent) may also open
- *  it without the key. The challan is (re)drawn on demand by ChallanPng
+ *  it without the key; a chalani page that way also needs chalani.export
+ *  (25 Nov 2026, release ch). The challan is (re)drawn on demand by ChallanPng
  *  (fingerprint-cached); a chalani page is served from the newest page file
  *  the Bus Chalan hub / manifest already drew for that departure.
  * =====================================================================
@@ -51,6 +52,14 @@ try {
     // 16 Nov 2026 (G1): staffActive(), not admin() - a session on a temporary password is a guest here
     if (!$allowed && Auth::staffActive() !== null && Auth::can('bookings.view') && Auth::bookingScopeAdminId() === null) {
         $allowed = true;
+        /* 25 Nov 2026 (release ch review): the whole-bus chalani page (names, mobiles)
+           without a key needs chalani.export, as on manifest.php (switch
+           chalani_export_perm_on; off = bookings.view, as before). The challan and
+           the seat-status card stay on bookings.view; a signed link still works. */
+        if ($doc === 'chalani') {
+            require_once INCLUDE_PATH . '/chalanistrip.php';
+            $allowed = ChalaniStrip::mayExport();
+        }
     }
     if (!$allowed) {
         Logger::warning('Chalan download refused', ['sid' => $sid, 'doc' => $doc, 'ip' => Security::clientIp()], 'security');

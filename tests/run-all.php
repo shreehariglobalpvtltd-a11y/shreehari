@@ -112,6 +112,7 @@ const CORE_SUITES = [
     'gender-blank-test.php'        => 'shared berth: women-only / men-only, family on one ticket, blank gender refused',
     'npj-counter-test.php'         => 'Nepal desk sells Rupaidiha -> Gujarat only; Nepal office on every ticket; company locations',
     'location-maps-test.php'       => 'satellite + road pictures of our places (Nepalgunj office -> Rupaidiha), kept offline',
+    'wx1-c1-test.php'              => 'office cards: in-charge name/phone/photo, WhatsApp on every card, real map pin first; home pickup map links',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
     'agent-controls-test.php'      => 'agent limits hold under pressure',
     'agent-kind-test.php'          => 'org vs person agent numbering',
@@ -241,7 +242,11 @@ const CORE_SUITES = [
     'u2-wa-flow-test.php'             => 'WhatsApp form: ON only once published in this WABA, re-ask keeps the typed mobile + UPI',
     'u2-fb-booking-test.php'          => 'Messenger guided booking only with fb_msgr_form_on + a WhatsApp-proven number, summary + yes first',
     'u2-wa-form-page-test.php'        => 'admin/wa-form.php renders the form status and the dropped-form note',
-    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; COD and pending tickets print the live link',
+    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; pending tickets print the live link, COD tickets no pay QR (wx1)',
+    // 25 Nov 2026 (mp1 tk), registered with the clean ticket + cash / country pay-QR rule it guards.
+    'mp1-ticket-test.php'             => 'clean ticket: paid (cash) = no pay QR + PAID stamp, Nepal QR by country while due, one flag by direction, v2 off = old layout',
+    // 25 Nov 2026 (cp1), the "Booked at" GPS line the clean ticket now prints too.
+    'cp1-bookgeo-test.php'            => 'booking GPS headers -> booked_lat / lng / place (junk / 0,0 / out of range refused), "Booked at" ticket line',
     'u4-desk-test.php'                => 'sales closing clock per route + channel, office never blocked, Nepal desks and quick agent',
     'u5-ag-staff-headcount-test.php'  => 'staff / office logins earn a head count, not new commission; agents and counter unchanged',
     'u5-ag-payout-test.php'           => 'agent withdrawal request + manual office pay / decline, verify tick only when switched on',
@@ -264,13 +269,22 @@ const CORE_SUITES = [
     'wa-form-link-test.php'           => 'WhatsApp booking link (wa.php) + one-message form, agent code credit (19 Nov)',
     'wa87-e2e-test.php'               => '87 WhatsApp sender end to end: name / date → one booking, pay link, UTR never marks paid, one ticket (19 Nov)',
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
+    'mp1-pay-test.php'                => 'Payment Management: ICICI strict fields, one Nepal QR, Gmail bank alerts + bank webhook -> credits ledger, exact-match auto-confirm only (25 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
+    'mp1-login-test.php'              => 'top bar photo / initials + mode badge, login mode cards never change the role, credential actions super-admin only, remember 90 days (25 Nov mp1-lg)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
     'op5-hold-test.php'               => 'every unpaid hold frees itself in 15-30 min; COD / proof / confirmed never touched (25 Nov)',
     'op5-credit-test.php'             => 'agent credit limit + Stop selling: refused at the limit on every agent door, settlement unblocks, counter never (25 Nov)',
     'op5-trip-expenses-test.php'      => 'trip costs: sum per trip, NPR -> INR, P&L = income - expenses, agent refused (25 Nov op5)',
     'op5-busswap-test.php'            => 'bus swap: guard / smaller bus refused, tickets re-minted, live trip follows, every passenger told once (25 Nov op5)',
     'op5-pax-parcel-reminder-test.php' => 'optional border ID on the desk card + chalani tag, parcel register (CRUD / totals / gate), 2 h reminder pickup map once (25 Nov)',
+    'mp1-dayreport-test.php'          => 'seller day = CounterBook (cash + cod, online, due, commission), Nepali bot reply, evening report once, free window only (25 Nov dy)',
+    // 25 Nov 2026 (release ch): starts its own php -S on a free port for the HTTP part (skips it if it cannot)
+    'mp1-chalani-test.php'            => 'uniform chalani: Total | Cash | Online | Due strip = sum of rows, no double counting, live JSON poll, chalani.export per role, counter money',
+    'wx1-a-test.php'                  => 'SmartBook: Nepal timezone opens Nepal -> India + swap, ₹ INR | रू NPR frozen on the sale, BS + AD date chips (25 Nov)',
+    'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
+    'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',
+    'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
 ];
 
 /**

@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v297';   // 2026-11-25 op5: desk card optional passenger ID (27-smartbook.js)
+var VERSION = 'shg-v301';   // 2026-11-25 op5 on wx4: hold auto-release, agent credit limit, trip expenses, bus swap notice, border ID + parcels + 2 h pickup map (27-smartbook.js)
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a
@@ -64,7 +64,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261125p';
+var ASSET_VER = '20261126a';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is

@@ -22,6 +22,7 @@ require_once INCLUDE_PATH . '/waauthotp.php';
 $admin = admin_boot('staff.manage');
 $me    = (int) ($admin['id'] ?? 0);
 $isSa  = Auth::isSuperadmin();
+$mayCred = Auth::mayEditCredentials('staff.manage');   // 25 Nov 2026 (mp1-lg)
 $e     = static fn($v): string => Security::e((string) ($v ?? ''));
 $flash = null;
 $issued = null;   // [code, account label] shown once
@@ -59,6 +60,15 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $act = (string) ($_POST['act'] ?? '');
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (in_array($act, ['open', 'approve', 'issue', 'details'], true) && !$mayCred) {
+        /* 25 Nov 2026 (mp1-lg, owner plan 8: "PIN / password edit: Admin matra"): opening a PIN
+           reset, issuing an activation code and setting the login mobile / DOB are the
+           super-admin's (or a 'staff.credentials' grant). staff_credentials_lock_on = 0 gives
+           them back to every staff.manage holder. Closing a request ('reject') stays open. */
+        http_response_code(403);
+        Logger::audit('staff.credentials_denied', 'admin', (string) (int) ($_POST['aid'] ?? 0), null, ['action' => $act],
+            'login-requests.php action refused: super-admin only');
+        $flash = ['bad', 'PIN / लगइन विवरण एडमिनले मात्र खोल्छ · Only a super-admin opens a PIN reset or changes login details.'];
     } elseif ($act === 'open') {
         /* 15 Nov 2026 (owner: "sabai control admin le, reset dina milne"): one tap opens a first
            login / PIN reset for this account for an hour. The person types their own code and goes
@@ -197,6 +207,9 @@ admin_header('Login setup & PIN · लगइन तयार', 'login-requests.p
   <?php endif; ?>
   <?php if ($flash !== null): ?>
     <p class="pill" style="display:block;padding:10px 12px;background:<?= $flash[0] === 'ok' ? '#d9f5e3' : '#ffdede' ?>;color:<?= $flash[0] === 'ok' ? '#0a6b33' : '#8a1f1f' ?>"><?= $e($flash[1]) ?></p>
+  <?php endif; ?>
+  <?php if (!$mayCred): /* 25 Nov 2026 (mp1-lg) */ ?>
+    <p class="pill" style="display:block;padding:10px 12px;background:#fff4d6;color:#7a5200">🔒 PIN खोल्ने, सक्रिय कोड र लगइन मोबाइल एडमिन (super-admin) ले मात्र गर्छ — तपाईं हेर्न र अनुरोध बन्द गर्न सक्नुहुन्छ · Opening a PIN reset, activation codes and login mobile / DOB are super-admin only; you can view and close requests.</p>
   <?php endif; ?>
   <?php if ($issued !== null): ?>
   <div class="lr-card">

@@ -46,6 +46,7 @@ if (Auth::isCounterAgent()) {
 $selfId    = (int) ($admin['id'] ?? 0);
 $canSettle = Auth::can('commissions.pay');      // may pay out / accept cash / issue loans / decide requests
 $canManage = Auth::can('staff.manage');         // may verify KYC / set the required deposit
+$mayLoginPhone = Auth::mayEditCredentials('staff.manage');   // 25 Nov 2026 (mp1-lg review): may change admins.phone (the sign-in mobile)
 $base      = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 
 $tabs = [
@@ -643,15 +644,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $phone = preg_replace('/\D/', '', (string) ($_POST['phone'] ?? '')) ?? '';
             $wa    = AgentWallet::cleanPhone((string) ($_POST['whatsapp'] ?? ''));
             $city  = trim(Security::clean($_POST['counter_name'] ?? '', 120));
+            /* 25 Nov 2026 (mp1-lg review): admins.phone is the SIGN-IN mobile (the /team/ WhatsApp reset and
+               the WhatsApp door send their codes to it) - a super-admin's, or a staff.credentials grant
+               (Auth::mayEditCredentials). Anyone else sees the Mobile box disabled (not posted) and never
+               writes the mobile - neither admins.phone nor admin_profiles.display_phone (tickets read
+               admins.phone). A changed number posted anyway is refused (audited); the rest still saves. */
+            $keepLogin = !$mayLoginPhone;
+            $refused   = $keepLogin && $phone !== '' && normalisePhone($phone) !== normalisePhone((string) ($agent['phone'] ?? ''));
             if (mb_strlen($nm) < 2) {
                 throw new RuntimeException('Enter the agent\'s name.');
             }
-            if (strlen($phone) < 10 || strlen($phone) > 15) {
+            if (!$keepLogin && (strlen($phone) < 10 || strlen($phone) > 15)) {
                 throw new RuntimeException('Enter a valid mobile number.');
             }
             // 30 Oct 2026: one mobile may carry up to ap_phone_max_accounts IDs — an
             // unchanged number always saves; a changed one must still have room.
-            if (normalisePhone($phone) !== normalisePhone((string) ($agent['phone'] ?? ''))) {
+            if (!$keepLogin && normalisePhone($phone) !== normalisePhone((string) ($agent['phone'] ?? ''))) {
                 require_once INCLUDE_PATH . '/agentpro.php';
                 if (count(AgentPro::phoneOwners($phone, $targetId)) >= AgentPro::phoneMax()) {
                     throw new RuntimeException('That mobile number already has the most logins one number may carry (' . AgentPro::phoneMax() . ').');
@@ -659,17 +667,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             $before = ['full_name' => $agent['full_name'], 'phone' => $agent['phone'],
                        'whatsapp' => $profile['whatsapp'] ?? null, 'city' => $profile['counter_name'] ?? null];
-            Database::update('admins', ['full_name' => $nm, 'phone' => $phone], 'id = :id', ['id' => $targetId]);
+            Database::update('admins', $keepLogin ? ['full_name' => $nm] : ['full_name' => $nm, 'phone' => $phone], 'id = :id', ['id' => $targetId]);
+            // display_phone: a super-admin's save writes it as before; anyone else leaves it as stored (NULL = keep)
+            $dpNew = $keepLogin ? null : $phone;
             Database::run(
                 'INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name)
                       VALUES (:aid, :dp, :wa, :cn)
-                 ON DUPLICATE KEY UPDATE display_phone = :dp2, whatsapp = :wa2, counter_name = :cn2',
-                ['aid' => $targetId, 'dp' => $phone, 'wa' => $wa ?: null, 'cn' => $city ?: null,
-                 'dp2' => $phone, 'wa2' => $wa ?: null, 'cn2' => $city ?: null]
+                 ON DUPLICATE KEY UPDATE display_phone = COALESCE(:dp2, display_phone), whatsapp = :wa2, counter_name = :cn2',
+                ['aid' => $targetId, 'dp' => $dpNew, 'wa' => $wa ?: null, 'cn' => $city ?: null,
+                 'dp2' => $dpNew, 'wa2' => $wa ?: null, 'cn2' => $city ?: null]
             );
+            if ($refused) {
+                Logger::audit('staff.credentials_denied', 'admin', (string) $targetId, null, ['action' => 'agent360.edit_basic.phone'],
+                    'Login mobile change refused on Agent 360 (super-admin only); mobile not saved, the other fields saved');
+            }
             Logger::audit('agent.edit', 'admin', (string) $agent['username'], $before,
-                ['full_name' => $nm, 'phone' => $phone, 'whatsapp' => $wa, 'city' => $city], 'agent 360 quick edit');
-            a360_flash('ok', 'Agent details saved.');
+                ['full_name' => $nm, 'phone' => $keepLogin ? $agent['phone'] : $phone, 'whatsapp' => $wa, 'city' => $city], 'agent 360 quick edit');
+            a360_flash('ok', 'Agent details saved.' . ($refused
+                ? ' मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile.'
+                : ''));
             a360_go($targetId, $backTab);
 
         } else {
@@ -1358,7 +1374,12 @@ $imgData = [
           <form method="post" class="rp-edit" style="margin-top:8px">
             <?= a360_form_head('report', 'edit_basic', $agentId, $csrf, $k) ?>
             <label class="muted" style="font-size:12px">Name<input name="full_name" maxlength="120" value="<?= $e($agent['full_name']) ?>" required></label>
+            <?php if ($mayLoginPhone): ?>
             <label class="muted" style="font-size:12px">Mobile<input name="phone" inputmode="tel" maxlength="20" value="<?= $e($agent['phone']) ?>" required></label>
+            <?php else: /* 25 Nov 2026 (mp1-lg review): the login mobile is the super-admin's - shown, never posted */ ?>
+            <label class="muted" style="font-size:12px">Mobile<input inputmode="tel" maxlength="20" value="<?= $e($agent['phone']) ?>" disabled>
+              <span style="font-size:11px">मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile</span></label>
+            <?php endif; ?>
             <label class="muted" style="font-size:12px">WhatsApp<input name="whatsapp" inputmode="tel" maxlength="20" value="<?= $e($profile['whatsapp'] ?? '') ?>" placeholder="same as mobile"></label>
             <label class="muted" style="font-size:12px">City / counter<input name="counter_name" maxlength="120" value="<?= $e($profile['counter_name'] ?? '') ?>"></label>
             <div class="rp-row"><button class="btn sm" type="submit">Save details</button>

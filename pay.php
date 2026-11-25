@@ -197,7 +197,11 @@ if (!$payable) {
 }
 
 $total  = $due;   // ask only for what is still owed
-$upiUri = upiLink($upiId, $upiName, $total, $pnr);
+/* 25 Nov 2026 (mp1): while the India bank API is live the link also carries tr=<PNR> (BankApi::upiUri). */
+if (is_file(INCLUDE_PATH . '/bankapi.php')) {
+    require_once INCLUDE_PATH . '/bankapi.php';
+}
+$upiUri = class_exists('BankApi') && BankApi::upiOn() ? BankApi::upiUri($upiId, $upiName, $total, $pnr) : upiLink($upiId, $upiName, $total, $pnr);
 $e      = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
 
 /* 19 Nov 2026 (u9, owner's blueprint "direct UPI only, deep links with the exact amount"):
@@ -442,13 +446,10 @@ if ($chooser && $claim === null && !$proofIn) {
         $npr = $frozenNpr
             ? round((float) $booking['fx_total'] * $due / (float) $booking['total_amount'])
             : round($due * Settings::getFloat('npr_per_inr', 1.6));
-        $esewaQr = '';
-        foreach (['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'] as $f) {
-            if (is_file(ROOT_PATH . '/' . $f)) {
-                $esewaQr = '/' . $f;
-                break;
-            }
-        }
+        /* 25 Nov 2026 (mp1): one Nepal QR everywhere - the uploaded NPJ QR the ticket prints
+           (Ticket::esewaQrFile), else the fixed esewa-qr files. */
+        require_once INCLUDE_PATH . '/payadapter.php';
+        $esewaQr = ManualQrAdapter::esewaQrSrc();
         /* review fix: the holder name belongs to the wallet shown. The Nepal company's own eSewa
            shows nepal_esewa_name (or no name); India's esewa_name only beside India's esewa_id. */
         $npOwnEsewa = ($co['saleEntity'] ?? 'IN') === 'NP' && trim(Settings::getString('nepal_esewa_id', '')) !== ''

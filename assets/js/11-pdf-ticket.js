@@ -576,7 +576,9 @@ async function downloadTicketPDF(b) {
   fill(MAROON); doc.rect(0, 0, W, 16, 'F');
   fill(GOLD); doc.rect(0, 16, W, 0.8, 'F');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(GOLD_LIGHT[0], GOLD_LIGHT[1], GOLD_LIGHT[2]);
-  doc.text('*  Om Shri Ganeshaya Namah  ·  Om Namo Narayanaya  ·  Jai Shri Ram  ·  Jai Ambe  *', W / 2, 10.8, { align: 'center' });
+  /* mp1 tk (25 Nov 2026): the clean ticket (ticket_clean_v2_on) keeps the strip but drops the mantra words */
+  var tkClean = !!(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.ticket_clean_v2_on !== false);
+  if (!tkClean) doc.text('*  Om Shri Ganeshaya Namah  ·  Om Namo Narayanaya  ·  Jai Shri Ram  ·  Jai Ambe  *', W / 2, 10.8, { align: 'center' });
 
   /* header: navy -> royal (drawn as thin slices; jsPDF has no gradient fill) */
   for (var gi = 0; gi < 60; gi++) {
@@ -810,12 +812,19 @@ async function downloadTicketPDF(b) {
   var gpay = (typeof tkGoldPay === 'function') ? tkGoldPay(b) : null;
   if (gpay) {
     var gcur = b.currency || 'INR';
-    var gcap = gpay.kind === 'due' ? 'SCAN & PAY ' + gcur + ' ' + Number(gpay.due).toLocaleString('en-IN')
+    var gcap = gpay.kind === 'npr' ? 'eSewa / Fonepay  NPR ' + Number(gpay.npr || 0).toLocaleString('en-IN')
+      : gpay.kind === 'due' ? 'SCAN & PAY ' + gcur + ' ' + Number(gpay.due).toLocaleString('en-IN')
       : (gpay.kind === 'office' ? 'PAY VIA OFFICE' : 'COMPANY UPI');
-    qrCard(164, gcap, gpay.kind === 'office' ? 'WhatsApp the office' : gpay.upi);
+    qrCard(164, gcap, gpay.kind === 'office' ? 'WhatsApp the office' : (gpay.kind === 'npr' ? (gpay.esewa ? 'eSewa ' + gpay.esewa : 'Nepal QR') : gpay.upi));
     try {
-      var payQr = await makeQR(gpay.url, 240);
-      if (payQr) doc.addImage(payQr, 'PNG', 175, qrY + 6, 90, 90);
+      /* mp1 tk (25 Nov 2026): the Nepal QR is the office's own image, drawn as it is (never re-encoded) */
+      if (gpay.img) {
+        var npImg = await _imgLoad(gpay.url);
+        if (npImg) doc.addImage(npImg, 'PNG', 175, qrY + 6, 90, 90);
+      } else {
+        var payQr = await makeQR(gpay.url, 240);
+        if (payQr) doc.addImage(payQr, 'PNG', 175, qrY + 6, 90, 90);
+      }
     } catch (e) {}
     if (gpay.paid) {
       fill(GOLD_DEEP); doc.roundedRect(226, qrY - 12, 56, 17, 8.5, 8.5, 'F');
@@ -824,9 +833,24 @@ async function downloadTicketPDF(b) {
       doc.text('PAID', 254, qrY - 0.6, { align: 'center' });
     }
   }
+  /* 25 Nov 2026 (wx1): the pickup map QR - the place the passenger chose to board
+     (b.pickupMap = the printed ticket's own map link, from api/track.php). It takes
+     the next free card; the contacts block moves right and goes one column wide. */
+  var mapX = gpay ? 288 : 164;
+  var mapOn = !!b.pickupMap && !(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.ticket_maps_qr === false);
+  if (mapOn) {
+    qrCard(mapX, '', 'Open in Maps');
+    doc.setFontSize(7.6); doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+    _dt(doc, hasDev, mapX + 56, qrY + 116, 'चढ्ने ठाउँ · PICKUP MAP', 'CHADHNE THAU · PICKUP MAP', { align: 'center', maxWidth: 104 });
+    try {
+      var mapQr = await makeQR(String(b.pickupMap), 240);
+      if (mapQr) doc.addImage(mapQr, 'PNG', mapX + 11, qrY + 6, 90, 90);
+    } catch (e) {}
+  }
 
   /* Office contacts, next to the QRs — clean 4-line block */
-  var infoX = 292;
+  var infoX = (mapOn && gpay) ? 412 : 292;
+  var infoCols = infoX > 300 ? 1 : 2, infoRowH = infoCols === 1 ? 12 : 14;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
   doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   _dt(doc, hasDev, infoX, qrY + 10, 'सम्पर्क  ·  OFFICE CONTACTS', 'SAMPARK  ·  OFFICE CONTACTS');
@@ -834,15 +858,16 @@ async function downloadTicketPDF(b) {
   doc.setTextColor(INK[0], INK[1], INK[2]);
   var offices = ((window.SHG_BOOT && Array.isArray(SHG_BOOT.help)) ? SHG_BOOT.help : [])   /* one contact list, from the server (4 Oct 2026) */;
   offices.forEach(function (o, i) {
-    var ox = infoX + (i % 2) * ((W - 40 - infoX) / 2);
-    var oy = qrY + 28 + Math.floor(i / 2) * 14;
+    var ox = infoX + (i % infoCols) * ((W - 40 - infoX) / infoCols);
+    var oy = qrY + 28 + Math.floor(i / infoCols) * infoRowH;
     doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text(o[0] + ':', ox, oy);
     doc.setFont('helvetica', 'normal'); doc.text(o[1], ox + 58, oy);
   });
   doc.setFontSize(7.5); doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
   var addrLines = _coAddr() ? doc.splitTextToSize(pdfSafe('Head Office: ' + _coAddr()), W - 40 - infoX) : [];
-  if (addrLines.length) doc.text(addrLines, infoX, qrY + 66);
-  var infoY = qrY + 66 + Math.max(0, addrLines.length - 1) * 9;
+  var addrY = qrY + Math.max(66, 28 + Math.ceil(offices.length / infoCols) * infoRowH + 4);   // one column (wx1, 3 QR cards) runs longer
+  if (addrLines.length) doc.text(addrLines, infoX, addrY);
+  var infoY = addrY + Math.max(0, addrLines.length - 1) * 9;
 
   /* Agent — one clean line if applicable */
   if (b.agentCode) {
@@ -860,14 +885,16 @@ async function downloadTicketPDF(b) {
   /* Footer — clean, minimal, only essentials */
   var footY = PH - 52;
   /* the blessing (gold ticket): maroon, between two gold flourishes */
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(MAROON[0], MAROON[1], MAROON[2]);
-  var blessTxt = 'Shubh Yatra  ·  Surakshit Yatra  ·  Sukhad Yatra';
-  doc.text(blessTxt, W / 2, footY - 18, { align: 'center' });
-  var blessW = doc.getTextWidth(blessTxt) / 2 + 12;
-  draw(GOLD); doc.setLineWidth(0.8);
-  doc.line(W / 2 - blessW - 60, footY - 22, W / 2 - blessW, footY - 22);
-  doc.line(W / 2 + blessW, footY - 22, W / 2 + blessW + 60, footY - 22);
-  fill(GOLD); doc.circle(W / 2 - blessW, footY - 22, 1.8, 'F'); doc.circle(W / 2 + blessW, footY - 22, 1.8, 'F');
+  if (!tkClean) {   /* mp1 tk: no blessing line on the clean ticket */
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(MAROON[0], MAROON[1], MAROON[2]);
+    var blessTxt = 'Shubh Yatra  ·  Surakshit Yatra  ·  Sukhad Yatra';
+    doc.text(blessTxt, W / 2, footY - 18, { align: 'center' });
+    var blessW = doc.getTextWidth(blessTxt) / 2 + 12;
+    draw(GOLD); doc.setLineWidth(0.8);
+    doc.line(W / 2 - blessW - 60, footY - 22, W / 2 - blessW, footY - 22);
+    doc.line(W / 2 + blessW, footY - 22, W / 2 + blessW + 60, footY - 22);
+    fill(GOLD); doc.circle(W / 2 - blessW, footY - 22, 1.8, 'F'); doc.circle(W / 2 + blessW, footY - 22, 1.8, 'F');
+  }
   doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.5);
   doc.line(40, footY - 6, W - 40, footY - 6);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);

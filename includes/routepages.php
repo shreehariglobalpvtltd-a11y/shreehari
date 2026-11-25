@@ -28,6 +28,7 @@ if (!defined('SHG_APP')) {
 
 require_once INCLUDE_PATH . '/fare.php';
 require_once INCLUDE_PATH . '/sitefacts.php';
+require_once INCLUDE_PATH . '/travelguide.php';   // 25 Nov 2026 (wx1-c2): the a6 luggage rule from settings
 
 final class RoutePages
 {
@@ -317,7 +318,7 @@ final class RoutePages
                 'q3' => 'Can I pay from Nepal?', 'a3' => 'Yes — an eSewa QR is on the payment page, or a friend in India can pay by UPI, or pay cash to the crew on boarding. The seat is confirmed once the office sees the payment.',
                 'q4' => 'Is the bus safe for women travelling alone?', 'a4' => 'Sharing cabins are gender-locked: a berth beside a woman is sold only to a woman. Berths reserved for women are marked on the seat map, and the office phone is answered until 11 pm.',
                 'q5' => 'Can I change the name or the date?', 'a5' => 'The name on a ticket can be corrected twice before departure from the app or on WhatsApp. A date change is a reschedule — ask the office; the refund ladder above applies to a cancellation.',
-                'q6' => 'How much luggage can I bring?', 'a6' => 'Two bags per passenger in the hold plus one hand bag. Tell the office in advance about anything larger.',
+                'q6' => 'How much luggage can I bring?', 'a6' => 'Free per passenger: 1 bag up to {FREE} kg in the hold + 1 cabin bag up to {CABIN} kg. Keep valuables and documents with you; tell the office in advance about anything larger.',
             ],
             'hi' => [
                 'title'   => '%s से %s बस — AC स्लीपर | %s',
@@ -338,7 +339,7 @@ final class RoutePages
                 'q3' => 'क्या नेपाल से पैसे दे सकते हैं?', 'a3' => 'हाँ — पेमेंट पेज पर eSewa QR है, या भारत में कोई मित्र UPI से दे सकता है, या बस में चढ़ते समय नकद। ऑफ़िस को पेमेंट दिखते ही सीट पक्की।',
                 'q4' => 'अकेली महिला के लिए बस सुरक्षित है?', 'a4' => 'शेयरिंग केबिन जेंडर-लॉक हैं: महिला के बगल की बर्थ सिर्फ महिला को बिकती है। महिलाओं के लिए आरक्षित बर्थ सीट मैप पर दिखती हैं, और ऑफ़िस का फ़ोन रात 11 बजे तक उठता है।',
                 'q5' => 'नाम या तारीख बदल सकते हैं?', 'a5' => 'टिकट का नाम रवानगी से पहले दो बार ऐप या WhatsApp से सुधारा जा सकता है। तारीख बदलना रीशेड्यूल है — ऑफ़िस से पूछें; रद्द करने पर ऊपर की रिफंड सीढ़ी लागू।',
-                'q6' => 'कितना सामान ले जा सकते हैं?', 'a6' => 'प्रति यात्री दो बैग डिक्की में और एक हाथ में। बड़े सामान के लिए पहले ऑफ़िस को बताएँ।',
+                'q6' => 'कितना सामान ले जा सकते हैं?', 'a6' => 'हर यात्री के लिए मुफ़्त: 1 बैग {FREE} किलो तक डिक्की में + 1 केबिन बैग {CABIN} किलो तक। कीमती सामान और दस्तावेज़ अपने पास रखें; बड़े सामान के लिए पहले ऑफ़िस को बताएँ।',
             ],
             'ne' => [
                 'title'   => '%s देखि %s बस — AC स्लिपर | %s',
@@ -359,10 +360,16 @@ final class RoutePages
                 'q3' => 'नेपालबाट पैसा तिर्न मिल्छ?', 'a3' => 'मिल्छ — भुक्तानी पेजमा eSewa QR छ, वा भारतमा साथीले UPI बाट तिर्न सक्छ, वा बस चढ्दा नगद। कार्यालयले भुक्तानी देखेपछि सिट पक्का।',
                 'q4' => 'एक्लै यात्रा गर्ने महिलाका लागि बस सुरक्षित छ?', 'a4' => 'सेयरिङ केबिन जेन्डर-लक छन्: महिलाको छेउको बर्थ महिलालाई मात्र बेचिन्छ। महिलाका लागि छुट्याइएका बर्थ सिट म्यापमा देखिन्छन्, र कार्यालयको फोन राति ११ बजेसम्म उठ्छ।',
                 'q5' => 'नाम वा मिति बदल्न मिल्छ?', 'a5' => 'टिकटको नाम छुट्नुअघि दुई पटकसम्म एप वा WhatsApp बाट सच्याउन मिल्छ। मिति बदल्नु रिसेड्युल हो — कार्यालयलाई सोध्नुहोस्; रद्द गर्दा माथिको फिर्ता तालिका लागू हुन्छ।',
-                'q6' => 'कति सामान लैजान मिल्छ?', 'a6' => 'प्रति यात्री दुई झोला डिक्कीमा र एउटा हातमा। ठूलो सामानका लागि पहिले कार्यालयलाई भन्नुहोस्।',
+                'q6' => 'कति सामान लैजान मिल्छ?', 'a6' => 'प्रति यात्री निःशुल्क: १ झोला {FREE} किलोसम्म डिक्कीमा + १ ह्यान्ड झोला {CABIN} किलोसम्म। बहुमूल्य सामान र कागजात आफूसँगै राख्नुहोस्; ठूलो सामानका लागि पहिले कार्यालयलाई भन्नुहोस्।',
             ],
         ];
-        return $w[$lang] ?? $w['en'];
+        $out = $w[$lang] ?? $w['en'];
+        /* 25 Nov 2026 (wx1-c2): the luggage answer (page FAQ + the WhatsApp bot) reads
+           luggage_free_kg / cabin_bag_kg - the same 20 + 7 kg as the terms by default. */
+        $lug = TravelGuide::luggage();
+        $kg  = static fn(int $n): string => $lang === 'ne' ? strtr((string) $n, ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९']) : (string) $n;
+        $out['a6'] = str_replace(['{FREE}', '{CABIN}'], [$kg($lug['free']), $kg($lug['cabin'])], (string) $out['a6']);
+        return $out;
     }
 
     /**

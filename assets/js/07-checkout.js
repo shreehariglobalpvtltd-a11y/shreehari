@@ -473,6 +473,83 @@ function setPayMethod(m) {
   }
 }
 
+/* 25 Nov 2026 (wx1-a): the ₹ INR | रू NPR choice on the CLASSIC checkout, as SmartBook's
+   #sbCur. Customers only (a desk sale has its own desk currency), owner's switch
+   customer_currency_choice_on (SHG_BOOT.settings; fails CLOSED - a missing key = off, so
+   the chips never show NPR that api/book.php would then drop; index.php must boot the key).
+   NPR follows Nepal -> India (searchDir 'back' / a route from a Nepal town) or a Nepal
+   browser clock until a chip is tapped; the choice is kept per draft (Flow.coCur).
+   The server freezes NPR only for a customer with the switch on (api/book.php ->
+   BookingService::customerFxStamp); INR stays what the books run in. */
+function coCurOn() {
+  if (isCounterSale()) return false;
+  const s = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+  const v = s.customer_currency_choice_on;
+  return v === true || v === 1 || v === '1';
+}
+function coCurDefault(rOut) {
+  let tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+  if (/^Asia\/Katha?mandu$/.test(tz)) return 'NPR';
+  if (typeof searchDir !== 'undefined' && searchDir === 'back') return 'NPR';
+  const from = String((rOut && rOut.from) || '').toLowerCase();
+  const np = ((typeof CONFIG !== 'undefined' && CONFIG.mainPoints && CONFIG.mainPoints.nepal) || []).map(n => String(n).toLowerCase());
+  return from !== '' && (np.some(n => n && from.indexOf(n) === 0) || /nepalgunj|kohalpur|nepal/.test(from)) ? 'NPR' : 'INR';
+}
+/* the money the customer chose for this draft ('INR' when the chips are off) */
+function coCur() { return coCurOn() && Flow.coCur && Flow.coCur.id === Flow.draftId && Flow.coCur.cur === 'NPR' ? 'NPR' : 'INR'; }
+const coNpr = (n) => 'रू ' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+/* build (once) + paint the chips next to the payment methods; onPick re-runs the totals */
+function coCurChips(rOut, onPick) {
+  const tabs = $('.pm-tabs');
+  let box = $('#coCur');
+  if (!coCurOn()) { if (box) box.hidden = true; return; }
+  if (!Flow.coCur || Flow.coCur.id !== Flow.draftId) {
+    Flow.coCur = { id: Flow.draftId, cur: coCurDefault(rOut), touched: false };
+    // NPR makes eSewa the online default, INR makes UPI (only while an online method is on)
+    if (PAY_METHOD === 'upi' || PAY_METHOD === 'esewa') PAY_METHOD = Flow.coCur.cur === 'NPR' ? 'esewa' : 'upi';
+  }
+  if (!box && tabs && tabs.parentNode) {
+    box = document.createElement('div');
+    box.id = 'coCur'; box.className = 'co-cur';
+    box.setAttribute('role', 'radiogroup'); box.setAttribute('aria-label', 'तिर्ने मुद्रा · Pay in');
+    box.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 12px';
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:12.5px;font-weight:700;color:var(--muted)';
+    lbl.textContent = 'तिर्ने मुद्रा · Pay in';
+    box.appendChild(lbl);
+    [['INR', '₹ INR'], ['NPR', 'रू NPR']].forEach(([v, txt]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('data-cur', v); b.setAttribute('role', 'radio'); b.textContent = txt;
+      b.style.cssText = 'min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line,#d0d7e2);font:inherit;font-size:14px;font-weight:800;cursor:pointer;touch-action:manipulation';
+      box.appendChild(b);
+    });
+    tabs.parentNode.insertBefore(box, tabs);
+  }
+  if (!box) return;
+  box.hidden = false;
+  box.onclick = (e) => {
+    const b = e.target.closest('[data-cur]'); if (!b) return;
+    const cur = b.getAttribute('data-cur') === 'NPR' ? 'NPR' : 'INR';
+    Flow.coCur = { id: Flow.draftId, cur: cur, touched: true };
+    if (PAY_METHOD === 'upi' || PAY_METHOD === 'esewa') setPayMethod(cur === 'NPR' ? 'esewa' : 'upi');
+    coCurPaint();
+    if (typeof onPick === 'function') onPick();
+  };
+  coCurPaint();
+}
+function coCurPaint() {
+  const box = $('#coCur'); if (!box) return;
+  const cur = coCur();
+  box.querySelectorAll('[data-cur]').forEach(b => {
+    const on = b.getAttribute('data-cur') === cur;
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.style.background = on ? 'var(--nblue,#003893)' : 'transparent';
+    b.style.color = on ? '#fff' : 'inherit';
+    b.style.borderColor = on ? 'transparent' : 'var(--line,#d0d7e2)';
+  });
+}
+
 /* ================================================================
    V6 §"Smart customer features" — remembered travellers.
 
@@ -1221,8 +1298,10 @@ function renderCheckout() {
       : rows + '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
     const chk = $('#loyUseChk');
     if (chk) chk.onchange = () => { Flow.usePoints = chk.checked; updatePayment(); };
-    flipNumber($('#payAmount'), x.total, x.fareBad ? (() => '—') : inr, $('#bpAmt'));
-    $('#payAmountNpr').textContent = x.fareBad ? '' : nprEst(x.total);
+    // 25 Nov 2026 (wx1-a): the chosen money big, the other small (NPR at CONFIG.nprPerInr, the estimate the eSewa panel uses)
+    const coNp = coCur() === 'NPR';
+    flipNumber($('#payAmount'), coNp ? Math.round(x.total * CONFIG.nprPerInr) : x.total, x.fareBad ? (() => '—') : (coNp ? coNpr : inr), $('#bpAmt'));
+    $('#payAmountNpr').textContent = x.fareBad ? '' : (coNp ? '≈ ' + inr(x.total) : nprEst(x.total));
     const codEl = $('#codAmount'); if (codEl) codEl.textContent = x.fareBad ? '—' : inr(x.total);
     if (typeof updateCoSummary === 'function') updateCoSummary();
 
@@ -1260,6 +1339,7 @@ function renderCheckout() {
     }
   };
   Flow.checkoutTotals = checkoutTotals;   // submitBooking reads the same maths
+  coCurChips(rOut, updatePayment);         // 25 Nov 2026 (wx1-a): ₹ INR | रू NPR (before the first paint)
   updatePayment();
 
   /* 16 Nov 2026 (P4-5d): ask the server once per mobile + bus whether this booking is
@@ -1664,6 +1744,8 @@ async function submitBooking() {
       referralCode: refCode,
       paymentMethod: PAY_METHOD,
       isCod: isCod,
+      // 25 Nov 2026 (wx1-a): the money the customer chose (api/book.php -> payCurrency; the server freezes NPR)
+      cur: coCur(),
       // 5 Oct 2026: where this visitor came from (Google Ads / Facebook / a campaign link), if anywhere.
       ad: (window.ShgAds && window.ShgAds.forBooking) ? window.ShgAds.forBooking() : {}
     });
@@ -2539,6 +2621,29 @@ window.TkLive = TkLive;
        ("Pay via office"); a phone call when there is no WhatsApp either.
    Display only: the money is the server's (paidAmount = verified payments),
    read the same way as fbPayBand() - confirmed + unknown + not cash = paid. */
+/* 25 Nov 2026 (wx1): "share live bus location with family" as ONE big green
+   WhatsApp-style button (ticket view + My Trips card). The phone's own share
+   sheet when it has one (navigator.share), else the wa.me link. Switch
+   family_share_btn_on (default on); off = the old small ghost link. */
+function famShareOn() {
+  const s = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+  return !(s.family_share_btn_on === false || s.family_share_btn_on === 0 || s.family_share_btn_on === '0');
+}
+function famShareBtn(url) {
+  const u = String(url || '');
+  return '<a class="btn btn-wa tk-famshare" data-famshare="' + esc(u) + '" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + u)
+    + '" target="_blank" rel="noopener" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px;margin-top:8px;min-height:44px;background:#25d366 !important;border-color:#1ebe5b !important;color:#fff !important;font-weight:700">'
+    + '🟢 ' + esc(t('tkWhereFam')) + '</a>';
+}
+if (!window.__shgFamShare) { window.__shgFamShare = true; document.addEventListener('click', function (e) {
+  const a = e.target && e.target.closest ? e.target.closest('[data-famshare]') : null;
+  if (!a || !navigator.share) return;          // no share sheet: the wa.me link opens as before
+  e.preventDefault();
+  const u = a.getAttribute('data-famshare') || '';
+  navigator.share({ title: 'S Hari Global', text: t('tkWhereShare'), url: u }).catch(function (err) {
+    if (!err || err.name !== 'AbortError') { try { window.open(a.href, '_blank', 'noopener'); } catch (x) {} }
+  });
+}); }
 function tkGoldPay(b) {
   const st = (typeof S === 'function') ? S() : {};
   const enc = encodeURIComponent;
@@ -2550,6 +2655,10 @@ function tkGoldPay(b) {
   let due = known ? Math.max(0, total - Math.max(0, Number(b.paidAmount || 0)))
     : ((b.status === 'confirmed' && !isCod) ? 0 : total);
   if (!open) due = 0;                         // cancelled / expired / rejected: nothing to collect here
+  /* 25 Nov 2026 (wx1, owner): a pay-at-boarding (cash) ticket carries NO pay QR -
+     the crew takes the cash on the bus (Ticket::paymentQr mode 'cod'). Switch
+     ticket_cod_no_payqr (default on); tkGoldPayFigure() draws the stamp instead. */
+  if (isCod && due > 0 && (((window.SHG_BOOT && SHG_BOOT.settings) || {}).ticket_cod_no_payqr !== false)) return null;
   const paid = due <= 0 && (b.status === 'confirmed' || b.status === 'completed' || (b.status === 'expired' && known && total > 0 && Number(b.paidAmount) >= total));
   const upi = String(st.upiId || '').trim();
   const name = String(st.upiName || '');
@@ -2561,8 +2670,27 @@ function tkGoldPay(b) {
      ticket_pay_qr_upi is on (default on); otherwise the live pay link (pay.php), which
      records the UTR and can never take the money twice. */
   const nprSale = String(b.fxCurrency || b.fx_currency || '').toUpperCase() === 'NPR' && Number(b.fxTotal || b.fx_total || 0) > 0;
+  /* 25 Nov 2026 (mp1 tk, Ticket::paymentQr parity): a fully paid ticket - cash or online -
+     shows NO payment QR anywhere (ticket_cash_no_payqr, default on); the PAID stamp only.
+     While money is due the QR follows the country: a trip from the Nepal side or an NPR
+     sale -> the office's Nepal QR image (eSewa / Fonepay, amount in NPR words), India -> UPI. */
+  const bs0 = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+  if (bs0.ticket_cash_no_payqr !== false && due <= 0) return null;
+  const rr0 = (typeof routeById === 'function' && b.routeId) ? (routeById(b.routeId) || {}) : {};
+  const fromNp = typeof isNepalPoint === 'function' && isNepalPoint(rr0.from) && !isNepalPoint(rr0.to);
+  const npQr = String(bs0.nepal_esewa_qr_url || '');
+  /* review (money, = Ticket::staticPayQrOk): the static Nepal QR records nothing, so on an INR
+     ticket it stands in only where a raw UPI code would - confirmed, not pay-at-boarding, no
+     proof waiting. A COD / pending ticket keeps the live pay.php link below (UTR -> COD queue). */
+  const pay0 = b.payment || {};
+  const staticOk = b.status === 'confirmed' && !isCod && !(pay0.status === 'pending' && !!(pay0.utr || pay0.shotThumb));
+  if (due > 0 && open && npQr && (nprSale || (bs0.ticket_pay_qr_by_country !== false && fromNp && staticOk))) {
+    const rate = nprSale && Number(b.total) > 0 ? Number(b.fxTotal || b.fx_total) / Number(b.total) : Number((typeof CONFIG !== 'undefined' && CONFIG.nprPerInr) || 1.6);
+    return { kind: 'npr', due: due, paid: false, upi: '', name: name, img: true, url: npQr,
+      npr: Math.round(due * rate), esewa: String(bs0.nepal_esewa_id || '') };
+  }
   if (due > 0 && upi && cur === 'INR' && !nprSale) {
-    const bs = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+    const bs = bs0;
     const pay = b.payment || {};
     const proofWaiting = pay.status === 'pending' && !!(pay.utr || pay.shotThumb);
     const rawOk = bs.ticket_pay_qr_upi !== false && b.status === 'confirmed' && !isCod && !proofWaiting;
@@ -2604,6 +2732,30 @@ function tkMantraLine() {
 }
 /* The pay half of the gold QR stub (the verify half is #tkQrBox). */
 function tkGoldPayFigure(b, gp, money) {
+  /* mp1 tk: no pay QR on a paid ticket - the PAID stamp in its place (cash: नगद प्राप्त भयो). */
+  if (!gp) {
+    if (b.status !== 'confirmed' && b.status !== 'completed') return '';   // cancelled / expired: no QR and no stamp
+    /* wx1: pay-at-boarding with money due - the बसमा तिर्ने stamp, no QR */
+    if (!!(b.codFlag || (b.payment && b.payment.method === 'cod'))) {
+      const dueC = Math.max(0, Number(b.total || 0) - Math.max(0, Number(b.paidAmount || 0)));
+      if (dueC > 0) {
+        return '<figure class="tkg-qr tkg-qr-pay is-cod">'
+          + '<div class="tkg-qr-frame tkg-cod-stamp" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:3px double #c2410c;border-radius:14px;color:#9a3412;font-weight:800;transform:rotate(-4deg);padding:10px;min-height:120px">'
+          + '<span lang="ne" style="font-size:20px">बसमा तिर्ने</span><span style="font-size:13px;letter-spacing:.06em">PAY ON BOARDING</span></div>'
+          + '<figcaption><b>' + esc('बसमा तिर्ने · Pay on boarding') + '</b>' + (dueC > 0 ? '<small>' + esc(money(dueC)) + '</small>' : '') + '</figcaption></figure>';
+      }
+    }
+    const cash = !!(b.payment && b.payment.method === 'cash');
+    return '<figure class="tkg-qr tkg-qr-pay is-paid tkg-paid-only"><div class="tkg-qr-frame" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:50%;border:4px solid #177A48;color:#177A48;aspect-ratio:1;max-width:190px;margin:0 auto">'
+      + '<b style="font-size:34px;line-height:1">PAID</b><small lang="ne" style="font-weight:700">' + esc(cash ? 'नगद प्राप्त भयो' : 'भुक्तानी भयो') + '</small>'
+      + '<small>' + esc(cash ? 'Cash received' : 'Paid') + '</small></div>'
+      + '<figcaption><b>' + esc(t('tkgPaid')) + '</b></figcaption></figure>';
+  }
+  if (gp.kind === 'npr') {
+    return '<figure class="tkg-qr tkg-qr-pay is-due is-npr"><a class="tkg-qr-frame" id="tkPayQrBox" href="' + esc(gp.url) + '" target="_blank" rel="noopener" aria-label="eSewa QR">'
+      + '<img src="' + esc(gp.url) + '" width="240" height="240" alt="eSewa / Fonepay QR" style="width:100%;height:auto"></a>'
+      + '<figcaption><b>तिर्न बाँकी · NPR ' + esc(Number(gp.npr || 0).toLocaleString('en-IN')) + '</b><small>eSewa / Fonepay' + (gp.esewa ? ' · ' + esc(gp.esewa) : '') + '</small></figcaption></figure>';
+  }
   const cap = gp.kind === 'due' ? tf('tkgPayDue', { a: money(gp.due) })
     : (gp.kind === 'office' ? t('tkgPayOffice') : t('tkgPayUpi'));
   const sub = gp.kind === 'office' ? (gp.due > 0 ? money(gp.due) : '') : gp.upi;
@@ -2769,7 +2921,8 @@ function renderStatus(id) {
   const whereBox = (b.status === 'confirmed' && b.trackUrl && !tripCancelled)
     ? '<div class="crew-box where-box">📍 <div><small>' + t('tkWhereT') + '</small>'
       + '<a class="btn btn-blue btn-sm" href="' + esc(b.trackUrl) + '" target="_blank" rel="noopener" style="margin:6px 8px 0 0">' + t('tkWhereBtn') + '</a>'
-      + '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>'
+      + (famShareOn() ? famShareBtn(b.trackUrl)
+        : '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>')
       + '</div></div>'
     : '';
 
@@ -2905,6 +3058,9 @@ function renderStatus(id) {
   const primary2 = conf
     ? '<button class="btn btn-orange" id="imgBtn" type="button">' + t('btnImg') + '</button>'
       + '<button class="btn btn-wa" id="waBtn" type="button">🟢 ' + t('btnWa') + '</button>'
+      /* mp1 tk (25 Nov 2026): Print beside Image + WhatsApp, visible the moment the ticket shows
+         (it was folded inside "More"); the copy under More is gone so the id stays unique. */
+      + '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>'
       + trackBtn2
       + dirBtn2
       /* Return journey as its own ticket (17 Sep 2026): the engine books one
@@ -2920,7 +3076,6 @@ function renderStatus(id) {
       + '<a class="btn btn-orange" href="#/">' + t('tkNewTicket') + '</a>';
   const secondary2 = (conf ? '<button class="btn btn-ghost" id="pdfBtn" type="button">' + t('btnPdf') + '</button>'
       + (soon ? '<button class="btn btn-ghost" type="button" data-ics="' + esc(b.id) + '">' + t('btnCal') + '</button>' : '')
-      + '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>'
       + ((typeof navigator.share === 'function') ? '<button class="btn btn-ghost" id="shareBtn" type="button">' + t('btnShare') + '</button>' : '')
       + (tripCancelled ? '' : '<a class="btn btn-ghost" href="#/trip/' + esc(b.id) + '">🚌 Trip Companion</a>')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
@@ -2952,6 +3107,9 @@ function renderStatus(id) {
   /* Gold ticket (9 Oct 2026): the payment QR is on EVERY ticket, beside the
      verify QR (confirmed only) - see tkGoldPay() for the rule. */
   const gp2 = tkGoldPay(b);
+  /* mp1 tk: the clean ticket (ticket_clean_v2_on): no mantra / blessing, ONE flag by direction */
+  const tkClean = !!(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.ticket_clean_v2_on !== false);
+  const tkFromNp = typeof isNepalPoint === 'function' && isNepalPoint(r.from) && !isNepalPoint(r.to);
   const qrStub2 = '<div class="tkg-perf" aria-hidden="true"></div>'
     + '<div class="tkg-stub' + (conf ? '' : ' solo') + '">'
     + (conf ? '<figure class="tkg-qr tkg-qr-verify"><div class="tk2-qr tkg-qr-frame" id="tkQrBox"></div><figcaption><b>' + esc(t('tkgVerify')) + '</b><small>' + t('tkQrNote') + '</small></figcaption></figure>' : '')
@@ -2964,13 +3122,13 @@ function renderStatus(id) {
   ${borderCard}
   ${stepper}
   <div class="status-card tk2 tk2-gold${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
-    <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
+    ${tkClean ? '' : '<div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ' + esc(tkMantraLine()) + ' <span aria-hidden="true">❖</span></div>'}
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261125p" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261126a" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261125p" width="600" height="312" alt="" decoding="async">
+      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126a" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126a" width="600" height="312" alt="" decoding="async">'}
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}
@@ -3023,7 +3181,7 @@ function renderStatus(id) {
       <div class="tk2-company"><b>🇮🇳 S HARI GLOBAL PVT LTD 🇳🇵</b> · ${esc(CONFIG.company.mantra)}<br>CIN: ${esc(CONFIG.company.cin)}${CONFIG.company.gstin ? ' · GSTIN: ' + esc(CONFIG.company.gstin) : ''} · CEO: ${esc(CONFIG.company.ceo || '')}<br>☎ ${t('supportLbl')}: <a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a> · <a href="mailto:${esc(S().email)}">${esc(S().email)}</a></div>
     </details>
     ${conf ? '<div class="tk2-foot"><div class="bp-barcode">' + barcodeSVG(b.id) + '<span class="bp-bc-id">' + esc(b.id) + '</span></div><div class="tk2-thanks">' + t('tkThanks') + '</div></div>' : ''}
-    <div class="tkg-bless" lang="ne"><i aria-hidden="true"></i><span>${esc(t('tkBless'))}</span><i aria-hidden="true"></i></div>
+    ${tkClean ? '' : '<div class="tkg-bless" lang="ne"><i aria-hidden="true"></i><span>' + esc(t('tkBless')) + '</span><i aria-hidden="true"></i></div>'}
     <div class="premium-ticket-support"><b>${esc(t('premiumTrust'))}</b><a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a><span>${esc(location.host)}</span></div>
     ${extra}
   </div>
@@ -3033,7 +3191,7 @@ function renderStatus(id) {
   /* The pay QR lives in the gold stub now (tkGoldPay - the same UPI link
      with the amount when money is owed), so the pay card keeps its button
      and amount but no second copy of the same QR. */
-  makeQR(gp2.url, 240).then(url => {
+  if (gp2 && !gp2.img) makeQR(gp2.url, 240).then(url => {
     const box = $('#tkPayQrBox');
     if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id || !url) return;
     const img = new Image(); img.src = url; img.width = 240; img.height = 240; img.alt = gp2.kind === 'office' ? t('tkgPayOffice') : t('premiumPay');

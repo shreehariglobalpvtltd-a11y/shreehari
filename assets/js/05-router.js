@@ -912,7 +912,17 @@ function initSimpleSearch() {
   if (b && !b._wired) { b._wired = true; b.addEventListener('click', () => setSearchDir('back')); }
   if (p && !p._wired) { p._wired = true; p.addEventListener('change', applyDirection); }
   setSearchDir(searchDir);   // first paint: fill towns + sync hidden selects
-  if (!applyCampaignLink()) applyLastSearch();
+  if (!applyCampaignLink() && !applyLastSearch()) {
+    /* 25 Nov 2026 (wx1, owner: "Nepal bata kholda Nepal -> India"): no last search and no
+       campaign / deep link - a browser on Nepal time opens on Rupaidiha -> Gujarat.
+       Switch: geo_direction_on (public setting, default on). */
+    try {
+      const st = (window.SHG_BOOT && window.SHG_BOOT.settings) || {}, gv = st.geo_direction_on;
+      const tz = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+      if (!(gv === false || gv === 0 || gv === '0') && /^Asia\/Katha?mandu$/.test(tz)
+          && !/[?&](from|to|dir|town|counter)=/.test(location.search || '')) setSearchDir('back');
+    } catch (e) {}
+  }
   try { ShgAds.landing(); } catch (e) {}
 }
 
@@ -1754,7 +1764,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261125p" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261126a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -3539,13 +3549,84 @@ if (store.local && !store.remote) {
     if (number.length === 10) number = country + number;
     return /^(?:91[6-9]\d{9}|9779[678]\d{8})$/.test(number) && number.indexOf(country) === 0 ? '+' + number : '';
   }
+  /* 25 Nov 2026 (wx1-c2, owner: "naam, phone ra kati jana - tyati bhaye pugyos"): the short
+     WhatsApp booking. Date and pickup sit folded in #waReqJourney (<details>) and are sent
+     only when the person opened or changed them - a default they never saw is not their
+     answer. Switch wa_short_booking_on (SHG_BOOT.settings, default ON) off = both required again. */
+  function shortOn() {
+    var s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {}, v = s.wa_short_booking_on;
+    return !(v === false || v === 0 || v === '0');
+  }
+  function journeyUsed() {
+    var j = document.getElementById('waReqJourney');
+    // an older cached page still shows the fields open (a <div>): what it shows is sent
+    return !shortOn() || !j || j.tagName !== 'DETAILS' || !!j.open || (j.dataset && j.dataset.touched === '1');
+  }
+  /* 25 Nov 2026 (wx1): Rupaidiha -> Gujarat boards at one of the Nepal-side pickups. The names
+     and times come from the page's own data - the SmartBook quote (q.pickups), else the public
+     timetable's Nepal -> India boarding rows; with neither, the two names WITHOUT a time (never
+     a typed time). Sent only when the journey section was used (journeyUsed()). */
+  var NP_PICK_NAMES = ['Nepalgunj Office · Puspalal Chowk', 'Rupaidiha border parking'];
+  var npPickTT = null, npPickAsked = false;
+  function npPickList() {
+    try {
+      var q = window.SmartBook && typeof window.SmartBook.quote === 'function' ? window.SmartBook.quote() : null;
+      if (q && Array.isArray(q.pickups) && q.pickups.length > 1) {
+        return q.pickups.filter(function (p) { return p && p.name; }).map(function (p) { return { name: String(p.name), time: String(p.time || '').slice(0, 5) }; });
+      }
+    } catch (e) {}
+    return npPickTT || NP_PICK_NAMES.map(function (n) { return { name: n, time: '' }; });
+  }
+  function npPickLoad() {
+    if (npPickAsked || typeof shgTimetableGet !== 'function' || typeof isNepalPoint !== 'function') return;
+    npPickAsked = true;
+    shgTimetableGet('').then(function (d) {
+      var data = (d && d.routes) ? d : (d && d.data) || {}, seen = Object.create(null), out = [];
+      (data.routes || []).forEach(function (r) {
+        if (!r || !isNepalPoint(r.from) || isNepalPoint(r.to)) return;
+        (r.boarding || []).forEach(function (b) {
+          var nm = String((b && b.name) || '').trim(), k = nm.toLowerCase();
+          if (nm && !seen[k]) { seen[k] = true; out.push({ name: nm, time: String((b && b.time) || '').slice(0, 5) }); }
+        });
+      });
+      if (out.length > 1) { npPickTT = out; npPickDraw(); }
+    }).catch(function () { /* offline: the two names stay */ });
+  }
+  function npPickDraw() {
+    var j = document.getElementById('waReqJourney'), pt = document.getElementById('waReqPoint');
+    if (!j || !pt) return;
+    var row = document.getElementById('waReqNpPickRow');
+    if (!row) {
+      row = document.createElement('label');
+      row.className = 'wa-req-field'; row.id = 'waReqNpPickRow'; row.htmlFor = 'waReqNpPick';
+      row.innerHTML = '<span></span><select id="waReqNpPick"></select>';
+      var after = pt.closest('label') || pt;
+      after.parentNode.insertBefore(row, after.nextSibling);
+    }
+    var lg = typeof LANG !== 'undefined' ? LANG : 'ne';
+    row.querySelector('span').textContent = lg === 'en' ? 'Pickup in Nepal' : lg === 'hi' ? 'नेपाल में चढ़ने की जगह · Pickup in Nepal' : 'नेपालमा चढ्ने ठाउँ · Pickup in Nepal';
+    var sel = document.getElementById('waReqNpPick'), keep = sel.value;
+    sel.textContent = '';
+    npPickList().forEach(function (p) {
+      var tm = p.time && /^\d{1,2}:\d{2}$/.test(p.time) && typeof fmt12h === 'function' ? fmt12h(p.time) : '';
+      var o = document.createElement('option');
+      o.value = o.textContent = p.name + (tm ? ' (' + tm + ')' : '');
+      sel.appendChild(o);
+    });
+    if (keep && Array.from(sel.options).some(function (o) { return o.value === keep; })) sel.value = keep;
+    row.hidden = val('waReqDirection') !== 'toIndia';
+    if (!row.hidden) npPickLoad();
+  }
+  function npPick() { var r = document.getElementById('waReqNpPickRow'); return r && !r.hidden ? val('waReqNpPick') : ''; }
   function composeBooking() {
     var lines = ['S Hari Global website request', reqType === 'booking' ? 'Book a ticket' : reqType === 'correction' ? 'Correct my ticket' : 'Help request',
       'Name: ' + val('waReqName'), 'Mobile: ' + contactPhone()];
-    if (reqType === 'booking') {
+    if (reqType === 'booking' && !journeyUsed()) {
+      lines.push(val('waReqPax') + ' seats');
+    } else if (reqType === 'booking') {
       var back = val('waReqDirection') === 'toIndia';
       lines.push('Date: ' + val('waReqDate'), 'Direction: ' + val('waReqDirection'),
-        'Boarding: ' + (back ? 'Rupaidiha' : val('waReqPoint')), 'Drop: ' + (back ? val('waReqPoint') : 'Rupaidiha'), val('waReqPax') + ' seats');
+        'Boarding: ' + (back ? (npPick() || 'Rupaidiha') : val('waReqPoint')), 'Drop: ' + (back ? val('waReqPoint') : 'Rupaidiha'), val('waReqPax') + ' seats');
     } else if (reqType === 'correction') lines.push('PNR: ' + val('waReqPnr').toUpperCase());
     if (val('waReqNote')) lines.push((reqType === 'correction' ? 'Requested correction: ' : 'Note: ') + val('waReqNote'));
     return lines.join('\n');
@@ -3605,6 +3686,7 @@ if (store.local && !store.remote) {
       b.classList.toggle('on', active); b.setAttribute('aria-pressed', String(active));
     });
     document.getElementById('waReqJourney').hidden = reqType !== 'booking';
+    if (!shortOn()) document.getElementById('waReqJourney').open = true;
     document.getElementById('waReqPaxRow').hidden = reqType !== 'booking';
     document.getElementById('waReqPnrRow').hidden = reqType !== 'correction';
     var label = document.getElementById('waReqNoteLabel');
@@ -3637,10 +3719,12 @@ if (store.local && !store.remote) {
   function botLine() {
     var back = val('waReqDirection') === 'toIndia';
     var pax = Math.max(1, parseInt(val('waReqPax'), 10) || 1);
+    // wx1-c2: the short booking sends only the count; the bot asks the rest.
+    if (!journeyUsed()) return 'ticket ' + pax + ' seat';
     // The picker shows "Surat — 1:00 PM": the stop is the part before the time.
     var town = val('waReqPoint').split(/\s+[—–-]\s+/)[0].trim();
     // Coming back the bus is boarded at the border; the Gujarat town is the drop.
-    return 'ticket ' + pax + ' seat ' + (back ? 'rupaidiha' : town) + ' ' + val('waReqDate') + ' ' + (back ? 'to india' : 'to nepal');
+    return ('ticket ' + pax + ' seat ' + (back ? 'rupaidiha' : town) + ' ' + val('waReqDate') + ' ' + (back ? 'to india' : 'to nepal')).replace(/\s+/g, ' ');
   }
   var botA = null;
   function botRefresh() {
@@ -3659,8 +3743,13 @@ if (store.local && !store.remote) {
       go.parentNode.insertBefore(botA, go);
       botA.addEventListener('click', function (e) {
         var date = document.getElementById('waReqDate');
-        if (!date.value || !date.checkValidity()) { e.preventDefault(); say(t('waReqDateError'), true); date.focus(); return; }
-        if (!val('waReqPoint')) { e.preventDefault(); say(t('waReqPointError'), true); return; }
+        if (shortOn()) {
+          // wx1-c2: optional - only a typed date that is out of range is refused
+          if (journeyUsed() && date.value && !date.checkValidity()) { e.preventDefault(); say(t('waReqDateError'), true); date.focus(); return; }
+        } else {
+          if (!date.value || !date.checkValidity()) { e.preventDefault(); say(t('waReqDateError'), true); date.focus(); return; }
+          if (!val('waReqPoint')) { e.preventDefault(); say(t('waReqPointError'), true); return; }
+        }
         var n = botNum();
         if (!n) { e.preventDefault(); say(t('waReqUnavailable'), true); return; }
         this.href = waUrl(n, botLine());
@@ -3690,6 +3779,7 @@ if (store.local && !store.remote) {
     var label = document.getElementById('waReqPointLabel');
     var key = val('waReqDirection') === 'toIndia' ? 'sDrop' : 'sBoard';
     label.setAttribute('data-i18n', key); label.textContent = t(key);
+    npPickDraw();
   }
   function fillReq() {
     if (!req) return;
@@ -3732,8 +3822,13 @@ if (store.local && !store.remote) {
     if (!contactPhone()) return fail('waReqPhone', 'waReqPhoneError');
     if (reqType === 'booking') {
       var date = document.getElementById('waReqDate');
-      if (!date.value || !date.checkValidity()) return fail('waReqDate', 'waReqDateError');
-      if (!val('waReqPoint')) return fail('waReqPoint', 'waReqPointError');
+      if (shortOn()) {
+        // wx1-c2: name + phone + passengers are enough; a typed date must still be in range
+        if (journeyUsed() && date.value && !date.checkValidity()) return fail('waReqDate', 'waReqDateError');
+      } else {
+        if (!date.value || !date.checkValidity()) return fail('waReqDate', 'waReqDateError');
+        if (!val('waReqPoint')) return fail('waReqPoint', 'waReqPointError');
+      }
     }
     if (reqType === 'correction' && !/^[A-Z0-9-]{5,40}$/i.test(val('waReqPnr'))) return fail('waReqPnr', 'waReqPnrError');
     if (reqType !== 'booking' && !val('waReqNote')) return fail('waReqNote', reqType === 'correction' ? 'waReqFixNote' : 'waReqNeedNote');
@@ -3742,6 +3837,9 @@ if (store.local && !store.remote) {
   if (req) {
     req.addEventListener('click', function (e) { var b = e.target.closest('[data-wareq]'); if (b) setReqType(b.getAttribute('data-wareq')); });
     document.getElementById('waReqDirection').addEventListener('change', pointLabel);
+    // wx1-c2: a change inside the folded date / pickup marks it as the person's own answer
+    var waJourney = document.getElementById('waReqJourney');
+    if (waJourney) waJourney.addEventListener('change', function () { waJourney.dataset.touched = '1'; });
     /* 5 Oct 2026: the wa.me "Continue in WhatsApp" row is gone (owner: only the
        API button) — kept guarded in case an old cached page still has it. */
     var waBookLink = document.getElementById('waBookLink');
@@ -3756,8 +3854,10 @@ if (store.local && !store.remote) {
       if ((go && go.disabled) || !validateRequest()) return;
       var note = val('waReqNote');
       if (reqType === 'correction') note = 'Correct my ticket. PNR: ' + val('waReqPnr').toUpperCase() + '\n' + note;
+      // wx1: Rupaidiha -> Gujarat - the Nepal pickup the person chose, only when the journey section was used
+      if (reqType === 'booking' && journeyUsed() && val('waReqDirection') === 'toIndia' && npPick()) note = 'Pickup: ' + npPick() + (note ? '\n' + note : '');
       var body = { type: reqType === 'booking' ? 'booking' : 'help', name: val('waReqName'), phone: contactPhone(), note: note.slice(0, 300) };
-      if (reqType === 'booking') { body.direction = val('waReqDirection') === 'toIndia' ? 'back' : 'go'; body.date = val('waReqDate'); body.point = val('waReqPoint'); body.pax = val('waReqPax') || '1'; }
+      if (reqType === 'booking') { body.direction = journeyUsed() ? (val('waReqDirection') === 'toIndia' ? 'back' : 'go') : ''; body.date = journeyUsed() ? val('waReqDate') : ''; body.point = journeyUsed() ? val('waReqPoint') : ''; body.pax = val('waReqPax') || '1'; }
       var label = go ? go.textContent : '';
       if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
       shgApi.post('/wa-request.php', body).then(function (d) {

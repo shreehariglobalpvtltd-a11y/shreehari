@@ -254,6 +254,12 @@ final class SiteFacts
         } catch (Throwable $e) {
             $offices = [];
         }
+        /* 25 Nov 2026 (wx1, owner: "sab ko name euta - S Hari Global Pvt Ltd, Nepal ko matra Shree"):
+           every office card's title is the company; the town / branch goes on the line under it.
+           '' when office_brand_title_on is OFF (the old town titles come back). */
+        foreach ($offices as $i => $o) {
+            $offices[$i]['brand'] = self::officeBrand((string) ($o['country'] ?? 'IN'));
+        }
         $headRow = null;
         foreach ($offices as $o) {
             if ($o['kind'] === 'head') {
@@ -327,6 +333,7 @@ final class SiteFacts
             'ceo'       => $ceo,
             'head'      => $head,
             'offices'   => $offices,
+            'places'    => self::pickupPlaces(),   // 25 Nov 2026 (wx1-c1): home "main pickup points" map links
             'expanding' => true,
             'nepal'     => $nepal,
             'support'   => $support,
@@ -386,6 +393,136 @@ final class SiteFacts
         }, $f['offices']));
         unset($f['nepal']['team']);     // the page already has it as SHG_BOOT.npTeam
         return $f;
+    }
+
+    /**
+     * The company name an office card carries as its title (25 Nov 2026, wx1):
+     * India offices "S Hari Global Pvt Ltd" (office_brand_in, else the
+     * company_name setting), Nepal offices "Shree Hari Global Pvt Ltd"
+     * (office_brand_np; never the "- NPJ Branch" suffix nepal_company has).
+     * '' when office_brand_title_on is OFF = the old town titles.
+     */
+    public static function officeBrand(string $country): string
+    {
+        try {
+            if (!Settings::getBool('office_brand_title_on', true)) {
+                return '';
+            }
+            if (strtoupper(trim($country)) === 'NP') {
+                $v = trim(Settings::getString('office_brand_np', ''));
+                return $v !== '' ? $v : 'Shree Hari Global Pvt Ltd';
+            }
+            $v = trim(Settings::getString('office_brand_in', ''));
+            if ($v === '') {
+                $v = trim(Settings::getString('company_name', ''));
+            }
+            return $v !== '' ? $v : 'S Hari Global Pvt Ltd';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * The main pickup points with a REAL saved map pin (25 Nov 2026, wx1-c1,
+     * owner: "homepage ma main pickup point ko Google Maps link"). First the
+     * company places the office filled and switched on (Admin -> Locations,
+     * only those with a map link), then the active boarding stops of the
+     * runs to Nepal that carry a latitude/longitude (Admin -> Routes). One row
+     * per town; nothing typed here, nothing guessed: a stop with no pin is
+     * simply not listed. Switch home_pickup_maps_on OFF = an empty list.
+     *
+     * @return list<array{name:string,nameNe:string,kind:string,town:string,map:string,phone:string,tel:string,wa:string}>
+     */
+    public static function pickupPlaces(): array
+    {
+        try {
+            if (!Settings::getBool('home_pickup_maps_on', true)) {
+                return [];
+            }
+            $key  = static fn(string $s): string => (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($s));
+            // a town is its first word: "Mehsana Head Office - Silver Complex" and "Mehsana - SHG Head Office" are one place
+            $first = static fn(string $s): string => (string) ((preg_split('/[\s,\x{2014}\x{2013}-]+/u', trim($s)) ?: [''])[0]);
+            $out  = [];
+            $seen = [];
+            $placeWords = [];
+            $dup  = static function (string $label, string $town) use (&$seen, $key): bool {
+                $t = $key($town);
+                $l = $key($label);
+                foreach ($seen as $s) {
+                    if (($t !== '' && $t === $s) || (mb_strlen($s) >= 4 && str_contains($l, $s))) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if (is_file(INCLUDE_PATH . '/companylocations.php')) {
+                require_once INCLUDE_PATH . '/companylocations.php';
+                foreach (CompanyLocations::forPublic() as $p) {
+                    $map = (string) $p['map'];
+                    if ($map === '' || !str_starts_with(strtolower($map), 'https://')) {
+                        continue;
+                    }
+                    $town = trim((string) $p['town']);
+                    if ($dup((string) $p['name'], $town)) {
+                        continue;
+                    }
+                    $country = (bool) preg_match('/nepal|banke|\+977/i', $p['town'] . ' ' . $p['address'] . ' ' . $p['phone']) ? 'NP' : 'IN';
+                    $tel = CounterDesk::firstDial((string) $p['phone'], $country);
+                    $wa  = CounterDesk::firstDial((string) $p['whatsapp'], $country);
+                    $out[] = ['name' => (string) $p['name'], 'nameNe' => (string) $p['nameNe'], 'kind' => (string) $p['kind'],
+                              'town' => $town, 'map' => $map, 'phone' => (string) $p['phone'], 'tel' => $tel, 'wa' => $wa];
+                    $seen[] = $key($first($town !== '' ? $town : (string) $p['name']));
+                    /* only the spot words - after the first dash, before any comma: "Surat — Kamrej Char Rasta"
+                       covers a "Kamrej" stop, but the city of "S Hari Parking — Nana Chiloda, Ahmedabad" (or
+                       its town) never hides a different stop such as "Ahmedabad — Paldi Bus Stand" */
+                    $parts = preg_split('/\s*[\x{2014}\x{2013}]\s*|\s+-\s+/u', (string) $p['name'], 2) ?: [];
+                    $spot  = count($parts) === 2 ? explode(',', $parts[1])[0] : '';
+                    foreach (preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($spot)) ?: [] as $wd) {
+                        if (mb_strlen($wd) >= 4) {
+                            $placeWords[$wd] = true;
+                        }
+                    }
+                }
+            }
+            /* 25 Nov 2026 (wx1): a route stop whose town (or whole name) is a spot word of a
+               company place (the part after its dash) is the same pickup - keep the company place. Switch home_pickup_dedupe_on. */
+            $dedupe = Settings::getBool('home_pickup_dedupe_on', true);
+            require_once INCLUDE_PATH . '/boarding.php';
+            $routes = Database::fetchAll('SELECT id, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, id');
+            foreach ($routes as $r) {
+                if (Boarding::routeDirection($r) !== 'toNepal') {
+                    continue;
+                }
+                $stops = Database::fetchAll(
+                    "SELECT stop_name, latitude, longitude FROM route_stops
+                      WHERE route_id = :r AND stop_type = 'boarding' AND latitude IS NOT NULL AND longitude IS NOT NULL"
+                    . Boarding::activeSql() . ' ORDER BY sort_order, id',
+                    ['r' => (int) $r['id']]
+                );
+                foreach ($stops as $s) {
+                    $lat = (float) $s['latitude'];
+                    $lng = (float) $s['longitude'];
+                    if ($lat === 0.0 || $lng === 0.0 || abs($lat) > 90 || abs($lng) > 180) {
+                        continue;
+                    }
+                    $name = trim((string) $s['stop_name']);
+                    $town = $first(CounterDesk::townOf($name));
+                    if ($name === '' || $dup($name, $town)) {
+                        continue;
+                    }
+                    if ($dedupe && (isset($placeWords[$key($town)]) || isset($placeWords[$key($name)]))) {
+                        continue;
+                    }
+                    $out[] = ['name' => $name, 'nameNe' => '', 'kind' => 'pickup', 'town' => $town,
+                              'map' => 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(sprintf('%.6f,%.6f', $lat, $lng)),
+                              'phone' => '', 'tel' => '', 'wa' => ''];
+                    $seen[] = $key($town);
+                }
+            }
+            return array_slice($out, 0, 16);
+        } catch (Throwable $e) {
+            return [];   // never break the boot on the places
+        }
     }
 
     /** "₹2,200" — money as the site prints it. */

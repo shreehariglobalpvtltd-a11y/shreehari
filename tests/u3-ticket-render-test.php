@@ -76,6 +76,10 @@ $setMem([
     'nepal_office'       => ['Pushpalal Chowk, Nepalgunj', 'string'],
     'nepal_office_ne'    => ['पुष्पलाल चोक, नेपालगञ्ज', 'string'],
     'npr_per_inr'        => ['1.6', 'float'],
+    /* 25 Nov 2026 (mp1 tk): this suite guards the TK-1..TK-6 layout and pay QR rule - the clean
+       layout and the Nepal-QR-by-country rule have their own suite (tests/mp1-ticket-test.php). */
+    'ticket_clean_v2_on'       => ['0', 'bool'],
+    'ticket_pay_qr_by_country' => ['0', 'bool'],
 ]);
 
 $out = (string) (getenv('U3_OUT') ?: '');
@@ -177,7 +181,13 @@ try {
     check('mapLink: short form, 6 decimals max', Ticket::mapLink('23.1710000, 72.6230000') === 'https://maps.google.com/?q=23.171,72.623' && Ticket::mapLink('nonsense') === '' && Ticket::mapLink('0,0') === '');
     $mC = Ticket::mapQrs($bC);
     $kinds = array_column($mC, 'kind');
-    check('C (r7): pickup + Nepal office map', $kinds === ['board', 'nepal'] && $mC[1]['payload'] === Ticket::NEPAL_OFFICE_MAP_DEFAULT, json_encode($kinds));
+    /* 25 Nov 2026 (wx1): C boards at Rupaidiha border parking on a Nepal -> India trip sold on
+       the India side - the QR is the chosen place only (ticket_np_pickup_only, default on). */
+    check('C (r7, Rupaidiha pickup, wx1): the pickup map only, no extra Nepal office row', $kinds === ['board'], json_encode($kinds));
+    $setMem(['ticket_np_pickup_only' => ['0', 'bool']]);
+    $mC0 = Ticket::mapQrs($bC);
+    check('ticket_np_pickup_only off -> C: pickup + Nepal office map (old rule)', array_column($mC0, 'kind') === ['board', 'nepal'] && $mC0[1]['payload'] === Ticket::NEPAL_OFFICE_MAP_DEFAULT, json_encode(array_column($mC0, 'kind')));
+    $setMem(['ticket_np_pickup_only' => ['1', 'bool']]);
     $mD = Ticket::mapQrs($bD);
     check('D (Nepal-issued): Nepal office FIRST', ($mD[0]['kind'] ?? '') === 'nepal', json_encode(array_column($mD, 'kind')));
     $setMem(['nepal_office_map' => ['28.0507, 81.6159', 'string']]);
@@ -207,9 +217,15 @@ try {
     check('ticket_pay_qr_upi off -> the QR is the live link', str_contains(Ticket::paymentQr($bA)['qr'], 'pay.php?pnr='));
     $setMem(['ticket_pay_qr_upi' => ['1', 'bool']]);
     /* review 19 Nov (high): the raw UPI code never replaces the UTR-taking live link */
+    /* 25 Nov 2026 (wx1, owner): a pay-at-boarding (COD) ticket carries NO pay QR at all. */
     $qE = Ticket::paymentQr($load($E));
-    check('E (pay at boarding, COD): printed QR = the live link with the ticket key, never raw UPI',
+    check('E (pay at boarding, COD, wx1): no pay QR, mode cod, label PAY ON BOARDING',
+        $qE['qr'] === '' && $qE['esewaImg'] === '' && $qE['mode'] === 'cod' && str_contains($qE['label'], 'बसमा तिर्ने · PAY ON BOARDING'), $qE['mode'] . ' ' . $qE['qr']);
+    $setMem(['ticket_cod_no_payqr' => ['0', 'bool']]);
+    $qE = Ticket::paymentQr($load($E));
+    check('ticket_cod_no_payqr off -> E: printed QR = the live link with the ticket key, never raw UPI',
         str_contains($qE['qr'], 'pay.php?pnr=') && str_contains($qE['qr'], '&k=') && !str_contains($qE['qr'], 'upi://'), $qE['qr']);
+    $setMem(['ticket_cod_no_payqr' => ['1', 'bool']]);
     $qPend = Ticket::paymentQr(['status' => 'pending'] + $bA);
     check('pending online booking: printed QR = the live link (proof box + expiry hold)', str_contains($qPend['qr'], 'pay.php?pnr=') && !str_contains($qPend['qr'], 'upi://'), $qPend['qr']);
     $qProof = Ticket::paymentQr(['payment' => ['id' => 0, 'status' => 'pending', 'utr_number' => '123456789012', 'amount' => 2200, 'method' => 'upi']] + $bA);
@@ -287,7 +303,13 @@ try {
     $iA = $imgCount($A); $iC = $imgCount($C);
     /* 21 Nov 2026 (nj1): the Nepal office QR is now on EVERY ticket (ticket_nepal_office_all),
        so A carries it too and both have the same number of footer QRs. */
-    check('C PDF keeps the second map QR beside the pay QR (A has the Nepal office QR too since nj1)', $iC >= $iA && $iC > 0, "A=$iA C=$iC");
+    /* 25 Nov 2026 (wx1): C (Rupaidiha pickup, Nepal -> India) prints only its chosen pickup map,
+       so it has one footer QR fewer than A; with ticket_np_pickup_only off it keeps the second map. */
+    check('C PDF: verify + pickup + pay, no Nepal office row (wx1)', $iC > 0 && $iC === $iA - 1, "A=$iA C=$iC");
+    $setMem(['ticket_np_pickup_only' => ['0', 'bool']]);
+    $iC0 = substr_count((string) file_get_contents(Ticket::pdfPath($C, true)), '/Subtype /Image');
+    check('ticket_np_pickup_only off -> C PDF keeps the second map QR beside the pay QR', $iC0 >= $iA, "A=$iA C=$iC0");
+    $setMem(['ticket_np_pickup_only' => ['1', 'bool']]);
     $srcPdf = (string) file_get_contents(INCLUDE_PATH . '/ticket.php');
     check('PDF: four QRs use the compact 66 pt pitch (right edge 544 pt < 555 pt)', str_contains($srcPdf, '$qStep    = $compact ? 66.0 : 88.0'));
     $pdfD = (string) file_get_contents(Ticket::pdfPath($D));
@@ -307,7 +329,7 @@ try {
     $pngStamp = (string) $ref1->getConstant('PNG_LAYOUT_CHANGED');
     $pdfStamp = (string) $ref1->getConstant('PDF_LAYOUT_CHANGED');
     check('PNG layout stamp moved on (19 Nov, 21 Nov nj1) and is in the past', strcmp($pngStamp, '2026-11-19') >= 0 && strtotime($pngStamp) <= time() + 60, $pngStamp);
-    check('PDF layout stamp moved to 19 Nov and is in the past', str_starts_with($pdfStamp, '2026-11-19') && strtotime($pdfStamp) <= time() + 60, $pdfStamp);
+    check('PDF layout stamp moved on (19 Nov, 25 Nov mp1 tk) and is in the past', strcmp($pdfStamp, '2026-11-19') >= 0 && strtotime($pdfStamp) <= time() + 60, $pdfStamp);
     check('barcode kept on the PNG', str_contains($src, 'Barcode::draw($im, $scanCode'));
     check('PDF seat box is bigger', str_contains($src, '$seatBoxW  = 112.0'));
     check('routes stop edit redraws tickets', str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/routes.php'), 'Settings::touchTicketIdentity()'));

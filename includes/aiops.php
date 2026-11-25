@@ -1841,6 +1841,43 @@ final class AiOps
         ];
     }
 
+    /**
+     * 25 Nov 2026 (mp1-lg review): permission switches - a lock placed ON the managers themselves.
+     * A settings manager (settings.manage) must never undo them; only a super-admin may change
+     * them, from every door: admin/settings.php (the generic Save), admin/easy-settings.php
+     * (nset + the S Hari AI cmd / yes path) and the AI 'setting' op here (settingEditable,
+     * allowed). The ONE list - those pages read it from here.
+     * + role_permissions_override (the role matrix) and admin_2fa_ids (who has 2FA): who may do
+     *   what / sign-in protection - written by admin/permissions.php and staff.php, never by a
+     *   manager's settings Save (admin/settings.php also refuses the whole 'security' sgroup).
+     */
+    public const SUPER_ONLY_SETTINGS = ['staff_credentials_lock_on', 'chalani_export_perm_on', 'role_permissions_override', 'admin_2fa_ids'];
+
+    /**
+     * 25 Nov 2026 (mp1, owner plan 8 "Payment Management = Admin only"): every payment
+     * credential / QR id is a super-admin's too. A settings manager who could set the bank
+     * webhook secret, switch the bank API to live or turn Gmail auto-PAID on could confirm
+     * tickets nobody paid for; one who could change the UPI / eSewa id could send customers'
+     * money elsewhere. Prefixes, so a new bankapi_* / bankmail_* key is covered by default.
+     */
+    public const SUPER_ONLY_SETTING_PREFIXES = ['bankapi_', 'bankmail_', 'pay_bankmail_', 'india_upi_', 'nepal_esewa_', 'icici_', 'upi_', 'esewa_'];
+
+    /** Is $key one of SUPER_ONLY_SETTINGS (or under a SUPER_ONLY_SETTING_PREFIXES prefix)? */
+    public static function superOnlySetting(string $key): bool
+    {
+        if (in_array($key, self::SUPER_ONLY_SETTINGS, true)) {
+            return true;
+        }
+        $k = strtolower(trim($key));
+        foreach (self::SUPER_ONLY_SETTING_PREFIXES as $pre) {
+            if (str_starts_with($k, $pre)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** May the signed-in admin (the Auth session - the same actor allowed() checks) change $key at all? */
     public static function settingEditable(string $key): bool
     {
         if ($key === '' || preg_match('/^[a-z0-9_]{2,80}$/', $key) !== 1) {
@@ -1848,6 +1885,9 @@ final class AiOps
         }
         if (Settings::isSecretKey($key) || preg_match('/(key|secret|token|pass|pin_|otp|webhook|app_id|phone_id|account|salt|hash|cookie|session|smtp|api)/', $key) === 1) {
             return false;
+        }
+        if (self::superOnlySetting($key) && !(class_exists('Auth') && Auth::isSuperadmin())) {
+            return false;   // a super-admin only (no session = nobody)
         }
         return !in_array($key, ['maintenance_mode', 'login_one_door_on', 'company_cin', 'company_legal'], true);
     }
@@ -2171,6 +2211,8 @@ final class AiOps
             'bus_number', 'bus_name'          => Auth::can('routes.edit') || Auth::can('schedules.manage'),
             'commission'                      => Auth::can('staff.manage') && Auth::canManageSettings(),
             'coupon', 'coupon_off'            => Auth::can('coupons.edit'),   // Y2: the Offers page's own gate (super-admin passed above)
+            // 25 Nov 2026 (mp1-lg review): a lock switch is the super-admin's (passed above), even for a registered key
+            'setting'                         => Auth::canManageSettings() && !self::superOnlySetting((string) ($a['key'] ?? '')),
             default                           => Auth::canManageSettings(),
         };
     }
@@ -3141,7 +3183,8 @@ final class AiOps
         $done = [];
         if ($canEdit) {
             foreach ((array) ($prop['switches'] ?? []) as $k => $v) {
-                if (isset(self::EASY_KEYS[$k])) {
+                // 25 Nov 2026 (mp1-lg review): a lock switch is the super-admin's, should one ever become a one-tap switch
+                if (isset(self::EASY_KEYS[$k]) && (!self::superOnlySetting((string) $k) || Auth::isSuperadmin())) {
                     self::saveSwitch((string) $k, (string) $v, (int) ($admin['id'] ?? 0));
                     $done[] = self::EASY_KEYS[$k][0] . ' → ' . self::easyShow((string) $k, (string) $v);
                 }

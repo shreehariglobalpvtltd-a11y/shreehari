@@ -68,7 +68,10 @@ try {
                 'lat'       => $in['lat'] ?? null,
                 'lng'       => $in['lng'] ?? null,
                 'direction' => Security::clean((string) ($in['direction'] ?? ''), 10),
+                'tz'        => Security::clean((string) ($in['tz'] ?? ''), 40),   // 25 Nov 2026 (wx1): browser timezone -> Nepal opens Nepal -> India
             ], $mode),
+            // 25 Nov 2026 (wx1): the customer's ₹ INR | रू NPR chips (customer_currency_choice_on)
+            'curChoice'  => $mode === 'customer' && Settings::getBool('customer_currency_choice_on', true),
             'allowCod'   => Settings::getBool('allow_cod', true),
             'maxPax'     => BookingService::maxSeatsFor($mode !== 'customer'),
             'npr'        => (float) $facts['npr'],

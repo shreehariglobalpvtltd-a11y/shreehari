@@ -146,6 +146,35 @@ $boot['settings']['offline_callback_on'] = Settings::getBool('offline_callback_o
 /* 19 Nov 2026 (TK-1 parity): the app ticket's pay QR follows Ticket::rawUpiQrOk() - a raw
    UPI code with the amount only while this is on (default on, like the server ticket). */
 $boot['settings']['ticket_pay_qr_upi'] = Settings::getBool('ticket_pay_qr_upi', true);
+/* 25 Nov 2026 (mp1 tk): the app ticket follows the clean-ticket switches - no pay QR on a paid
+   ticket (ticket_cash_no_payqr), the Nepal QR by country while money is due
+   (ticket_pay_qr_by_country, with the office's uploaded Nepal QR image), and the clean head
+   (ticket_clean_v2_on). All default on, read here so the settings boot list is untouched. */
+$boot['settings']['ticket_cash_no_payqr']     = Settings::getBool('ticket_cash_no_payqr', true);
+$boot['settings']['ticket_pay_qr_by_country'] = Settings::getBool('ticket_pay_qr_by_country', true);
+$boot['settings']['ticket_clean_v2_on']       = Settings::getBool('ticket_clean_v2_on', true);
+$boot['settings']['nepal_esewa_id']           = trim(Settings::getString('nepal_esewa_id', ''));
+$boot['settings']['nepal_esewa_qr_url']       = (static function (): string {
+    $up = ltrim(str_replace('\\', '/', Settings::getString('nepal_esewa_qr', '')), '/');
+    $c  = ['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'];
+    if ($up !== '' && preg_match('#^uploads/payqr/[a-z0-9-]+\.png$#', $up) === 1) {
+        array_unshift($c, $up);
+    }
+    foreach ($c as $f) {
+        if (is_file(__DIR__ . '/' . $f) && filesize(__DIR__ . '/' . $f) > 0) {
+            return '/' . $f;   // the same file Ticket::esewaQrFile() prints
+        }
+    }
+    return '';
+})();
+/* 25 Nov 2026 (wx1): no pay QR on a pay-at-boarding ticket (Ticket::paymentQr 'cod'), the
+   pickup map QR on the app's fallback PDF (ticket_maps_qr, like the server ticket), a Nepal
+   -> India customer picks only the route's own pickups, the big family-share button. */
+$boot['settings']['ticket_cod_no_payqr']   = Settings::getBool('ticket_cod_no_payqr', true);
+$boot['settings']['customer_currency_choice_on'] = Settings::getBool('customer_currency_choice_on', true);   // wx4: the classic checkout's INR | NPR chips follow the switch
+$boot['settings']['ticket_maps_qr']        = Settings::getBool('ticket_maps_qr', true);
+$boot['settings']['nepal_pickup_two_only'] = Settings::getBool('nepal_pickup_two_only', true);
+$boot['settings']['family_share_btn_on']   = Settings::getBool('family_share_btn_on', true);
 
 /* Counter mode (3 Sep 2026): when a staff member who may sell is signed in,
    tell the app so it runs the SAME search -> seats -> checkout as a counter

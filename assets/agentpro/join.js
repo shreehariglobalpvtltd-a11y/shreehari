@@ -1405,6 +1405,25 @@
     Object.keys(S.touched).concat(Object.keys(S.keep), Object.keys(S.src)).forEach(function (k) { if (S.d[k] != null) o[k] = S.d[k]; });
     return o;
   }
+  /**
+   * 25 Nov 2026 (mp1-lg review): the draft a successful save sent back, with what was typed this session put
+   * back over it (pickTyped) - unless the server said why it kept something (r.message: a live member's login
+   * email is a super-admin's). Then the message is shown and the email is the server's: the typed one was
+   * refused, so it is not put back, its box shows the kept email and a later save does not send it again.
+   */
+  function savedDraft(r, extra) {
+    var keep = pickTyped(), draft = (r && r.data && r.data.draft) || S.d;
+    if (r && r.message) {
+      S.saveMsg = String(r.message);
+      toast(S.saveMsg, true);
+      if (/email|इमेल/i.test(S.saveMsg) && Object.prototype.hasOwnProperty.call(draft, 'email')) {
+        delete keep.email; delete S.touched.email; delete S.keep.email; delete S.src.email;
+        if (extra) delete extra.email;
+        var eb = boxOf('email'); if (eb) eb.value = draft.email == null ? '' : String(draft.email);
+      }
+    }
+    return Object.assign(draft, keep, extra || {});
+  }
   var RANK = { qr: 4, mrz: 3, ai: 2, paper: 2, ocr: 1 };
   /** Put a reader's values in the draft (ranking: QR > passport code > AI = paper > OCR). @return the keys it filled */
   function applyRead(read, fromAi, conf) {
@@ -1438,7 +1457,7 @@
     if (S.d.id_type) o.id_type = S.d.id_type;
     if (o.id_number && /^X{4}/.test(o.id_number)) delete o.id_number;
     o.lenient = '1';   // a doubtful read must not block the good ones
-    S.saveP = api('save', o).then(function (r) { if (r.ok) { var keep = pickTyped(); S.d = Object.assign(r.data.draft, keep, { id_number: S.d.id_number }); } return r; });
+    S.saveP = api('save', o).then(function (r) { if (r.ok) { S.d = savedDraft(r, { id_number: S.d.id_number }); } return r; });
     return S.saveP;
   }
   /**
@@ -1630,7 +1649,7 @@
       if (!s.ok) return;
       var bad = Object.keys(s.data.skipped || {});
       bad.forEach(function (k) { S.bad[k] = s.data.skipped[k]; S.conf[k] = 'low'; });
-      S.d = Object.assign(s.data.draft, pickTyped());
+      S.d = savedDraft(s);
       bad.forEach(function (k) { if (boxOf(k)) paintField(k); });   // red: the server could not take it as read
     });
   }
@@ -1789,14 +1808,16 @@
     }
     busy(btn, true);
     var fields = stepFields();
+    S.saveMsg = '';
     var p = Object.keys(fields).length ? api('save', fields) : Promise.resolve({ ok: true, data: { draft: S.d } });
     p.then(function (r) {
       if (!r.ok) { busy(btn, false); toast(r.error, true); return; }
-      S.d = Object.assign(r.data.draft, pickTyped());
+      S.d = savedDraft(r);
       if (STEPS[S.step] === 'finish' && S.edit) {
         // an approved member: every save went to the account already — no submit; wait for the last saves, back to the member
         return Promise.all([S.saveP, sigSave()]).then(function () {
           var u = memberBack();
+          if (S.saveMsg) { window.alert(S.saveMsg); S.saveMsg = ''; }   // 25 Nov 2026 (mp1-lg review): read before the page goes back
           location.href = u + (u.indexOf('?') >= 0 ? '&' : '?') + 'saved=1';
         });
       }

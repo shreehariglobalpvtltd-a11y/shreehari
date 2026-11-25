@@ -15,6 +15,7 @@ declare(strict_types=1);
 if (!defined('SHG_APP')) { define('SHG_APP', true); }
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/brand.php';   // emblem + icons + flags (9 Oct 2026)
+require_once INCLUDE_PATH . '/travelguide.php';   // onward buses + luggage rule (25 Nov 2026, wx1-c2)
 
 $baseUrl = rtrim(APP_URL, '/');
 $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
@@ -30,14 +31,66 @@ $waShow = strlen($waDig) === 12 && str_starts_with($waDig, '91')
     : '+' . $waDig;
 $peg    = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
 
-/* company_counters ("Town +91 NNNNN NNNNN · Town …") -> tap-to-call links. */
+/* 25 Nov 2026 (wx1-c2 review): the Counters list = the offices the website lists
+   (CounterDesk::publicOffices(), the /offices cards - Nepalgunj, Emli Bhupal …);
+   an office with no number yet shows its name only, never a made-up one. */
 $counters = '';
-foreach (preg_split('/\s*·\s*/u', (string) $co['counters']) ?: [] as $part) {
-    $part = trim($part);
-    if (preg_match('/^(.*?)\s*(\+?\d[\d\s-]{7,})$/u', $part, $m)) {
-        $counters .= '<li>' . $e($m[1]) . ' <a href="tel:' . $e(preg_replace('/[^0-9+]/', '', $m[2])) . '">' . $e(trim($m[2])) . '</a></li>';
-    } elseif ($part !== '') {
-        $counters .= '<li>' . $e($part) . '</li>';
+$npOfficePhone = '';   // the listed Nepalgunj office's number, for the onward line's fallback
+$npjOfficePhone = '';  // the NPJ row's own number
+$npOtherPhone   = '';  // first other listed Nepal office (only if NPJ has none)
+/* 25 Nov 2026 (owner: every counter is ONE company - "S Hari Global Pvt Ltd", in Nepal
+   "Shree Hari Global Pvt Ltd"): each office titled "<company> · <town>". Same keys as
+   the home office cards: office_brand_in / office_brand_np, switch office_brand_title_on. */
+$brandOn = Settings::getBool('office_brand_title_on', true);
+$brandIn = trim(Settings::getString('office_brand_in', ''));
+if ($brandIn === '') {
+    $brandIn = trim(Settings::getString('company_name', ''));
+}
+if ($brandIn === '') {
+    $brandIn = 'S Hari Global Pvt Ltd';
+}
+$brandNp = trim(Settings::getString('office_brand_np', ''));
+if ($brandNp === '') {
+    $brandNp = 'Shree Hari Global Pvt Ltd';
+}
+try {
+    foreach (CounterDesk::publicOffices() as $o) {
+        if (($o['status'] ?? 'open') !== 'open') {
+            continue;
+        }
+        $nm  = (string) $o['name'];
+        $nNe = trim((string) ($o['nameNe'] ?? ''));
+        $dig = preg_replace('/\D/', '', (string) ($o['tel'] ?? '')) ?? '';
+        $isNp = (string) ($o['country'] ?? 'IN') === 'NP';
+        /* the onward line names the Nepalgunj office: its own row (code NPJ / town Nepalgunj)
+           wins; any other listed Nepal office (e.g. a later Surkhet counter) is the last resort. */
+        if ($isNp && (string) $o['phone'] !== '') {
+            $isNpj = strtoupper((string) ($o['code'] ?? '')) === 'NPJ'
+                || preg_match('/nepal\s*g[au]nj/i', $nm) === 1;
+            if ($isNpj && $npjOfficePhone === '') {
+                $npjOfficePhone = (string) $o['phone'];
+            } elseif (!$isNpj && $npOtherPhone === '') {
+                $npOtherPhone = (string) $o['phone'];
+            }
+        }
+        $town = $nNe !== '' && $nNe !== $nm ? $nNe . ' · ' . $nm : $nm;
+        $counters .= '<li>' . ($brandOn ? '<b>' . $e($isNp ? $brandNp : $brandIn) . '</b> · ' : '') . $e($town)
+            . ((string) $o['phone'] !== '' ? ' ' . ($dig !== '' ? '<a href="tel:+' . $e($dig) . '">' . $e($o['phone']) . '</a>' : $e($o['phone'])) : '')
+            . '</li>';
+    }
+} catch (Throwable) {
+    $counters = '';
+}
+$npOfficePhone = $npjOfficePhone !== '' ? $npjOfficePhone : $npOtherPhone;
+/* Fallback only: company_counters ("Town +91 NNNNN NNNNN · Town …") -> tap-to-call links. */
+if ($counters === '') {
+    foreach (preg_split('/\s*·\s*/u', (string) $co['counters']) ?: [] as $part) {
+        $part = trim($part);
+        if (preg_match('/^(.*?)\s*(\+?\d[\d\s-]{7,})$/u', $part, $m)) {
+            $counters .= '<li>' . $e($m[1]) . ' <a href="tel:' . $e(preg_replace('/[^0-9+]/', '', $m[2])) . '">' . $e(trim($m[2])) . '</a></li>';
+        } elseif ($part !== '') {
+            $counters .= '<li>' . $e($part) . '</li>';
+        }
     }
 }
 
@@ -68,7 +121,9 @@ $C = [
         'Nepalgunj town is a short ride beyond the border — agree the fare before you get in.',
         'Nepal time is 15 minutes ahead of Indian time.',
         'Going to Gujarat? The coach leaves from Rupaidiha: cross early — queues can be long — and reach the pickup by the reporting time on your ticket.',
+        '{NPJBOARD}',
     ],
+    'npjB' => ['Coming from Nepalgunj? Board at our Nepalgunj office at the time on your ticket, else at the Rupaidiha border parking.', 'Coming from Nepalgunj? Board at {A} at the time on your ticket.', 'Coming from Nepalgunj? Board at {A}, else at {B} — at the time on your ticket.'],
     'moneyH' => 'Money &amp; currency',
     'money' => [
         'Fares are in Indian rupees (₹). INR is widely accepted near the border.',
@@ -88,7 +143,7 @@ $C = [
         'Phone charged; a power bank helps',
         'At the pickup by the reporting time on your ticket — at least 30 min early',
         'Small INR notes, water and your medicines',
-        'Luggage: 1 bag up to 20 kg + 1 cabin bag up to 7 kg free (<a href="/#/terms">Terms</a>). Keep valuables and documents with you.',
+        'Luggage: 1 bag up to {LUGFREE} kg + 1 cabin bag up to {LUGCABIN} kg free (<a href="/#/terms">Terms</a>). Keep valuables and documents with you.',
         'Women travelling alone: berths reserved for women are marked on the seat map — ask the office for help.',
     ],
     'faqH' => 'Frequently asked questions',
@@ -102,6 +157,9 @@ $C = [
     ],
     'contactH' => 'Contact us', 'contactLead' => 'Not sure about a document or rule? Ask us before you travel.',
     'counters' => 'Counters', 'reviewed' => 'Last reviewed: 2 October 2026',
+    'onwH' => 'Onward travel from Nepalgunj', 'onwLead' => 'Buses from Nepalgunj to other towns of Nepal, as our office knows them. Times change — confirm at the bus park.',
+    'onwTimes' => 'Times', 'onwOp' => 'Bus / operator', 'onwPhone' => 'Phone', 'onwAsk' => 'For buses beyond Nepalgunj, ask our Nepalgunj office:',
+    'onwNpj' => 'Our bus goes only as far as Nepalgunj (Pushpalal Chowk). We have no bus beyond Nepalgunj — if a Nepalgunj–Surkhet service starts, it will be announced right here. For your onward journey, ask our Nepalgunj office:',
 ],
 'hi' => [
     'title' => 'यात्रा जानकारी — भारत ⇄ नेपाल बॉर्डर (रूपईडीहा / नेपालगंज) | ' . $co['name'],
@@ -126,7 +184,9 @@ $C = [
         'नेपालगंज शहर बॉर्डर से थोड़ी दूरी पर है — बैठने से पहले किराया तय करें।',
         'नेपाल का समय भारत से 15 मिनट आगे है।',
         'गुजरात जाना है? बस रूपईडीहा से चलती है: जल्दी पार करें — कतार लंबी हो सकती है — और टिकट पर लिखे रिपोर्टिंग समय तक पिकअप पर पहुँचें।',
+        '{NPJBOARD}',
     ],
+    'npjB' => ['नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर हमारे नेपालगंज ऑफ़िस से चढ़ें, नहीं तो रूपईडीहा बॉर्डर पार्किंग से।', 'नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर {A} से चढ़ें।', 'नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर {A} से चढ़ें, नहीं तो {B} से।'],
     'moneyH' => 'पैसा और मुद्रा',
     'money' => [
         'किराया भारतीय रुपये (₹) में है। बॉर्डर के पास भारतीय रुपया ख़ूब चलता है।',
@@ -146,7 +206,7 @@ $C = [
         'फ़ोन चार्ज; पावर बैंक काम आएगा',
         'टिकट पर लिखे रिपोर्टिंग समय तक पिकअप पर — कम से कम 30 मिनट पहले',
         'छोटे भारतीय नोट, पानी और अपनी दवाइयाँ',
-        'सामान: 1 बैग 20 किलो तक + 1 केबिन बैग 7 किलो तक मुफ़्त (<a href="/#/terms">नियम व शर्तें</a>)। कीमती सामान और दस्तावेज़ अपने पास रखें।',
+        'सामान: 1 बैग {LUGFREE} किलो तक + 1 केबिन बैग {LUGCABIN} किलो तक मुफ़्त (<a href="/#/terms">नियम व शर्तें</a>)। कीमती सामान और दस्तावेज़ अपने पास रखें।',
         'अकेली महिला यात्री: महिलाओं के लिए आरक्षित बर्थ सीट मैप पर दिखती हैं — मदद के लिए ऑफ़िस से पूछें।',
     ],
     'faqH' => 'अक्सर पूछे जाने वाले सवाल',
@@ -160,6 +220,9 @@ $C = [
     ],
     'contactH' => 'संपर्क करें', 'contactLead' => 'किसी दस्तावेज़ या नियम पर शक है? यात्रा से पहले हमसे पूछें।',
     'counters' => 'काउंटर', 'reviewed' => 'आख़िरी समीक्षा: 2 अक्टूबर 2026',
+    'onwH' => 'नेपालगंज से आगे की यात्रा', 'onwLead' => 'नेपालगंज से नेपाल के दूसरे शहरों की बसें, जैसा हमारा ऑफ़िस जानता है। समय बदल सकता है — बस पार्क में पक्का करें।',
+    'onwTimes' => 'समय', 'onwOp' => 'बस / कंपनी', 'onwPhone' => 'फ़ोन', 'onwAsk' => 'नेपालगंज से आगे की बस के लिए हमारे नेपालगंज ऑफ़िस से पूछें:',
+    'onwNpj' => 'हमारी बस सिर्फ़ नेपालगंज (पुष्पलाल चोक) तक जाती है। नेपालगंज से आगे हमारी बस नहीं है — नेपालगंज–सुर्खेत सेवा शुरू होने पर यहीं जानकारी दी जाएगी। आगे की यात्रा के लिए हमारे नेपालगंज ऑफ़िस से पूछें:',
 ],
 'ne' => [
     'title' => 'यात्रा जानकारी — भारत ⇄ नेपाल बोर्डर (रुपैडिहा / नेपालगञ्ज) | ' . $co['name'],
@@ -184,7 +247,9 @@ $C = [
         'नेपालगञ्ज बजार बोर्डरबाट नजिकै छ — चढ्नुअघि भाडा तय गर्नुहोस्।',
         'नेपालको समय भारतभन्दा १५ मिनेट अगाडि छ।',
         'गुजरात जाँदै हुनुहुन्छ? बस रुपैडिहाबाट छुट्छ: चाँडै पार गर्नुहोस् — लाइन लामो हुन सक्छ — र टिकटमा लेखिएको रिपोर्टिङ समयसम्म चढ्ने ठाउँमा पुग्नुहोस्।',
+        '{NPJBOARD}',
     ],
+    'npjB' => ['नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा हाम्रो नेपालगञ्ज कार्यालयबाट चढ्नुहोस्, नभए रुपैडिहा बोर्डर पार्किङबाट।', 'नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा {A} बाट चढ्नुहोस्।', 'नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा {A} बाट चढ्नुहोस्, नभए {B} बाट।'],
     'moneyH' => 'पैसा र मुद्रा',
     'money' => [
         'भाडा भारतीय रुपैयाँ (₹) मा हुन्छ। बोर्डर नजिक भारतीय रुपैयाँ धेरै चल्छ।',
@@ -204,7 +269,7 @@ $C = [
         'फोन चार्ज; पावर बैंक भए राम्रो',
         'टिकटमा लेखिएको रिपोर्टिङ समयसम्म चढ्ने ठाउँमा — कम्तीमा ३० मिनेट अगाडि',
         'साना भारतीय नोट, पानी र आफ्नो औषधि',
-        'सामान: १ झोला २० किलोसम्म + १ क्याबिन झोला ७ किलोसम्म निःशुल्क (<a href="/#/terms">नियम तथा सर्त</a>)। बहुमूल्य सामान र कागजात आफूसँगै राख्नुहोस्।',
+        'सामान: १ झोला {LUGFREE} किलोसम्म + १ क्याबिन झोला {LUGCABIN} किलोसम्म निःशुल्क (<a href="/#/terms">नियम तथा सर्त</a>)। बहुमूल्य सामान र कागजात आफूसँगै राख्नुहोस्।',
         'एक्लै यात्रा गर्ने महिला: महिलाका लागि छुट्याइएका बर्थ सिट म्यापमा देखिन्छन् — सहयोगका लागि कार्यालयलाई सोध्नुहोस्।',
     ],
     'faqH' => 'धेरै सोधिने प्रश्न',
@@ -218,15 +283,28 @@ $C = [
     ],
     'contactH' => 'सम्पर्क गर्नुहोस्', 'contactLead' => 'कुनै कागजात वा नियमबारे शंका छ? यात्राअघि हामीलाई सोध्नुहोस्।',
     'counters' => 'काउन्टर', 'reviewed' => 'अन्तिम समीक्षा: २ अक्टोबर २०२६',
+    'onwH' => 'नेपालगञ्जपछि आगेको यात्रा', 'onwLead' => 'नेपालगञ्जबाट नेपालका अरू सहरसम्मका बस, हाम्रो कार्यालयलाई थाहा भएअनुसार। समय फेरिन सक्छ — बसपार्कमा पक्का गर्नुहोस्।',
+    'onwTimes' => 'समय', 'onwOp' => 'बस / कम्पनी', 'onwPhone' => 'फोन', 'onwAsk' => 'नेपालगञ्जभन्दा आगेको बसका लागि हाम्रो नेपालगञ्ज कार्यालयलाई सोध्नुहोस्:',
+    'onwNpj' => 'हाम्रो बस नेपालगञ्ज (पुष्पलाल चोक) सम्म मात्र जान्छ। नेपालगञ्जबाट अगाडि हाम्रो बस छैन — नेपालगञ्ज–सुर्खेत सेवा सुरु भए यहीँ जानकारी दिइनेछ। अगाडिको यात्राका लागि नेपालगञ्ज कार्यालयलाई सोध्नुहोस्:',
+    'dev' => true,
 ],
 ];
 
 /* ---------------------------------------------------------------------
  *  One block per language, same structure for all three.
  * ------------------------------------------------------------------- */
-$fill = static function (string $s, array $c) use ($peg): string {
+$lug = TravelGuide::luggage();   // 25 Nov 2026 (wx1-c2): luggage_free_kg / cabin_bag_kg, 20 + 7 by default
+/* 25 Nov 2026 (wx1-c2 review): "coming from Nepalgunj?" - the boarding stops + times
+   of the active Nepal -> India routes (Admin -> Routes), never a time typed here;
+   no stop saved -> the general sentence. */
+$npjStops = TravelGuide::nepalBoarding();
+foreach ($C as $l => $c) {
+    $C[$l]['npjLine'] = TravelGuide::boardingLine($npjStops, $c['npjB'], !empty($c['dev']));
+}
+$fill = static function (string $s, array $c) use ($peg, $lug): string {
     $pegTxt = $peg > 0 ? str_replace('{PEG}', number_format($peg, 2), $c['pegTxt']) : '';
-    return trim(str_replace('{PEGTXT}', $pegTxt, $s));
+    $kg = static fn(int $n): string => !empty($c['dev']) ? strtr((string) $n, ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९']) : (string) $n;
+    return trim(str_replace(['{PEGTXT}', '{LUGFREE}', '{LUGCABIN}', '{NPJBOARD}'], [$pegTxt, $kg($lug['free']), $kg($lug['cabin']), (string) ($c['npjLine'] ?? '')], $s));
 };
 $li = static fn(array $items, array $c): string => implode('', array_map(static fn(string $s): string => '<li>' . $fill($s, $c) . '</li>', $items));
 $wa = static fn(string $text): string => 'https://wa.me/' . $e($waDig) . '?text=' . rawurlencode($text);
@@ -257,6 +335,42 @@ $block = static function (string $l, array $c) use ($e, $fill, $li, $wa, $tel): 
 };
 /* A short label in all three languages, for the shared contact card. */
 $tri = static fn(string $k): string => '<span class="l" lang="en">' . $C['en'][$k] . '</span><span class="l" lang="hi">' . $C['hi'][$k] . '</span><span class="l" lang="ne">' . $C['ne'][$k] . '</span>';
+
+/* 25 Nov 2026 (wx1-c2): onward buses from Nepalgunj, only what the office typed on
+   admin/owner-setup.php#onward (onward_buses_json, empty by default - never a made-up
+   time). Empty -> one line: ask the Nepalgunj office, with its saved number. Switch:
+   travel_onward_on. */
+$onward = '';
+if (TravelGuide::onwardOn()) {
+    $rowsHtml = '';
+    foreach (TravelGuide::onward() as $r) {
+        $town = $r['to_ne'] !== '' && $r['to_ne'] !== $r['to'] ? $r['to_ne'] . ' · ' . $r['to'] : $r['to'];
+        $dial = TravelGuide::dial($r['phone']);
+        $rowsHtml .= '<li><b>' . $e($town) . '</b>'
+            . ($r['times'] !== '' ? '<br>🕒 ' . $tri('onwTimes') . ': ' . $e($r['times']) : '')
+            . ($r['operator'] !== '' ? '<br>🚌 ' . $tri('onwOp') . ': ' . $e($r['operator']) : '')
+            . ($r['phone'] !== '' ? '<br>📞 ' . ($dial !== '' ? '<a href="tel:' . $e($dial) . '">' . $e($r['phone']) . '</a>' : $e($r['phone'])) : '')
+            . ($r['note'] !== '' ? '<br><small>' . $e($r['note']) . '</small>' : '')
+            . '</li>';
+    }
+    if ($rowsHtml !== '') {
+        $onward = '<p>' . $tri('onwLead') . '</p><ul class="onw">' . $rowsHtml . '</ul>';
+    } else {
+        /* 25 Nov 2026 (owner: "our bus is NPJ only"): no row filled -> say plainly the bus
+           ends at Nepalgunj, no town beyond is served; NPJ-Surkhet only "if it starts".
+           Switch travel_npj_only_on OFF = the short "ask the office" line. The number is the
+           saved Nepal office line, else the listed Nepalgunj office's (publicOffices). */
+        $npPhone = TravelGuide::nepalOfficePhone();
+        if ($npPhone === '') {
+            $npPhone = $npOfficePhone;
+        }
+        $npDial  = TravelGuide::dial($npPhone);
+        $onward  = '<p>' . $tri(TravelGuide::npjOnlyOn() ? 'onwNpj' : 'onwAsk') . ($npPhone !== ''
+            ? ' 📞 ' . ($npDial !== '' ? '<a href="tel:' . $e($npDial) . '">' . $e($npPhone) . '</a>' : $e($npPhone))
+            : ' 📞 <a href="tel:' . $e($tel) . '">' . $e($phone) . '</a>') . '</p>';
+    }
+    $onward = '<div class="card" id="onward"><h3>🧭 ' . $tri('onwH') . '</h3>' . $onward . '</div>';
+}
 
 /* FAQPage JSON-LD from the English Q&As (plain text). */
 $plain = static fn(string $s): string => html_entity_decode(strip_tags($s), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -339,6 +453,7 @@ html[data-lang="en"] .l[lang="en"],html[data-lang="hi"] .l[lang="hi"],html[data-
 .card li{margin-bottom:8px}
 .card ul.plain{list-style:none;padding-left:0}
 .plain li{margin:0}.plain a{display:inline-block;padding:8px 0}
+.card ul.onw{list-style:none;padding-left:0}.onw li{padding:8px 0;margin:0;border-top:1px solid var(--border)}.onw li:first-child{border-top:0}.onw small{color:var(--muted)}#onward{scroll-margin-top:72px}
 .alert{background:var(--tint);border-color:var(--mid);border-left-width:4px}
 ul.check{list-style:none;padding-left:0}
 .check li{position:relative;padding-left:30px}
@@ -374,6 +489,7 @@ details p{padding-bottom:12px}
 </nav>
 <main class="container">
 <?php foreach (['en', 'hi', 'ne'] as $l) { echo $block($l, $C[$l]), "\n"; } ?>
+<?= $onward ?>
 <div class="card" id="contact"><h3><?= $tri('contactH') ?></h3><p><?= $tri('contactLead') ?></p><ul class="plain">
 <li>📞 <a href="tel:<?= $e($tel) ?>"><?= $e($phone) ?></a></li>
 <li>💬 WhatsApp <a href="<?= $wa('Hello / नमस्ते — Travel Info') ?>" target="_blank" rel="noopener"><?= $e($waShow) ?></a></li>

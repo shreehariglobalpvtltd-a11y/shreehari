@@ -1,0 +1,394 @@
+<?php
+/* wx1-a (25 Nov 2026): SmartBook - direction by the browser's timezone + ⇄ swap,
+   ₹ INR | रू NPR choice (customer NPR frozen on the sale), BS + AD date chips.
+   php -c .claude/php-dev.ini tests/wx1-a-test.php */
+define('SHG_APP', true);
+require __DIR__ . '/../includes/bootstrap.php';
+require_once INCLUDE_PATH . '/smartbook.php';
+require_once INCLUDE_PATH . '/booking.php';
+require_once INCLUDE_PATH . '/ticket.php';
+$ok = 0; $bad = 0;
+$chk = function ($name, $cond) use (&$ok, &$bad) { if ($cond) { $ok++; echo "  PASS  $name\n"; } else { $bad++; echo "  FAIL  $name\n"; } };
+$root = dirname(__DIR__);
+$src = static fn(string $f): string => (string) file_get_contents($root . '/' . $f);
+
+/* keep the two switches (and the office default rules) as they were: the whole row is put
+   back (value, type, group, label, public), because the test deletes the rows while it runs */
+$keys = ['geo_direction_on', 'customer_currency_choice_on', 'default_rules'];
+$saved = [];
+foreach ($keys as $k) { $saved[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]); }
+$restore = function () use ($keys, $saved) {
+    foreach ($keys as $k) {
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($saved[$k] !== null) { Database::insert('settings', $saved[$k]); }
+    }
+    Settings::flush();
+};
+foreach ($keys as $k) { Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]); }
+Settings::flush();
+
+try {
+    /* 1. timezone -> direction */
+    $chk('nepalTz Kathmandu', SmartBook::nepalTz('Asia/Kathmandu'));
+    $chk('nepalTz old spelling', SmartBook::nepalTz('Asia/Katmandu'));
+    $chk('nepalTz India = no', !SmartBook::nepalTz('Asia/Kolkata') && !SmartBook::nepalTz(''));
+    $hasBack = in_array('toIndia', array_column(SmartBook::directions(), 'direction'), true);
+    $np = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
+    if ($hasBack) {
+        $chk('Nepal timezone opens Nepal -> India', $np['direction'] === 'toIndia');
+        $chk('why = opened from Nepal', strpos((string) ($np['why']['direction']['ne'] ?? ''), 'नेपालबाट खोलिएको') === 0);
+    } else {
+        $chk('no return route: falls back', in_array($np['direction'], ['toNepal', 'toIndia'], true) && !isset($np['why']['direction']));
+    }
+    $ex = SmartBook::defaults(['tz' => 'Asia/Kathmandu', 'direction' => 'toNepal'], 'customer');
+    $chk('explicit / saved direction wins over timezone', $ex['direction'] === 'toNepal');
+    $in = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'customer');
+    $plain = SmartBook::defaults([], 'customer');
+    $chk('no timezone = unchanged (most used)', !isset($plain['why']['direction']));
+    $chk('India timezone opens India -> Nepal', $in['direction'] === 'toNepal'
+        && strpos((string) ($in['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') === 0);
+    $ab = SmartBook::defaults(['tz' => 'Europe/London'], 'customer');
+    $chk('abroad timezone opens India -> Nepal too', $ab['direction'] === 'toNepal'
+        && strpos((string) ($ab['why']['direction']['en'] ?? ''), 'Opened from India') !== false);
+    $exI = SmartBook::defaults(['tz' => 'Asia/Kolkata', 'direction' => 'toIndia'], 'customer');
+    $chk('explicit / saved direction wins over an India timezone', $exI['direction'] === 'toIndia'
+        && strpos((string) ($exI['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') !== 0);
+    $stI = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'admin');
+    $chk('staff desk ignores an India timezone', strpos((string) ($stI['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') !== 0);
+    $st = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'admin');
+    $chk('staff desk ignores the timezone', ($st['why']['direction']['ne'] ?? '') === '' || strpos((string) $st['why']['direction']['ne'], 'नेपालबाट खोलिएको') !== 0);
+    Settings::set('geo_direction_on', '0', 'bool', 'booking', true); Settings::flush();
+    $off = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
+    $chk('geo_direction_on = 0: timezone ignored', $off['direction'] === $plain['direction'] && !isset($off['why']['direction']));
+    $offI = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'customer');
+    $chk('geo_direction_on = 0: India timezone ignored', $offI['direction'] === $plain['direction'] && !isset($offI['why']['direction']));
+    Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'geo_direction_on']); Settings::flush();
+    /* an office "fixed" direction (Admin -> Default Rules) beats the timezone */
+    Settings::set('default_rules', ['fixed' => ['direction' => 'toNepal']], 'json', 'booking', false); Settings::flush();
+    $fx1 = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
+    $chk('office fixed direction wins over the timezone', $fx1['direction'] === 'toNepal'
+        && strpos((string) ($fx1['why']['direction']['ne'] ?? ''), 'नेपालबाट खोलिएको') !== 0);
+    Settings::set('default_rules', ['fixed' => ['direction' => 'toIndia']], 'json', 'booking', false); Settings::flush();
+    $fx2 = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'customer');
+    $chk('office fixed direction wins over an India timezone', (!$hasBack || $fx2['direction'] === 'toIndia')
+        && strpos((string) ($fx2['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') !== 0);
+    Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'default_rules']); Settings::flush();
+
+    /* 2. NPR | INR */
+    $chk('customer NPR', SmartBook::payCurrency(['cur' => 'NPR'], 'customer', null) === 'NPR');
+    $chk('lower case npr', SmartBook::payCurrency(['cur' => 'npr'], 'customer', null) === 'NPR');
+    $chk('INR / nothing = empty', SmartBook::payCurrency(['cur' => 'INR'], 'customer', null) === '' && SmartBook::payCurrency([], 'customer', null) === '');
+    $chk('a desk never sends it', SmartBook::payCurrency(['cur' => 'NPR'], 'agent', null) === '' && SmartBook::payCurrency(['cur' => 'NPR'], 'customer', ['adminId' => 1]) === '');
+    $m = new ReflectionMethod('BookingService', 'customerFxStamp');
+    $m->setAccessible(true);
+    $rate = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+    $rate = $rate > 0 ? round($rate, 4) : 1.6;
+    if (CounterDesk::frozenColumns()['bookings']) {
+        $fx = $m->invoke(null, ['payCurrency' => 'NPR'], null, 2200.0);
+        $chk('NPR frozen: currency', ($fx['fx_currency'] ?? '') === 'NPR');
+        $chk('NPR frozen: rate = npr_per_inr', abs((float) ($fx['fx_rate'] ?? 0) - $rate) < 0.00001);
+        $chk('NPR frozen: total rounded', (float) ($fx['fx_total'] ?? 0) === (float) round(2200 * $rate));
+        $b = ['total_amount' => 2200] + $fx;
+        $p = Ticket::moneyParts($b, 2200.0);
+        $chk('ticket prints NPR big (ticket_npr_primary)', !Settings::getBool('ticket_npr_primary', true) || ($p['isNpr'] && strpos($p['main'], 'NPR ') === 0 && strpos($p['sub'], 'INR') !== false));
+    } else {
+        $chk('no fx columns: nothing frozen', $m->invoke(null, ['payCurrency' => 'NPR'], null, 2200.0) === []);
+    }
+    $chk('INR sale: nothing frozen', $m->invoke(null, ['payCurrency' => ''], null, 2200.0) === []);
+    $chk('seller sale: customer branch stays out', $m->invoke(null, ['payCurrency' => 'NPR'], ['adminId' => 1], 2200.0) === []);
+    Settings::set('customer_currency_choice_on', '0', 'bool', 'booking', true); Settings::flush();
+    $chk('customer_currency_choice_on = 0: no NPR', SmartBook::payCurrency(['cur' => 'NPR'], 'customer', null) === ''
+        && $m->invoke(null, ['payCurrency' => 'NPR'], null, 2200.0) === []);
+    Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'customer_currency_choice_on']); Settings::flush();
+
+    /* 2b. end to end: a guest SmartBook Online sale with cur=NPR freezes NPR; without it, nothing */
+    if (CounterDesk::frozenColumns()['bookings']) {
+        $date = addDaysISO(todayISO(), 44);
+        $schedBefore = array_map('intval', array_column(Database::fetchAll('SELECT id FROM schedules WHERE travel_date = :d', ['d' => $date]), 'id'));
+        $PIN = ['whatsapp_notify_customer', 'whatsapp_notify_admin', 'whatsapp_driver', 'aisensy_mode', 'sms_enabled', 'daily_service_on'];
+        $prior = [];
+        foreach ($PIN as $k) { $prior[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]); }
+        Settings::set('whatsapp_notify_customer', false, 'bool', 'notify', false);
+        Settings::set('whatsapp_notify_admin', false, 'bool', 'notify', false);
+        Settings::set('whatsapp_driver', 'click_to_chat', 'string', 'notify', false);
+        Settings::set('aisensy_mode', 'off', 'string', 'whatsapp', false);
+        Settings::set('sms_enabled', false, 'bool', 'notify', false);
+        Settings::set('daily_service_on', true, 'bool', 'booking', true);
+        Settings::flush();
+        $clean = static function () use ($date, $schedBefore): void {
+            foreach (Database::fetchAll("SELECT id, pnr FROM bookings WHERE contact_phone LIKE '98771%'") as $r) {
+                $bid = (int) $r['id'];
+                foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications', 'coupon_redemptions'] as $t) {
+                    try { Database::delete($t, 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
+                }
+                try { Database::delete('schedule_unit_locks', 'locked_by_booking = :b', ['b' => $bid]); } catch (Throwable $e) {}
+                Database::delete('bookings', 'id = :i', ['i' => $bid]);
+                @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.png');
+                @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.pdf');
+            }
+            try { Database::run("DELETE FROM smartbook_requests WHERE idem_key LIKE 'wx1atest%'"); } catch (Throwable $e) {}
+            foreach (Database::fetchAll('SELECT id FROM schedules WHERE travel_date = :d', ['d' => $date]) as $s) {
+                $sid = (int) $s['id'];
+                if (in_array($sid, $schedBefore, true)) { continue; }
+                foreach (['seat_locks', 'schedule_unit_locks', 'booking_seats', 'booking_legs'] as $t) {
+                    try { Database::delete($t, 'schedule_id = :s', ['s' => $sid]); } catch (Throwable $e) {}
+                }
+                try { Database::delete('schedules', 'id = :s', ['s' => $sid]); } catch (Throwable $e) {}
+            }
+            foreach (['wa_outbox', 'message_logs'] as $t) {
+                try { Database::run("DELETE FROM {$t} WHERE to_number LIKE '%98771%'"); } catch (Throwable $e) {}
+            }
+            try { Database::run("DELETE FROM user_profiles WHERE phone LIKE '98771%' AND user_id IS NULL"); } catch (Throwable $e) {}
+        };
+        $clean();
+        try {
+            unset($_SESSION[ADMIN_SESSION_KEY]);
+            $mode = SmartBook::sessionMode();
+            $sell = static function (string $tail, string $cur) use ($date, $mode): array {
+                $in = ['direction' => 'toIndia', 'date' => $date, 'name' => 'Wx Test ' . $tail, 'phone' => '98771' . $tail, 'country' => 'NP',
+                    'pax' => [['gender' => 'Male', 'band' => 'adult']], 'type' => 'sharing'];
+                if ($cur !== '') { $in['cur'] = $cur; }
+                return SmartBook::book($in, 'online', $mode, null, 'wx1atest' . $tail . bin2hex(random_bytes(6)));
+            };
+            $fxOf = static fn(string $pnr): array => Database::fetch('SELECT total_amount, fx_currency, fx_rate, fx_total FROM bookings WHERE pnr = :p', ['p' => $pnr]) ?? [];
+            $a = $sell('00001', 'NPR');
+            $fa = $fxOf((string) ($a['pnr'] ?? ''));
+            $chk('guest sale + NPR: fx_currency NPR', ($fa['fx_currency'] ?? '') === 'NPR');
+            $chk('guest sale + NPR: fx_total = total x rate', (float) ($fa['fx_total'] ?? 0) === (float) round((float) ($fa['total_amount'] ?? 0) * $rate) && (float) ($fa['fx_total'] ?? 0) > 0);
+            $b2 = $sell('00002', '');
+            $fb = $fxOf((string) ($b2['pnr'] ?? ''));
+            $chk('guest sale, no choice: nothing frozen (INR as before)', ($fb['fx_currency'] ?? null) === null && ($fb['fx_total'] ?? null) === null && $fb !== []);
+        } catch (Throwable $e) {
+            $chk('end to end ran (' . $e->getMessage() . ')', false);
+        } finally {
+            $clean();
+            foreach ($PIN as $k) {
+                $row = $prior[$k];
+                if ($row === null) { try { Database::delete('settings', 'skey = :k', ['k' => $k]); } catch (Throwable $e) {} }
+                else { try { Database::update('settings', ['svalue' => (string) $row['svalue'], 'stype' => (string) $row['stype'], 'sgroup' => (string) $row['sgroup'], 'is_public' => (int) $row['is_public']], 'skey = :k', ['k' => $k]); } catch (Throwable $e) {} }
+            }
+            Settings::flush();
+        }
+        $chk('cleanup: no wx1 rows left', (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '98771%'", [], 0) === 0);
+    }
+
+    /* 3. the page: wiring that a browser test would otherwise need */
+    $js = $src('assets/js/27-smartbook.js');
+    $chk('boot sends the timezone', strpos($js, "direction: saved.dir || '', tz: TZ }") !== false);
+    $chk('swap reuses the direction tap', strpos($js, "root.querySelector('.sb-dir-b:not(.on)')") !== false);
+    $chk('book sends cur', strpos($js, "if (inNpr()) body.cur = 'NPR';") !== false);
+    $chk('NPR opens eSewa first', strpos($js, "if (inNpr() && r.pay && r.pay.esewa) PAY.tab = 'esewa';") !== false);
+    $chk('chips: BS वि.सं. + AD ई.सं.', strpos($js, "' वि.सं.</span>'") !== false && strpos($js, "' ई.सं.</span></button>'") !== false);
+    $chk('quick line: full BS + AD', strpos($js, "bsQ + ' वि.सं. · ' : '') + q.dateLabel + ' ई.सं.'") !== false);
+    /* review fixes: NPR on the Cash confirm sheet + the normal fare, desk card unchanged */
+    $chk('confirm sheet total in the chosen money', strpos($js, "esc(q.price ? curAmt(Number(q.price.total) + dxS.amt, q) : '—')") !== false
+        && strpos($js, "esc(altAmt(Number(q.price.total) + dxS.amt, q))") !== false);
+    $chk('Confirm button / pay-at-boarding line use the chosen money', strpos($js, "var tot = q.price ? curAmt(Number(q.price.total) + deskExtras('cash').amt, q) : '';") !== false
+        && strpos($js, "var tot = q.price ? curAmt(q.price.total, q) : '';") !== false);
+    $chk('normal fare struck through in the chosen money', strpos($js, 'nfHtml(q.price.normal, function (n) { return curAmt(n, q); })') !== false
+        && strpos($js, "curAmt(q.price.normal.normal, q)") !== false);
+    $chk('desk keeps the old date chip + no Quick-line swap', strpos($js, "if (STAFF) {   // the staff desk keeps its compact one-line chip") !== false
+        && strpos($js, "var swapQ = STAFF ? '' :") !== false);
+    $adm = $src('admin/smartbook.php');
+    $chk('desk card drops the swap and is marked data-staff', strpos($adm, 'class="sb-dir-swap"[^>]*>') !== false && strpos($adm, "'\$0 data-staff=\"1\"'") !== false);
+    $tplCard = preg_match('~<section class="sb" id="smartBook"[^>]*>.*?</section>~s', $src('app.template.html'), $mm) === 1 ? $mm[0] : '';
+    $deskCard = (string) preg_replace('~<button type="button" class="sb-dir-swap"[^>]*>.*?</button>\s*~s', '', $tplCard, 1);
+    $deskCard = (string) preg_replace('~<section class="sb" id="smartBook"~', '$0 data-staff="1"', $deskCard, 1);
+    $chk('desk card: no swap, both directions kept, data-staff set', $tplCard !== '' && strpos($deskCard, 'sb-dir-swap') === false
+        && substr_count($deskCard, 'class="sb-dir-b') === 2 && strpos($deskCard, '<section class="sb" id="smartBook" data-staff="1"') === 0);
+    $chk('3-column direction grid only on the customer card', strpos($src('assets/css/smartbook.css'), '#smartBook:not([data-staff]) .sb-dir{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}') !== false);
+    $html = $src('app.template.html');
+    $chk('swap button in the card', strpos($html, 'id="sbSwap" data-sbswap="1" aria-label="रुट साट्नुहोस् · Swap route"') !== false);
+    $chk('currency chips in the card', strpos($html, 'id="sbCur"') !== false && strpos($html, 'data-cur="NPR"') !== false && strpos($html, 'data-cur="INR"') !== false);
+    $chk('template keeps its BOM', substr($html, 0, 3) === "\xEF\xBB\xBF");
+    $css = $src('assets/css/smartbook.css');
+    $chk('swap is a 44px target', strpos($css, '.sb-dir-swap{width:44px;min-width:44px;min-height:44px') !== false);
+    $chk('date chips may wrap (beats premium3d nowrap)', strpos($css, '#smartBook #sbDates .sb-chip-2d .sb-d-bs') !== false && strpos($css, 'white-space:normal') !== false);
+    $chk('currency chips 44px', strpos($css, '#smartBook .sb-cur button{min-height:44px') !== false);
+    $r = $src('assets/js/05-router.js');
+    $chk('classic form: Nepal time -> back, behind the switch', strpos($r, "if (!applyCampaignLink() && !applyLastSearch()) {") !== false && strpos($r, 'st.geo_direction_on') !== false);
+    $api = $src('api/smartbook.php');
+    $chk('api passes tz + curChoice', strpos($api, "'tz'        => Security::clean") !== false && strpos($api, "'curChoice'") !== false);
+    $sql = $src('database/upgrade-2026-11-25-wx1-a.sql');
+    $chk('migration rows', strpos($sql, 'INSERT IGNORE INTO settings') !== false && strpos($sql, "'geo_direction_on'") !== false && strpos($sql, "'customer_currency_choice_on'") !== false);
+} finally {
+    $restore();
+}
+/* frozen NPR follows a new INR total (a seat cancelled / a fare corrected) at the same rate */
+$chk('fxFollow: NPR 3,200 @1.6 -> INR 1,000 = NPR 1,600', BookingService::fxFollow(['fx_currency' => 'NPR', 'fx_rate' => '1.6000', 'fx_total' => '3200'], 1000.0) === ['fx_total' => 1600.0]);
+$chk('fxFollow: nothing frozen = no change', BookingService::fxFollow(['fx_currency' => null, 'fx_rate' => null, 'fx_total' => null], 1000.0) === []);
+$chk('fxFollow: INR row = no change', BookingService::fxFollow(['fx_currency' => 'INR', 'fx_rate' => '1', 'fx_total' => '2000'], 1000.0) === []);
+$chk('fxFollow wired into cancelSeat + fare correction', str_contains($src('includes/booking.php'), 'self::fxFollow($locked, (float) $newTotal)')
+    && str_contains($src('includes/ticketedit.php'), 'BookingService::fxFollow($b, (float) $total)'));
+/* wx1 follow-ups on the customer home (cp1 script) + the WhatsApp sheet */
+$tpl = $src('app.template.html');
+$chk('office with no number gets the head office Call + WhatsApp', str_contains($tpl, "var viaHq = !tel && !wa && o !== hqRow, hqTag = viaHq ? ' · ' + t('head') : '';")
+    && str_contains($tpl, "String(o.code || '').toUpperCase() === 'MSA'") && str_contains($tpl, "esc(t('call') + hqTag)") && str_contains($tpl, "esc(t('wa') + hqTag)"));
+$chk('agents: verified first, KYC-pending tag', str_contains($tpl, "var dv = (b.verified ? 1 : 0) - (a.verified ? 1 : 0); if (dv) return dv;")
+    && str_contains($tpl, "ne: 'कार्यालयमा दर्ता · KYC बाँकी'") && str_contains($tpl, 'agents.slice(0, 8)'));
+$chk('travel guide links follow the page language (#onward kept)', str_contains($tpl, "'/travel-info?lang=' + lang() + (hs ? '#' + hs : '')"));
+$rt = $src('assets/js/05-router.js');
+$chk('WA sheet: Nepal pickups from page data, names only as fallback', str_contains($rt, "var NP_PICK_NAMES = ['Nepalgunj Office · Puspalal Chowk', 'Rupaidiha border parking'];")
+    && str_contains($rt, 'window.SmartBook.quote()') && !preg_match('~NP_PICK_NAMES = \[[^\]]*\d:\d\d~', $rt));
+$chk('WA sheet: pickup sent only behind journeyUsed()', str_contains($rt, "'Boarding: ' + (back ? (npPick() || 'Rupaidiha') : val('waReqPoint'))")
+    && str_contains($rt, "if (reqType === 'booking' && journeyUsed() && val('waReqDirection') === 'toIndia' && npPick()) note = 'Pickup: '"));
+
+/* wx1-a classic checkout (07-checkout.js, shown when SmartBook does not boot): the same
+   ₹ INR | रू NPR choice, posted as cur:'NPR' -> api/book.php payCurrency -> customerFxStamp */
+$bookPhp = $src('api/book.php');
+$chk('book.php passes payCurrency (customer only, behind the switch)', str_contains($bookPhp, "\$request['payCurrency'] = \$seller === null")
+    && str_contains($bookPhp, "=== 'NPR'\r\n        && Settings::getBool('customer_currency_choice_on', true) ? 'NPR' : '';")
+    && strpos($bookPhp, "\$request['payCurrency']") < strpos($bookPhp, 'BookingService::create($request, $seller)')
+    && strpos($bookPhp, "\$request['payCurrency']") > strpos($bookPhp, '$seller = [')
+);
+$co = $src('assets/js/07-checkout.js');
+$chk('07-checkout: ₹ INR | रू NPR chips built next to the pay methods', str_contains($co, "[['INR', '₹ INR'], ['NPR', 'रू NPR']]")
+    && str_contains($co, "box.id = 'coCur'") && str_contains($co, 'tabs.parentNode.insertBefore(box, tabs);'));
+$chk('07-checkout: chips behind customer_currency_choice_on, never on a desk sale', str_contains($co, 'const v = s.customer_currency_choice_on;')
+    && str_contains($co, 'if (isCounterSale()) return false;') && str_contains($co, "if (!coCurOn()) { if (box) box.hidden = true; return; }"));
+$chk('07-checkout: NPR default from Nepal (back / Nepal town / Nepal clock)', str_contains($co, "if (/^Asia\\/Katha?mandu$/.test(tz)) return 'NPR';")
+    && str_contains($co, "searchDir === 'back') return 'NPR';") && str_contains($co, 'CONFIG.mainPoints.nepal'));
+$chk('07-checkout: NPR -> eSewa, INR -> UPI', substr_count($co, "=== 'NPR' ? 'esewa' : 'upi'") === 2);
+$chk('07-checkout: chosen money big, the other small', str_contains($co, "(coNp ? coNpr : inr), \$('#bpAmt'));")
+    && str_contains($co, "(coNp ? '≈ ' + inr(x.total) : nprEst(x.total))"));
+$chk('07-checkout: book.php gets cur', str_contains($co, 'cur: coCur(),') && str_contains($co, 'coCurChips(rOut, updatePayment);'));
+$chk('app.template.html untouched by the classic chips (no #coCur in the template)', !str_contains($src('app.template.html'), 'id="coCur"'));
+
+/* end to end over HTTP: a GUEST classic booking with cur NPR freezes NPR (local server) */
+$base = rtrim((string) (getenv('SHG_TEST_BASE') ?: 'http://localhost:8961'), '/');
+$jar = sys_get_temp_dir() . '/shg_wx1a_' . getmypid() . '.cookies';
+@unlink($jar);
+$http = static function (string $method, string $url, ?array $json = null, array $hdr = []) use ($base, $jar): array {
+    $ch = curl_init($base . $url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_COOKIEJAR => $jar,
+        CURLOPT_COOKIEFILE => $jar, CURLOPT_TIMEOUT => 40]);
+    if ($json !== null) { curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($json)); $hdr[] = 'Content-Type: application/json'; }
+    if ($hdr) { curl_setopt($ch, CURLOPT_HTTPHEADER, $hdr); }
+    $body = (string) curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    return ['code' => $code, 'body' => $body, 'json' => json_decode($body, true)];
+};
+$home = $http('GET', '/');
+if ($home['code'] !== 200 || !CounterDesk::frozenColumns()['bookings']) {
+    echo "  SKIP  classic NPR end to end (server at $base HTTP {$home['code']} or no fx columns)\n";
+} else {
+    $date = addDaysISO(todayISO(), 6);
+    $schedBefore = array_map('intval', array_column(Database::fetchAll('SELECT id FROM schedules WHERE travel_date = :d', ['d' => $date]), 'id'));
+    $PIN = ['whatsapp_notify_customer', 'whatsapp_notify_admin', 'whatsapp_driver', 'aisensy_mode', 'sms_enabled'];
+    $prior = [];
+    foreach ($PIN as $k) { $prior[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]); }
+    Settings::set('whatsapp_notify_customer', false, 'bool', 'notify', false);
+    Settings::set('whatsapp_notify_admin', false, 'bool', 'notify', false);
+    Settings::set('whatsapp_driver', 'click_to_chat', 'string', 'notify', false);
+    Settings::set('aisensy_mode', 'off', 'string', 'whatsapp', false);
+    Settings::set('sms_enabled', false, 'bool', 'notify', false);
+    Settings::flush();
+    $cleanCo = static function () use ($date, $schedBefore): void {
+        foreach (Database::fetchAll("SELECT id, pnr FROM bookings WHERE contact_phone LIKE '98773%'") as $r) {
+            $bid = (int) $r['id'];
+            foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications', 'coupon_redemptions'] as $t) {
+                try { Database::delete($t, 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
+            }
+            try { Database::delete('schedule_unit_locks', 'locked_by_booking = :b', ['b' => $bid]); } catch (Throwable $e) {}
+            Database::delete('bookings', 'id = :i', ['i' => $bid]);
+            @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.png');
+            @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.pdf');
+        }
+        foreach (Database::fetchAll('SELECT id FROM schedules WHERE travel_date = :d', ['d' => $date]) as $s) {
+            $sid = (int) $s['id'];
+            if (in_array($sid, $schedBefore, true)) { continue; }
+            foreach (['seat_locks', 'schedule_unit_locks', 'booking_seats', 'booking_legs'] as $t) {
+                try { Database::delete($t, 'schedule_id = :s', ['s' => $sid]); } catch (Throwable $e) {}
+            }
+            try { Database::delete('schedules', 'id = :s', ['s' => $sid]); } catch (Throwable $e) {}
+        }
+        foreach (['wa_outbox', 'message_logs'] as $t) {
+            try { Database::run("DELETE FROM {$t} WHERE to_number LIKE '%98773%'"); } catch (Throwable $e) {}
+        }
+        try { Database::run("DELETE FROM user_profiles WHERE phone LIKE '98773%' AND user_id IS NULL"); } catch (Throwable $e) {}
+    };
+    $cleanCo();
+    try {
+        try { Database::run("DELETE FROM rate_limits WHERE bucket LIKE 'book_create%'"); } catch (Throwable $e) {}
+        $boot = preg_match('/window\.SHG_BOOT = (\{.*?\});/s', $home['body'], $bm) === 1 ? json_decode($bm[1], true) : null;
+        $csrf = (string) ($boot['csrf'] ?? '');
+        $rt = Database::fetch('SELECT from_city, to_city, coach_type FROM routes WHERE is_active = 1 ORDER BY id LIMIT 1');
+        $sr = $http('POST', '/api/search.php', ['from' => $rt['from_city'] ?? '', 'to' => $rt['to_city'] ?? '', 'date' => $date]);
+        $route = $sr['json']['data']['results'][0] ?? null;
+        $seat = null; $board = ''; $drop = '';
+        if (is_array($route)) {
+            $av = $http('POST', '/api/seats.php', ['routeId' => $route['routeId'], 'date' => $date]);
+            $fem = (array) ($av['json']['data']['female'] ?? []);
+            foreach ((array) ($av['json']['data']['available'] ?? []) as $c) { if (!in_array($c, $fem, true)) { $seat = $c; break; } }
+            $first = static function ($st, string $fb): string {
+                if (!is_array($st) || $st === []) { return $fb; }
+                return is_string($st[0]) ? $st[0] : (string) ($st[0]['stop_name'] ?? $fb);
+            };
+            $board = $first($route['boarding'] ?? [], (string) ($rt['from_city'] ?? ''));
+            $drop  = $first($route['drop'] ?? [], (string) ($rt['to_city'] ?? ''));
+        }
+        if ($csrf === '' || $route === null || $seat === null) {
+            echo "  SKIP  classic NPR end to end (csrf=" . ($csrf !== '' ? 'yes' : 'no') . ', route=' . ($route ? 'yes' : 'no') . ', seat=' . ($seat ?? 'none') . ")\n";
+        } else {
+            $bk = $http('POST', '/api/book.php', [
+                'routeId' => $route['routeId'], 'travelDate' => $date, 'seats' => [$seat],
+                'passengers' => [['seat' => $seat, 'name' => 'Wx Classic Test', 'age' => 30, 'gender' => 'Male']],
+                'contact' => ['phone' => '9877300001', 'email' => '', 'idType' => 'Voter ID', 'idNum' => 'WX1ATEST1'],
+                'bookingMode' => ($route['coachType'] ?? '') === 'sleeper' ? 'sharing' : null, 'boarding' => $board, 'drop' => $drop,
+                'paymentMethod' => 'esewa', 'isCod' => false, 'cur' => 'NPR',
+            ], ['X-CSRF-Token: ' . $csrf]);
+            $pnr = (string) ($bk['json']['data']['pnr'] ?? '');
+            $chk('classic guest booking accepted', ($bk['json']['ok'] ?? false) === true && $pnr !== '');
+            if ($pnr === '') { echo '        ' . substr($bk['body'], 0, 300) . "\n"; }
+            $row = Database::fetch('SELECT total_amount, fx_currency, fx_rate, fx_total FROM bookings WHERE pnr = :p', ['p' => $pnr]) ?? [];
+            $rateNow = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+            $rateNow = $rateNow > 0 ? round($rateNow, 4) : 1.6;
+            if (Settings::getBool('customer_currency_choice_on', true)) {
+                $chk('classic guest + cur NPR: fx_currency NPR frozen', ($row['fx_currency'] ?? '') === 'NPR');
+                $chk('classic guest + cur NPR: fx_total = total x npr_per_inr', (float) ($row['fx_total'] ?? 0) > 0
+                    && (float) ($row['fx_total'] ?? 0) === (float) round((float) ($row['total_amount'] ?? 0) * $rateNow));
+                $chk('book.php answers fxCurrency NPR (the app ticket prints NPR)', ($bk['json']['data']['fxCurrency'] ?? '') === 'NPR'
+                    && (float) ($bk['json']['data']['fxTotal'] ?? 0) === (float) ($row['fx_total'] ?? -1));
+            } else {
+                $chk('switch off on this DB: classic cur NPR freezes nothing', ($row['fx_currency'] ?? null) === null);
+            }
+        }
+    } catch (Throwable $e) {
+        $chk('classic end to end ran (' . $e->getMessage() . ')', false);
+    } finally {
+        $cleanCo();
+        foreach ($PIN as $k) {
+            try { Database::delete('settings', 'skey = :k', ['k' => $k]); } catch (Throwable $e) {}
+            if ($prior[$k] !== null) { try { Database::insert('settings', $prior[$k]); } catch (Throwable $e) {} }
+        }
+        Settings::flush();
+        @unlink($jar);
+    }
+    $chk('cleanup: no classic wx1-a rows left', (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '98773%'", [], 0) === 0);
+}
+
+/* review fix: coCurOn() fails CLOSED - a boot without customer_currency_choice_on hides the
+   classic chips (book.php would drop NPR anyway), only true / 1 / '1' shows them */
+if (preg_match('/function coCurOn\(\) \{.*?\n\}/s', $co, $m)) {
+    $node = trim((string) @shell_exec(PHP_OS_FAMILY === 'Windows' ? 'where node 2>NUL' : 'command -v node 2>/dev/null'));
+    $node = $node !== '' ? strtok($node, "\r\n") : '';
+    if ($node === '') {
+        $chk('coCurOn fail-closed (node not found - source check only)', !str_contains($co, 's.customer_currency_choice_on !== false'));
+    } else {
+        $js = "let SALE=false;const isCounterSale=()=>SALE;var window=globalThis;\n" . $m[0] . "\nconst r=[];"
+            . "window.SHG_BOOT={settings:{}};r.push(coCurOn());"
+            . "window.SHG_BOOT=undefined;r.push(coCurOn());"
+            . "[false,0,'0',null,'',true,1,'1'].forEach(v=>{window.SHG_BOOT={settings:{customer_currency_choice_on:v}};r.push(coCurOn());});"
+            . "SALE=true;r.push(coCurOn());console.log(JSON.stringify(r));";
+        $jsFile = tempnam(sys_get_temp_dir(), 'cocur') . '.js';
+        file_put_contents($jsFile, $js);
+        $out = trim((string) shell_exec('"' . $node . '" ' . escapeshellarg($jsFile) . ' 2>&1'));
+        @unlink($jsFile);
+        $chk('coCurOn: missing key / no boot = off; false|0|\'0\'|null|\'\' = off; true|1|\'1\' = on; desk sale = off (' . $out . ')',
+            $out === '[false,false,false,false,false,false,false,true,true,true,false]');
+    }
+} else {
+    $chk('coCurOn() found in 07-checkout.js', false);
+}
+
+echo "\n  wx1-a-test: $ok passed, $bad failed\n";
+exit($bad ? 1 : 0);

@@ -19,9 +19,12 @@ if (!defined('SHG_APP')) {
 
 require_once __DIR__ . '/normalfare.php';   // 20 Nov 2026 (nf1): the route's real normal fare
 require_once __DIR__ . '/docart.php';   // emblem, flags, heritage band (9 Oct 2026)
+require_once __DIR__ . '/ticketclean.php';   // 25 Nov 2026 (mp1 tk): the clean ticket layout + cash / country pay QR rule
 
 final class Ticket
 {
+    use TicketClean;   // mp1 tk (25 Nov 2026): renderTicketPngV2(), paidStamp(), payCountry() ...
+
     /* PDF palette — the GOLD template (9 Oct 2026): the DocArt brand values
        (navy #0A2A8F, maroon #C2540A as the accent, light gold foil on navy,
        gold hairlines). Shared by the ticket and the invoice PDF. */
@@ -361,6 +364,19 @@ final class Ticket
             $np = self::mapLink(Settings::getString('nepal_office_map', ''));
             if ($np === '') {
                 $np = self::NEPAL_OFFICE_MAP_DEFAULT;
+            }
+            /* 25 Nov 2026 (wx1, owner: the QR = the place the passenger chose): on a
+               Nepal -> India trip sold on the India side, a passenger who boards at the
+               Nepalgunj office (or whose pickup pin IS the office) or at Rupaidiha border
+               parking gets only that pickup QR - no extra Nepal office row. Without a pin
+               on that pickup (no pickup QR) the office row stays, never an empty list.
+               Switch ticket_np_pickup_only (default on). */
+            if ($toIndia && !$npIssued && Settings::getBool('ticket_np_pickup_only', true)) {
+                $tk = Boarding::townKey(self::stopForPrint($label));   // "Rupaidiha Border Parking" -> rupaidihaborderparking
+                if ($board !== '' && (str_starts_with($tk, 'rupaidiha')
+                    || $board === $np || preg_match('/^nepalg[au]nj/', $tk) === 1)) {
+                    return $out;
+                }
             }
             $npPhone = trim((string) (preg_split('#\s*/\s*#', Settings::getString('nepal_phone', ''))[0] ?? ''));
             $npReg   = trim(Settings::getString('nepal_reg', ''));
@@ -1163,7 +1179,8 @@ final class Ticket
            so a release that changes the renderer redraws every ticket ONCE, on its next
            open, whether or not someone remembered to move the stamps. */
         return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0), (int) @filemtime(__DIR__ . '/barcode.php'),
-            (int) @filemtime(__DIR__ . '/seats.php'), (int) @filemtime(__FILE__));
+            (int) @filemtime(__DIR__ . '/seats.php'), (int) @filemtime(__FILE__),
+            (int) @filemtime(__DIR__ . '/ticketclean.php'));   // 25 Nov 2026 (mp1 tk): the clean layout's own renderer
     }
 
     /**
@@ -2397,6 +2414,11 @@ final class Ticket
            ticket names all seven with their berths instead of shrugging
            "+6 more". Everything below the list is shifted by $grow. */
         if (!class_exists('QrCode')) { require_once __DIR__ . '/qr.php'; }
+        /* 25 Nov 2026 (mp1 tk): the clean layout (ticket_clean_v2_on, default on); off = everything below, unchanged. */
+        if (self::cleanV2On()) {
+            self::renderTicketPngV2($booking, $ticket, $path, $mark);
+            return;
+        }
         $seats = self::seatNumbers((int) $booking['id']);
         $paxes = array_values($booking['passengers'] ?? []);
         $paxN  = count($paxes) > 0 ? count($paxes) : max(1, count($seats));
@@ -2961,7 +2983,7 @@ final class Ticket
         self::gdRounded($im, 550, 1270 + $grow, 1010, $pcB, 16, $white);
         DocArt::roundOutline($im, 550, 1270 + $grow, 1010, $pcB, 16, $royal, 2);
         DocArt::roundOutline($im, 556, 1276 + $grow, 1004, $pcB - 6, 12, $edge, 1);
-        $hOrg = $payQ['qr'] !== '' || $payQ['mode'] === 'npr';    // 19 Nov 2026: orange while money is due
+        $hOrg = $payQ['qr'] !== '' || $payQ['mode'] === 'npr' || $payQ['mode'] === 'cod';    // 19 Nov 2026: orange while money is due (25 Nov wx1: pay-at-boarding too)
         DocArt::gradBox($im, 556, 1276 + $grow, 1004, 1326 + $grow, 12,
             $hOrg ? self::P_ORG : DocArt::ROYAL, $hOrg ? self::P_ORG_D : DocArt::NAVY);
         imagefilledrectangle($im, 556, 1316 + $grow, 1004, 1326 + $grow, $hOrg ? $orange : $navy);
@@ -2989,7 +3011,7 @@ final class Ticket
            the office's own eSewa QR image when there is one, else the eSewa id
            and the NPR due in words. Same card, same canvas. */
         $mapQ    = self::mapQrs($booking);
-        $payOpen = $payQ['qr'] !== '' || $payQ['mode'] === 'npr';
+        $payOpen = $payQ['qr'] !== '' || $payQ['mode'] === 'npr' || $payQ['mode'] === 'cod';   // wx1: cod = no QR, the header says PAY ON BOARDING
         $hTxt = $payOpen ? $payQ['label'] : ($mapQ !== [] ? 'चढ्ने ठाउँ नक्सा  ·  PICKUP MAP' : 'भुक्तानी  ·  PAYMENT');
         $hMax = 420 - ($badgeW > 0 ? $badgeW + 12 : 0);
         $hSz = 22;
@@ -3074,10 +3096,11 @@ final class Ticket
             imagearc($im, $mx, $my, 190, 190, 0, 360, $sc);
             imagesetthickness($im, 1);
             if ($payOpen) {
-                $big = 'रू ' . indianNumber(self::nprOf($booking, (float) $settlement['due']));
+                $big = $payQ['mode'] === 'cod' ? (string) $payQ['dueTxt'] : 'रू ' . indianNumber(self::nprDue($booking, (float) $settlement['due']));
+                $sealTop = $payQ['mode'] === 'cod' ? 'बसमा तिर्ने' : 'तिर्न बाँकी';   // wx1: pay-at-boarding seal
                 $bSz = 34;
                 while ($bSz > 18 && self::gdWidth($bSz, $big) > 170) { $bSz--; }
-                self::gdText($im, 16, $mx - intdiv(self::gdWidth(16, 'तिर्न बाँकी'), 2), $my - 30, $sc, 'तिर्न बाँकी', true);
+                self::gdText($im, 16, $mx - intdiv(self::gdWidth(16, $sealTop), 2), $my - 30, $sc, $sealTop, true);
                 self::gdText($im, $bSz, $mx - intdiv(self::gdWidth($bSz, $big), 2), $my + 20, $sc, $big, true);
             } else {
                 imagesetthickness($im, 12);
@@ -3089,10 +3112,14 @@ final class Ticket
         if ($payQ['mode'] === 'npr' && $settlement['due'] > 0) {
             $l1 = $payQ['esewa'] !== '' ? 'eSewa: ' . $payQ['esewa'] : ($payQ['wa'] !== '' ? 'WhatsApp: +' . $payQ['wa'] : 'UPI: ' . $upiVpa);
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, $l1, 410), true);
-            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'तिर्न बाँकी · रू ' . indianNumber(self::nprOf($booking, (float) $settlement['due'])) . '  (₹' . indianNumber((float) $settlement['due']) . ')', 410), false);
+            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'तिर्न बाँकी · रू ' . indianNumber(self::nprDue($booking, (float) $settlement['due'])) . '  (₹' . indianNumber((float) $settlement['due']) . ')', 410), false);
         } elseif ($settlement['due'] <= 0) {
             self::gdText($im, 18, 576, 1716 + $grow, $green, 'भुक्तानी स्वीकृत · Payment approved', true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'तिर्न बाँकी छैन · Nothing more to pay', 410), false);
+        } elseif ($payQ['mode'] === 'cod') {
+            /* 25 Nov 2026 (wx1): pay-at-boarding - no pay QR, the cash is paid on the bus. */
+            self::gdText($im, 18, 576, 1716 + $grow, $orange, $clampTo(18, 'बसमा तिर्ने · Pay on boarding', 410), true);
+            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'बसमा नगद तिर्नुहोस् · Cash on the bus', 410), false);   // the amount is in the header + Due line
         } elseif ($payQ['mode'] === 'office') {
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, 'WhatsApp: +' . $payQ['wa'], 410), true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'कार्यालयले भुक्तानी विवरण पठाउनेछ', 410), false);
@@ -3416,12 +3443,34 @@ final class Ticket
            office has put its own eSewa QR image on the server). The office still
            approves every payment by hand - a QR never confirms anything. */
         $payable = $due > 0 && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true);
-        $out    += ['qr' => '', 'caption' => '', 'esewa' => '', 'esewaImg' => '', 'dueTxt' => self::money($booking, $due, false)];
-        if ($payable && self::frozenNpr($booking) > 0) {
+        $out    += ['qr' => '', 'caption' => '', 'esewa' => '', 'esewaImg' => '', 'dueTxt' => self::money($booking, $due, false),
+            'country' => self::payCountry($booking), 'paid' => $due <= 0];
+        /* 25 Nov 2026 (wx1, owner: "cash ma pay QR nachahinchha"): a pay-at-boarding
+           (COD) ticket carries NO payment QR - the crew takes the cash on the bus.
+           Only an online-pay ticket shows one. Switch ticket_cod_no_payqr (default on). */
+        if ($payable && (int) ($booking['is_cod'] ?? 0) === 1 && Settings::getBool('ticket_cod_no_payqr', true)) {
+            return $out + ['mode' => 'cod', 'payload' => $live,
+                'label' => 'बसमा तिर्ने · PAY ON BOARDING ' . self::money($booking, $due, false)];
+        }
+        /* 25 Nov 2026 (mp1 tk, ticket_pay_qr_by_country): a trip from the Nepal side / a
+           Nepal-issued sale that still owes money pays to the NEPAL QR too (eSewa / Fonepay,
+           amount in रू), not UPI - only once the office has a Nepal QR image or eSewa id;
+           with neither, the old UPI path below stays. Words only: the image has no amount.
+           Review (money): only where a raw UPI code would be allowed (staticPayQrOk -
+           confirmed, not pay-at-boarding, no proof waiting); a pending ticket keeps (COD returned above: no QR)
+           the live pay.php link below, whose UTR box reaches the COD queue / proof clock. */
+        $npCountry = false;
+        if ($payable && self::frozenNpr($booking) <= 0 && $out['country'] === 'NP' && self::staticPayQrOk($booking)) {
+            $npCountry = self::esewaQrFile() !== '' || trim(Settings::getString('nepal_esewa_id', '')) !== '';
+        }
+        if ($payable && (self::frozenNpr($booking) > 0 || $npCountry)) {
             $co    = self::companyOf($booking);
             $esewa = trim((string) ($co['payEsewa'] ?? ''));
+            if ($npCountry) {
+                $esewa = trim(Settings::getString('nepal_esewa_id', '')) !== '' ? trim(Settings::getString('nepal_esewa_id', '')) : $esewa;
+            }
             $img   = self::esewaQrFile();   // 21 Nov 2026: the uploaded QR prints even before an eSewa id is typed
-            $nprTx = 'रू ' . indianNumber(self::nprOf($booking, $due));
+            $nprTx = 'रू ' . indianNumber(self::nprDue($booking, $due));
             $out['esewa']    = $esewa;
             $out['esewaImg'] = $img;
             $out['caption']  = 'भुक्तानी · ' . ($esewa !== '' ? 'eSewa ' : '') . $nprTx;
@@ -3429,7 +3478,7 @@ final class Ticket
                 $out['wa'] = Settings::officeWhatsApp();
             }
             return $out + ['mode' => 'npr', 'payload' => $live,
-                'label' => 'तिर्न बाँकी  ·  PAY ' . self::money($booking, $due, false)];
+                'label' => 'तिर्न बाँकी  ·  PAY ' . ($npCountry ? $nprTx : self::money($booking, $due, false))];
         }
         if ($vpa !== '' && $payable && $cur === 'INR') {
             $amt = number_format($due, fmod($due, 1.0) > 0 ? 2 : 0);
@@ -3750,13 +3799,13 @@ final class Ticket
      *  the later of the two) to the moment it is applied - apply it AFTER the
      *  files are live. The integrator may still move both stamps to the
      *  deploy minute. */
-    private const PNG_LAYOUT_CHANGED = '2026-11-21 13:33:00';   // IST: NEPAL OFFICE ON EVERY TICKET - the Nepal office map QR rides on India tickets too, its line carries the Nepal phone + PAN (ticket_nepal_office_all); pickup map falls back to the office's own place in that town (admin/locations.php). Same geometry. Was 2026-11-19 14:30:00:   // IST: PLACES - the foot band shows three route photos (Bageshwari Nepalgunj, Pashupatinath, Sabarmati Ashram; ticket_places_on) instead of the drawn Sagarmatha / Buddha band; same height. Was 2026-11-19 00:30:00:   // IST: TK-1..TK-6 - big SEAT tile left of the PNR (40 px), the ticket's own verify QR right of it (ticket_verify_qr; barcode kept), the pay card holds the pickup / Nepal office map QRs (ticket_maps_qr) and, only while money is due, a smaller UPI QR with the EXACT due (ticket_pay_qr_upi); NPR sales print NPR big (Ticket::money); flags 32 px, issuing company first; corridor = the passenger's own ends. Was 2026-11-16 22:50:00:   // IST: PAY ON BOARDING (P1) - the pay pill and the status line say बसमा तिर्ने · PAY ON BOARDING while a pay-at-boarding ticket owes money, PAID · नगद/CASH or अनलाइन/ONLINE once paid (Ticket::payWords); the pay card under a pay-at-boarding QR says cash on the bus or online. Geometry unchanged. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-11-25 13:45:00';   // IST: CLEAN TICKET (mp1 tk) - ticket_clean_v2_on: one big flag by direction, big From -> To, pickup QR + its phone, pay QR only while due (Nepal QR by country), PAID stamp (cash: नगद प्राप्त भयो / Cash received), Booked by footer; mantra / blessing / heritage / mandala not drawn. Was 2026-11-21 13:33:00:   // IST: NEPAL OFFICE ON EVERY TICKET - the Nepal office map QR rides on India tickets too, its line carries the Nepal phone + PAN (ticket_nepal_office_all); pickup map falls back to the office's own place in that town (admin/locations.php). Same geometry. Was 2026-11-19 14:30:00:   // IST: PLACES - the foot band shows three route photos (Bageshwari Nepalgunj, Pashupatinath, Sabarmati Ashram; ticket_places_on) instead of the drawn Sagarmatha / Buddha band; same height. Was 2026-11-19 00:30:00:   // IST: TK-1..TK-6 - big SEAT tile left of the PNR (40 px), the ticket's own verify QR right of it (ticket_verify_qr; barcode kept), the pay card holds the pickup / Nepal office map QRs (ticket_maps_qr) and, only while money is due, a smaller UPI QR with the EXACT due (ticket_pay_qr_upi); NPR sales print NPR big (Ticket::money); flags 32 px, issuing company first; corridor = the passenger's own ends. Was 2026-11-16 22:50:00:   // IST: PAY ON BOARDING (P1) - the pay pill and the status line say बसमा तिर्ने · PAY ON BOARDING while a pay-at-boarding ticket owes money, PAID · नगद/CASH or अनलाइन/ONLINE once paid (Ticket::payWords); the pay card under a pay-at-boarding QR says cash on the bus or online. Geometry unchanged. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - footer note says ६० मिनेट (was ३०), like every other place. Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the issued-by chip and the "टिकट काट्ने" tile always print the agent's mobile (the name is shortened first). Was 2026-11-06 00:30:00:   // IST: BARCODE - verify QR + map QR replaced by a Code 128 barcode (Ticket::scanCode); pay QR only while money is due, else a PAID stamp. Was 2026-10-17 13:56:00:   // IST: PREMIUM BLUE - the homepage's royal blue / navy / orange on white: blue-white paper, white card, pale-blue tiles, orange accent bars (gold foil retired on the PNG), PNR capsule, SHARING BERTH / PRIVATE CABIN badge, route line with the S Hari coach (assets/img/ticket-coach.png), royal berth chips on an orange rim. Geometry unchanged. Was 2026-10-16 19:28:00:   // IST: WHITE LEGAL LINE - '- PRIVATE LIMITED -' set in white like the owner's logo file (was gold). Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - the emblem big and free (HD cut, glow baked in, no seal), the name set like the company logo: brand wordmark + TM sign, gold '- PRIVATE LIMITED -' line; chip 236 wide; canvas +298 (PNG_HEAD_EXTRA). Was 2026-10-15 10:12:00:   // IST: LETTERHEAD - big centred emblem seal, company name under it, pay pill left / issued-by chip right; canvas +184 (PNG_HEAD_EXTRA). Was 2026-10-14 22:15:00:   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-11-19 00:30:00';   // IST: TK-1..TK-6 - bigger seat box (112 pt, 28 pt label), verify QR + pickup map QR beside the pay QR in the footer, pay QR only while due with the exact amount, NPR amounts on an NPR sale, PAN + Reg. on the Nepal letterhead, 18 pt flags. Was 2026-11-16 22:50:00:   // IST: PAY ON BOARDING (P1) - the payment band is Nepali first: बसमा तिर्ने · PAY ON BOARDING · INR X · नगद वा अनलाइन · CASH OR ONLINE, and PAID · INR X · नगद · CASH or अनलाइन · ONLINE (UPI); the footer pay QR is captioned अनलाइन भुक्तानी QR on such a ticket. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - the 'reach early' note says ६० मिनेट (was ३०). Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-11-25 13:45:00';   // IST: CLEAN TICKET (mp1 tk) - one big flag by direction, From / To dual labels with the place names big, cash band 'नगद प्राप्त भयो · Cash received', Nepal QR image as the pay slot while due; no mandala / mantra / heritage / blessing. Was 2026-11-19 00:30:00:   // IST: TK-1..TK-6 - bigger seat box (112 pt, 28 pt label), verify QR + pickup map QR beside the pay QR in the footer, pay QR only while due with the exact amount, NPR amounts on an NPR sale, PAN + Reg. on the Nepal letterhead, 18 pt flags. Was 2026-11-16 22:50:00:   // IST: PAY ON BOARDING (P1) - the payment band is Nepali first: बसमा तिर्ने · PAY ON BOARDING · INR X · नगद वा अनलाइन · CASH OR ONLINE, and PAID · INR X · नगद · CASH or अनलाइन · ONLINE (UPI); the footer pay QR is captioned अनलाइन भुक्तानी QR on such a ticket. Was 2026-11-16 12:19:00:   // IST: REPORT 60 MIN - the 'reach early' note says ६० मिनेट (was ३०). Was 2026-11-07 11:00:00:   // IST: AGENT MOBILE - the ISSUED BY line keeps the agent's mobile, bold. Was 2026-11-06 00:30:00:   // IST: BARCODE - stub QR -> Code 128 barcode, live-status QR removed, pay QR only while due. Was 2026-10-16 00:15:00:   // IST: LOGO COLOURS - logo deep blue / royal band, logo-orange accents (was maroon), gold foil kept. Was 2026-10-15 11:50:00:   // IST: LOGO - bigger gold seal (116x74), brand + TM sign with the legal form letter-spaced in gold under it. Was 2026-10-14 22:15:00:   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -4065,10 +4114,13 @@ final class Ticket
            navy -> royal band, the MANTRA strip at the very top, a gold-foil
            rule under the band and corner ornaments. */
         $pdf->rect(0, 0, $W, $pdf->height(), DocArt::CREAM, true);
-        DocArt::pdfMandala($pdf, $W / 2, 250, 150, [240, 226, 186]);
-        DocArt::pdfMandala($pdf, $W / 2, 640, 120, [242, 230, 194]);
+        $cleanPdf = self::cleanV2On();   // 25 Nov 2026 (mp1 tk): no mandala / mantra / heritage / blessing, one flag, big From -> To
+        if (!$cleanPdf) {
+            DocArt::pdfMandala($pdf, $W / 2, 250, 150, [240, 226, 186]);
+            DocArt::pdfMandala($pdf, $W / 2, 640, 120, [242, 230, 194]);
+        }
         DocArt::pdfGradient($pdf, 0, 0, $W, 96, DocArt::NAVY, DocArt::ROYAL, 32);
-        $mantraPdf = DocArt::mantraLine();
+        $mantraPdf = $cleanPdf ? '' : DocArt::mantraLine();
         if ($mantraPdf !== '') {
             $pdf->rect(0, 0, $W, 14, [8, 18, 42], true);
             $pdf->line(0, 14, $W, 14, DocArt::GOLD, 0.6);
@@ -4098,7 +4150,13 @@ final class Ticket
         $mk = DocArt::pdfMark($pdf, 33, 27, 90, 51, self::ownLogo($coId), 'center', true);
         $textX = 150;
         // both flags, top right of the band — the side the bus leaves from first
-        DocArt::pdfFlags($pdf, $W - 40 - DocArt::pdfFlagsWidth(18, 5), 17, 18, 5, self::flagFirst($booking));   // 19 Nov 2026 (TK-4): 18 pt (was 14), issuing company first
+        if ($cleanPdf) {
+            // mp1: ONE big flag - the side the bus leaves from (flagByDirection)
+            $oneCc = self::flagByDirection($booking);
+            self::pdfOneFlag($pdf, $oneCc, $W - 40 - 34 * DocArt::flagWidth($oneCc, 1000) / 1000, 12, 34);
+        } else {
+            DocArt::pdfFlags($pdf, $W - 40 - DocArt::pdfFlagsWidth(18, 5), 17, 18, 5, self::flagFirst($booking));   // 19 Nov 2026 (TK-4): 18 pt (was 14), issuing company first
+        }
         /* The name stops short of the title block at W-220 (4 Oct 2026): a
            longer company name - the Nepal company's - ran under it. Helvetica
            Bold capitals average ~0.68 em, so the size steps down to fit. */
@@ -4160,7 +4218,12 @@ final class Ticket
         $bandBg = $payW['state'] === 'paid' ? [20, 110, 64] : ($payW['state'] === 'board' ? DocArt::GOLD_DEEP : self::ORANGE);
         $pdf->rect(0, 96, $W, 20, $bandBg, true);
         $pdf->line(0, 116.3, $W, 116.3, DocArt::GOLD, 0.8);
-        self::pdfRuns($pdf, 0, $W, 101, $payW['band'], 9, $F8, [255, 255, 255]);
+        $bandRuns = $payW['band'];
+        if ($cleanPdf && $payW['state'] === 'paid' && $payW['way'] === 'cash') {
+            // mp1: the cash stamp words - PAID · नगद प्राप्त भयो / Cash received
+            $bandRuns = [['भुक्तानी भयो · ', true], ['PAID  ·  ' . $money((float) ($booking['total_amount'] ?? 0)) . '  ·  ', false], ['नगद प्राप्त भयो · ', true], ['Cash received', false]];
+        }
+        self::pdfRuns($pdf, 0, $W, 101, $bandRuns, 9, $F8, [255, 255, 255]);
         /* CORRECTED / DUPLICATE: its own strip under the payment band (the
            mantra owns the very top since 9 Oct 2026); the card moves down. */
         $markH = 0.0;
@@ -4218,9 +4281,18 @@ final class Ticket
 
         /* ---- Route: FROM → TO with prominent boarding time ---- */
         $routeY = $cardY + 68;
-        self::devText($pdf, $lx, $routeY - 8, 'चढ्ने ठाउँ', 8, $F7, self::MUTE);
+        /* mp1 (clean): the passenger's own boarding / drop place BIG and bold under the
+           code, with the dual label "चढ्ने ठाउँ · From" / "झर्ने ठाउँ · To". */
+        $placeMax = ($tear - 20 - $lx) / 2 - 8;
+        $placeSz  = static function (string $t) use ($pdf, $placeMax): float {
+            $z = 14.0;
+            while ($z > 8 && $pdf->textWidth($t, $z, 'F2') > $placeMax) { $z -= 0.5; }
+            return $z;
+        };
+        self::devText($pdf, $lx, $routeY - 8, $cleanPdf ? 'चढ्ने ठाउँ · From' : 'चढ्ने ठाउँ', 8, $F7, self::MUTE);
         $pdf->text($lx, $routeY + 8, $fromCode, 28, 'F2', self::BROWN);
-        $pdf->text($lx, $routeY + 38, self::latinUpper($boardCityText), 9, 'F2', self::INK);
+        $bcTxt = self::latinUpper($boardCityText);
+        $pdf->text($lx, $routeY + 38, $bcTxt, $cleanPdf ? $placeSz($bcTxt) : 9, 'F2', self::INK);
 
         // Prominent pickup time — THE most important detail for the passenger
         if ($nepaliTime !== '') {
@@ -4241,9 +4313,10 @@ final class Ticket
 
         // Destination
         $rx = $tear - 20;
-        self::devText($pdf, $rx - 80, $routeY - 8, 'गन्तव्य', 8, $F7, self::MUTE);
+        self::devText($pdf, $rx - 80, $routeY - 8, $cleanPdf ? 'झर्ने ठाउँ · To' : 'गन्तव्य', 8, $F7, self::MUTE);
         $pdf->textRight($rx, $routeY + 8, $toCode, 28, 'F2', self::BROWN);
-        $pdf->textRight($rx, $routeY + 38, self::latinUpper($dropCityText), 9, 'F2', self::INK);
+        $dcTxt = self::latinUpper($dropCityText);
+        $pdf->textRight($rx, $routeY + 38, $dcTxt, $cleanPdf ? $placeSz($dcTxt) : 9, 'F2', self::INK);
 
         /* ---- Bottom row: Date / Bus / Seat ---- */
         $infoY = $cardY + 170;
@@ -4752,16 +4825,29 @@ final class Ticket
                 'en' => 'PAY ' . ($payPdf['mode'] === 'due' ? 'UPI ' : '') . $money((float) $payPdf['due']), 'rgb' => self::ORANGE, 'ecc' => QrCode::ECC_L];
         }
         $nprWords = $payPdf['qr'] === '' && $payPdf['mode'] === 'npr' && $sumP['due'] > 0;
+        /* mp1: the NPR due (frozen rate, else today's npr_per_inr on a Nepal-side INR sale) and,
+           on the clean ticket, the office's own Nepal QR image as a pay slot. */
+        $npDueTxt = self::frozenNpr($booking) > 0 ? $money((float) $sumP['due']) : 'NPR ' . indianNumber(self::nprDue($booking, (float) $sumP['due']));
+        if ($nprWords && $cleanPdf && (string) ($payPdf['esewaImg'] ?? '') !== '') {
+            $pdfQrs[] = ['payload' => '', 'img' => (string) $payPdf['esewaImg'], 'ne' => 'भुक्तानी QR',
+                'en' => 'eSewa ' . $npDueTxt, 'rgb' => self::ORANGE, 'ecc' => QrCode::ECC_L];
+            $nprWords = false;   // the slot's own caption carries the amount + id (a 4th slot leaves no room for the words)
+        }
+        $codWords = $payPdf['mode'] === 'cod' && $sumP['due'] > 0;   // 25 Nov 2026 (wx1): pay-at-boarding, no pay QR - the due in words
         $pdfQrs   = array_slice($pdfQrs, 0, 4);
-        $compact  = count($pdfQrs) >= 4 || ($nprWords && count($pdfQrs) >= 3);
+        $compact  = count($pdfQrs) >= 4 || (($nprWords || $codWords) && count($pdfQrs) >= 3);
         $qStep    = $compact ? 66.0 : 88.0;   // slot pitch
         $qBox     = $compact ? 62.0 : 70.0;   // coloured frame
         $qImg     = $compact ? 54.0 : 62.0;   // the QR itself
         $qCapW    = $compact ? 64.0 : 84.0;   // caption width
         foreach ($pdfQrs as $qi => $pq) {
             try {
-                $uri = QrCode::dataUri($pq['payload'], 6, 2, $pq['ecc']);
-                $bin = base64_decode(explode(',', $uri)[1] ?? '');
+                if (!empty($pq['img'])) {
+                    $bin = (string) @file_get_contents((string) $pq['img']);
+                } else {
+                    $uri = QrCode::dataUri($pq['payload'], 6, 2, $pq['ecc']);
+                    $bin = base64_decode(explode(',', $uri)[1] ?? '');
+                }
             } catch (Throwable $e) {
                 Logger::error('Ticket PDF QR: ' . $e->getMessage());
                 $bin = '';
@@ -4785,13 +4871,22 @@ final class Ticket
             $npX = 284.0 + count($pdfQrs) * $qStep;
             $npW = max(60.0, $W - 40 - $npX);
             self::devText($pdf, $npX, $footY + 10, 'तिर्न बाँकी · DUE', 7, $F7, self::MUTE);
-            foreach ([[$money((float) $sumP['due']), 22.0, 10.0], ['eSewa:', 38.0, 7.0], [$payPdf['esewa'] !== '' ? self::latin($payPdf['esewa']) : '-', 48.0, 7.0]] as [$npTx, $npY, $npSz]) {
+            foreach ([[$npDueTxt, 22.0, 10.0], ['eSewa:', 38.0, 7.0], [$payPdf['esewa'] !== '' ? self::latin($payPdf['esewa']) : '-', 48.0, 7.0]] as [$npTx, $npY, $npSz]) {
+                while ($npSz > 4.5 && $pdf->textWidth($npTx, $npSz, 'F2') > $npW) { $npSz -= 0.25; }
+                $pdf->text($npX, $footY + $npY, $npTx, $npSz, 'F2', self::ORANGE);
+            }
+        } elseif ($codWords) {
+            /* pay-at-boarding: no QR, the amount the crew collects on the bus */
+            $npX = 284.0 + count($pdfQrs) * $qStep;
+            $npW = max(60.0, $W - 40 - $npX);
+            self::devText($pdf, $npX, $footY + 10, 'बसमा तिर्ने · ON BOARDING', 7, $F7, self::MUTE);
+            foreach ([[$money((float) $sumP['due']), 22.0, 10.0], ['PAY ON BOARDING', 38.0, 7.0], ['CASH ON THE BUS', 48.0, 7.0]] as [$npTx, $npY, $npSz]) {
                 while ($npSz > 4.5 && $pdf->textWidth($npTx, $npSz, 'F2') > $npW) { $npSz -= 0.25; }
                 $pdf->text($npX, $footY + $npY, $npTx, $npSz, 'F2', self::ORANGE);
             }
         }
 
-        if (DocArt::heritageOn() && count($pdfQrs) <= 1 && !($payPdf['qr'] === '' && $payPdf['mode'] === 'npr' && $sumP['due'] > 0)) {
+        if (!$cleanPdf && DocArt::heritageOn() && count($pdfQrs) <= 1 && !($payPdf['qr'] === '' && $payPdf['mode'] === 'npr' && $sumP['due'] > 0) && !$codWords) {
             $hw = 150.0; $hx = $W - 40 - $hw; $hy = $footY + 8;
             if (DocArt::pdfBand($pdf, $hx, $hy, $hw, 50, 0.5, 0.8)) {
                 $pdf->setLineWidth(1.0);
@@ -4803,7 +4898,7 @@ final class Ticket
         }
 
         // शुभ यात्रा — the blessing line (setting doc_blessing_line), then the thanks
-        $blessPdf = DocArt::blessingLine();
+        $blessPdf = $cleanPdf ? '' : DocArt::blessingLine();
         // rule 29.5 / blessing 27.5 / closing 14, were 33 / 30 / 16 (10 Oct 2026, trust): lower so the statutory row above clears the rule
         $pdf->line(40, $pdf->height() - 29.5, $W - 40, $pdf->height() - 29.5, [226, 206, 150], 0.4);
         /* 10 Oct 2026 (trust): the issuing company's LEGAL name and its

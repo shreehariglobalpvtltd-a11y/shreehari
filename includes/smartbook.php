@@ -364,6 +364,28 @@ final class SmartBook
                 $why['direction'] = self::why('Same as your last trip', 'पिछली यात्रा जैसा', 'पहिलेको यात्रा जस्तै');
             }
         }
+        /* 25 Nov 2026 (wx1, owner: "Nepal bata kholda Nepal -> India rute khulos"): no server
+           geo - the browser's own timezone (tz). Customer card only, after an explicit / saved
+           direction and the phone's history: Asia/Kathmandu opens on Rupaidiha -> Gujarat.
+           Switch: geo_direction_on (default on). An office "fixed" direction (Default Rules)
+           still wins: then the timezone stays out and DefaultRules::apply() sets it as before. */
+        if ($dir === '' && $mode === 'customer' && self::nepalTz((string) ($in['tz'] ?? ''))
+            && Settings::getBool('geo_direction_on', true)
+            && !self::officeFixedDirection()
+            && in_array('toIndia', array_column(self::directions(), 'direction'), true)) {
+            $dir = 'toIndia';
+            $why['direction'] = self::why('नेपालबाट खोलिएको · Opened from Nepal', 'नेपाल से खोला गया · Opened from Nepal', 'नेपालबाट खोलिएको · Opened from Nepal');
+        }
+        /* wx1: any other known browser timezone (India or abroad) opens on India -> Nepal, so the
+           most-used direction never flips an India visitor onto Rupaidiha -> Gujarat. Same gates. */
+        $tzIn = trim((string) ($in['tz'] ?? ''));
+        if ($dir === '' && $mode === 'customer' && $tzIn !== '' && !self::nepalTz($tzIn)
+            && Settings::getBool('geo_direction_on', true)
+            && !self::officeFixedDirection()
+            && in_array('toNepal', array_column(self::directions(), 'direction'), true)) {
+            $dir = 'toNepal';
+            $why['direction'] = self::why('भारतबाट खोलिएको · Opened from India', 'भारत से खोला गया · Opened from India', 'भारतबाट खोलिएको · Opened from India');
+        }
         if ($dir === '') {
             $dir = self::mostUsedDirection();
         }
@@ -804,7 +826,7 @@ final class SmartBook
         }
 
         $genders = array_values(array_unique(array_filter(array_map(static fn(array $p): ?string => AutoBerth::gender($p['gender']), $req['pax']))));
-        $plan = QuickTicket::plan([
+        $planArgs = [
             'direction' => $req['direction'],
             'date'      => $req['date'],
             'boarding'  => $points['type'] === 'boarding' ? $point : '',
@@ -812,7 +834,28 @@ final class SmartBook
             'gender'    => count($genders) === 1 ? $genders[0] : null,
             'customer'  => $mode === 'customer',
             'phone'     => $req['phone'],
-        ]);
+        ];
+        $plan = QuickTicket::plan($planArgs);
+        /* wx1 (25 Nov 2026): a Nepal -> India bus offers its real pickups (Nepalgunj office |
+           Rupaidiha parking) as chips. The list is the route the plan really chose; a chosen
+           pickup that differs from the plan's default re-plans once with that stop. */
+        $npPicks = $points['type'] === 'drop' ? self::npPickups((int) $plan['routeId']) : [];
+        $npNote  = null;   // {en,hi,ne} when a chosen Nepal-side pickup is closed and the plan boards elsewhere
+        if ($npPicks !== [] && $req['pickup'] !== '') {
+            $npNames = array_map(static fn(array $p): string => $p['name'], $npPicks);
+            $npPick  = self::matchPoint($req['pickup'], $npNames);
+            if ($npPick !== '' && self::matchPoint((string) $plan['boardingName'], $npNames) !== $npPick) {
+                $plan = QuickTicket::plan(['boarding' => $npPick] + $planArgs);
+                if (self::matchPoint((string) $plan['boarding'], $npNames) !== $npPick && self::matchPoint((string) $plan['boardingName'], $npNames) !== $npPick) {
+                    $npGot = trim((string) $plan['boardingName'] . ' ' . (string) $plan['boardingTime']);
+                    $npNote = self::why(
+                        $npPick . ' is closed for this bus. You board at ' . $npGot . ' - for ' . $npPick . ', choose a later date.',
+                        $npPick . ' इस बस के लिए बंद है। ' . $npGot . ' से चढ़ें - ' . $npPick . ' के लिए आगे की तारीख चुनें।',
+                        $npPick . ' यो बसका लागि बन्द भयो। ' . $npGot . ' बाट चढ्नुहोस् - ' . $npPick . ' का लागि पछिको मिति छान्नुहोस्।'
+                    );
+                }
+            }
+        }
         $route    = Database::fetch('SELECT * FROM routes WHERE id = :id LIMIT 1', ['id' => (int) $plan['routeId']]);
         $schedule = Seats::scheduleById((int) $plan['scheduleId']);
         if ($route === null) {
@@ -978,7 +1021,10 @@ final class SmartBook
             'pointType'    => $points['type'],
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
             'boardingStop' => $boardStop,   // the list name of the pickup really booked ('' on a drop run)
-            'pointNote'    => $pointNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null
+            // wx1 (25 Nov 2026): the Nepal-side pickups a passenger may choose (>= 2 ON boarding rows on a toIndia bus), and the one booked
+            'pickups'      => count($npPicks) > 1 ? $npPicks : [],
+            'pickup'       => count($npPicks) > 1 ? (self::matchPoint((string) $plan['boardingName'], array_map(static fn(array $p): string => $p['name'], $npPicks)) ?: (string) $plan['boardingName']) : '',
+            'pointNote'    => $pointNote ?? $npNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null (wx1: also a closed Nepal-side pickup)
             // 19 Nov 2026 (NP-3): {label, at, tz, reason} when today's bus is closed by the sales clock and this is a later day
             'clockNote'    => $plan['clockNote'] ?? null,
             'coach'        => $coach,
@@ -1359,6 +1405,11 @@ final class SmartBook
             'referralCode'    => $mode !== 'customer' ? Security::clean((string) ($in['referralCode'] ?? ''), 20) : '',
             'paymentMethod'   => $cod ? 'cod' : 'upi',
             'isCod'           => $cod && $seller === null,
+            /* 25 Nov 2026 (wx1, owner: "Nepal ka passenger INR pani bokchan - NPR / INR choose"):
+               the money a CUSTOMER chose to pay in. NPR = create() freezes the NPR total on the
+               sale (the ticket then prints NPR big); the books stay INR. Switch:
+               customer_currency_choice_on (default on). */
+            'payCurrency'     => self::payCurrency($in, $mode, $seller),
         ];
         if ($seller !== null) {
             $seller['paymentMethod'] = $cod ? 'cash' : (string) ($seller['paymentMethod'] ?? 'upi');
@@ -1589,6 +1640,29 @@ final class SmartBook
      *  Input
      * ================================================================= */
 
+    /**
+     * wx1 (25 Nov 2026, owner: "Nepal tarfa pickup ma Nepalgunj office ra Rupaidiha parking - duita
+     * matra"): the switched-ON boarding rows of a Nepal -> India bus, so the card can offer them
+     * as chips. The office keeps exactly the real ones in Admin -> Routes; nothing is invented.
+     * Empty when the switch sb_np_pickup_choice_on is off or the route has no row.
+     * @return list<array{name: string, time: string}>
+     */
+    private static function npPickups(int $routeId): array
+    {
+        if ($routeId <= 0 || !Settings::getBool('sb_np_pickup_choice_on', true)) {
+            return [];
+        }
+        $out = [];
+        try {
+            foreach (Boarding::stopsFor($routeId) as $s) {
+                $out[] = ['name' => (string) $s['name'], 'time' => $s['time'] !== null ? substr((string) $s['time'], 0, 5) : ''];
+            }
+        } catch (Throwable $e) {
+            return [];
+        }
+        return $out;
+    }
+
     /** @return array<string, mixed> */
     private static function normalise(array $in, string $mode): array
     {
@@ -1636,6 +1710,7 @@ final class SmartBook
             'direction' => $dir,
             'date'      => Security::isValidDate((string) ($in['date'] ?? '')) ? (string) $in['date'] : '',
             'point'     => Security::clean((string) ($in['point'] ?? ''), 191),
+            'pickup'    => Security::clean((string) ($in['pickup'] ?? ''), 191),   // wx1: Nepal-side pickup (toIndia), see npPickups()
             'pax'       => $pax,
             'type'      => ($in['type'] ?? '') === 'private' ? 'private' : 'sharing',
             'cabin'     => ($in['cabin'] ?? '') === 'double' ? 'double' : 'single',
@@ -1658,7 +1733,35 @@ final class SmartBook
         ];
     }
 
+    /**
+     * 25 Nov 2026 (wx1): 'NPR' when a customer (never a desk) chose to pay in NPR and the
+     * owner's switch customer_currency_choice_on is on; '' otherwise (= INR, as before).
+     *
+     * @param array<string, mixed> $in
+     * @param array<string, mixed>|null $seller
+     */
+    public static function payCurrency(array $in, string $mode, ?array $seller): string
+    {
+        return $mode === 'customer' && $seller === null
+            && strtoupper(trim((string) ($in['cur'] ?? ''))) === 'NPR'
+            && Settings::getBool('customer_currency_choice_on', true) ? 'NPR' : '';
+    }
+
+    /** 25 Nov 2026 (wx1): is this browser timezone Nepal's? (both IANA spellings) */
+    public static function nepalTz(string $tz): bool
+    {
+        return in_array(trim($tz), ['Asia/Kathmandu', 'Asia/Katmandu'], true);
+    }
+
+    /** 25 Nov 2026 (wx1): has the office fixed the card's direction in Default Rules? */
+    private static function officeFixedDirection(): bool
+    {
+        require_once __DIR__ . '/defaultrules.php';
+        return isset(DefaultRules::config()['fixed']['direction']);
+    }
+
     /** @return array{en: string, hi: string, ne: string} */
+
     private static function why(string $en, string $hi, string $ne): array
     {
         return ['en' => $en, 'hi' => $hi, 'ne' => $ne];

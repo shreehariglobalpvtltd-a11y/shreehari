@@ -2310,6 +2310,10 @@ final class AiTools
                 'amount'        => $day['amount'],
                 'amountLabel'   => $day['amountLabel'],
                 'cashTakenToday' => $day['cashTaken'],
+                'onlineToday'   => (float) ($day['online'] ?? 0),
+                'dueToday'      => (float) ($day['due'] ?? 0),
+                'commissionToday' => (float) ($day['commissionToday'] ?? 0),
+                'figures'       => $day['figures'] ?? null,
                 'commissionDue' => (float) $bal['commission'],
                 'commissionDueLabel' => inr((float) $bal['commission']),
                 'commissionThisMonth' => $earned,
@@ -2979,10 +2983,41 @@ final class AiTools
     /** One seller's day — shared by agent_day and office_agent. */
     private static function sellerDay(int $adminId, string $date): array
     {
+        /* 25 Nov 2026 (release dy): the day on CounterBook's rules (includes/sellerday.php):
+           नगद = cash + cod, plus online, ड्यू बाँकी and today's commission, so the bot,
+           Counters and the Day book agree. seller_day_numbers_on = 0 -> the old reading below. */
+        require_once INCLUDE_PATH . '/sellerday.php';
+        if (SellerDay::numbersOn()) {
+            $f = SellerDay::figures($adminId, $date);
+            $cancelled = (int) Database::scalar(
+                "SELECT COUNT(*) FROM bookings b WHERE " . SellerDay::cutBy() . " = :a AND DATE(b.created_at) = :d AND b.status IN ('cancelled','rejected')",
+                ['a' => $adminId, 'd' => $date],
+                0
+            );
+            return [
+                'date'            => $date,
+                'tickets'         => (int) $f['tickets'],
+                'seats'           => (int) $f['seats'],
+                'amount'          => (float) $f['inr'],
+                'amountLabel'     => inr((float) $f['inr']),
+                'cashTaken'       => (float) $f['cash'],
+                'cashLabel'       => SellerDay::cashMoney($f),
+                'online'          => (float) $f['online'],
+                'onlineLabel'     => SellerDay::money((float) $f['online'], $f),
+                'due'             => (float) $f['pending'],
+                'dueTickets'      => (int) $f['pendingN'],
+                'dueLabel'        => SellerDay::money((float) $f['pending'], $f),
+                'commissionToday' => (float) $f['commission'],
+                'commissionTodayLabel' => SellerDay::money((float) $f['commission'], $f),
+                'currency'        => (string) $f['currency'],
+                'cancelled'       => $cancelled,
+                'figures'         => $f,
+            ];
+        }
         $row = Database::fetch(
             "SELECT COUNT(*) AS tickets,
                     COALESCE(SUM(b.total_amount),0) AS amount,
-                    COALESCE(SUM(CASE WHEN p.method = 'cash' THEN b.total_amount ELSE 0 END),0) AS cash
+                    COALESCE(SUM(CASE WHEN p.method IN ('cash','cod') AND p.status = 'verified' THEN b.total_amount ELSE 0 END),0) AS cash
                FROM bookings b
                /* 3 Oct 2026: the latest payment only — a booking with two
                   payment rows was counted twice in tickets and amount. */

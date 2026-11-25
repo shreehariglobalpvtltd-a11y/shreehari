@@ -1161,7 +1161,8 @@ final class Notify
             '3' => $dateLine,
             '4' => $boardLine          !== '' ? $boardLine          : '-',
             '5' => $seatLine,
-            '6' => inr((float) ($booking['total_amount'] ?? 0)),
+            // 25 Nov 2026 (wx1): an NPR sale reads रू NPR here too, like the free-form text + ticket image.
+            '6' => self::waAmount($booking),
             // {{7}} is the template's IMAGE header — the ticket PNG itself.
             '7' => Ticket::imageUrl($pnr),
         ];
@@ -1206,6 +1207,7 @@ final class Notify
               . "जम्मा: " . self::waAmount($booking) . "\n"
               . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . self::pickupMapLine($booking)
               . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
               . "राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
@@ -1420,6 +1422,7 @@ final class Notify
               . "जम्मा: " . self::waAmount($booking) . " (उही)\n"
               . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . self::pickupMapLine($booking)
               . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
               . "नयाँ टिकट लिएर जानुहोला। राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
@@ -2308,6 +2311,56 @@ final class Notify
         return inr($inr);
     }
 
+    /**
+     * 25 Nov 2026 (wx1): the pickup map link of the free-form WhatsApp ticket
+     * texts = the payload of the ticket's own PICKUP QR (Ticket::mapQrs() row
+     * 'board'), so the text and the printed QR open the same place. The
+     * outbound leg gives boarding_stop / route / cities, as the ticket render
+     * reads them. '' when the switch wa_pickup_map_link_on is off, the pickup
+     * has no pin, or anything fails - never breaks a send.
+     */
+    private static function pickupMapUrl(array $booking): string
+    {
+        try {
+            if (!Settings::getBool('wa_pickup_map_link_on', true)) {
+                return '';
+            }
+            if (!class_exists('Ticket')) {
+                require_once __DIR__ . '/ticket.php';
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            if ($bid > 0 && (!isset($booking['boarding_stop']) || !isset($booking['route_id_for_stop']))) {
+                $leg = Database::fetch(
+                    "SELECT l.boarding_stop, r.from_city, r.to_city, r.id AS route_id_for_stop
+                       FROM booking_legs l
+                       JOIN schedules s ON s.id = l.schedule_id
+                       JOIN routes r ON r.id = s.route_id
+                      WHERE l.booking_id = :b AND l.leg_type = 'outbound'
+                      LIMIT 1",
+                    ['b' => $bid]
+                );
+                if ($leg !== null) {
+                    $booking = array_merge($booking, $leg);
+                }
+            }
+            foreach (Ticket::mapQrs($booking) as $q) {
+                $url = (string) ($q['payload'] ?? '');
+                if (($q['kind'] ?? '') === 'board' && preg_match('#^https?://\S+$#i', $url) === 1) {
+                    return $url;
+                }
+            }
+        } catch (Throwable $ignored) {
+        }
+        return '';
+    }
+
+    /** "📍 चढ्ने ठाउँको नक्सा · Pickup map: <url>\n", or '' when there is no map link. */
+    private static function pickupMapLine(array $booking): string
+    {
+        $url = self::pickupMapUrl($booking);
+        return $url !== '' ? "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $url . "\n" : '';
+    }
+
     /** The {{1}}..{{7}} ticket template variables — public for WaTemplates. */
     public static function ticketVars(array $booking): array
     {
@@ -2633,6 +2686,7 @@ final class Notify
                   . "बुकिङ नं.: " . $pnr . "\n"
                   . ($waBoard !== '' ? "चढ्ने ठाउँ: " . $waBoard . "\n" : '')
                   . ($waTime !== '' ? "समय: " . $waTime . "\n" : '')
+                  . self::pickupMapLine($booking)
                   . ($waDrop !== '' ? "गन्तव्य: " . $waDrop . "\n" : '')
                   . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
                   . ($waDateNep !== '' ? "यात्रा मिति: " . $waDateNep . "\n" : '')

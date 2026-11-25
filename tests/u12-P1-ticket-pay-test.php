@@ -87,13 +87,20 @@ function pdfPlain(string $path): string {
     }
     return $plain;
 }
-/** RGB of the PNG pill (top left, inside the pill, left of its text). */
+/** RGB of the PNG pill. Old layout: top left, inside the pill, left of its text. Clean layout
+ *  (ticket_clean_v2_on, mp1 tk 25 Nov 2026): the pill at the right end of the PNR row (x 948-1016,
+ *  y 322-370), sampled right of its text. The layout is the one this install draws today. */
 function pillRgb(string $png): array {
     $im = @imagecreatefrompng($png);
     if ($im === false) { return [0, 0, 0]; }
-    $c = imagecolorat($im, 66, 115);
+    $c = Ticket::cleanV2On() ? imagecolorat($im, 1004, 346) : imagecolorat($im, 66, 115);
     imagedestroy($im);
     return [($c >> 16) & 0xFF, ($c >> 8) & 0xFF, $c & 0xFF];
+}
+/** The PDF band's cash run: "(CASH) Tj" on the old layout, "(Cash received) Tj" on the clean one
+ *  (PAID · नगद प्राप्त भयो / Cash received). */
+function cashRun(): string {
+    return Ticket::cleanV2On() ? '(Cash received) Tj' : '(CASH) Tj';
 }
 $load = static function (int $id): array {
     $m = new ReflectionMethod('Ticket', 'loadBooking');
@@ -211,7 +218,20 @@ try {
 
     $qA = Ticket::paymentQr($load((int) $a['id']));
     $qD = Ticket::paymentQr($load((int) $d['id']));
-    check('A: the ticket\'s pay QR is the live pay link with the ticket key', $qA['mode'] === 'due'
+    /* 25 Nov 2026 (wx1, owner): a pay-at-boarding ticket carries NO pay QR (ticket_cod_no_payqr,
+       default on); with the switch off it keeps the old live link + ticket key. */
+    check('A (wx1): pay-at-boarding -> no pay QR, mode cod, PAY ON BOARDING label', $qA['mode'] === 'cod' && $qA['qr'] === ''
+        && str_contains($qA['label'], 'PAY ON BOARDING'), $qA['mode'] . ' ' . $qA['qr']);
+    Settings::get('upi_id');
+    $wx1Ref = new ReflectionClass('Settings');
+    $wx1C = $wx1Ref->getProperty('cache'); $wx1C->setAccessible(true);
+    $wx1D = $wx1Ref->getProperty('decoded'); $wx1D->setAccessible(true);
+    $wx1Orig = $wx1C->getValue();
+    $wx1C->setValue(null, array_merge((array) $wx1Orig, ['ticket_cod_no_payqr' => ['value' => '0', 'type' => 'bool', 'public' => false]]));
+    $wx1D->setValue(null, []);
+    $qA = Ticket::paymentQr($load((int) $a['id']));
+    $wx1C->setValue(null, $wx1Orig); $wx1D->setValue(null, []);
+    check('A: ticket_cod_no_payqr off -> the pay QR is the live pay link with the ticket key', $qA['mode'] === 'due'
         && str_contains($qA['payload'], 'pay.php?pnr=' . rawurlencode((string) $a['pnr']) . '&k=' . Ticket::downloadToken((string) $a['pnr'])), $qA['payload']);
     check('D: an online booking\'s pay QR is unchanged (pay.php?pnr=, no key)', $qD['mode'] === 'due' && str_ends_with($qD['payload'], 'pay.php?pnr=' . rawurlencode((string) $d['pnr'])), $qD['payload']);
 
@@ -232,7 +252,7 @@ try {
     check('PDF A: band says PAY ON BOARDING · INR X · … CASH OR ONLINE (Latin runs)', str_contains($pdf['A'], 'PAY ON BOARDING') && str_contains($pdf['A'], '(CASH OR ONLINE) Tj')
         && !str_contains($pdf['A'], 'TO THE CREW'));
     check('PDF A: the Nepali runs go through the Devanagari font', (bool) preg_match('/\/F8 9(\.00)? Tf/', $pdf['A']) || (bool) preg_match('/\/F7 9(\.00)? Tf/', $pdf['A']));
-    check('PDF B: PAID … (CASH)', str_contains($pdf['B'], 'PAID ') && str_contains($pdf['B'], '(CASH) Tj'));
+    check('PDF B: PAID … (CASH)', str_contains($pdf['B'], 'PAID ') && str_contains($pdf['B'], cashRun()), cashRun());
     check('PDF C: PAID … ONLINE (UPI)', str_contains($pdf['C'], 'PAID ') && (bool) preg_match('/\(ONLINE \\\\\(UPI\\\\\)\) Tj/', $pdf['C']));
     check('PDF D: the old PAYMENT PENDING band, untouched', str_contains($pdf['D'], 'PAYMENT PENDING ') && str_contains($pdf['D'], 'NOT VALID UNTIL APPROVED'),
         strlen($pdf['D']) . ' bytes, D is ' . (string) Database::scalar('SELECT status FROM bookings WHERE id = :i', ['i' => (int) $d['id']], '?')
@@ -422,7 +442,7 @@ try {
     $pdfB = Ticket::pdfPath($bId);
     clearstatcache();
     $md5P = (string) md5_file($pngB); $md5D = (string) md5_file($pdfB);
-    check('B before the tick: cached ticket says CASH', Ticket::payWords($load($bId))['way'] === 'cash' && str_contains(pdfPlain($pdfB), '(CASH) Tj'));
+    check('B before the tick: cached ticket says CASH', Ticket::payWords($load($bId))['way'] === 'cash' && str_contains(pdfPlain($pdfB), cashRun()), cashRun());
     $md = OpsHub::markDue($bId, $boss);
     $mp = OpsHub::markPaid($bId, 'UPI', null, 'bank ok', $boss);
     check('the office marks B due, then ticks "UPI" (a verified row: only the tick row changes)', !empty($md['ok']) && !empty($mp['ok'])
@@ -433,7 +453,7 @@ try {
     check('B: the next open serves a REDRAWN PNG (not the cached CASH one)', $pngB2 === $pngB && (string) md5_file($pngB2) !== $md5P);
     $plainB2 = pdfPlain($pdfB2);
     check('B: the next open serves a redrawn PDF that says ONLINE (UPI), no CASH', (string) md5_file($pdfB2) !== $md5D
-        && (bool) preg_match('/\(ONLINE \\\\\(UPI\\\\\)\) Tj/', $plainB2) && !str_contains($plainB2, '(CASH) Tj'));
+        && (bool) preg_match('/\(ONLINE \\\\\(UPI\\\\\)\) Tj/', $plainB2) && !str_contains($plainB2, '(CASH) Tj') && !str_contains($plainB2, '(Cash received) Tj'));
     sleep(2);
     Ticket::pngPath($bId);                       // may redraw once more when the tick and the redraw shared a second
     clearstatcache(); $m1 = (int) filemtime($pngB);
