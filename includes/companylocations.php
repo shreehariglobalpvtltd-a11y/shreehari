@@ -147,6 +147,19 @@ final class CompanyLocations
         return '';
     }
 
+    /** mp1 (25 Nov 2026): a place's phone for a pickup in its town, for the clean ticket ('' when none is filled). */
+    public static function phoneForTown(string $label): string
+    {
+        $l = mb_strtolower($label);
+        foreach (self::all() as $p) {
+            $t = mb_strtolower(trim($p['town']));
+            if ($t !== '' && trim($p['phone']) !== '' && str_contains($l, $t)) {
+                return trim($p['phone']);
+            }
+        }
+        return '';
+    }
+
     /** @param array<string,mixed> $r */
     private static function shape(array $r): array
     {

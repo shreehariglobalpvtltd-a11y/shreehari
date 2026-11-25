@@ -2561,8 +2561,27 @@ function tkGoldPay(b) {
      ticket_pay_qr_upi is on (default on); otherwise the live pay link (pay.php), which
      records the UTR and can never take the money twice. */
   const nprSale = String(b.fxCurrency || b.fx_currency || '').toUpperCase() === 'NPR' && Number(b.fxTotal || b.fx_total || 0) > 0;
+  /* 25 Nov 2026 (mp1 tk, Ticket::paymentQr parity): a fully paid ticket - cash or online -
+     shows NO payment QR anywhere (ticket_cash_no_payqr, default on); the PAID stamp only.
+     While money is due the QR follows the country: a trip from the Nepal side or an NPR
+     sale -> the office's Nepal QR image (eSewa / Fonepay, amount in NPR words), India -> UPI. */
+  const bs0 = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+  if (bs0.ticket_cash_no_payqr !== false && due <= 0) return null;
+  const rr0 = (typeof routeById === 'function' && b.routeId) ? (routeById(b.routeId) || {}) : {};
+  const fromNp = typeof isNepalPoint === 'function' && isNepalPoint(rr0.from) && !isNepalPoint(rr0.to);
+  const npQr = String(bs0.nepal_esewa_qr_url || '');
+  /* review (money, = Ticket::staticPayQrOk): the static Nepal QR records nothing, so on an INR
+     ticket it stands in only where a raw UPI code would - confirmed, not pay-at-boarding, no
+     proof waiting. A COD / pending ticket keeps the live pay.php link below (UTR -> COD queue). */
+  const pay0 = b.payment || {};
+  const staticOk = b.status === 'confirmed' && !isCod && !(pay0.status === 'pending' && !!(pay0.utr || pay0.shotThumb));
+  if (due > 0 && open && npQr && (nprSale || (bs0.ticket_pay_qr_by_country !== false && fromNp && staticOk))) {
+    const rate = nprSale && Number(b.total) > 0 ? Number(b.fxTotal || b.fx_total) / Number(b.total) : Number((typeof CONFIG !== 'undefined' && CONFIG.nprPerInr) || 1.6);
+    return { kind: 'npr', due: due, paid: false, upi: '', name: name, img: true, url: npQr,
+      npr: Math.round(due * rate), esewa: String(bs0.nepal_esewa_id || '') };
+  }
   if (due > 0 && upi && cur === 'INR' && !nprSale) {
-    const bs = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+    const bs = bs0;
     const pay = b.payment || {};
     const proofWaiting = pay.status === 'pending' && !!(pay.utr || pay.shotThumb);
     const rawOk = bs.ticket_pay_qr_upi !== false && b.status === 'confirmed' && !isCod && !proofWaiting;
@@ -2604,6 +2623,20 @@ function tkMantraLine() {
 }
 /* The pay half of the gold QR stub (the verify half is #tkQrBox). */
 function tkGoldPayFigure(b, gp, money) {
+  /* mp1 tk: no pay QR on a paid ticket - the PAID stamp in its place (cash: नगद प्राप्त भयो). */
+  if (!gp) {
+    if (b.status !== 'confirmed' && b.status !== 'completed') return '';   // cancelled / expired: no QR and no stamp
+    const cash = !!(b.payment && b.payment.method === 'cash');
+    return '<figure class="tkg-qr tkg-qr-pay is-paid tkg-paid-only"><div class="tkg-qr-frame" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:50%;border:4px solid #177A48;color:#177A48;aspect-ratio:1;max-width:190px;margin:0 auto">'
+      + '<b style="font-size:34px;line-height:1">PAID</b><small lang="ne" style="font-weight:700">' + esc(cash ? 'नगद प्राप्त भयो' : 'भुक्तानी भयो') + '</small>'
+      + '<small>' + esc(cash ? 'Cash received' : 'Paid') + '</small></div>'
+      + '<figcaption><b>' + esc(t('tkgPaid')) + '</b></figcaption></figure>';
+  }
+  if (gp.kind === 'npr') {
+    return '<figure class="tkg-qr tkg-qr-pay is-due is-npr"><a class="tkg-qr-frame" id="tkPayQrBox" href="' + esc(gp.url) + '" target="_blank" rel="noopener" aria-label="eSewa QR">'
+      + '<img src="' + esc(gp.url) + '" width="240" height="240" alt="eSewa / Fonepay QR" style="width:100%;height:auto"></a>'
+      + '<figcaption><b>तिर्न बाँकी · NPR ' + esc(Number(gp.npr || 0).toLocaleString('en-IN')) + '</b><small>eSewa / Fonepay' + (gp.esewa ? ' · ' + esc(gp.esewa) : '') + '</small></figcaption></figure>';
+  }
   const cap = gp.kind === 'due' ? tf('tkgPayDue', { a: money(gp.due) })
     : (gp.kind === 'office' ? t('tkgPayOffice') : t('tkgPayUpi'));
   const sub = gp.kind === 'office' ? (gp.due > 0 ? money(gp.due) : '') : gp.upi;
@@ -2905,6 +2938,9 @@ function renderStatus(id) {
   const primary2 = conf
     ? '<button class="btn btn-orange" id="imgBtn" type="button">' + t('btnImg') + '</button>'
       + '<button class="btn btn-wa" id="waBtn" type="button">🟢 ' + t('btnWa') + '</button>'
+      /* mp1 tk (25 Nov 2026): Print beside Image + WhatsApp, visible the moment the ticket shows
+         (it was folded inside "More"); the copy under More is gone so the id stays unique. */
+      + '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>'
       + trackBtn2
       + dirBtn2
       /* Return journey as its own ticket (17 Sep 2026): the engine books one
@@ -2920,7 +2956,6 @@ function renderStatus(id) {
       + '<a class="btn btn-orange" href="#/">' + t('tkNewTicket') + '</a>';
   const secondary2 = (conf ? '<button class="btn btn-ghost" id="pdfBtn" type="button">' + t('btnPdf') + '</button>'
       + (soon ? '<button class="btn btn-ghost" type="button" data-ics="' + esc(b.id) + '">' + t('btnCal') + '</button>' : '')
-      + '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>'
       + ((typeof navigator.share === 'function') ? '<button class="btn btn-ghost" id="shareBtn" type="button">' + t('btnShare') + '</button>' : '')
       + (tripCancelled ? '' : '<a class="btn btn-ghost" href="#/trip/' + esc(b.id) + '">🚌 Trip Companion</a>')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
@@ -2952,6 +2987,9 @@ function renderStatus(id) {
   /* Gold ticket (9 Oct 2026): the payment QR is on EVERY ticket, beside the
      verify QR (confirmed only) - see tkGoldPay() for the rule. */
   const gp2 = tkGoldPay(b);
+  /* mp1 tk: the clean ticket (ticket_clean_v2_on): no mantra / blessing, ONE flag by direction */
+  const tkClean = !!(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.ticket_clean_v2_on !== false);
+  const tkFromNp = typeof isNepalPoint === 'function' && isNepalPoint(r.from) && !isNepalPoint(r.to);
   const qrStub2 = '<div class="tkg-perf" aria-hidden="true"></div>'
     + '<div class="tkg-stub' + (conf ? '' : ' solo') + '">'
     + (conf ? '<figure class="tkg-qr tkg-qr-verify"><div class="tk2-qr tkg-qr-frame" id="tkQrBox"></div><figcaption><b>' + esc(t('tkgVerify')) + '</b><small>' + t('tkQrNote') + '</small></figcaption></figure>' : '')
@@ -2964,13 +3002,13 @@ function renderStatus(id) {
   ${borderCard}
   ${stepper}
   <div class="status-card tk2 tk2-gold${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
-    <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
+    ${tkClean ? '' : '<div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ' + esc(tkMantraLine()) + ' <span aria-hidden="true">❖</span></div>'}
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261120j" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261125a" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261120j" width="600" height="312" alt="" decoding="async">
+      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261125a" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261125a" width="600" height="312" alt="" decoding="async">'}
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}
@@ -3023,7 +3061,7 @@ function renderStatus(id) {
       <div class="tk2-company"><b>🇮🇳 S HARI GLOBAL PVT LTD 🇳🇵</b> · ${esc(CONFIG.company.mantra)}<br>CIN: ${esc(CONFIG.company.cin)}${CONFIG.company.gstin ? ' · GSTIN: ' + esc(CONFIG.company.gstin) : ''} · CEO: ${esc(CONFIG.company.ceo || '')}<br>☎ ${t('supportLbl')}: <a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a> · <a href="mailto:${esc(S().email)}">${esc(S().email)}</a></div>
     </details>
     ${conf ? '<div class="tk2-foot"><div class="bp-barcode">' + barcodeSVG(b.id) + '<span class="bp-bc-id">' + esc(b.id) + '</span></div><div class="tk2-thanks">' + t('tkThanks') + '</div></div>' : ''}
-    <div class="tkg-bless" lang="ne"><i aria-hidden="true"></i><span>${esc(t('tkBless'))}</span><i aria-hidden="true"></i></div>
+    ${tkClean ? '' : '<div class="tkg-bless" lang="ne"><i aria-hidden="true"></i><span>' + esc(t('tkBless')) + '</span><i aria-hidden="true"></i></div>'}
     <div class="premium-ticket-support"><b>${esc(t('premiumTrust'))}</b><a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a><span>${esc(location.host)}</span></div>
     ${extra}
   </div>
@@ -3033,7 +3071,7 @@ function renderStatus(id) {
   /* The pay QR lives in the gold stub now (tkGoldPay - the same UPI link
      with the amount when money is owed), so the pay card keeps its button
      and amount but no second copy of the same QR. */
-  makeQR(gp2.url, 240).then(url => {
+  if (gp2 && !gp2.img) makeQR(gp2.url, 240).then(url => {
     const box = $('#tkPayQrBox');
     if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id || !url) return;
     const img = new Image(); img.src = url; img.width = 240; img.height = 240; img.alt = gp2.kind === 'office' ? t('tkgPayOffice') : t('premiumPay');
