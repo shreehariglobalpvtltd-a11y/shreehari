@@ -133,6 +133,19 @@ try {
             $rid  = (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :s', ['s' => (int) ($leg0['schedule_id'] ?? 0)], 0);
             $geo  = Ticket::pickupGeo(['boarding_stop' => (string) ($leg0['boarding_stop'] ?? ''), 'route_id_for_stop' => $rid]);
             $payload['pickupMap'] = $geo !== null ? Ticket::pickupMapsUrl($geo) : null;
+            /* 25 Nov 2026 (wx1): the SAME pickup link the printed ticket's map QR
+               carries (Ticket::mapQrs 'board' row - stop pin, hub map, office place);
+               the directions link above stays the fallback. */
+            foreach (Ticket::mapQrs([
+                'boarding_stop' => (string) ($leg0['boarding_stop'] ?? ''), 'route_id_for_stop' => $rid,
+                'from_city' => (string) ($leg0['from_city'] ?? ''), 'to_city' => (string) ($leg0['to_city'] ?? ''),
+                'counter_code' => (string) ($detail['counter_code'] ?? ''), 'entity' => (string) ($detail['entity'] ?? ''),
+            ]) as $mq) {
+                if (($mq['kind'] ?? '') === 'board' && (string) ($mq['payload'] ?? '') !== '') {
+                    $payload['pickupMap'] = (string) $mq['payload'];
+                    break;
+                }
+            }
         } catch (Throwable $e) {
             $payload['pickupMap'] = null;
         }

@@ -146,6 +146,13 @@ $boot['settings']['offline_callback_on'] = Settings::getBool('offline_callback_o
 /* 19 Nov 2026 (TK-1 parity): the app ticket's pay QR follows Ticket::rawUpiQrOk() - a raw
    UPI code with the amount only while this is on (default on, like the server ticket). */
 $boot['settings']['ticket_pay_qr_upi'] = Settings::getBool('ticket_pay_qr_upi', true);
+/* 25 Nov 2026 (wx1): no pay QR on a pay-at-boarding ticket (Ticket::paymentQr 'cod'), the
+   pickup map QR on the app's fallback PDF (ticket_maps_qr, like the server ticket), a Nepal
+   -> India customer picks only the route's own pickups, the big family-share button. */
+$boot['settings']['ticket_cod_no_payqr']   = Settings::getBool('ticket_cod_no_payqr', true);
+$boot['settings']['ticket_maps_qr']        = Settings::getBool('ticket_maps_qr', true);
+$boot['settings']['nepal_pickup_two_only'] = Settings::getBool('nepal_pickup_two_only', true);
+$boot['settings']['family_share_btn_on']   = Settings::getBool('family_share_btn_on', true);
 
 /* Counter mode (3 Sep 2026): when a staff member who may sell is signed in,
    tell the app so it runs the SAME search -> seats -> checkout as a counter

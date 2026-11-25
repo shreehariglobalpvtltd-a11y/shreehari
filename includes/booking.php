@@ -570,6 +570,15 @@ final class BookingService
         $boardingIsOther = (string) ($request['boarding'] ?? '') === self::BOARDING_OTHER;
         $dropIsOther     = (string) ($request['drop'] ?? '') === self::BOARDING_OTHER;
         $originTown      = Security::clean($request['originTown'] ?? '', 80);
+        /* 25 Nov 2026 (wx1, owner): from Nepal a CUSTOMER boards only at the route's
+           own pickups (Nepalgunj office, Rupaidiha border parking) - no free-text
+           "Other". Staff sales ($seller / a signed-in selling staff) keep it.
+           Switch nepal_pickup_two_only (default on). */
+        if ($boardingIsOther && $seller === null && !Auth::isSellingStaff()
+            && Settings::getBool('nepal_pickup_two_only', true)
+            && Boarding::isNepalTown((string) ($route['from_city'] ?? '')) && Boarding::routeDirection($route) === 'toIndia') {
+            throw new RuntimeException('नेपालबाट चढ्ने ठाउँ सूचीबाट मात्र छान्नुहोस्। / From Nepal, please choose a pickup from the list.');
+        }
         if ($boardingIsOther) {
             $boardingStop = self::manualStop($request['boardingOther'] ?? '', 'boarding');
         } else {
