@@ -1,10 +1,13 @@
 -- 25 Nov 2026 (op5-credit): agent credit limit + "Stop selling" hold.
 -- credit_limit NULL = follow the company default (agent_credit_limit_default, 0 = no limit);
 -- 0 = no limit for this agent; > 0 = refuse new agent sales once what they owe reaches it.
--- The hold reuses admin_profiles.suspended_at / suspended_reason (already there).
+-- credit_hold_at / credit_hold_reason = the office's "Stop selling" hold, its OWN pair: suspended_at /
+-- suspended_reason mean a full agreement suspension to AgentPro, the public card verify and the website.
 -- AgentCredit::hasLimitColumn() keeps the app working (per-agent limit off) before this runs.
 ALTER TABLE admin_profiles
-    ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(12,2) NULL DEFAULT NULL;
+    ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(12,2) NULL DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS credit_hold_at DATETIME NULL DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS credit_hold_reason VARCHAR(200) NULL DEFAULT NULL;
 
 -- Seed rows so the Agent rules panel can edit them. Defaults = no change on deploy:
 -- the block switch is ON but nothing is refused until a limit or a hold is set.

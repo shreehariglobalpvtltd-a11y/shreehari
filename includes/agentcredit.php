@@ -7,15 +7,23 @@
  * new tickets only while what they owe stays under a limit. This file is the
  * ONE place that decides that; it invents no ledger of its own:
  *
- *   outstanding  = AgentWallet::netPosition()['net'] (cash held − commission
- *                  owed to them), floored at 0 — the very figure the statement
- *                  prints as "Agent owes company ₹X" (AgentStatement::owes).
+ *   outstanding  = cash the agent holds (AgentWallet::netPosition()['cash'])
+ *                  less only a POSITIVE commission due to them, floored at 0.
+ *                  While commission is ≥ 0 this is exactly the net the statement
+ *                  prints as "Agent owes company ₹X" (AgentStatement::owes). A
+ *                  NEGATIVE commission balance — the office's own advance / loan
+ *                  (recordAdvance / issueLoan, recovered from future commission)
+ *                  or a commission_void after a payout — is NOT counted: it is
+ *                  repaid from new sales, so counting it would lock the agent
+ *                  out with no way back (a cash_handover is capped at cash held).
  *   limit        = admin_profiles.credit_limit for the agent (NULL = follow the
  *                  company default, 0 = no limit for this agent), else the
  *                  setting agent_credit_limit_default (0 = no limit).
- *   hold         = admin_profiles.suspended_at / suspended_reason — the
- *                  suspend columns that already existed (and were only ever a
- *                  pill). "Application rejected" (staff.php) is NOT a hold.
+ *   hold         = admin_profiles.credit_hold_at / credit_hold_reason — its OWN
+ *                  pair. NOT suspended_at / suspended_reason: AgentPro::member(),
+ *                  the public card verify (api/agentpro-card.php) and the website
+ *                  listing (ApWeb::judge) read those as a full agreement
+ *                  suspension, and a dues hold must not tell customers that.
  *
  * Refusal (agent_credit_block_on, default ON — but with no limit set and no
  * hold nothing changes): outstanding >= limit, or the office pressed
@@ -35,9 +43,10 @@
  *   agent_credit_limit_default  float 0     company default limit, 0 = none
  *   agent_credit_warn_pct       int   80    banner on the agent's desk from this % of the limit
  *
- * Column: admin_profiles.credit_limit (database/upgrade-2026-11-25-op5-credit.sql).
- * Without it the per-agent limit reads NULL (company default) and setLimit()
- * refuses with a message; everything else keeps working.
+ * Columns: admin_profiles.credit_limit, credit_hold_at, credit_hold_reason
+ * (database/upgrade-2026-11-25-op5-credit.sql). Without them the per-agent limit
+ * reads NULL (company default), nobody is on hold, and setLimit() / setHold()
+ * refuse with a message; everything else keeps working.
  */
 declare(strict_types=1);
 
@@ -48,9 +57,6 @@ if (!defined('SHG_APP')) {
 
 final class AgentCredit
 {
-    /** suspended_reason values that are not a selling hold (staff.php rejects an application with this). */
-    public const NOT_A_HOLD = ['Application rejected'];
-
     /** Settlement modes the office may pick. */
     public const MODES = ['cash' => 'Cash · नगद', 'bank' => 'Bank · बैंक', 'online' => 'Online · अनलाइन'];
 
@@ -88,19 +94,60 @@ final class AgentCredit
         return max(0.0, round(Settings::getFloat('agent_credit_limit_default', 0.0), 2));
     }
 
+    /** Pure rule: cash held less only a positive commission due (an advance / negative commission never counts). */
+    public static function owedFrom(float $cash, float $commission): float
+    {
+        return max(0.0, round($cash - max(0.0, $commission), 2));
+    }
+
     /** What the agent owes the company now (never negative). */
     public static function outstanding(int $adminId): float
     {
-        return max(0.0, round(AgentWallet::netPosition($adminId)['net'], 2));
+        $n = AgentWallet::netPosition($adminId);
+        return self::owedFrom((float) $n['cash'], (float) $n['commission']);
+    }
+
+    public static function hasHoldColumns(): bool
+    {
+        return AgentWallet::profileHasColumn('credit_hold_at') && AgentWallet::profileHasColumn('credit_hold_reason');
+    }
+
+    /**
+     * Every agent on a selling hold, for a list page in one read.
+     *
+     * @return array<int, string> admin id => reason
+     */
+    public static function heldMap(): array
+    {
+        if (!self::hasHoldColumns()) {
+            return [];
+        }
+        $out = [];
+        try {
+            foreach (Database::fetchAll('SELECT admin_id, credit_hold_reason FROM admin_profiles WHERE credit_hold_at IS NOT NULL') as $r) {
+                $out[(int) $r['admin_id']] = (string) ($r['credit_hold_reason'] ?? '');
+            }
+        } catch (Throwable $e) {
+            return [];
+        }
+        return $out;
     }
 
     /** @return array{held: bool, reason: string, since: ?string} */
     public static function hold(int $adminId): array
     {
-        $p      = AgentWallet::profile($adminId);
-        $since  = (string) ($p['suspended_at'] ?? '');
-        $reason = trim((string) ($p['suspended_reason'] ?? ''));
-        $held   = $since !== '' && !in_array($reason, self::NOT_A_HOLD, true);
+        $none = ['held' => false, 'reason' => '', 'since' => null];
+        if ($adminId <= 0 || !self::hasHoldColumns()) {
+            return $none;
+        }
+        try {
+            $p = Database::fetch('SELECT credit_hold_at, credit_hold_reason FROM admin_profiles WHERE admin_id = :a', ['a' => $adminId]);
+        } catch (Throwable $e) {
+            return $none;
+        }
+        $since  = (string) ($p['credit_hold_at'] ?? '');
+        $reason = trim((string) ($p['credit_hold_reason'] ?? ''));
+        $held   = $since !== '';
         return ['held' => $held, 'reason' => $held ? $reason : '', 'since' => $held ? $since : null];
     }
 
@@ -204,24 +251,28 @@ final class AgentCredit
             'credit limit ' . ($new === null ? 'follows company default' : ($new <= 0 ? 'none' : inr($new))) . ' (by admin#' . $by . ')');
     }
 
-    /** "Stop selling" (on) / "Resume selling" (off). Uses the existing suspend columns. */
+    /** "Stop selling" (on) / "Resume selling" (off). Own columns — never the agreement-suspension pair. */
     public static function setHold(int $adminId, bool $on, string $reason, int $by): void
     {
+        if (!self::hasHoldColumns()) {
+            throw new RuntimeException('Run database/upgrade-2026-11-25-op5-credit.sql once to stop / resume an agent\'s selling.');
+        }
         $reason = trim(Security::clean($reason, 200));
         $before = self::hold($adminId);
         if ($on) {
             if (mb_strlen($reason) < 3) {
                 throw new RuntimeException('Write a short reason for stopping sales (at least 3 characters).');
             }
-            if (in_array($reason, self::NOT_A_HOLD, true)) {
-                $reason .= ' (hold)';
-            }
-            AgentWallet::saveProfile($adminId, ['suspended_reason' => $reason, 'suspended_at' => date('Y-m-d H:i:s')]);
+            Database::run(
+                'INSERT INTO admin_profiles (admin_id, credit_hold_at, credit_hold_reason) VALUES (:a, NOW(), :r)
+                 ON DUPLICATE KEY UPDATE credit_hold_at = NOW(), credit_hold_reason = :r2',
+                ['a' => $adminId, 'r' => $reason, 'r2' => $reason]
+            );
             Logger::audit('agent.credit_hold', 'admin', (string) $adminId, $before, ['held' => true, 'reason' => $reason],
                 'selling stopped by admin#' . $by);
             return;
         }
-        AgentWallet::saveProfile($adminId, ['suspended_reason' => '', 'suspended_at' => null]);
+        Database::run('UPDATE admin_profiles SET credit_hold_at = NULL, credit_hold_reason = NULL WHERE admin_id = :a', ['a' => $adminId]);
         Logger::audit('agent.credit_release', 'admin', (string) $adminId, $before, ['held' => false],
             'selling resumed by admin#' . $by . ($reason !== '' ? ' — ' . $reason : ''));
     }

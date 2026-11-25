@@ -606,7 +606,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     : ((float) $lim <= 0 ? 'No credit limit for this agent.' : 'Credit limit set to ' . inr((float) $lim) . '.'));
             } elseif ($action === 'credit_hold') {
                 AgentCredit::setHold($targetId, true, (string) ($_POST['reason'] ?? ''), $selfId);
-                a360_flash('ok', 'Selling stopped — the agent can still sign in, see their statement and hand cash over.');
+                a360_flash('ok', 'Selling stopped — the agent can still sign in, see their statement and hand cash over. Their public card and website listing are unchanged.');
             } elseif ($action === 'credit_release') {
                 AgentCredit::setHold($targetId, false, (string) ($_POST['reason'] ?? ''), $selfId);
                 a360_flash('ok', 'Selling resumed for this agent.');
@@ -1629,7 +1629,7 @@ $imgData = [
         <form method="post" style="display:flex;flex-direction:column;gap:8px">
           <?= a360_form_head('overview', 'credit_hold', $agentId, $csrf, $k) ?>
           <label>Reason · कारण<input type="text" name="reason" maxlength="200" required minlength="3" placeholder="dues not settled"></label>
-          <button class="btn danger sm" type="submit" onclick="return confirm('Stop this agent selling new tickets? They can still sign in and settle.')">Stop selling · बिक्री रोक्ने</button>
+          <button class="btn danger sm" type="submit"<?= AgentCredit::hasHoldColumns() ? '' : ' disabled title="Run database/upgrade-2026-11-25-op5-credit.sql once"' ?> onclick="return confirm('Stop this agent selling new tickets? They can still sign in and settle; their card stays genuine.')">Stop selling · बिक्री रोक्ने</button>
         </form>
         <?php endif; ?>
       </div>

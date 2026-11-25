@@ -350,6 +350,10 @@ $rows = Database::fetchAll(
       WHERE a.role = 'agent'"
 );
 
+// 25 Nov 2026 (op5-credit): who the office has stopped selling (own columns, one read)
+require_once INCLUDE_PATH . '/agentcredit.php';
+$creditHeld = AgentCredit::heldMap();
+
 $staffRows = Database::fetchAll(
     "SELECT a.id, a.username, a.full_name, a.phone, a.email, a.role, a.is_active, a.created_at,
             p.display_phone, p.whatsapp, p.address, p.monthly_salary, p.duty_status, p.assigned_bus_id,
@@ -593,7 +597,7 @@ admin_header('Agents & Organization Hub', 'agents');
         <td class="num" data-sort="<?= $r['comm_due'] ?>"><b>₹<?= number_format($r['comm_due']) ?></b><div class="muted" style="font-size:11px">cash ₹<?= number_format($r['cash_bal']) ?></div></td>
         <td class="num" data-sort="<?= (float) $r['rate_sort'] ?>"><b><?= $e($r['rate']) ?></b><div class="muted" style="font-size:11px"><?= $e($r['rate_note']) ?></div></td>
         <td class="num" data-sort="<?= (int) ($r['pax'] ?? 0) ?>"><b><?= (int) ($r['pax'] ?? 0) ?> जना</b><div class="muted" style="font-size:11px"><?= (int) $r['sales'] ?> tickets · ₹<?= number_format((float) $r['revenue']) ?></div></td>
-        <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?><?php if ((string) ($r['suspended_at'] ?? '') !== '' && !in_array(trim((string) ($r['suspended_reason'] ?? '')), ['Application rejected'], true)): /* 25 Nov 2026 (op5-credit): Agent 360 "Stop selling" */ ?> <span class="pill" style="background:#f7dcdc;color:#8a1f1f" title="<?= $e((string) ($r['suspended_reason'] ?? '')) ?>">⛔ On hold · रोकिएको</span><?php endif; ?></td>
+        <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?><?php if (isset($creditHeld[(int) $r['id']])): /* 25 Nov 2026 (op5-credit): Agent 360 "Stop selling" */ ?> <span class="pill" style="background:#f7dcdc;color:#8a1f1f" title="<?= $e($creditHeld[(int) $r['id']]) ?>">⛔ On hold · रोकिएको</span><?php endif; ?></td>
         <td><span class="dt-acts">
           <button type="button" class="btn ghost" onclick="openIdModal('<?= $e($appRef) ?>','<?= $e($r['full_name'] ?: $r['username']) ?>','<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>','<?= $e($r['code']) ?>','<?= $e($r['phone']) ?>','<?= $e($waDigits) ?>','<?= $e($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>')" title="One-Tap ID Card &amp; Agreement Preview">🪪 ID Card</button>
           <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>

@@ -15,7 +15,9 @@
  *                                              ticket / bulk / WA desk) and counterSale() (register)
  *   E company default limit applies when the agent has none; own 0 = no limit
  *   F settlement entry (cash_handover)       → lowers outstanding, unblocks, shows on the ledger
- *   G "Stop selling" hold                    → refused; resume → allowed; "Application rejected" is no hold
+ *   G "Stop selling" hold                    → refused; resume → allowed; own columns, so the public
+ *                                              card / AgentPro status and suspended_* stay untouched
+ *   J an office advance / loan bigger than the limit, ₹0 cash held → still sells
  *   H a counter clerk is never refused; the switch off lets everything through
  *   I 80% banner on the agent desk; Agent 360 + settings + migration are wired
  *
@@ -32,6 +34,7 @@ require_once INCLUDE_PATH . '/fare.php';
 require_once INCLUDE_PATH . '/seats.php';
 require_once INCLUDE_PATH . '/booking.php';
 require_once INCLUDE_PATH . '/agentcredit.php';
+require_once INCLUDE_PATH . '/agentpro.php';
 
 $pass = 0; $fail = 0;
 function check(string $l, bool $ok, string $extra = ''): void {
@@ -84,7 +87,7 @@ $cleanup = static function () use (&$made, $saved, $keys): void {
 register_shutdown_function($cleanup);
 
 $mk = static function (string $role) use ($tag, &$made): int {
-    $id = (int) Database::insert('admins', ['username' => 'op5c-' . $role . '-' . $tag, 'password_hash' => password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT),
+    $id = (int) Database::insert('admins', ['username' => 'op5c-' . $role . count($made) . '-' . $tag, 'password_hash' => password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT),
         'full_name' => 'OP5 Credit ' . ucfirst($role), 'role' => $role, 'is_active' => 1, 'must_change_pw' => 0]);
     $made[] = $id;
     return $id;
@@ -110,6 +113,8 @@ try {
     check('A limit 0 = no limit', AgentCredit::decide(999999, 0, false) === null);
     check('A hold refuses even with nothing owed', isCredit((string) AgentCredit::decide(0, 0, true, 'dues')));
     check('A switch off lets everything through', AgentCredit::decide(9000, 5000, true, 'x', false) === null);
+    check('A owed = cash less a positive commission due', AgentCredit::owedFrom(10000, 3000) === 7000.0 && AgentCredit::owedFrom(2000, 3000) === 0.0);
+    check('A a negative commission (office advance / void) is never owed', AgentCredit::owedFrom(0, -25000) === 0.0 && AgentCredit::owedFrom(4000, -25000) === 4000.0);
 
     $set('agent_credit_block_on', '1');
     $set('agent_credit_limit_default', '0');
@@ -208,7 +213,14 @@ try {
     /* ---------------- G hold ---------------- */
     echo "\n-- G stop selling / resume\n";
     check('G a hold needs a reason', thrown(static fn() => AgentCredit::setHold($agent, true, '', 0)) !== '');
+    $apBefore = AgentPro::member($agent, false)['status'] ?? null;
     AgentCredit::setHold($agent, true, 'dues not settled', 0);
+    $prof = Database::fetch('SELECT suspended_at, suspended_reason, credit_hold_at FROM admin_profiles WHERE admin_id = :a', ['a' => $agent]) ?? [];
+    check('G hold kept in its own columns: suspended_at / suspended_reason untouched',
+        (string) ($prof['suspended_at'] ?? '') === '' && trim((string) ($prof['suspended_reason'] ?? '')) === '' && (string) ($prof['credit_hold_at'] ?? '') !== '', json_encode($prof));
+    $apHeld = AgentPro::member($agent, false)['status'] ?? null;
+    check('G a held agent\x27s AgentPro status (public card / website) is unchanged', $apHeld === $apBefore && $apHeld !== 'suspended', var_export([$apBefore, $apHeld], true));
+    check('G agents list sees the hold (heldMap)', (AgentCredit::heldMap()[$agent] ?? null) === 'dues not settled');
     $m = thrown($doors['assertMaySell']);
     check('G on hold: refused below the limit, reason shown', isCredit($m) && str_contains($m, 'dues not settled'), $m);
     check('G on hold: create() refused', isCredit(thrown($doors['create() seller (SmartBook / Quick / bulk / WA desk)'])));
@@ -217,9 +229,7 @@ try {
     AgentCredit::setHold($agent, false, 'dues cleared', 0);
     check('G resume: allowed again', thrown($doors['assertMaySell']) === '' && !AgentCredit::hold($agent)['held']);
     check('G release audited', Database::exists("SELECT 1 FROM audit_logs WHERE action = 'agent.credit_release' AND entity_id = :a", ['a' => (string) $agent]));
-    AgentWallet::saveProfile($agent, ['suspended_reason' => 'Application rejected', 'suspended_at' => date('Y-m-d H:i:s')]);
-    check('G "Application rejected" (staff.php) is not a selling hold', !AgentCredit::hold($agent)['held'] && thrown($doors['assertMaySell']) === '');
-    AgentWallet::saveProfile($agent, ['suspended_reason' => '', 'suspended_at' => null]);
+    check('G resume clears the hold columns', !isset(AgentCredit::heldMap()[$agent]));
 
     /* ---------------- E company default ---------------- */
     echo "\n-- E company default\n";
@@ -230,6 +240,24 @@ try {
     AgentCredit::setLimit($agent, 0, 0);
     check('E own limit 0 = no limit even with a default', AgentCredit::ownLimit($agent) === 0.0 && thrown($doors['assertMaySell']) === '');
     check('E limit change audited', Database::exists("SELECT 1 FROM audit_logs WHERE action = 'agent.credit_limit' AND entity_id = :a", ['a' => (string) $agent]));
+    $set('agent_credit_limit_default', '0');
+
+    /* ---------------- J office advance never locks the agent out ---------------- */
+    echo "
+-- J advance / loan
+";
+    $agent2 = $mk('agent');
+    $set('agent_credit_limit_default', '20000');
+    AgentWallet::recordAdvance($agent2, 25000, ['note' => 'op5-credit test advance', 'by' => 0]);
+    $np = AgentWallet::netPosition($agent2);
+    check('J setup: ₹25,000 advance, ₹0 cash, net position +₹25,000', abs($np['commission'] + 25000) < 0.01 && abs($np['cash']) < 0.01, json_encode($np));
+    $signIn($agent2);
+    check('J advance > default limit with ₹0 cash: outstanding ₹0, still sells', AgentCredit::outstanding($agent2) === 0.0
+        && thrown(static fn() => AgentWallet::assertMaySell($agent2, $rid)) === '' && AgentCredit::bannerHtml($agent2) === '');
+    AgentWallet::record($agent2, 'cash_due', 21000, ['note' => 'op5-credit test dues', 'by' => 0]);
+    check('J cash collected over the limit still counts (advance does not hide it)', abs(AgentCredit::outstanding($agent2) - 21000) < 0.01
+        && isCredit(thrown(static fn() => AgentWallet::assertMaySell($agent2, $rid))));
+    $signIn($agent);
     $set('agent_credit_limit_default', '0');
 
     /* ---------------- I wiring ---------------- */
@@ -244,7 +272,9 @@ try {
     $sp = (string) file_get_contents($ROOT . '/admin/settings.php');
     check('I settings: the three keys on the Agent rules panel', str_contains($sp, "\$arBool('agent_credit_block_on'") && str_contains($sp, "\$arNum('agent_credit_limit_default'") && str_contains($sp, "\$arNum('agent_credit_warn_pct'"));
     check('I not in the boot settings list', !str_contains((string) file_get_contents(INCLUDE_PATH . '/settings.php'), 'agent_credit_'));
-    check('I migration file adds credit_limit', str_contains((string) @file_get_contents($ROOT . '/database/upgrade-2026-11-25-op5-credit.sql'), 'credit_limit DECIMAL(12,2) NULL'));
+    $mig = (string) @file_get_contents($ROOT . '/database/upgrade-2026-11-25-op5-credit.sql');
+    check('I migration file adds credit_limit + its own hold pair', str_contains($mig, 'credit_limit DECIMAL(12,2) NULL') && str_contains($mig, 'credit_hold_at DATETIME NULL') && str_contains($mig, 'credit_hold_reason VARCHAR(200) NULL'));
+    check('I agentcredit never writes suspended_* (agreement suspension)', !preg_match('/suspended_(at|reason)' . "'" . '\s*=>/', (string) file_get_contents(INCLUDE_PATH . '/agentcredit.php')));
     foreach (['includes/agentcredit.php', 'admin/agent-360.php', 'admin/agents.php', 'admin/settings.php', 'admin/_guard.php', 'includes/booking.php', 'includes/agentwallet.php'] as $f) {
         $out = []; $rc = 0;
         exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($ROOT . '/' . $f) . ' 2>&1', $out, $rc);
