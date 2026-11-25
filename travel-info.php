@@ -31,14 +31,34 @@ $waShow = strlen($waDig) === 12 && str_starts_with($waDig, '91')
     : '+' . $waDig;
 $peg    = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
 
-/* company_counters ("Town +91 NNNNN NNNNN · Town …") -> tap-to-call links. */
+/* 25 Nov 2026 (wx1-c2 review): the Counters list = the offices the website lists
+   (CounterDesk::publicOffices(), the /offices cards - Nepalgunj, Emli Bhupal …);
+   an office with no number yet shows its name only, never a made-up one. */
 $counters = '';
-foreach (preg_split('/\s*·\s*/u', (string) $co['counters']) ?: [] as $part) {
-    $part = trim($part);
-    if (preg_match('/^(.*?)\s*(\+?\d[\d\s-]{7,})$/u', $part, $m)) {
-        $counters .= '<li>' . $e($m[1]) . ' <a href="tel:' . $e(preg_replace('/[^0-9+]/', '', $m[2])) . '">' . $e(trim($m[2])) . '</a></li>';
-    } elseif ($part !== '') {
-        $counters .= '<li>' . $e($part) . '</li>';
+try {
+    foreach (CounterDesk::publicOffices() as $o) {
+        if (($o['status'] ?? 'open') !== 'open') {
+            continue;
+        }
+        $nm  = (string) $o['name'];
+        $nNe = trim((string) ($o['nameNe'] ?? ''));
+        $dig = preg_replace('/\D/', '', (string) ($o['tel'] ?? '')) ?? '';
+        $counters .= '<li>' . $e($nNe !== '' && $nNe !== $nm ? $nNe . ' · ' . $nm : $nm)
+            . ((string) $o['phone'] !== '' ? ' ' . ($dig !== '' ? '<a href="tel:+' . $e($dig) . '">' . $e($o['phone']) . '</a>' : $e($o['phone'])) : '')
+            . '</li>';
+    }
+} catch (Throwable) {
+    $counters = '';
+}
+/* Fallback only: company_counters ("Town +91 NNNNN NNNNN · Town …") -> tap-to-call links. */
+if ($counters === '') {
+    foreach (preg_split('/\s*·\s*/u', (string) $co['counters']) ?: [] as $part) {
+        $part = trim($part);
+        if (preg_match('/^(.*?)\s*(\+?\d[\d\s-]{7,})$/u', $part, $m)) {
+            $counters .= '<li>' . $e($m[1]) . ' <a href="tel:' . $e(preg_replace('/[^0-9+]/', '', $m[2])) . '">' . $e(trim($m[2])) . '</a></li>';
+        } elseif ($part !== '') {
+            $counters .= '<li>' . $e($part) . '</li>';
+        }
     }
 }
 
@@ -69,7 +89,9 @@ $C = [
         'Nepalgunj town is a short ride beyond the border — agree the fare before you get in.',
         'Nepal time is 15 minutes ahead of Indian time.',
         'Going to Gujarat? The coach leaves from Rupaidiha: cross early — queues can be long — and reach the pickup by the reporting time on your ticket.',
+        '{NPJBOARD}',
     ],
+    'npjB' => ['Coming from Nepalgunj? Board at our Nepalgunj office at the time on your ticket, else at the Rupaidiha border parking.', 'Coming from Nepalgunj? Board at {A} at the time on your ticket.', 'Coming from Nepalgunj? Board at {A}, else at {B} — at the time on your ticket.'],
     'moneyH' => 'Money &amp; currency',
     'money' => [
         'Fares are in Indian rupees (₹). INR is widely accepted near the border.',
@@ -129,7 +151,9 @@ $C = [
         'नेपालगंज शहर बॉर्डर से थोड़ी दूरी पर है — बैठने से पहले किराया तय करें।',
         'नेपाल का समय भारत से 15 मिनट आगे है।',
         'गुजरात जाना है? बस रूपईडीहा से चलती है: जल्दी पार करें — कतार लंबी हो सकती है — और टिकट पर लिखे रिपोर्टिंग समय तक पिकअप पर पहुँचें।',
+        '{NPJBOARD}',
     ],
+    'npjB' => ['नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर हमारे नेपालगंज ऑफ़िस से चढ़ें, नहीं तो रूपईडीहा बॉर्डर पार्किंग से।', 'नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर {A} से चढ़ें।', 'नेपालगंज से आ रहे हैं? टिकट पर लिखे समय पर {A} से चढ़ें, नहीं तो {B} से।'],
     'moneyH' => 'पैसा और मुद्रा',
     'money' => [
         'किराया भारतीय रुपये (₹) में है। बॉर्डर के पास भारतीय रुपया ख़ूब चलता है।',
@@ -189,7 +213,9 @@ $C = [
         'नेपालगञ्ज बजार बोर्डरबाट नजिकै छ — चढ्नुअघि भाडा तय गर्नुहोस्।',
         'नेपालको समय भारतभन्दा १५ मिनेट अगाडि छ।',
         'गुजरात जाँदै हुनुहुन्छ? बस रुपैडिहाबाट छुट्छ: चाँडै पार गर्नुहोस् — लाइन लामो हुन सक्छ — र टिकटमा लेखिएको रिपोर्टिङ समयसम्म चढ्ने ठाउँमा पुग्नुहोस्।',
+        '{NPJBOARD}',
     ],
+    'npjB' => ['नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा हाम्रो नेपालगञ्ज कार्यालयबाट चढ्नुहोस्, नभए रुपैडिहा बोर्डर पार्किङबाट।', 'नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा {A} बाट चढ्नुहोस्।', 'नेपालगञ्जबाट आउँदै हुनुहुन्छ? टिकटमा लेखिएको समयमा {A} बाट चढ्नुहोस्, नभए {B} बाट।'],
     'moneyH' => 'पैसा र मुद्रा',
     'money' => [
         'भाडा भारतीय रुपैयाँ (₹) मा हुन्छ। बोर्डर नजिक भारतीय रुपैयाँ धेरै चल्छ।',
@@ -233,10 +259,17 @@ $C = [
  *  One block per language, same structure for all three.
  * ------------------------------------------------------------------- */
 $lug = TravelGuide::luggage();   // 25 Nov 2026 (wx1-c2): luggage_free_kg / cabin_bag_kg, 20 + 7 by default
+/* 25 Nov 2026 (wx1-c2 review): "coming from Nepalgunj?" - the boarding stops + times
+   of the active Nepal -> India routes (Admin -> Routes), never a time typed here;
+   no stop saved -> the general sentence. */
+$npjStops = TravelGuide::nepalBoarding();
+foreach ($C as $l => $c) {
+    $C[$l]['npjLine'] = TravelGuide::boardingLine($npjStops, $c['npjB'], !empty($c['dev']));
+}
 $fill = static function (string $s, array $c) use ($peg, $lug): string {
     $pegTxt = $peg > 0 ? str_replace('{PEG}', number_format($peg, 2), $c['pegTxt']) : '';
     $kg = static fn(int $n): string => !empty($c['dev']) ? strtr((string) $n, ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९']) : (string) $n;
-    return trim(str_replace(['{PEGTXT}', '{LUGFREE}', '{LUGCABIN}'], [$pegTxt, $kg($lug['free']), $kg($lug['cabin'])], $s));
+    return trim(str_replace(['{PEGTXT}', '{LUGFREE}', '{LUGCABIN}', '{NPJBOARD}'], [$pegTxt, $kg($lug['free']), $kg($lug['cabin']), (string) ($c['npjLine'] ?? '')], $s));
 };
 $li = static fn(array $items, array $c): string => implode('', array_map(static fn(string $s): string => '<li>' . $fill($s, $c) . '</li>', $items));
 $wa = static fn(string $text): string => 'https://wa.me/' . $e($waDig) . '?text=' . rawurlencode($text);

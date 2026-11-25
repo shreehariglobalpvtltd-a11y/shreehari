@@ -986,6 +986,29 @@ final class ContentPages
             ['active' => 'india-nepal', 'path' => '/india-nepal', 'crumbs' => $crumbs, 'css' => self::css()]));
     }
 
+    /**
+     * 'NP' or 'IN' for a place's bare 10-digit number (wx1-c2 review): a place in a
+     * Nepal town dials +977, one in an Indian town +91 (Rupaidiha is the Indian side
+     * of the border, so +91 although the routes treat it as the Nepal end). Only a
+     * place with no town reads a 96/97/98 mobile as Nepali - Indian mobiles start
+     * 96-98 too, so the town always wins. An address ending in "Nepal" (Banke,
+     * Kohalpur …) counts as a Nepal town.
+     */
+    public static function placeDialCountry(string $town, string $digits, string $address = ''): string
+    {
+        $k = Boarding::townKey($town);
+        if ($k === 'rupaidiha') {
+            return 'IN';
+        }
+        if (($k !== '' && Boarding::isNepalTown($town)) || preg_match('/(?:\bNepal\.?|नेपाल)$/iu', trim($address)) === 1) {
+            return 'NP';
+        }
+        if ($k !== '') {
+            return 'IN';
+        }
+        return preg_match('/^9[678]\d{8}$/', $digits) === 1 ? 'NP' : 'IN';
+    }
+
     /* ================================================================
      *  /offices
      * ================================================================ */
@@ -1041,6 +1064,18 @@ final class ContentPages
                     ? '?text=' . rawurlencode('नमस्ते ' . (($o['nameNe'] ?? '') !== '' ? $o['nameNe'] : $o['name']) . ' कार्यालय, बस टिकटबारे सोध्न चाहन्छु।') : '';
                 $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($o['wa']) . $e($greet) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
             }
+            if ($o['phone'] === '' && $o['wa'] === '' && $o['kind'] !== 'head') {
+                // 25 Nov 2026 (wx1-c2 review): an office with no number yet (Emli Bhupal) reaches the HEAD OFFICE
+                $hoTel = PublicLayout::telHref((string) ($co['phone'] ?? ''));
+                $hoWa  = PublicLayout::waDigits((string) ($co['whatsapp'] ?? ''));
+                $hoLbl = 'मुख्य कार्यालय · Head office';
+                if ($hoTel !== '') {
+                    $btns .= '<a class="btn fill sm ho" href="' . $e($hoTel) . '">📞 ' . $e($hoLbl) . ' <span class="num">' . $e((string) $co['phone']) . '</span></a>';
+                }
+                if ($hoWa !== '') {
+                    $btns .= '<a class="btn wa sm ho" href="https://wa.me/' . $e($hoWa) . '?text=' . $e(rawurlencode('नमस्ते, ' . (($o['nameNe'] ?? '') !== '' ? $o['nameNe'] : $o['name']) . ' कार्यालयबारे बस टिकट सोध्न चाहन्छु।')) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . ' · ' . $e($hoLbl) . '</a>';
+                }
+            }
             if ($map !== '') {
                 $btns .= '<a class="btn out sm" href="' . $e($map) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
             }
@@ -1095,19 +1130,28 @@ final class ContentPages
                 }
                 $btns = '';
                 $cc = '';   // a second bare number takes the first one's country code ("+977 98.. / 98..")
+                $firstWa = '';
                 foreach (array_slice(preg_split('#\s*/\s*#', $pl['phone']) ?: [], 0, 2) as $i => $num) {
                     $num = trim((string) $num);
                     if ($num === '') { continue; }
                     $digits = (string) preg_replace('/[^\d+]/', '', $num);
                     if ($i === 0 && str_starts_with($digits, '+') && strlen($digits) > 11) {
                         $cc = substr($digits, 0, strlen($digits) - 10);
-                    } elseif ($i > 0 && $cc !== '' && !str_starts_with($digits, '+') && strlen($digits) === 10) {
+                    } elseif (!str_starts_with($digits, '+') && strlen($digits) === 10) {
+                        // 25 Nov 2026 (wx1-c2 review): a bare 10-digit number dials with its country code
+                        $cc = $cc !== '' ? $cc : (self::placeDialCountry($pl['town'], $digits, $pl['address']) === 'NP' ? '+977' : '+91');
                         $digits = $cc . $digits;
+                    }
+                    if ($firstWa === '') {
+                        $firstWa = CounterDesk::dialDigits($digits);
                     }
                     $btns .= '<a class="btn fill sm" href="tel:' . $e($digits) . '">📞 <span class="num">' . $e($num) . '</span></a>';
                 }
-                if ($pl['whatsapp'] !== '') {
-                    $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($pl['whatsapp']) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
+                // the place's own WhatsApp (a bare 10-digit one takes the country code too), else its first phone
+                $plWa = $pl['whatsapp'] !== '' ? CounterDesk::dialDigits($pl['whatsapp'], self::placeDialCountry($pl['town'], (string) preg_replace('/\D/', '', $pl['whatsapp']), $pl['address'])) : '';
+                $plWa = $plWa !== '' ? $plWa : $firstWa;
+                if ($plWa !== '') {
+                    $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($plWa) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
                 }
                 $mp = $pl['map'] !== '' ? $pl['map'] : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($pl['address']);
                 $btns .= '<a class="btn out sm" href="' . $e($mp) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';

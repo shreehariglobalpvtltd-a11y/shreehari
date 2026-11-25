@@ -44,18 +44,34 @@ try {
     $chk('explicit / saved direction wins over timezone', $ex['direction'] === 'toNepal');
     $in = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'customer');
     $plain = SmartBook::defaults([], 'customer');
-    $chk('India timezone = unchanged (most used)', $in['direction'] === $plain['direction'] && !isset($in['why']['direction']));
+    $chk('no timezone = unchanged (most used)', !isset($plain['why']['direction']));
+    $chk('India timezone opens India -> Nepal', $in['direction'] === 'toNepal'
+        && strpos((string) ($in['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') === 0);
+    $ab = SmartBook::defaults(['tz' => 'Europe/London'], 'customer');
+    $chk('abroad timezone opens India -> Nepal too', $ab['direction'] === 'toNepal'
+        && strpos((string) ($ab['why']['direction']['en'] ?? ''), 'Opened from India') !== false);
+    $exI = SmartBook::defaults(['tz' => 'Asia/Kolkata', 'direction' => 'toIndia'], 'customer');
+    $chk('explicit / saved direction wins over an India timezone', $exI['direction'] === 'toIndia'
+        && strpos((string) ($exI['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') !== 0);
+    $stI = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'admin');
+    $chk('staff desk ignores an India timezone', strpos((string) ($stI['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') !== 0);
     $st = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'admin');
     $chk('staff desk ignores the timezone', ($st['why']['direction']['ne'] ?? '') === '' || strpos((string) $st['why']['direction']['ne'], 'नेपालबाट खोलिएको') !== 0);
     Settings::set('geo_direction_on', '0', 'bool', 'booking', true); Settings::flush();
     $off = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
     $chk('geo_direction_on = 0: timezone ignored', $off['direction'] === $plain['direction'] && !isset($off['why']['direction']));
+    $offI = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'customer');
+    $chk('geo_direction_on = 0: India timezone ignored', $offI['direction'] === $plain['direction'] && !isset($offI['why']['direction']));
     Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'geo_direction_on']); Settings::flush();
     /* an office "fixed" direction (Admin -> Default Rules) beats the timezone */
     Settings::set('default_rules', ['fixed' => ['direction' => 'toNepal']], 'json', 'booking', false); Settings::flush();
     $fx1 = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
     $chk('office fixed direction wins over the timezone', $fx1['direction'] === 'toNepal'
         && strpos((string) ($fx1['why']['direction']['ne'] ?? ''), 'नेपालबाट खोलिएको') !== 0);
+    Settings::set('default_rules', ['fixed' => ['direction' => 'toIndia']], 'json', 'booking', false); Settings::flush();
+    $fx2 = SmartBook::defaults(['tz' => 'Asia/Kolkata'], 'customer');
+    $chk('office fixed direction wins over an India timezone', (!$hasBack || $fx2['direction'] === 'toIndia')
+        && strpos((string) ($fx2['why']['direction']['ne'] ?? ''), 'भारतबाट खोलिएको') !== 0);
     Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'default_rules']); Settings::flush();
 
     /* 2. NPR | INR */
@@ -204,5 +220,17 @@ $chk('fxFollow: nothing frozen = no change', BookingService::fxFollow(['fx_curre
 $chk('fxFollow: INR row = no change', BookingService::fxFollow(['fx_currency' => 'INR', 'fx_rate' => '1', 'fx_total' => '2000'], 1000.0) === []);
 $chk('fxFollow wired into cancelSeat + fare correction', str_contains($src('includes/booking.php'), 'self::fxFollow($locked, (float) $newTotal)')
     && str_contains($src('includes/ticketedit.php'), 'BookingService::fxFollow($b, (float) $total)'));
+/* wx1 follow-ups on the customer home (cp1 script) + the WhatsApp sheet */
+$tpl = $src('app.template.html');
+$chk('office with no number gets the head office Call + WhatsApp', str_contains($tpl, "var viaHq = !tel && !wa && o !== hqRow, hqTag = viaHq ? ' · ' + t('head') : '';")
+    && str_contains($tpl, "String(o.code || '').toUpperCase() === 'MSA'") && str_contains($tpl, "esc(t('call') + hqTag)") && str_contains($tpl, "esc(t('wa') + hqTag)"));
+$chk('agents: verified first, KYC-pending tag', str_contains($tpl, "var dv = (b.verified ? 1 : 0) - (a.verified ? 1 : 0); if (dv) return dv;")
+    && str_contains($tpl, "ne: 'कार्यालयमा दर्ता · KYC बाँकी'") && str_contains($tpl, 'agents.slice(0, 8)'));
+$chk('travel guide links follow the page language (#onward kept)', str_contains($tpl, "'/travel-info?lang=' + lang() + (hs ? '#' + hs : '')"));
+$rt = $src('assets/js/05-router.js');
+$chk('WA sheet: Nepal pickups from page data, names only as fallback', str_contains($rt, "var NP_PICK_NAMES = ['Nepalgunj Office · Puspalal Chowk', 'Rupaidiha border parking'];")
+    && str_contains($rt, 'window.SmartBook.quote()') && !preg_match('~NP_PICK_NAMES = \[[^\]]*\d:\d\d~', $rt));
+$chk('WA sheet: pickup sent only behind journeyUsed()', str_contains($rt, "'Boarding: ' + (back ? (npPick() || 'Rupaidiha') : val('waReqPoint'))")
+    && str_contains($rt, "if (reqType === 'booking' && journeyUsed() && val('waReqDirection') === 'toIndia' && npPick()) note = 'Pickup: '"));
 echo "\n  wx1-a-test: $ok passed, $bad failed\n";
 exit($bad ? 1 : 0);

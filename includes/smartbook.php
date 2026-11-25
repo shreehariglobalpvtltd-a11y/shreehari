@@ -375,6 +375,16 @@ final class SmartBook
             $dir = 'toIndia';
             $why['direction'] = self::why('नेपालबाट खोलिएको · Opened from Nepal', 'नेपाल से खोला गया · Opened from Nepal', 'नेपालबाट खोलिएको · Opened from Nepal');
         }
+        /* wx1: any other known browser timezone (India or abroad) opens on India -> Nepal, so the
+           most-used direction never flips an India visitor onto Rupaidiha -> Gujarat. Same gates. */
+        $tzIn = trim((string) ($in['tz'] ?? ''));
+        if ($dir === '' && $mode === 'customer' && $tzIn !== '' && !self::nepalTz($tzIn)
+            && Settings::getBool('geo_direction_on', true)
+            && !self::officeFixedDirection()
+            && in_array('toNepal', array_column(self::directions(), 'direction'), true)) {
+            $dir = 'toNepal';
+            $why['direction'] = self::why('भारतबाट खोलिएको · Opened from India', 'भारत से खोला गया · Opened from India', 'भारतबाट खोलिएको · Opened from India');
+        }
         if ($dir === '') {
             $dir = self::mostUsedDirection();
         }

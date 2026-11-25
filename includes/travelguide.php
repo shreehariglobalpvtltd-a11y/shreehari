@@ -13,6 +13,8 @@
  *   facilities()   bus_facilities_json, the bus facilities the owner stated.
  *   nepalOfficePhone()  the Nepalgunj office line (nepal_phone, else the Nepal team's
  *                  office row), for "ask the Nepalgunj office" when no row is filled.
+ *   nepalBoarding() / boardingLine()  the boarding stops + times of the active
+ *                  Nepal -> India routes, for the /travel-info "coming from Nepalgunj" line.
  *
  * Switches (all default ON, Admin -> Settings): travel_onward_on (the travel-info card).
  */
@@ -126,6 +128,83 @@ final class TravelGuide
             }
         }
         return $out;
+    }
+
+    /**
+     * Where a Nepal -> India passenger boards (wx1-c2 review): the boarding stops
+     * switched ON of every active Nepal -> India route (Boarding::stopsFor), one
+     * entry per stop name with its time(s) as HH:MM, earliest first, at most 4.
+     * Nothing is typed here: [] when no route / stop is set or the tables cannot
+     * be read - the page then says it in general words, never with a made-up time.
+     *
+     * @return list<array{name:string,times:list<string>}>
+     */
+    public static function nepalBoarding(): array
+    {
+        try {
+            $routes = Database::fetchAll('SELECT * FROM routes WHERE is_active = 1 ORDER BY id ASC');
+        } catch (Throwable) {
+            return [];
+        }
+        $by = [];
+        foreach ($routes as $r) {
+            if (Boarding::routeDirection($r) !== 'toIndia') {
+                continue;
+            }
+            try {
+                $stops = Boarding::stopsFor((int) $r['id']);
+            } catch (Throwable) {
+                continue;
+            }
+            foreach ($stops as $s) {
+                $name = trim((string) ($s['name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $k = mb_strtolower($name);
+                $by[$k] ??= ['name' => $name, 'times' => []];
+                $t = (string) ($s['time'] ?? '');
+                if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d/', $t) === 1 && !in_array(substr($t, 0, 5), $by[$k]['times'], true)) {
+                    $by[$k]['times'][] = substr($t, 0, 5);
+                }
+            }
+        }
+        $out = array_values($by);
+        foreach ($out as $i => &$o) {
+            sort($o['times']);
+            $o['_i'] = $i;
+        }
+        unset($o);
+        // earliest pickup first (Nepalgunj office before the border); a stop with no time last
+        usort($out, static fn(array $a, array $b): int => [$a['times'][0] ?? '99:99', $a['_i']] <=> [$b['times'][0] ?? '99:99', $b['_i']]);
+        return array_map(static fn(array $o): array => ['name' => $o['name'], 'times' => $o['times']], array_slice($out, 0, 4));
+    }
+
+    /**
+     * The /travel-info line from nepalBoarding(): $w[0] when there is no stop,
+     * $w[1] with {A} for one stop, $w[2] with {A} + the rest as {B}. Names are
+     * escaped; times in Devanagari digits when $dev (the Nepali block).
+     *
+     * @param list<array{name:string,times:list<string>}> $stops
+     * @param array<int,string> $w
+     */
+    public static function boardingLine(array $stops, array $w, bool $dev = false): string
+    {
+        $fmt = static function (array $s) use ($dev): string {
+            $t = implode(' / ', $s['times']);
+            if ($dev) {
+                $t = strtr($t, ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९']);
+            }
+            return '<b>' . htmlspecialchars($s['name'], ENT_QUOTES, 'UTF-8') . '</b>' . ($t !== '' ? ' (' . $t . ')' : '');
+        };
+        if ($stops === []) {
+            return (string) ($w[0] ?? '');
+        }
+        $a = $fmt($stops[0]);
+        if (count($stops) === 1) {
+            return str_replace('{A}', $a, (string) ($w[1] ?? ''));
+        }
+        return str_replace(['{A}', '{B}'], [$a, implode(', ', array_map($fmt, array_slice($stops, 1)))], (string) ($w[2] ?? ''));
     }
 
     /** The Nepalgunj office line as the site already shows it ('' when none is saved). */
