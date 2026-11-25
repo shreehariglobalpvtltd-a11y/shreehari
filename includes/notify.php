@@ -1308,7 +1308,9 @@ final class Notify
                 $changedTpl = WaTplMeta::forPurpose('ticket_update', [
                     'name'   => $pname,
                     'pnr'    => $pnr,
-                    'change' => self::CHANGE_EN[$what] ?? 'ticket updated',
+                    'change' => ($what === 'trip_change' && is_scalar($ctx['busNew'] ?? null) && trim((string) $ctx['busNew']) !== '')
+                        ? 'bus number changed: ' . (trim((string) (is_scalar($ctx['busOld'] ?? null) ? $ctx['busOld'] : '')) ?: '-') . ' -> ' . trim((string) $ctx['busNew']) . ', same seat'
+                        : (self::CHANGE_EN[$what] ?? 'ticket updated'),
                     'date'   => $facts0['date'] !== '' ? formatDate($facts0['date'], 'j M Y') : '',
                     'seat'   => $facts0['seats'],
                     'header' => Ticket::imageUrl($pnr),
@@ -1378,6 +1380,19 @@ final class Notify
                 $np = 'टिकट ' . $pnr . ' को चढ्ने / ओर्लने ठाउँ मिलाइयो' . ($seats !== '' ? ': ' . $seats : '') . '।';
                 break;
             case 'trip_change':
+                /* 25 Nov 2026 (op5 bus swap, includes/busswap.php): the coach
+                   under the trip was swapped - say the old and new number,
+                   that the seat stays, the time and the PNR. */
+                $busNew = trim((string) (is_scalar($ctx['busNew'] ?? null) ? $ctx['busNew'] : ''));
+                if ($busNew !== '') {
+                    $busOld = trim((string) (is_scalar($ctx['busOld'] ?? null) ? $ctx['busOld'] : '')) ?: '—';
+                    $when   = trim((string) (is_scalar($ctx['time'] ?? null) ? $ctx['time'] : ''));
+                    $en = 'Your bus number has changed: ' . $busOld . ' -> ' . $busNew . ', same seat' . ($seats !== '' ? ' (' . $seats . ')' : '')
+                        . ($when !== '' ? ', time ' . $when : '') . ', PNR ' . $pnr;
+                    $np = 'तपाईंको बस नम्बर परिवर्तन भयो: ' . $busOld . ' -> ' . $busNew . ', सिट उही' . ($seats !== '' ? ' (' . $seats . ')' : '')
+                        . ($when !== '' ? ', समय ' . $when : '') . ', PNR ' . $pnr;
+                    break;
+                }
                 $en = 'Your trip on ticket ' . $pnr . ' has CHANGED' . ($seats !== '' ? ': ' . $seats : '') . ($newDate !== '' ? ' · ' . $newDate : '');
                 $np = 'टिकट ' . $pnr . ' को बस / समय बदलियो' . ($seats !== '' ? ': ' . $seats : '') . ($newDate !== '' ? ' · ' . $newDate : '') . '।';
                 break;
@@ -4146,13 +4161,19 @@ final class Notify
                 'whatsapp' => "⏰ " . $company . "\n"
                     . "2 ghanta ma bus aaunchha / 2 घंटे में बस — booking " . $pnr . "\n"
                     . $routeLn . ($when !== '' ? "Pickup / चढ्ने समय: " . $when . "\n" : '') . $seatLine . $boardLn
+                    /* 25 Nov 2026 (op5): the passenger's own pickup map + that place's phone +
+                       the ticket picture (it carries the pickup QR) - TripNotify::reminderExtras() */
+                    . (($f['pickupMap'] ?? '') !== '' ? "📍 चढ्ने ठाउँ · Pickup map: " . $f['pickupMap'] . "\n" : '')
+                    . (($f['pickupPhone'] ?? '') !== '' ? "📞 त्यहाँको फोन · Place phone: " . $f['pickupPhone'] . "\n" : '')
+                    . (($f['withTicket'] ?? '') === '1' && ($tl2 = self::tripTicketLink($pnr)) !== '' ? "🎫 टिकट (QR सहित) · Ticket: " . $tl2 . "\n" : '')
                     . "\n🎒 Boarding point ma samayamai pugnuhos.\n"
                     . "Please reach the boarding point on time.\n"
                     . ($helpline !== '' ? "Help: " . $helpline : ''),
                 'sms' => $company . ': Your bus reaches your stop in about 2 hours. ' . $pnr . '.'
                     . ($when !== '' ? ' ' . $when . '.' : '')
                     . ($f['seats'] !== '' ? ' Seat ' . $f['seats'] . '.' : '')
-                    . ' Please reach the boarding point on time.',
+                    . ' Please reach the boarding point on time.'
+                    . (($f['pickupMap'] ?? '') !== '' ? ' Map: ' . $f['pickupMap'] : ''),
             ],
             'delayed' => [
                 'whatsapp' => "⏳ " . $company . "\n"

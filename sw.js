@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v302';   // 2026-11-25 wx6: Nepal journey + one service, 5 pm warning, 3D boot coach, ticket styles, nav glide; wx5: office photo on the office cards; wx4: office titles = company name, onward NPJ-only, classic INR|NPR; wx3 on mp1wx2: WhatsApp pickup map link, head-office buttons, agents verified first, Nepal pickup in the WA sheet; mp1: Payment Management, clean ticket; wx1: office cards, NPR/INR, BS+AD, Nepal pickups, no pay QR on cash
+var VERSION = 'shg-v303';   // 2026-11-25 wx6 on op5: Nepal journey + one service, 5 pm warning, 3D boot coach, ticket styles, nav glide; op5: hold auto-release, agent credit limit, trip expenses, bus swap notice, border ID + parcels + 2 h pickup map; wx5: office photo; wx4: office titles = company name, onward NPJ-only, classic INR|NPR; mp1: Payment Management, clean ticket
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a
@@ -64,7 +64,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261126a';
+var ASSET_VER = '20261126b';
 var PRECACHE = [
   /* 16 Oct 2026 (owner, the logo): the full lockup WITH the ™ sign is now
      logo-tm.png (tools/make-logo-tm.php cuts it from logo.png). Neither is

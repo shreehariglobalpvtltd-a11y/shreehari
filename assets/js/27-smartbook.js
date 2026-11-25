@@ -388,6 +388,9 @@
         S.emOn = !STAFF && !!d.emergency;   // the server says so only once its columns exist
         S.relations = d.relations || [];
         buildEm();
+        S.paxIdOn = !!STAFF && !!d.paxIdOn;   // 25 Nov 2026 (op5): optional per-passenger ID, desk only
+        S.paxIdTypes = d.paxIdTypes || [];
+        renderPIds();
         if (d.prefill) {
           ['address', 'idType'].forEach(function (k) { if (d.prefill[k] && !S.verify[k]) S.verify[k] = d.prefill[k]; });
           if (d.prefill.idNum && !S.verify.idNum) S.verify.idNum = d.prefill.idNum;
@@ -533,6 +536,51 @@
     var el = e.target; if (!el || !el.hasAttribute || !el.hasAttribute('data-pn')) return;
     var i = +el.getAttribute('data-pn'); if (S.pax[i]) S.pax[i].name = el.value.slice(0, 60);
   });
+  /* 25 Nov 2026 (op5, owner item 5): an OPTIONAL "ID नम्बर (बोर्डर)" per passenger on the
+     staff desk card (switch pax_id_field_on). Folded by default; never required - a blank
+     row is simply "not given". SmartBook::normalise keeps it for a staff sale only. */
+  function renderPIds() {
+    if (!STAFF || !S.paxIdOn) return;
+    var wrap = $('sbPIds');
+    if (!wrap) {
+      var after = $('sbPNames'); if (!after || !after.parentNode) return;
+      wrap = document.createElement('div'); wrap.id = 'sbPIds'; wrap.style.cssText = 'margin:0 0 8px;min-width:0';
+      after.parentNode.insertBefore(wrap, after.nextSibling);
+    }
+    var types = S.paxIdTypes && S.paxIdTypes.length ? S.paxIdTypes : [{ v: 'Nepali Citizenship', ne: 'नागरिकता', en: 'Citizenship' }];
+    var got = 0; S.pax.forEach(function (p) { if (String(p.idNum || '').trim()) got++; });
+    var fld = 'width:100%;min-width:0;box-sizing:border-box;height:44px;min-height:44px;';
+    var h = '<button type="button" id="sbPIdAsk" aria-expanded="' + (S.pidOpen ? 'true' : 'false') + '" style="width:100%;min-height:44px;display:flex;align-items:center;gap:8px;padding:6px 12px;border:1px dashed var(--sb-line,#cfd8e6);border-radius:var(--sb-ri,11px);background:var(--sb-chip,#f3f7fc);color:var(--sb-text,#16233C);font:inherit;font-size:14px;font-weight:700;text-align:left;cursor:pointer">'
+      + '<span aria-hidden="true">🪪</span><span style="flex:1 1 auto;min-width:0;overflow-wrap:anywhere">ID नम्बर (बोर्डर) · ID no. — ऐच्छिक / optional</span>'
+      + '<span id="sbPIdN">' + got + '/' + S.pax.length + '</span><span aria-hidden="true">' + (S.pidOpen ? '▴' : '▾') + '</span></button>';
+    if (S.pidOpen) {
+      h += '<div style="display:grid;gap:6px;padding:8px 2px 2px;min-width:0">';
+      S.pax.forEach(function (p, i) {
+        var t = p.idType || (S.cc === 'NP' ? 'Nepali Citizenship' : '');
+        h += '<div style="display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1.3fr);gap:6px;align-items:center;min-width:0"><b>' + (i + 1) + '</b>'
+          + '<select data-pidt="' + i + '" aria-label="Passenger ' + (i + 1) + ' ID type" style="' + fld + '"><option value="">—</option>'
+          + types.map(function (o) { return '<option value="' + esc(o.v) + '"' + (o.v === t ? ' selected' : '') + '>' + esc(o.ne + ' · ' + o.en) + '</option>'; }).join('')
+          + '</select><input data-pidn="' + i + '" type="text" maxlength="30" autocomplete="off" autocapitalize="characters" aria-label="Passenger ' + (i + 1) + ' ID number" placeholder="ID नम्बर · ID no." value="' + esc(p.idNum || '') + '" style="' + fld + '"></div>';
+      });
+      h += '</div>';
+    }
+    wrap.innerHTML = h;
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest || !e.target.closest('#sbPIdAsk')) return;
+    S.pidOpen = !S.pidOpen; renderPIds();
+  });
+  function pidSync(e) {
+    var el = e.target; if (!el || !el.hasAttribute) return;
+    var i = el.hasAttribute('data-pidn') ? +el.getAttribute('data-pidn') : (el.hasAttribute('data-pidt') ? +el.getAttribute('data-pidt') : -1);
+    var p = S.pax[i]; if (!p) return;
+    var box = $('sbPIds'), sel = box && box.querySelector('[data-pidt="' + i + '"]'), num = box && box.querySelector('[data-pidn="' + i + '"]');
+    p.idType = sel ? sel.value : ''; p.idNum = num ? String(num.value || '').slice(0, 30) : '';
+    var got = 0; S.pax.forEach(function (q) { if (String(q.idNum || '').trim()) got++; });
+    var c = $('sbPIdN'); if (c) c.textContent = got + '/' + S.pax.length;
+  }
+  document.addEventListener('input', pidSync);
+  document.addEventListener('change', pidSync);
   function bandLabel(b) { return tr(b === 'child' ? 'child' : (b === 'senior' ? 'senior' : (b === 'patient' ? 'patient' : 'adult'))); }
   function renderPax() {
     $('sbCount').textContent = String(S.pax.length);
@@ -547,6 +595,7 @@
     var row = $('sbPax'); row.innerHTML = h;
     row.classList.toggle('sb-scroll', S.pax.length >= 5);
     renderPNames();
+    renderPIds();
     renderQLine();
   }
 
@@ -1623,7 +1672,9 @@
     var lbl = btn.querySelector('span'); var old = lbl.textContent; lbl.textContent = tr('booking');
     var body = quoteBody();
     body.action = 'book'; body.pay = pay; body.idem = S.idem; body.name = S.name.trim(); body.phone = digits(S.phone); body.country = S.cc;
-    body.seats = S.q.seats; body.autoPicked = !!S.q.auto;   // the shown berths are the berths sold (re-checked on the server)
+    body.seats = S.q.seats; body.autoPicked = !!S.q.auto;
+    // 25 Nov 2026 (op5): each passenger's optional ID (desk only; the server cleans it and drops it for a customer)
+    if (STAFF && S.paxIdOn) body.pax.forEach(function (p, i) { var s = S.pax[i] || {}, nm = String(s.idNum || '').trim(); if (nm) { p.idType = s.idType || ''; p.idNum = nm.slice(0, 30); } });   // the shown berths are the berths sold (re-checked on the server)
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
     if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
     if (verify) body.verify = verify;

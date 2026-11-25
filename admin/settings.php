@@ -775,7 +775,8 @@ foreach ($groups as $g => $items) {
 $curatedKeys = ['fare_to_nepal', 'fare_to_india', 'max_seats_per_booking', 'counter_max_seats_per_booking', 'counter_max_discount_pct',
                 'agent_commission_mode', 'agent_flat_direct', 'agent_flat_joint', 'agent_commission_percent',
                 'agent_advance_max', 'agent_advance_recover_pct', 'agent_payout_min', 'agent_settlement_due_days', 'agent_settle_reminder_days',
-                'agent_cash_limit_enforce', 'agent_kyc_required', 'agent_notify_settlement', 'agent_cash_limit_default', 'agent_daily_booking_limit'];
+                'agent_cash_limit_enforce', 'agent_kyc_required', 'agent_notify_settlement', 'agent_cash_limit_default', 'agent_daily_booking_limit',
+                'agent_credit_block_on', 'agent_credit_limit_default', 'agent_credit_warn_pct'];
 $catCount = [];
 foreach ($cats as $c => $_) {
     $n = 0;
@@ -1157,7 +1158,8 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   $arKeys = ['agent_commission_mode', 'agent_flat_direct', 'agent_flat_joint', 'agent_commission_percent',
              'agent_advance_max', 'agent_advance_recover_pct', 'agent_payout_min', 'agent_settlement_due_days', 'agent_settle_reminder_days',
              'agent_cash_limit_enforce', 'agent_kyc_required', 'agent_notify_settlement',
-             'agent_cash_limit_default', 'agent_daily_booking_limit'];
+             'agent_cash_limit_default', 'agent_daily_booking_limit',
+             'agent_credit_block_on', 'agent_credit_limit_default', 'agent_credit_warn_pct'];   // 25 Nov 2026 (op5-credit)
   $fpKeys  = array_merge($fpKeys, $arKeys);
   $arMissing = 'disabled title="Run database/upgrade-2026-09-agent-rules.sql once to enable this field"';
   $arNum = static function (string $key, string $label, string $help, float $def, string $min, string $max, string $step, string $unit = '') use ($fpHave, $fpRo, $arMissing): string {
@@ -1195,9 +1197,12 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       <?= $arNum('agent_settle_reminder_days', 'WhatsApp reminder after', '0 = off. Once cash is overdue this many days, the daily cron (cron/wa-reminders.php) sends the agent one payment reminder a day', 0, '0', '365', '1', 'days') ?>
       <?= $arNum('agent_cash_limit_default', 'Default cash-in-hand limit', 'per-agent limit on the Agent Panel overrides this; 0 = no limit', 0, '0', '10000000', '1', '₹') ?>
       <?= $arNum('agent_daily_booking_limit', 'Default daily booking limit', 'bookings per agent per day; 0 = no limit', 0, '0', '1000', '1', '') ?>
+      <?= $arNum('agent_credit_limit_default', 'Default credit limit · बाँकी सीमा', 'what an agent may owe before new sales stop; a per-agent limit on Agent 360 wins; 0 = no limit', 0, '0', '100000000', '1', '₹') ?>
+      <?= $arNum('agent_credit_warn_pct', 'Warn the agent at', 'banner on the agent desk from this share of their credit limit', 80, '1', '100', '1', '%') ?>
     </div>
     <div class="fp-grid" style="padding-top:0">
       <?= $arBool('agent_cash_limit_enforce', 'Block selling above the cash limit', 'off = the limit only warns (today)') ?>
+      <?= $arBool('agent_credit_block_on', 'Stop sales at the credit limit · सीमा पुगे बिक्री रोक्ने', 'also obeys Agent 360 “Stop selling”; nothing changes until a limit or a hold is set') ?>
       <?= $arBool('agent_kyc_required', 'KYC must be verified before selling', 'off = KYC is informational; verify every agent first') ?>
       <?= $arBool('agent_notify_settlement', 'WhatsApp the agent on payout / cash handover', 'settlement receipt goes to the agent\'s number') ?>
     </div>

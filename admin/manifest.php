@@ -32,6 +32,7 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
 $routeId = (int) ($_GET['route'] ?? 0);
 $format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf', 'payqr', 'json', 'chalanishare'], true) ? (string) $_GET['format'] : 'html';   // 25 Nov 2026 (release ch): + json (live poll), chalanishare (WhatsApp)
 require_once INCLUDE_PATH . '/chalanipng.php';   // 16 Nov 2026: ChalaniPng::payMode - the pay-at-boarding rule every chalani surface shares
+require_once INCLUDE_PATH . '/paxid.php';        // 25 Nov 2026 (op5): the passenger ID tag for the border crew
 /* 29 Oct 2026 (management upgrade 3.2): passengers in the order the coach
    picks them up — the route's own boarding-stop order (route_stops.sort_order),
    seat order inside one stop. ?order=seat keeps the old seat-only list. */
@@ -808,6 +809,10 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
                    'rowState' => static fn(array $r): string => (string) ($mfState[(int) ($r['booking_id'] ?? 0)] ?? 'due'),
                    /* 16 Nov 2026: how the row pays - बसमा ₹X / नगद ✓ / अनलाइन ✓ (ChalaniPng::payMode) */
                    'payMark' => $payMark,
+                   /* 25 Nov 2026 (op5): "CTZ **1234" for the border crew - the office / counter
+                      copy only (an agent copy never carries it); switch pax_id_field_on */
+                   'paxId' => $scopeId === null && PaxId::enabled()
+                        ? static fn(array $r): string => PaxId::short((string) ($r['id_type'] ?? ''), (string) ($r['id_number'] ?? '')) : null,
                    'infantsOf' => static fn(array $r): int => ($xFirst[(int) ($r['booking_id'] ?? 0)] ?? -1) === (int) ($r['pax_id'] ?? 0)
                         ? (int) ($xBook[(int) $r['booking_id']]['inf'] ?? 0) : 0];
 
@@ -1121,7 +1126,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     <tr<?= $ws ? ' class="ws"' : '' ?>>
       <td class="c n"><?= $e($neDigits((string) ($i + 1))) ?></td>
       <td class="c"><b><?= $r ? $e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) : '' ?></b></td>
-      <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?><?php if ($rInf > 0): ?> <b class="inf">+ शिशु <?= $e($neDigits((string) $rInf)) ?></b><?php endif; ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
+      <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?><?php if ($rInf > 0): ?> <b class="inf">+ शिशु <?= $e($neDigits((string) $rInf)) ?></b><?php endif; ?><?php $pidT = is_callable($chalaniFmt['paxId'] ?? null) ? (string) $chalaniFmt['paxId']($r) : ''; if ($pidT !== ''): ?> <small>🪪 <?= $e($pidT) ?></small><?php endif; ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
       <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?><?php
         /* 25 Nov 2026 (cp1): where the ticket was cut - the booking phone's GPS (BookGeo) */
         if ($r && !empty($r['booked_lat'])): require_once INCLUDE_PATH . '/bookgeo.php'; ?><br><a class="geo" href="<?= $e(BookGeo::mapUrl($r)) ?>" target="_blank" rel="noopener" title="<?= $e(BookGeo::line($r)) ?>">&#128205; <?= $e((string) ($r['booked_place'] ?: 'GPS')) ?></a><?php endif; ?></td>
@@ -1747,6 +1752,11 @@ $chPaxKey = (static function (array $rows): string {
             <?php endif; ?>
             <?php if (!empty($r['special_need'])): ?>
               <br><small style="color:#0f5c36;font-weight:700" title="Priority boarding">Priority · <?= Security::e(ucfirst((string) $r['special_need'])) ?></small>
+            <?php endif; ?>
+            <?php /* 25 Nov 2026 (op5): the optional border ID, office / counter screen only */
+              $pidS = $scopeId === null && PaxId::enabled() ? PaxId::short((string) ($r['id_type'] ?? ''), (string) ($r['id_number'] ?? '')) : '';
+              if ($pidS !== ''): ?>
+              <br><small style="opacity:.8" title="Passenger ID (border)">🪪 <?= Security::e($pidS) ?></small>
             <?php endif; ?>
           </td>
           <td class="mono">

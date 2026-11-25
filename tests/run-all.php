@@ -273,6 +273,11 @@ const CORE_SUITES = [
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'mp1-login-test.php'              => 'top bar photo / initials + mode badge, login mode cards never change the role, credential actions super-admin only, remember 90 days (25 Nov mp1-lg)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+    'op5-hold-test.php'               => 'every unpaid hold frees itself in 15-30 min; COD / proof / confirmed never touched (25 Nov)',
+    'op5-credit-test.php'             => 'agent credit limit + Stop selling: refused at the limit on every agent door, settlement unblocks, counter never (25 Nov)',
+    'op5-trip-expenses-test.php'      => 'trip costs: sum per trip, NPR -> INR, P&L = income - expenses, agent refused (25 Nov op5)',
+    'op5-busswap-test.php'            => 'bus swap: guard / smaller bus refused, tickets re-minted, live trip follows, every passenger told once (25 Nov op5)',
+    'op5-pax-parcel-reminder-test.php' => 'optional border ID on the desk card + chalani tag, parcel register (CRUD / totals / gate), 2 h reminder pickup map once (25 Nov)',
     'mp1-dayreport-test.php'          => 'seller day = CounterBook (cash + cod, online, due, commission), Nepali bot reply, evening report once, free window only (25 Nov dy)',
     // 25 Nov 2026 (release ch): starts its own php -S on a free port for the HTTP part (skips it if it cannot)
     'mp1-chalani-test.php'            => 'uniform chalani: Total | Cash | Online | Due strip = sum of rows, no double counting, live JSON poll, chalani.export per role, counter money',
