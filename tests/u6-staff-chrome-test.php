@@ -244,8 +244,11 @@ try {
         && str_contains($html, 'apple-mobile-web-app-status-bar-style') && str_contains($html, 'href="/assets/img/mgmt-apple-180.png"'));
     $tok = preg_match('~<!--CSRF:([0-9a-f]+)-->~', $html, $tm) === 1 ? $tm[1] : '';
     check('shg-admin-csrf meta = the session CSRF token (what verifyCsrf checks)', $tok !== '' && str_contains($html, '<meta name="shg-admin-csrf" content="' . $tok . '">'));
-    check('the menu shows the page and AI Sahayak', str_contains($html, 'href="/admin/themes.php"') && str_contains($html, 'href="/admin/ai-copilot.php"'));
-    check('the menu marks Colours & Themes as the open page', preg_match('~<a class="on" href="/admin/themes\.php">~', $html) === 1);
+    /* 26 Nov 2026 (fx1): with the hub menu (admin_hub_menu_on, includes/rolemenu.php) a page is reached through its
+       hub's tab strip and the menu search (SHG_MENU_FIND) instead of one long list of links - both doors count. */
+    check('the menu shows the page and AI Sahayak', str_contains($html, 'href="/admin/themes.php"')
+        && (str_contains($html, 'href="/admin/ai-copilot.php"') || str_contains($html, '"u":"/admin/ai-copilot.php"')));
+    check('the menu marks Colours & Themes as the open page', preg_match('~<a class="on"(?: aria-current="[a-z]+")? href="/admin/themes\.php">~', $html) === 1);
     $bubbleFile = is_file($ROOT . '/assets/js/admin-ai-bubble.js');
     check('bubble script tag on the page for a super-admin ' . ($bubbleFile ? '(file present)' : '(file not built yet -> no tag)'),
         (bool) preg_match('#<script src="/assets/js/admin-ai-bubble\.js\?v=\d+" defer></script>#', $html) === $bubbleFile);
