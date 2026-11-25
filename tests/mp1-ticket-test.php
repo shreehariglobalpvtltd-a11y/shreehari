@@ -226,9 +226,11 @@ try {
 
     echo "\n== review (money): pay-at-boarding / pending on the Nepal side keep the live pay link ==\n";
     $qK = Ticket::paymentQr($bK);
-    check('R7 pay-at-boarding (COD) due: NOT the static Nepal QR - the live pay.php link with the ticket key (UTR -> COD queue)',
-        $qK['country'] === 'NP' && $qK['mode'] === 'due' && str_contains($qK['qr'], 'pay.php?pnr=') && str_contains($qK['qr'], '&k=')
-        && !str_contains($qK['qr'], 'upi://') && $qK['esewaImg'] === '', $qK['mode'] . ' ' . $qK['qr']);
+    /* merged with live wx1 (owner: "cash ma pay QR nachahinchha"): a pay-at-boarding ticket carries NO pay QR
+       at all - mode 'cod', the crew takes the cash on the bus (ticket_cod_no_payqr, default on) */
+    check('R7 pay-at-boarding (COD) due: NO pay QR at all (wx1 mode cod) - never the static Nepal QR, never UPI',
+        $qK['country'] === 'NP' && $qK['mode'] === 'cod' && $qK['qr'] === '' && $qK['esewaImg'] === ''
+        && str_contains((string) ($qK['label'] ?? ''), 'PAY ON BOARDING'), $qK['mode'] . ' ' . $qK['qr']);
     $qP = Ticket::paymentQr($bP);
     check('R7 pending online booking due: the live pay.php link (proof box + expiry clock), never the static image',
         $qP['mode'] === 'due' && str_contains($qP['qr'], 'pay.php?pnr=') && !str_contains($qP['qr'], '&k=') && $qP['esewaImg'] === '', $qP['mode'] . ' ' . $qP['qr']);
@@ -425,7 +427,8 @@ try {
     check('INR due PDF: the UPI pay QR caption', str_contains($tI, 'PAY UPI'));
     $pN = Ticket::pdfPath($NPR, true);
     $tN = $plain((string) file_get_contents($pN));
-    check('NPR due PDF: NPR 3,520 + the eSewa slot, no UPI', str_contains($tN, 'NPR 3,520') && str_contains($tN, 'eSewa') && !str_contains($tN, 'PAY UPI'));
+    check('NPR due PDF: NPR 3,520 + the eSewa slot, no UPI', str_contains($tN, 'NPR 3,520') && str_contains($tN, 'eSewa') && !str_contains($tN, 'PAY UPI'),
+        (preg_match_all('/(NPR[^)]{0,20}|eSewa[^)]{0,30}|PAY [A-Z]+[^)]{0,20})/', $tN, $mm) ? implode(' | ', array_slice(array_unique($mm[0]), 0, 8)) : 'no NPR/eSewa text'));
     if ($out !== '') {
         @copy(Ticket::pdfPath($CASH), $out . '/mp1-cash.pdf');
         @copy($pN, $out . '/mp1-npr-due.pdf');

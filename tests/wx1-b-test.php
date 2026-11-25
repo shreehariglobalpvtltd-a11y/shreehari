@@ -218,7 +218,8 @@ try {
     }
     $co = (string) file_get_contents($root . '/assets/js/07-checkout.js');
     check('07-checkout: tkGoldPay returns null on a cash ticket behind ticket_cod_no_payqr', str_contains($co, "ticket_cod_no_payqr !== false)) return null;"));
-    check('07-checkout: the pay figure draws the PAY ON BOARDING stamp when there is no QR', str_contains($co, 'tkg-cod-stamp') && str_contains($co, "(gp2 ? makeQR(gp2.url, 240) : Promise.resolve(''))"));
+    check('07-checkout: the pay figure draws the PAY ON BOARDING stamp when there is no QR', str_contains($co, 'tkg-cod-stamp')
+        && (str_contains($co, "(gp2 ? makeQR(gp2.url, 240) : Promise.resolve(''))") || str_contains($co, 'if (gp2 && !gp2.img) makeQR(gp2.url, 240)')));   // mp1 merge: no QR drawn without gp2 (and not over the Nepal QR image)
     check('07-checkout: family share = one green button, navigator.share else wa.me', str_contains($co, 'function famShareBtn') && str_contains($co, 'navigator.share({'));
     $si = (string) file_get_contents($root . '/assets/js/08-signin.js');
     check('08-signin: My Trips card carries the family share button', str_contains($si, 'famShareBtn(b.trackUrl)'));
