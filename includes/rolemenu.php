@@ -43,7 +43,7 @@ final class RoleMenu
     public const MAX_MAIN = 7;
 
     /** Pages that keep their whole screen: no tab strip, no phone bottom bar. */
-    private const FULL_SCREEN = ['quick-ticket.php', 'nepal-counter.php', 'home.php', 'scan.php'];
+    private const FULL_SCREEN = ['quick-ticket.php', 'smartbook.php', 'nepal-counter.php', 'home.php', 'scan.php'];   // quick-ticket.php redirects to smartbook.php (its own Pay bar sits on the bottom edge)
 
     /** Rarely used pages kept out of the menu unless the owner changes rolemenu_hidden. */
     private const DEFAULT_HIDDEN = 'places.php,agent-offline.php,/navigate.html';
@@ -58,7 +58,7 @@ final class RoleMenu
     {
         return [
             'home' => ['icon' => 'dashboard', 'ne' => 'गृह', 'en' => 'Home', 'tabs' => [
-                'home' => ['गृह', 'Home', ['home.php', 'index.php', 'hub.php']],
+                'home' => ['गृह', 'Home', ['home.php']],
             ]],
             'book' => ['icon' => 'ticket-alt', 'ne' => 'टिकट काट्ने', 'en' => 'Book ticket', 'tabs' => [
                 'sell' => ['टिकट काट्ने', 'Sell', ['quick-ticket.php', 'nepal-counter.php', '/index.php?counter=1#/']],
@@ -95,6 +95,8 @@ final class RoleMenu
             ]],
             'reports' => ['icon' => 'chart-up', 'ne' => 'रिपोर्ट', 'en' => 'Reports', 'tabs' => [
                 'reports' => ['रिपोर्ट', 'Reports', ['ticket-statement.php', 'analytics.php']],
+                // the two older dashboards: Home (home.php, full screen) carries no tab strip, so they live here, one tap away
+                'dash'    => ['ड्यासबोर्ड', 'Dashboards', ['index.php', 'hub.php']],
             ]],
             'settings' => ['icon' => 'cog', 'ne' => 'सेटिङ', 'en' => 'Settings', 'tabs' => [
                 'easy'     => ['सजिलो सेटिङ', 'Easy settings', ['easy-settings.php', 'settings.php', 'owner-setup.php', 'menu-setup.php']],
@@ -106,6 +108,81 @@ final class RoleMenu
                 'system'   => ['सिस्टम', 'System', ['activity-log.php', 'backup.php', 'health.php']],
             ]],
         ];
+    }
+
+    /**
+     * One short name per page, Nepali first then English, used wherever the hub
+     * menu names a page (tab strip, menu search, Recent, Menu setup). A page not
+     * listed keeps the label admin_nav() gave it. The agent's "My ..." pages keep
+     * admin_nav()'s own wording (see pageLabel()).
+     *
+     * @return array<string, array{0:string,1:string}>
+     */
+    public static function pageLabels(): array
+    {
+        return [
+            'home.php' => ['गृह', 'Home'], 'index.php' => ['ड्यासबोर्ड', 'Dashboard'], 'hub.php' => ['कन्ट्रोल सेन्टर', 'Control Center'],
+            'quick-ticket.php' => ['टिकट काट्ने', 'SmartBook'], 'nepal-counter.php' => ['नेपाल काउन्टर', 'Nepal counter'],
+            '/index.php?counter=1#/' => ['काउन्टर बुकिङ', 'Counter booking'], 'bulk-tickets.php' => ['धेरै टिकट एकैचोटि', 'Bulk tickets (CSV)'],
+            'bookings.php' => ['टिकट रजिस्टर', 'Tickets register'], 'agent-passengers.php' => ['एजेन्टका यात्रु', 'Agent passengers'],
+            'ticket-requests.php' => ['यात्रु अनुरोध', 'Date / seat requests'], 'reschedule.php' => ['मिति सार्ने', 'Change date'],
+            'missed-bus.php' => ['बस छुटेको', 'Missed bus'], 'refunds.php' => ['रिफन्ड र रद्द', 'Refunds & cancellations'],
+            'wa-queue.php' => ['WhatsApp टिकट', 'WhatsApp tickets'], 'scan.php' => ['QR स्क्यान', 'Scan boarding QR'],
+            'agent-offline.php' => ['कागजी टिकट', 'Paper tickets'],
+            'bus-control.php' => ['बस कन्ट्रोल', 'Bus control'], 'trip-dashboard.php' => ['आजका ट्रिप', 'Daily trips'], 'trips.php' => ['ट्रिप बोर्ड', 'Trips board'],
+            'manifest.php' => ['चलानी', 'Chalani'], 'parcels.php' => ['पार्सल', 'Parcels'],
+            'schedule.php' => ['बस रुटिन', 'Bus routine'], 'calendar.php' => ['बस क्यालेन्डर', 'Bus calendar'], '/routine.php' => ['रुटिन (लाइभ)', 'Routine (live)'],
+            'buses.php' => ['बसहरू', 'Bus fleet'], 'seatmap.php' => ['सिट नक्सा', 'Seat map'], 'extra-seats.php' => ['थप सिट', 'Extra seats'],
+            'map.php' => ['लाइभ बस', 'Live bus map'], 'gps-center.php' => ['GPS कन्ट्रोल', 'GPS control'], 'gps-trackers.php' => ['GPS ट्र्याकर', 'GPS trackers'],
+            'nav-reports.php' => ['बाटो रिपोर्ट', 'Road reports'], '/navigate.html' => ['यात्रु लाइभ नक्सा', 'Passenger live map'],
+            'people.php' => ['एजेन्ट र स्टाफ', 'Agents & staff'], 'agent-quick.php' => ['छिटो एजेन्ट + ID', 'Quick agent + ID card'], 'agents.php' => ['एजेन्ट रजिस्टर', 'Agents register'],
+            'agent.php' => ['एजेन्ट पोर्टल', 'Agent portal'], 'team.php' => ['टिम र ID कार्ड', 'Team & ID cards'], 'agreements.php' => ['ठाउँ अनुसार एजेन्ट', 'Agents by location'],
+            'team-invite.php' => ['निम्तो र नवीकरण', 'Invites & renewals'], 'agent-ranking.php' => ['एजेन्ट र्‍याङ्किङ', 'Agent rankings'],
+            'drivers.php' => ['चालक र बस टोली', 'Drivers & crew'], 'driver-app.php' => ['चालक App', 'Driver app'],
+            'customers.php' => ['ग्राहक', 'Customers'], 'enquiries.php' => ['सोधपुछ', 'Enquiries'], 'feedback.php' => ['ग्राहक रेटिङ', 'Ratings'],
+            'staff.php' => ['स्टाफ लगइन', 'Staff logins'], 'permissions.php' => ['रोल र अनुमति', 'Roles & permissions'], 'sessions.php' => ['लगइन सुरक्षा', 'Sessions & security'],
+            'login-reset.php' => ['सजिलो लगइन', 'Easy login & reset'], 'login-requests.php' => ['लगइन तयार', 'Login setup & PIN'],
+            'office-ops.php' => ['कार्यालयको काम', 'Office tasks'], 'company.php' => ['कम्पनी र शाखा', 'Company & branches'], '/me/' => ['मेरो ID र वालेट', 'My ID & wallet'],
+            'payments.php' => ['भुक्तानी जाँच', 'Verify payments'], 'payment-center.php' => ['भुक्तानी व्यवस्थापन', 'Payment management'],
+            'cash-book.php' => ['नगद खाता', 'Cash book'], 'shift.php' => ['सिफ्ट र नगद बुझाउने', 'Shift & handover'], 'day-memo.php' => ['दैनिक हिसाब मेमो', 'Day memo'],
+            'desk-day.php' => ['काउन्टर दिन सूची', 'Counter day list'], 'counters.php' => ['काउन्टर र सङ्कलन', 'Counters & collection'],
+            'settlements.php' => ['कमिसन र सेटलमेन्ट', 'Settlements'], 'agent-statement.php' => ['मासिक स्टेटमेन्ट', 'Monthly statements'], 'agent-360.php' => ['एजेन्ट ३६०', 'Agent 360'],
+            'agent-aging.php' => ['नगद बाँकी दिन', 'Cash aging'], 'agent-sales.php' => ['एजेन्ट बिक्री', 'Agent sales'],
+            'accounting.php' => ['लेखा र ऋण', 'Accounting & loans'], 'ledger-check.php' => ['खाता मिलान', 'Ledger check'], 'reconcile.php' => ['पैसा मिलान', 'Reconciliation'],
+            'payroll.php' => ['तलब', 'Payroll'], 'pnl.php' => ['नाफा-नोक्सान', 'Profit & loss'], 'trip-expenses.php' => ['ट्रिप खर्च', 'Trip expenses'],
+            'ops-reports.php' => ['रद्द र बस प्रयोग', 'Cancellations & bus use'],
+            'ticket-statement.php' => ['कसले कति टिकट', 'Ticket statement'], 'analytics.php' => ['विश्लेषण', 'Analytics'],
+            'easy-settings.php' => ['सजिलो सेटिङ (बोलेर)', 'Easy settings'], 'settings.php' => ['सबै सेटिङ', 'System settings'], 'owner-setup.php' => ['बाँकी भर्ने ठाउँ', 'Owner setup'],
+            'menu-setup.php' => ['मेनु मिलाउने', 'Menu setup'],
+            'locations.php' => ['हाम्रा कार्यालय', 'Our locations'], 'routes.php' => ['स्टप र भाडा', 'Stops & fares'], 'places.php' => ['घुम्ने ठाउँ', 'Places to visit'],
+            'offers.php' => ['अफर र छुट', 'Offers & discounts'],
+            'wa-manager.php' => ['WhatsApp म्यानेजर', 'WhatsApp manager'], 'wa-inbox.php' => ['WhatsApp इनबक्स', 'WhatsApp inbox'], 'wa-outbox.php' => ['WhatsApp पठाएको', 'WhatsApp outbox'],
+            'wa-templates.php' => ['WhatsApp टेम्प्लेट', 'WhatsApp templates'], 'messages-log.php' => ['सन्देश लग', 'Message logs'], 'messenger-inbox.php' => ['मेसेन्जर इनबक्स', 'Messenger inbox'],
+            'facebook.php' => ['Facebook मेसेन्जर AI', 'Facebook Messenger AI'], 'social-posts.php' => ['FB पोस्ट', 'FB posts'], 'fb-comments.php' => ['FB कमेन्ट', 'FB comments'],
+            'ai-center.php' => ['AI कन्ट्रोल', 'AI control'], 'ai-hub.php' => ['AI कमाण्ड सेन्टर', 'AI command center'], 'ai-brain.php' => ['WhatsApp AI दिमाग', 'One AI (WhatsApp brain)'],
+            'ai-activity.php' => ['AI गतिविधि', 'AI activity'], 'ai-local.php' => ['AI (VPS)', 'AI (VPS)'], 'ai-copilot.php' => ['AI सहायक', 'AI assistant'],
+            'themes.php' => ['रङ र थिम', 'Colours & themes'],
+            'activity-log.php' => ['गतिविधि र सुरक्षा', 'Activity & audit'], 'backup.php' => ['ब्याकअप', 'Backups'], 'health.php' => ['सिस्टम स्वास्थ्य', 'System health'],
+        ];
+    }
+
+    /**
+     * The name the hub menu shows for one admin_nav() item: [Nepali, English].
+     * An agent's own pages ("My Tickets", "My Sales" ...) keep admin_nav()'s
+     * wording, since the office name ("Agent sales") would be wrong for them.
+     *
+     * @param array<string, mixed> $item
+     * @return array{0:string,1:string}
+     */
+    public static function pageLabel(array $item, callable $plain): array
+    {
+        $raw = (string) $plain((string) ($item['label'] ?? ''));
+        if (str_starts_with($raw, 'My ')) {
+            $p = array_map('trim', explode('·', $raw));
+            return [count($p) > 1 ? (string) end($p) : '', $p[0]];
+        }
+        $map = self::pageLabels();
+        return $map[(string) ($item['href'] ?? '')] ?? ['', $raw];
     }
 
     /**
@@ -165,6 +242,12 @@ final class RoleMenu
         } catch (Throwable $e) {
             return $default;   // a settings hiccup never takes the menu away
         }
+    }
+
+    /** A page that is drawn by another file keeps its menu row: quick-ticket.php redirects to smartbook.php. */
+    public static function canon(string $href): string
+    {
+        return ['smartbook.php' => 'quick-ticket.php'][$href] ?? $href;
     }
 
     /** May this page carry the tab strip / the phone bottom bar? */

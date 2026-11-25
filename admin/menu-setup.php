@@ -173,7 +173,7 @@ admin_header('मेनु मिलाउने · Menu setup', 'menu-setup');
     <div class="ms-pages">
     <?php foreach ($mine as $p): $href = (string) $p['href']; $n = (int) ($opened[$href] ?? 0); ?>
       <label class="<?= $n === 0 ? 'zero' : '' ?>"><input type="checkbox" name="hide[<?= $e($href) ?>]" value="1"<?= isset($hiddenNow[$href]) ? ' checked' : '' ?><?= $dis ?>>
-        <span><?= $e(admin_plain((string) $p['label'])) ?></span><em><?= $n ?></em></label>
+        <span><?= $e(admin_hub_label($p)) ?></span><em><?= $n ?></em></label>
     <?php endforeach; ?>
     </div>
   <?php endforeach; ?>

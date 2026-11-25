@@ -300,6 +300,13 @@ function admin_hub_menu(?array $items = null, bool $fresh = false): array
     return $built;
 }
 
+/** 26 Nov 2026 (fx1): "नेपाली · English" - the one name the hub menu uses for a page (RoleMenu::pageLabels). */
+function admin_hub_label(array $item): string
+{
+    [$ne, $en] = RoleMenu::pageLabel($item, 'admin_plain');
+    return $ne !== '' && $ne !== $en ? $ne . ' · ' . $en : $en;
+}
+
 /**
  * 26 Nov 2026 (fx1) — the sidebar as hubs: a "what do you want to do?" box,
  * the role's main rows (max 7, the super-admin 8), every other hub under
@@ -311,7 +318,7 @@ function admin_hub_menu(?array $items = null, bool $fresh = false): array
 function admin_hub_side(array $items, string $active): void
 {
     $built = admin_hub_menu($items);
-    $here  = admin_current_href();
+    $here  = RoleMenu::canon(admin_current_href());
     $at    = RoleMenu::locate($built, $here);
     if ($at === null && $active !== '') {                 // a page that names its menu row by hand
         foreach ($built['pages'] as $p) {
@@ -326,10 +333,10 @@ function admin_hub_side(array $items, string $active): void
     // the menu search: every page this person may open, hidden ones too
     $find = [];
     foreach ($built['pages'] as $p) {
-        $label = admin_plain((string) $p['label']);
+        $label = admin_hub_label($p);
         $find[] = ['u' => RoleMenu::url((string) $p['href']), 'l' => $label,
             'g' => (string) $p['hub_label'] . ((string) $p['tab_label'] !== '' ? ' › ' . (string) $p['tab_label'] : ''),
-            'k' => mb_strtolower($label . ' ' . $p['hub_label'] . ' ' . $p['tab_label'] . ' ' . $p['href'], 'UTF-8')];
+            'k' => mb_strtolower($label . ' ' . admin_plain((string) $p['label']) . ' ' . $p['hub_label'] . ' ' . $p['tab_label'] . ' ' . $p['href'], 'UTF-8')];
     }
     echo '<div class="hm-find"><input type="search" id="hmFind" placeholder="कुन काम? · What do you want to do?" autocomplete="off" aria-label="Find a page">'
        . '<div class="hm-find-out" id="hmFindOut" hidden></div></div>';
@@ -357,7 +364,7 @@ function admin_hub_side(array $items, string $active): void
         echo '<details class="side-more hm-more hm-recent"><summary>हालै खोलेका · Recent</summary>';
         foreach ($recent as $item) {
             echo '<a href="' . Security::e(RoleMenu::url((string) $item['href'])) . '"><span><svg class="a-ic"><use href="#a-' . Security::e((string) $item['icon']) . '"/></svg></span>'
-               . '<b class="sl">' . Security::e(admin_plain((string) $item['label'])) . '</b></a>';
+               . '<b class="sl">' . Security::e(admin_hub_label($item)) . '</b></a>';
         }
         echo '</details>';
     }
@@ -429,7 +436,7 @@ function admin_hub_tabs(string $active): string
         $html .= '<nav class="hm-sub" aria-label="Pages">';
         foreach ($pages as $p) {
             $html .= '<a' . ((string) $p['href'] === $here ? ' class="on" aria-current="page"' : '') . ' href="' . Security::e(RoleMenu::url((string) $p['href'])) . '">'
-                   . Security::e(admin_plain((string) $p['label'])) . '</a>';
+                   . Security::e(admin_hub_label($p)) . '</a>';
         }
         $html .= '</nav>';
     }
@@ -454,7 +461,7 @@ function admin_hub_bar(): string
     if (count($built['main']) < 2) {
         return '';
     }
-    $at = RoleMenu::locate($built, admin_current_href());
+    $at = RoleMenu::locate($built, RoleMenu::canon(admin_current_href()));
     $onKey = $at['hub']['key'] ?? '';
     $html = '<nav class="hm-bar" aria-label="Main menu">';
     foreach (array_slice($built['main'], 0, 4) as $hub) {
@@ -463,6 +470,116 @@ function admin_hub_bar(): string
     }
     $html .= '<button type="button" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="More"><svg class="a-ic"><use href="#a-grid"/></svg><b>थप</b></button>';
     return $html . '</nav><script>document.body.classList.add("hm-has-bar");</script>';
+}
+
+/**
+ * 26 Nov 2026 (fx1) — the staff opening scene: the logo is revealed and the
+ * real coach (the same cut-out photo as the customer boot scene) glides in on
+ * its road, 1.2 s in all, then the page is simply there underneath.
+ *
+ * Once per browser session (sessionStorage), one tap or any key skips it, and
+ * it is never shown to someone who asked for less motion (the system setting
+ * or the app's own shg:motion = reduced), on a print view or inside a frame.
+ * It is an overlay over a page that has already loaded - it delays nothing.
+ * staff_boot_scene_on = 0 switches it off.
+ */
+function admin_boot_scene(): string
+{
+    try {
+        if (!Settings::getBool('staff_boot_scene_on', true)) {
+            return '';
+        }
+    } catch (Throwable $e) {
+        return '';
+    }
+    return <<<'HTML'
+<div id="shgStaffBoot" aria-hidden="true" hidden><div class="sbt-in"><span class="sbt-logo"><img data-src="/assets/img/logo-mark-tm.webp" width="439" height="228" alt="" decoding="async"></span>
+<span class="sbt-bus"><i class="sbt-road"></i><img data-src="/assets/img/hd/bus-cutout-t.webp" width="480" height="240" alt="" decoding="async"></span><b>S Hari Manage</b></div></div>
+<style>
+/* shown ONLY by the script's sbt-on class: an author display rule would beat the hidden attribute and cover every page */
+#shgStaffBoot{display:none}
+#shgStaffBoot.sbt-on{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 35%,#FFFFFF 0%,#EEF3FB 70%);transition:opacity .22s ease}
+#shgStaffBoot.sbt-out{opacity:0;pointer-events:none}
+#shgStaffBoot .sbt-in{text-align:center;color:#13244A}
+#shgStaffBoot .sbt-logo{display:block;width:min(46vw,190px);margin:0 auto}
+#shgStaffBoot img{visibility:hidden}
+#shgStaffBoot.sbt-go img{visibility:visible}
+#shgStaffBoot .sbt-logo img{display:block;width:100%;height:auto;clip-path:inset(0 100% 0 0)}
+#shgStaffBoot.sbt-go .sbt-logo img{animation:sbtDraw .55s .05s cubic-bezier(.55,.1,.35,1) forwards}
+#shgStaffBoot .sbt-bus{display:block;position:relative;width:min(62vw,250px);margin:8px auto 4px;padding-bottom:10px;overflow:hidden}
+#shgStaffBoot .sbt-bus img{display:block;width:100%;height:auto;transform:translateX(-115%);will-change:transform}
+#shgStaffBoot.sbt-go .sbt-bus img{animation:sbtGlide .8s .25s cubic-bezier(.2,.8,.25,1) forwards}
+#shgStaffBoot .sbt-road{position:absolute;left:0;right:0;bottom:0;height:10px;border-radius:5px;background:linear-gradient(#3b4252,#2b303c)}
+#shgStaffBoot b{display:block;font-size:17px;letter-spacing:.5px;opacity:0}
+#shgStaffBoot.sbt-go b{animation:sbtUp .3s .6s ease-out forwards}
+@keyframes sbtDraw{to{clip-path:inset(0 0 0 0)}}
+@keyframes sbtGlide{to{transform:none}}
+@keyframes sbtUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media print{#shgStaffBoot,#shgStaffBoot.sbt-on{display:none!important}}
+</style>
+<script>(function(){var s=document.getElementById('shgStaffBoot');if(!s)return;
+function drop(){if(s.parentNode)s.parentNode.removeChild(s);}
+try{if(window.top!==window.self)return drop();if(sessionStorage.getItem('shg_staff_boot'))return drop();sessionStorage.setItem('shg_staff_boot','1');
+if((window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches)||localStorage.getItem('shg:motion')==='reduced')return drop();
+if(window.matchMedia&&matchMedia('print').matches)return drop();}catch(e){return drop();}
+var done=false,gone=false,left=0,imgs=s.querySelectorAll('img[data-src]');function out(){if(done)return;done=true;s.classList.add('sbt-out');setTimeout(function(){if(s.parentNode)s.parentNode.removeChild(s);},260);}
+function go(){if(gone)return;gone=true;s.classList.add('sbt-go');setTimeout(out,1200);}
+/* the pictures first (cached after the first time); the scene starts when both are in, or after 0.5 s without them */
+Array.prototype.forEach.call(imgs,function(i){left++;i.onload=i.onerror=function(){if(--left<=0)go();};i.src=i.getAttribute('data-src');});
+s.hidden=false;s.classList.add('sbt-on');setTimeout(go,500);s.addEventListener('pointerdown',out);document.addEventListener('keydown',out,{once:true});})();</script>
+HTML;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — a soft nudge for someone still signing in with the
+ * office's starter password (FirstName@2026, admins.pw_is_default = 1): one
+ * line under the page title with a link to "change password". It never
+ * blocks anything, hides for the day when closed, and is not shown on the
+ * full-screen selling pages. The answer is remembered in the session for ten
+ * minutes, so it costs one tiny query now and then, not one per page.
+ * default_pw_nudge_on = 0 switches it off.
+ */
+function admin_default_pw_nudge(): string
+{
+    try {
+        if (!Settings::getBool('default_pw_nudge_on', true) || RoleMenu::fullScreen(admin_current_href())) {
+            return '';
+        }
+        $me = Auth::admin() ?? [];
+        $id = (int) ($me['id'] ?? 0);
+        if (basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) === 'change-password.php') {
+            unset($_SESSION['fx1_pwdef']);   // they are changing it now: ask the database again on the next page
+            return '';
+        }
+        if ($id <= 0 || (string) ($me['role'] ?? '') === 'superadmin' || !empty($me['via_otp'])) {
+            return '';
+        }
+        $memo = $_SESSION['fx1_pwdef'] ?? null;
+        if (!is_array($memo) || (int) ($memo['id'] ?? 0) !== $id || (int) ($memo['at'] ?? 0) < time() - 600) {
+            $on = false;
+            if (is_file(INCLUDE_PATH . '/easylogin.php')) {
+                require_once INCLUDE_PATH . '/easylogin.php';
+                $row = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $id]);
+                $on  = is_array($row) && array_key_exists('pw_is_default', $row) && (int) $row['pw_is_default'] === 1
+                    && EasyLogin::defaultOn() && EasyLogin::adminDefaultActive($row);
+            }
+            $memo = ['id' => $id, 'at' => time(), 'on' => $on];
+            $_SESSION['fx1_pwdef'] = $memo;
+        }
+        if (empty($memo['on'])) {
+            return '';
+        }
+    } catch (Throwable $e) {
+        return '';
+    }
+    return '<style>.hm-nudge{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px;padding:10px 14px;border:1px solid #f5c98a;border-radius:12px;background:#fff7ea;color:#5b3200;font-size:14px;line-height:1.45}'
+         . '.hm-nudge[hidden]{display:none}.hm-nudge>span{flex:1 1 220px}.hm-nudge .btn{min-height:40px}.hm-nudge button{min-height:40px;padding:6px 12px;border:0;border-radius:10px;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}'
+         . ':root[data-theme="dark"] .hm-nudge{background:#3a2a10;border-color:#7a5a20;color:#ffe2b0}@media print{.hm-nudge{display:none!important}}</style>'
+         . '<div class="hm-nudge" id="hmPwNudge" hidden><span>🔑 <b>आफ्नो पासवर्ड बनाउनुहोस्</b> — अहिले कार्यालयले दिएको सुरुको पासवर्ड चल्दैछ। '
+         . '<span lang="en">You are still on the starter password.</span></span>'
+         . '<a class="btn" href="/admin/change-password.php">पासवर्ड बदल्ने · Change</a>'
+         . '<button type="button" aria-label="Later" onclick="try{localStorage.setItem(\'shg_pw_nudge\',new Date().toDateString());}catch(e){}this.parentNode.hidden=true">पछि · Later</button></div>'
+         . '<script>try{if(localStorage.getItem("shg_pw_nudge")!==new Date().toDateString())document.getElementById("hmPwNudge").hidden=false;}catch(e){document.getElementById("hmPwNudge").hidden=false;}</script>';
 }
 
 /** 26 Nov 2026 (fx1): the look of the hub menu, its search, the tab strip and the phone bottom bar. */
@@ -723,6 +840,7 @@ function admin_header(string $title, string $active = ''): void
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
     // draw from this. Kept here so every admin page inherits it without
     // shipping a separate stylesheet or an extra HTTP request.
+    echo admin_boot_scene();   // fx1: 1.2 s logo + coach, once per session, skippable (staff_boot_scene_on)
     echo admin_sprite();
     echo admin_pro_sprite();
 
@@ -966,6 +1084,7 @@ function admin_header(string $title, string $active = ''): void
     if ($hubDrawn) {   // fx1: the tabs of this page's hub, under the title
         try { echo admin_hub_tabs($active); } catch (Throwable $e) { /* a tab strip never breaks a page */ }
     }
+    echo admin_default_pw_nudge();   // fx1: still on the starter password? one soft line (default_pw_nudge_on)
     // 25 Nov 2026 (op5-credit): an agent near / at their credit limit (or stopped by the office) sees it on every desk page
     if (Auth::isCounterAgent() && is_file(INCLUDE_PATH . '/agentcredit.php')) { require_once INCLUDE_PATH . '/agentcredit.php'; echo AgentCredit::bannerHtml((int) (Auth::admin()['id'] ?? 0)); }
 }
