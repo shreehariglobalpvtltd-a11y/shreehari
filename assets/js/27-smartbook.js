@@ -2122,7 +2122,12 @@
         + (r.normal && r.normal.save >= 1 ? '<div class="tkm-nf"><s>' + esc(money(r.normal.normal)) + '</s> <b>' + esc(tr('nfSave')) + ' ' + esc(money(r.normal.save)) + '</b></div>' : '')
         + '<div class="tkm-perf" aria-hidden="true"></div>'
         + '<div class="tkm-seal" aria-hidden="true">✓</div><div class="tkm-sheen" aria-hidden="true"></div>'
-        + '</div><p class="tkm-ok">✓ ' + esc(tr('ticketOk')) + '</p></div>';
+        + '</div><p class="tkm-ok">✓ ' + esc(tr('ticketOk')) + '</p>'
+        /* 25 Nov 2026 (mp1 tk review, spec D): Share (WhatsApp), PNG and Print are on the
+           overlay from its first frame - no waiting for the spin to end. A tap on one closes
+           the overlay and does it (the links work as links; Share = the ticket's own Share). */
+        + tkmActs(r)
+        + '</div>';
       document.body.appendChild(el);
       var gone = false, tmr;
       var close = function () {
@@ -2131,12 +2136,45 @@
         document.removeEventListener('keydown', onKey, true);
         setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
       };
-      var onKey = function (e) { if (e.key === 'Escape' || e.key === 'Enter') close(); };
-      el.addEventListener('click', close);
+      var onKey = function (e) { if (e.key === 'Escape' || (e.key === 'Enter' && !(e.target && e.target.closest && e.target.closest('.tkm-acts')))) close(); };
+      el.addEventListener('click', function (e) {
+        var a = e.target && e.target.closest ? e.target.closest('[data-tkm]') : null;
+        close();
+        if (a && a.getAttribute('data-tkm') === 'share') shareTicket(r);
+      });
       document.addEventListener('keydown', onKey, true);
       tmr = setTimeout(close, ms);
       try { if (!calm && navigator.vibrate) navigator.vibrate([18, 60, 28]); } catch (e) {}
     } catch (e) { /* never block the ticket */ }
+  }
+  /* The three ticket actions on the magic overlay: Share (WhatsApp on a phone), the PNG and
+     Print - the same links the ticket card below carries (r.ticket), nothing new. */
+  function tkmActs(r) {
+    var t = (r && r.ticket) || {};
+    return '<div class="tkm-acts">'
+      + '<button type="button" class="tkm-act-main" data-tkm="share">📤 ' + esc(tr('share')) + '</button>'
+      + (t.png ? '<a href="' + esc(t.png) + '" download="SHG-Ticket-' + esc(r.pnr) + '.png">⬇️ ' + esc(tr('dlPng')) + '</a>' : '')
+      + (t.print ? '<a href="' + esc(t.print) + '" target="_blank" rel="noopener">🖨 ' + esc(tr('print')) + '</a>' : '')
+      + '</div>';
+  }
+  /* Share the ticket: the PNG itself where the phone can share files, else the link
+     (system share sheet, else WhatsApp). Used by the ticket card and the magic overlay. */
+  function shareTicket(r) {
+    if (!r) return;
+    var url = location.origin + (r.ticket && r.ticket.view ? r.ticket.view : '/#/ticket/' + r.pnr);
+    var text = 'S Hari Global ticket ' + r.pnr + ' · ' + (r.route || '') + ' · ' + (r.dateLabel || '') + ' · ' + (r.seatLabels || []).join(', ');
+    var shareFile = function () {
+      if (!(r.ticket && r.ticket.png && navigator.canShare)) return Promise.reject();
+      return fetch(r.ticket.png, { credentials: 'same-origin' }).then(function (x) { return x.blob(); }).then(function (blob) {
+        var f = new File([blob], r.pnr + '.png', { type: blob.type || 'image/png' });
+        if (!navigator.canShare({ files: [f] })) throw new Error('no');
+        return navigator.share({ files: [f], title: r.pnr, text: text });
+      });
+    };
+    shareFile().catch(function () {
+      if (navigator.share) return navigator.share({ title: r.pnr, text: text, url: url }).catch(function () {});
+      window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url), '_blank', 'noopener');
+    });
   }
 
   /* ------------------------------------------------------------ ticket */
@@ -2258,22 +2296,7 @@
     if (act === 'new') { closeTicket(); S.manual = []; S.seatMode = 'auto'; S.date = ''; S.promo = ''; if ($('sbPromoIn')) $('sbPromoIn').value = ''; emReset(); fill(); requote(0); window.scrollTo({ top: root.offsetTop - 60, behavior: 'smooth' }); return; }
     if (!r) return;
     if (act === 'copy') { try { navigator.clipboard.writeText(r.pnr).then(function () { say(tr('copied')); }); } catch (x) { say(r.pnr); } return; }
-    if (act === 'share') {
-      var url = location.origin + (r.ticket && r.ticket.view ? r.ticket.view : '/#/ticket/' + r.pnr);
-      var text = 'S Hari Global ticket ' + r.pnr + ' · ' + (r.route || '') + ' · ' + (r.dateLabel || '') + ' · ' + (r.seatLabels || []).join(', ');
-      var shareFile = function () {
-        if (!(r.ticket && r.ticket.png && navigator.canShare)) return Promise.reject();
-        return fetch(r.ticket.png, { credentials: 'same-origin' }).then(function (x) { return x.blob(); }).then(function (blob) {
-          var f = new File([blob], r.pnr + '.png', { type: blob.type || 'image/png' });
-          if (!navigator.canShare({ files: [f] })) throw new Error('no');
-          return navigator.share({ files: [f], title: r.pnr, text: text });
-        });
-      };
-      shareFile().catch(function () {
-        if (navigator.share) return navigator.share({ title: r.pnr, text: text, url: url }).catch(function () {});
-        window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url), '_blank', 'noopener');
-      });
-    }
+    if (act === 'share') shareTicket(r);
   });
   $('sbModal').addEventListener('click', function (e) { if (e.target === this) closeTicket(); });
 

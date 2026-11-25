@@ -2570,7 +2570,12 @@ function tkGoldPay(b) {
   const rr0 = (typeof routeById === 'function' && b.routeId) ? (routeById(b.routeId) || {}) : {};
   const fromNp = typeof isNepalPoint === 'function' && isNepalPoint(rr0.from) && !isNepalPoint(rr0.to);
   const npQr = String(bs0.nepal_esewa_qr_url || '');
-  if (due > 0 && open && npQr && (nprSale || (bs0.ticket_pay_qr_by_country !== false && fromNp))) {
+  /* review (money, = Ticket::staticPayQrOk): the static Nepal QR records nothing, so on an INR
+     ticket it stands in only where a raw UPI code would - confirmed, not pay-at-boarding, no
+     proof waiting. A COD / pending ticket keeps the live pay.php link below (UTR -> COD queue). */
+  const pay0 = b.payment || {};
+  const staticOk = b.status === 'confirmed' && !isCod && !(pay0.status === 'pending' && !!(pay0.utr || pay0.shotThumb));
+  if (due > 0 && open && npQr && (nprSale || (bs0.ticket_pay_qr_by_country !== false && fromNp && staticOk))) {
     const rate = nprSale && Number(b.total) > 0 ? Number(b.fxTotal || b.fx_total) / Number(b.total) : Number((typeof CONFIG !== 'undefined' && CONFIG.nprPerInr) || 1.6);
     return { kind: 'npr', due: due, paid: false, upi: '', name: name, img: true, url: npQr,
       npr: Math.round(due * rate), esewa: String(bs0.nepal_esewa_id || '') };

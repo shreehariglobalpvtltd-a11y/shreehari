@@ -93,6 +93,49 @@ trait TicketClean
     }
 
     /**
+     * May a STATIC pay QR - the office's Nepal eSewa / Fonepay image, which records
+     * nothing - stand in for the live pay link (pay.php)? The same test as rawUpiQrOk()
+     * without the UPI switch: a CONFIRMED booking, not pay-at-boarding (is_cod), with no
+     * payment proof waiting. A pay-at-boarding ticket keeps pay.php (its UTR box records
+     * the CodPayClaim, so the crew does not collect the cash again) and a pending online
+     * booking keeps it too (its proof box holds the expiry clock) - review of mp1 tk.
+     */
+    public static function staticPayQrOk(array $booking): bool
+    {
+        if ((string) ($booking['status'] ?? '') !== 'confirmed' || (int) ($booking['is_cod'] ?? 0) === 1) {
+            return false;
+        }
+        return !self::proofWaiting($booking);
+    }
+
+    /**
+     * What the fare saved, for the clean PNG's saving strip (the old layout draws the same
+     * words in its fare band): the route's REAL normal fare struck through + the saving
+     * (nf1, never on an NPR sale), else every discount with its percentage and source
+     * ("SAVED ₹200 (9.1%) · काउन्टर छुट", P4-5f). kind '' = nothing saved, no strip.
+     *
+     * @return array{kind:string, normal:string, save:string, text:string}
+     */
+    public static function saveLine(array $booking): array
+    {
+        $nf = self::isNprSale($booking) ? null : NormalFare::forBooking($booking);
+        if ($nf !== null) {
+            $save = 'बचत SAVED ₹' . number_format((float) $nf['save']);
+            return ['kind' => 'nf', 'normal' => '₹' . number_format((float) $nf['normal']), 'save' => $save,
+                'text' => 'सामान्य भाडा ₹' . number_format((float) $nf['normal']) . '  ·  ' . $save];
+        }
+        $cut = self::discountTotal($booking);
+        if ($cut <= 0) {
+            return ['kind' => '', 'normal' => '', 'save' => '', 'text' => ''];
+        }
+        $src  = self::discountSource($booking);
+        $amt  = self::isNprSale($booking) ? self::money($booking, $cut, false) : '₹' . indianNumber($cut);   // an NPR sale says NPR (TK-5)
+        $text = 'तपाईंले बचाउनुभयो  ·  SAVED ' . $amt . self::discountPctTxt($booking, $cut)
+            . ($src !== '' ? '  ·  ' . $src : '');
+        return ['kind' => 'disc', 'normal' => '', 'save' => $text, 'text' => $text];
+    }
+
+    /**
      * NPR for an INR amount, for the pay QR's words: the rate frozen on the sale
      * when there is one (nprOf), else today's npr_per_inr. Words only - the eSewa
      * QR image carries no amount and the office still approves every payment.
@@ -176,6 +219,9 @@ trait TicketClean
     /**
      * "Ram Agent (SHG-0012) · 98XXXXXXXX · Nepalgunj" - who cut the ticket, their
      * phone and their town (issuedBy()). An online sale says "Online · <website>".
+     * An office / counter / channel sale (issuedBy() keeps no phone for those) prints
+     * the DESK's own number - the desk that cut it, else the desk on the sale, else the
+     * issuing company's line - never the clerk's personal mobile.
      */
     public static function bookedByText(array $booking): string
     {
@@ -188,8 +234,25 @@ trait TicketClean
         if ($iss['kind'] === 'agent' && $iss['code'] !== '' && $iss['code'] !== 'AGENT') {
             $name .= ' (' . self::latinUpper((string) $iss['code']) . ')';
         }
+        $phone = (string) $iss['phone'];
+        if ($phone === '' && $iss['kind'] === 'office') {
+            $desk = '';
+            try {
+                $lc = (string) ($iss['locCode'] ?? '');
+                if ($lc !== '' && class_exists('CounterDesk')) {
+                    $desk = trim((string) (CounterDesk::get($lc)['phone'] ?? ''));
+                }
+            } catch (Throwable) {
+                $desk = '';
+            }
+            if ($desk === '') {
+                $co   = self::companyOf($booking);
+                $desk = trim((string) (($co['desk']['phone'] ?? '') !== '' ? $co['desk']['phone'] : ($co['phone'] ?? '')));
+            }
+            $phone = self::latin(trim((string) (preg_split('#\s*/\s*#', $desk)[0] ?? $desk)));
+        }
         $town = self::latin(trim((string) preg_replace('/\s*\([^)]*\)\s*$/', '', (string) ($iss['location'] ?? ''))));
-        return implode(' · ', array_values(array_filter([$name, self::display((string) $iss['phone']), $town], static fn(string $s): bool => $s !== '')));
+        return implode(' · ', array_values(array_filter([$name, self::display($phone), $town], static fn(string $s): bool => $s !== '')));
     }
 
     /* ----------------------------------------------------------------
@@ -310,6 +373,7 @@ trait TicketClean
         $listH = $listN > 0 ? 64 + $listN * 44 + 14 + ($paxN > $listN ? 30 : 0) : 0;
         $tNote  = self::ticketNote($booking);
         $tExtra = self::extrasLine($booking);
+        $tSave  = self::saveLine($booking);     // review: the discount / normal-fare saving the old fare band carried
         $co     = self::companyOf($booking);
         $issued = self::issuedBy($booking);
         $sum    = self::paymentSummary($booking);
@@ -330,7 +394,8 @@ trait TicketClean
         $yRoute = $yPnr + 128;                  // route block 196
         $yTiles = $yRoute + 196 + 18;           // 3 tile rows of 112 + 16 gaps
         $yStat  = $yTiles + 3 * 112 + 2 * 16 + 18;
-        $yList  = $yStat + 84 + 16;
+        $ySave  = $yStat + 84 + 16;             // the saving strip (only when something was saved), PNG_NOTE_H
+        $yList  = $ySave + ($tSave['kind'] !== '' ? self::PNG_NOTE_H : 0);
         $yNote  = $yList + ($listH > 0 ? $listH + 16 : 0);
         $yTear  = $yNote + ($tNote !== '' ? self::PNG_NOTE_H : 0) + ($tExtra !== '' ? self::PNG_NOTE_H : 0) + 10;   // one strip = PNG_NOTE_H, as on the old layout
         $yQ1    = $yTear + 34;                  // pickup + pay / stamp cards, 360
@@ -499,6 +564,43 @@ trait TicketClean
         while ($stSz > 14 && self::gdWidth($stSz, $stTxt) > $X2 - $X1 - 80 - $amtW) { $stSz--; }
         self::gdText($im, $stSz, $X1 + 26, $yStat + 66, $white, $stTxt, true);
 
+        /* ---- what the fare saved (review): the normal fare struck through + the saving,
+               or the discount with its % and source - the old fare band's line ---------- */
+        if ($tSave['kind'] !== '') {
+            $sy1 = $ySave;
+            self::gdRounded($im, $X1, $sy1, $X2, $sy1 + 60, 14, DocArt::col($im, [232, 247, 238]));
+            DocArt::roundOutline($im, $X1, $sy1, $X2, $sy1 + 60, 14, DocArt::col($im, [150, 210, 175]), 1);
+            $svLab = 'बचत · Saved';
+            self::gdText($im, 16, $X1 + 22, $sy1 + 38, $green, $svLab, true);
+            $sx   = $X1 + 22 + self::gdWidth(16, $svLab) + 18;
+            $sMax = $X2 - 22 - $sx;
+            if ($tSave['kind'] === 'nf') {
+                $pre = 'सामान्य भाडा ';
+                $mid = '  ·  ';
+                $sSz = 21;
+                $wOf = static fn(int $z): int => self::gdWidth($z, $pre) + self::gdWidth($z, $tSave['normal']) + self::gdWidth($z, $mid) + self::gdWidth($z, $tSave['save']);
+                while ($sSz > 14 && $wOf($sSz) > $sMax) { $sSz--; }
+                if ($wOf($sSz) > $sMax) { $pre = ''; }
+                $cx = $sx;
+                if ($pre !== '') { self::gdText($im, $sSz, $cx, $sy1 + 39, $mut, $pre, false); $cx += self::gdWidth($sSz, $pre); }
+                $nW = self::gdWidth($sSz, $tSave['normal']);
+                self::gdText($im, $sSz, $cx, $sy1 + 39, $mut, $tSave['normal'], false);
+                imagesetthickness($im, 3);
+                imageline($im, $cx - 2, $sy1 + 39 - (int) round($sSz * 0.36), $cx + $nW + 2, $sy1 + 39 - (int) round($sSz * 0.36), DocArt::col($im, [224, 72, 72]));
+                imagesetthickness($im, 1);
+                $cx += $nW;
+                self::gdText($im, $sSz, $cx, $sy1 + 39, $mut, $mid, false);
+                $cx += self::gdWidth($sSz, $mid);
+                self::gdText($im, $sSz, $cx, $sy1 + 39, $green, $tSave['save'], true);
+            } else {
+                $sv  = $tSave['text'];
+                $sSz = 21;
+                while ($sSz > 14 && self::gdWidth($sSz, $sv) > $sMax) { $sSz--; }
+                while ($sv !== '' && self::gdWidth($sSz, $sv) > $sMax) { $sv = rtrim(mb_substr($sv, 0, mb_strlen($sv) - 2)) . '…'; }
+                self::gdText($im, $sSz, $sx, $sy1 + 39, $green, $sv, true);
+            }
+        }
+
         /* ---- passenger list (groups only) ------------------------------- */
         if ($listN > 0) {
             $py = $yList;
@@ -585,7 +687,10 @@ trait TicketClean
         $hasPayQr = $payable && ($payQ['qr'] !== '' || $payImg !== '');
         if ($hasPayQr) {
             $isNp = $payQ['mode'] === 'npr';
-            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, $isNp ? 'भुक्तानी QR · eSewa / Fonepay' : 'भुक्तानी QR · SCAN & PAY UPI', self::P_ORG, self::P_ORG_D);
+            /* review: a Nepal-side pay-at-boarding / pending ticket keeps the LIVE pay link
+               (pay.php: UPI or eSewa + "I paid, here is the UTR") - say so, with the रू too. */
+            $liveNp = !$isNp && ($payQ['country'] ?? 'IN') === 'NP' && $payQ['qr'] !== '' && $payQ['qr'] === $payQ['payload'];
+            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, $isNp ? 'भुक्तानी QR · eSewa / Fonepay' : ($liveNp ? 'भुक्तानी QR · UPI / eSewa' : 'भुक्तानी QR · SCAN & PAY UPI'), self::P_ORG, self::P_ORG_D);
             $qy = $qy1 + 64;
             if ($payImg !== '') {
                 $src = @imagecreatefromstring((string) @file_get_contents($payImg));
@@ -606,12 +711,15 @@ trait TicketClean
                 }
             }
             $amt = $isNp ? 'रू ' . indianNumber(self::nprDue($booking, (float) $sum['due'])) : '₹' . indianNumber((float) $sum['due']);
+            if ($liveNp) {
+                $amt .= ' (रू ' . indianNumber(self::nprDue($booking, (float) $sum['due'])) . ')';
+            }
             $l1  = 'तिर्न बाँकी · Due  ' . $amt;
             $l1s = 21;
             while ($l1s > 14 && self::gdWidth($l1s, $l1) > $qR2 - $qR1 - 36) { $l1s--; }
             self::gdText($im, $l1s, $qR1 + intdiv(($qR2 - $qR1) - self::gdWidth($l1s, $l1), 2), $qy2 - 46, $orgD, $l1, true);
             $l2 = $isNp ? ($payQ['esewa'] !== '' ? 'eSewa: ' . self::latin((string) $payQ['esewa']) : 'Nepal eSewa / Fonepay QR')
-                        : ($payQ['vpa'] !== '' ? 'UPI: ' . self::latin((string) $payQ['vpa']) : 'UPI');
+                        : ($liveNp ? 'Scan, pay, send the UTR there' : ($payQ['vpa'] !== '' ? 'UPI: ' . self::latin((string) $payQ['vpa']) : 'UPI'));
             [$l2s, $l2t] = self::v2Fit(17, 12, $l2, $qR2 - $qR1 - 36, 'Medium');
             self::gdTextP($im, $l2s, $qR1 + intdiv(($qR2 - $qR1) - self::gdWidthP($l2s, $l2t, 'Medium'), 2), $qy2 - 16, $mut, $l2t, 'Medium');
         } else {

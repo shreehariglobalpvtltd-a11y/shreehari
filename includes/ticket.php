@@ -1156,7 +1156,8 @@ final class Ticket
            so a release that changes the renderer redraws every ticket ONCE, on its next
            open, whether or not someone remembered to move the stamps. */
         return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0), (int) @filemtime(__DIR__ . '/barcode.php'),
-            (int) @filemtime(__DIR__ . '/seats.php'), (int) @filemtime(__FILE__));
+            (int) @filemtime(__DIR__ . '/seats.php'), (int) @filemtime(__FILE__),
+            (int) @filemtime(__DIR__ . '/ticketclean.php'));   // 25 Nov 2026 (mp1 tk): the clean layout's own renderer
     }
 
     /**
@@ -3411,9 +3412,12 @@ final class Ticket
         /* 25 Nov 2026 (mp1 tk, ticket_pay_qr_by_country): a trip from the Nepal side / a
            Nepal-issued sale that still owes money pays to the NEPAL QR too (eSewa / Fonepay,
            amount in रू), not UPI - only once the office has a Nepal QR image or eSewa id;
-           with neither, the old UPI path below stays. Words only: the image has no amount. */
+           with neither, the old UPI path below stays. Words only: the image has no amount.
+           Review (money): only where a raw UPI code would be allowed (staticPayQrOk -
+           confirmed, not pay-at-boarding, no proof waiting); a COD / pending ticket keeps
+           the live pay.php link below, whose UTR box reaches the COD queue / proof clock. */
         $npCountry = false;
-        if ($payable && self::frozenNpr($booking) <= 0 && $out['country'] === 'NP') {
+        if ($payable && self::frozenNpr($booking) <= 0 && $out['country'] === 'NP' && self::staticPayQrOk($booking)) {
             $npCountry = self::esewaQrFile() !== '' || trim(Settings::getString('nepal_esewa_id', '')) !== '';
         }
         if ($payable && (self::frozenNpr($booking) > 0 || $npCountry)) {

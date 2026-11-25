@@ -186,6 +186,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                AFTER the generic rows are saved, so an edited cabin_pricing
                textarea and the two number fields cannot overwrite each other
                (the number fields win, as they are the curated place). */
+            /* 25 Nov 2026 (mp1 tk review): a change to what the ticket prints - the ticket_*
+               switches (clean layout, pay QR by country, no pay QR once paid), the map pins,
+               the company / Nepal lines, the pay ids - redraws cached ticket pictures on their
+               next open (as the JSON import below does), so turning a switch OFF is a rollback. */
+            $tkBefore = [];
+            foreach (array_keys($pairs) as $tk) {
+                if (preg_match('/^(ticket_|company_|nepal_|upi_|esewa_)|^india_hub_map$/', (string) $tk) === 1) {
+                    $tkBefore[(string) $tk] = json_encode(Settings::get((string) $tk));
+                }
+            }
             Settings::setMany($pairs);
             if ($fpSingle > 0 || $fpDouble > 0) {
                 Settings::flush();
@@ -219,6 +229,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
                 Settings::set('main_fares', ['toNepal' => (float) $pairs['fare_to_nepal'], 'toIndia' => (float) $pairs['fare_to_india']], 'json', 'pricing', false);
             }
             Settings::flush();
+            foreach ($tkBefore as $tk => $was) {
+                if (json_encode(Settings::get($tk)) !== $was) {
+                    Settings::touchTicketIdentity();
+                    break;
+                }
+            }
             Seats::forgetModeMap();
             $flash = ['ok', 'Settings saved.' . ($pfSaid !== [] ? ' Seat fares changed: ' . implode('; ', $pfSaid) . '.' : '')];
         } catch (InvalidArgumentException $e) {

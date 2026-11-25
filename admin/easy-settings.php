@@ -397,6 +397,13 @@ if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'y
                 } else {
                     $grp = (string) (Database::scalar('SELECT sgroup FROM settings WHERE skey = :k', ['k' => $k], '') ?: ($ES_NEW_GROUP[$esNewFlat[$k][4]] ?? 'general'));
                     Settings::set($k, $val, $stype, $grp);
+                    /* 25 Nov 2026 (mp1 tk review): a ticket switch (clean layout, pay QR by country,
+                       no pay QR once paid, UPI / verify / map QRs, NPR first) or a map pin changes what
+                       the ticket prints - cached ticket pictures redraw on their next open, so OFF is
+                       a real rollback for tickets already drawn. */
+                    if (str_starts_with($k, 'ticket_') || in_array($k, ['nepal_office_map', 'india_hub_map'], true)) {
+                        Settings::touchTicketIdentity();
+                    }
                     Logger::audit('settings.easy', 'setting', $k, ['value' => $old], ['value' => $newShow], 'Easy Settings (19 Nov card) by admin #' . (int) $admin['id']);
                     $flash = ['ok', '✅ ' . $esNewFlat[$k][0] . ' → ' . ($stype === 'bool' ? ($val ? 'ON' : 'OFF') : $newShow)];
                 }

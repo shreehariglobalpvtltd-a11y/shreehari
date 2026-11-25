@@ -9,6 +9,9 @@
  *   NPR   Nepal desk sale r7 (NPR frozen 3,520), money due     -> Nepal QR (eSewa image), amount in रू, never UPI
  *   R7    r7 INR sale, money due (trip from the Nepal side)    -> Nepal QR by country (ticket_pay_qr_by_country), off -> UPI
  *   GRP   r7, 3 passengers, paid online                        -> the list, Nepal flag
+ *   COD   r7 INR pay-at-boarding, due (review)                 -> the live pay.php link + ticket key, never the static Nepal image
+ *   PEND  r7 INR online booking pending (review)               -> the live pay.php link, never the static Nepal image
+ *   DISC  r2, ₹200 desk discount (review)                      -> "SAVED ₹200 (9.1%) · काउन्टर छुट" strip; normal fare (nf1) wins the slot
  * Settings go into Settings' in-memory cache only (reflection); the shared DB's settings
  * rows are never written. A throw-away Nepal QR image is written to uploads/payqr/ and removed.
  *
@@ -82,6 +85,7 @@ $setMem([
     'nepal_phone'              => ['+977 98662 01375 / 98257 88450', 'string'],
     'nepal_pan'                => ['624740276', 'string'],
     'npr_per_inr'              => ['1.6', 'float'],
+    'normal_fare_on'           => ['0', 'bool'],
 ]);
 
 $out = (string) (getenv('MP1_OUT') ?: '');
@@ -171,7 +175,13 @@ try {
         'fx_currency' => 'NPR', 'fx_rate' => 1.6, 'fx_total' => 3520]);
     $R7   = $seed('R', $r7, $s7, 'Rupaidiha', 'Surat', ['L12']);
     $GRP  = $seed('G', $r7, $s7, 'Rupaidiha', 'Surat', ['L5', 'L6', 'U7'], [], []);
+    /* review (money): r7 INR pay-at-boarding / pending online tickets keep the live pay link */
+    $COD  = $seed('K', $r7, $s7, 'Rupaidiha', 'Surat', ['L13'], ['is_cod' => 1]);
+    $PEND = $seed('P', $r7, $s7, 'Rupaidiha', 'Surat', ['L14'], ['status' => 'pending', 'source' => 'web']);
+    /* review: a desk discount (₹200 of 2,200) prints its SAVED line on the clean PNG */
+    $DISC = $seed('D', $r2, $s2, 'Surat', 'Rupaidiha', ['L8'], ['coupon_discount' => 200, 'total_amount' => 2000, 'source' => 'counter']);
     $bC = $load($CASH); $bI = $load($INR); $bN = $load($NPR); $bR = $load($R7); $bG = $load($GRP);
+    $bK = $load($COD); $bP = $load($PEND); $bD = $load($DISC);
 
     echo "\n== flag by direction ==\n";
     check('r2 (Gujarat -> Rupaidiha): India flag', Ticket::flagByDirection($bC) === 'IN', Ticket::flagByDirection($bC));
@@ -212,15 +222,48 @@ try {
         $hasFixed ? $qRn['mode'] === 'npr' : ($qRn['mode'] === 'due' && str_starts_with($qRn['qr'], 'upi://')), $qRn['mode'] . ($hasFixed ? ' (a fixed eSewa file exists)' : ''));
     $setMem(['nepal_esewa_qr' => ['uploads/payqr/' . $qrName, 'string'], 'nepal_esewa_id' => ['9866201375', 'string']]);
 
+    echo "\n== review (money): pay-at-boarding / pending on the Nepal side keep the live pay link ==\n";
+    $qK = Ticket::paymentQr($bK);
+    check('R7 pay-at-boarding (COD) due: NOT the static Nepal QR - the live pay.php link with the ticket key (UTR -> COD queue)',
+        $qK['country'] === 'NP' && $qK['mode'] === 'due' && str_contains($qK['qr'], 'pay.php?pnr=') && str_contains($qK['qr'], '&k=')
+        && !str_contains($qK['qr'], 'upi://') && $qK['esewaImg'] === '', $qK['mode'] . ' ' . $qK['qr']);
+    $qP = Ticket::paymentQr($bP);
+    check('R7 pending online booking due: the live pay.php link (proof box + expiry clock), never the static image',
+        $qP['mode'] === 'due' && str_contains($qP['qr'], 'pay.php?pnr=') && !str_contains($qP['qr'], '&k=') && $qP['esewaImg'] === '', $qP['mode'] . ' ' . $qP['qr']);
+    check('staticPayQrOk: confirmed + not COD + no proof only', Ticket::staticPayQrOk($bR) && !Ticket::staticPayQrOk($bK) && !Ticket::staticPayQrOk($bP));
+    $proofB = $bR;
+    $proofB['payment'] = ['id' => 0, 'status' => 'pending', 'utr_number' => '123456789012'];
+    check('staticPayQrOk: a UTR already waiting keeps the live link', !Ticket::staticPayQrOk($proofB) && Ticket::paymentQr($proofB)['mode'] === 'due');
+    $js0 = (string) file_get_contents(ROOT_PATH . '/assets/js/07-checkout.js');
+    check('web ticket (tkGoldPay): the same gate before the Nepal image on an INR ticket', str_contains($js0, "const staticOk = b.status === 'confirmed' && !isCod")
+        && str_contains($js0, 'fromNp && staticOk'));
+
+    echo "\n== review: the saving line (discount % + source, normal fare struck through) ==\n";
+    $svD = Ticket::saveLine($bD);
+    check('saveLine: a ₹200 desk discount = SAVED ₹200 (9.1%) · काउन्टर छुट', $svD['kind'] === 'disc' && str_contains($svD['text'], 'SAVED ₹200')
+        && str_contains($svD['text'], '(9.1%)') && str_contains($svD['text'], 'काउन्टर छुट'), $svD['text']);
+    check('saveLine: nothing saved = no strip', Ticket::saveLine($bI)['kind'] === '');
+    $setMem(['normal_fare_on' => ['1', 'bool'], 'normal_fare_json' => [json_encode([(string) $r2 => 3000]), 'json']]);
+    $svN = Ticket::saveLine($bD);
+    check('saveLine: the route\'s real normal fare (nf1) wins the slot: ₹3,000 struck + बचत SAVED ₹1,000', $svN['kind'] === 'nf'
+        && $svN['normal'] === '₹3,000' && $svN['save'] === 'बचत SAVED ₹1,000', $svN['text']);
+    check('saveLine: never a normal fare on an NPR sale', Ticket::saveLine($bN)['kind'] !== 'nf');
+    $setMem(['normal_fare_on' => ['0', 'bool']]);
+
     echo "\n== pickup phone + booked by ==\n";
     check('pickupPhone: never empty (location row, else the desk / company number)', Ticket::pickupPhone($bC) !== '', Ticket::pickupPhone($bC));
     $bb = Ticket::bookedByText($bC);
     check('bookedByText: names who cut it', $bb !== '', $bb);
     check('bookedByText: an online sale says Online', str_starts_with(Ticket::bookedByText(['source' => 'web'] + $bI + ['sold_by_admin_id' => 0]), 'Online'));
+    $bbN = Ticket::bookedByText($bN);
+    check('bookedByText: a Nepal counter sale prints the desk / company number (issuedBy keeps none for a desk)',
+        preg_match('/\d{5}/', $bbN) === 1, $bbN);
+    $bbO = Ticket::bookedByText(['sold_by_admin_id' => 0, 'source' => 'admin', 'counter_code' => ''] + $bI);
+    check('bookedByText: an office sale with no desk falls back to the company line', preg_match('/\d{5}/', $bbO) === 1, $bbO);
 
     echo "\n== PNG (clean) ==\n";
     $pngs = [];
-    foreach (['cash' => $CASH, 'inr-due' => $INR, 'npr-due' => $NPR, 'r7-due' => $R7, 'group' => $GRP] as $tag => $bid) {
+    foreach (['cash' => $CASH, 'inr-due' => $INR, 'npr-due' => $NPR, 'r7-due' => $R7, 'group' => $GRP, 'r7-cod' => $COD, 'disc' => $DISC] as $tag => $bid) {
         $p = Ticket::pngPath($bid, true);
         [$w, $h] = $dims($p);
         $pngs[$tag] = [$p, $h];
@@ -228,6 +271,8 @@ try {
         if ($out !== '') { @copy($p, $out . '/mp1-' . $tag . '.png'); }
     }
     check('group: the passenger list grows the canvas', $pngs['group'][1] > $pngs['cash'][1], $pngs['group'][1] . ' > ' . $pngs['cash'][1]);
+    $noteH = (int) (new ReflectionClass('Ticket'))->getConstant('PNG_NOTE_H');
+    check('disc: the saving strip grows the canvas by one strip', $pngs['disc'][1] === $pngs['inr-due'][1] + $noteH, $pngs['disc'][1] . ' vs ' . $pngs['inr-due'][1] . ' + ' . $noteH);
     /* the header carries ONE flag: the India flag's saffron top band at the right edge for r2, the Nepal crimson for r7 */
     $px = static function (string $file, int $x, int $y): array {
         $im = imagecreatefrompng($file);
@@ -238,6 +283,22 @@ try {
     $flagIn = DocArt::flagWidth('IN', 132);
     [$r, $g, $b] = $px($pngs['cash'][0], 1080 - 64 - intdiv($flagIn, 2), 36 + intdiv(256 - 36 - 132, 2) + 10);
     check('cash (r2): India flag in the header (saffron band)', $r > 220 && $g > 110 && $g < 190 && $b < 110, "rgb($r,$g,$b)");
+    /* the saving strip sits under the payment bar: pale green at body y 1092 (the INR ticket: the passenger tiles' card white) */
+    [$r, $g, $b] = $px($pngs['disc'][0], 64 + 420, 1092 + 6);
+    check('disc: the pale-green saving strip under the payment bar', $g > $r && $g > $b && $r > 200 && $r < 245, "rgb($r,$g,$b)");
+    [$r, $g, $b] = $px($pngs['inr-due'][0], 64 + 420, 1092 + 6);
+    check('inr-due: no saving strip there (nothing saved)', !($g > $r + 6 && $g > $b + 4), "rgb($r,$g,$b)");
+    $setMem(['normal_fare_on' => ['1', 'bool'], 'normal_fare_json' => [json_encode([(string) $r2 => 3000]), 'json']]);
+    $pNf = Ticket::pngPath($DISC, true);
+    [, $hNf] = $dims($pNf);
+    check('disc + normal fare: the same one strip (normal fare struck through + saving)', $hNf === $pngs['disc'][1], $hNf . ' vs ' . $pngs['disc'][1]);
+    if ($out !== '') { @copy($pNf, $out . '/mp1-disc-nf.png'); }
+    $setMem(['normal_fare_on' => ['0', 'bool']]);
+    /* the pill (right end of the PNR row): a pay-at-boarding ticket orange, a paid one green */
+    [$r, $g, $b] = $px($pngs['r7-cod'][0], 1004, 346);
+    check('r7-cod: the PAY ON BOARDING pill is orange', $r > 180 && $g > 60 && $g < 140 && $b < 60, "rgb($r,$g,$b)");
+    [$r, $g, $b] = $px($pngs['cash'][0], 1004, 346);
+    check('cash: the PAID pill is green', $g > $r && $g > $b, "rgb($r,$g,$b)");
     $flagNp = DocArt::flagWidth('NP', 132);
     [$r, $g, $b] = $px($pngs['r7-due'][0], 1080 - 64 - $flagNp + intdiv($flagNp * 12, 100), 36 + intdiv(256 - 36 - 132, 2) + 66);
     check('r7: Nepal flag in the header (crimson)', $r > 170 && $g < 80 && $b < 100, "rgb($r,$g,$b)");
@@ -288,6 +349,23 @@ try {
     $sb = (string) file_get_contents(ROOT_PATH . '/assets/js/27-smartbook.js');
     check('SmartBook ticket: Share, PNG and Print (customer too) right after the sale', str_contains($sb, 'data-tk="share"') && str_contains($sb, "tr('dlPng')")
         && str_contains($sb, "(!STAFF && t.print ?"));
+    $tm0 = (int) strpos($sb, 'function tkMagic(');
+    $tm1 = (int) strpos($sb, '/* ------------------------------------------------------------ ticket */', $tm0);
+    $tmSrc = substr($sb, $tm0, max(0, $tm1 - $tm0));
+    check('SmartBook magic overlay: Share / PNG / Print on it from the first frame (spec D), Share = the card\'s own shareTicket()',
+        $tm0 > 0 && str_contains($tmSrc, '+ tkmActs(r)') && str_contains($tmSrc, 'data-tkm="share"') && str_contains($tmSrc, "tr('dlPng')")
+        && str_contains($tmSrc, "tr('print')") && str_contains($tmSrc, 'shareTicket(r)') && str_contains($sb, "if (act === 'share') shareTicket(r);"));
+    $sbCss = (string) file_get_contents(ROOT_PATH . '/assets/css/smartbook.css');
+    check('SmartBook magic overlay: the action row has no animation delay', (bool) preg_match('/\.tkm-acts\{[^}]*animation:tkmIn \.2s ease-out both\}/', $sbCss));
+    $es = (string) file_get_contents(ROOT_PATH . '/admin/easy-settings.php');
+    check('Easy Settings: flipping a ticket_* switch redraws cached tickets (touchTicketIdentity)', (bool) preg_match("/str_starts_with\(\\\$k, 'ticket_'\)[^\n]*\n\s*Settings::touchTicketIdentity\(\);/", $es));
+    $st = (string) file_get_contents(ROOT_PATH . '/admin/settings.php');
+    check('Settings save: a changed ticket / company key redraws cached tickets', str_contains($st, '$tkBefore[(string) $tk] = json_encode(Settings::get((string) $tk));')
+        && (bool) preg_match('/json_encode\(Settings::get\(\$tk\)\) !== \$was\) \{\s*Settings::touchTicketIdentity\(\);/', $st));
+    $sbf = new ReflectionMethod('Ticket', 'staleBefore');
+    clearstatcache();
+    check('staleBefore(): never earlier than ticketclean.php\'s own mtime (a clean-layout fix redraws once)',
+        (int) $sbf->invoke(null, '2000-01-01 00:00:00') >= (int) filemtime(INCLUDE_PATH . '/ticketclean.php'));
     $p80 = (string) file_get_contents(ROOT_PATH . '/admin/ticket-80mm.php');
     check('80 mm receipt: the PAID stamp words, no pay QR', str_contains($p80, 'Ticket::stampFor(') && !str_contains($p80, 'paymentQr('));
     check('stampFor(): the 80 mm receipt gets the cash stamp + booked by', Ticket::stampFor($CASH)['stamp']['text'] === 'PAID · नगद प्राप्त भयो / Cash received'
