@@ -724,7 +724,6 @@ function admin_side_css(): string
 .side a{gap:10px;padding:8px 10px;border-radius:8px;font-weight:500;font-size:13.5px;line-height:1.3}
 .side a .sl{font-weight:inherit;overflow:hidden;text-overflow:ellipsis}
 .side a span{width:18px;color:var(--mut)}
-.side a.side-me-h .sa-mode,.side a.side-me-h:hover .sa-mode{width:auto;color:#fff}
 .side a:hover span{color:var(--ink)}
 .side a.on{background:rgba(29,79,163,.10);color:var(--navy);font-weight:650;box-shadow:inset 3px 0 0 var(--navy)}
 .side a.on span{color:var(--navy)}
@@ -807,7 +806,8 @@ function admin_header(string $title, string $active = ''): void
     // for staff JS that posts JSON with an X-CSRF-Token header (inline edit, AI bubble)
     echo '<meta name="shg-admin-csrf" content="' . Security::e(Security::csrfToken()) . '">';
     echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css() . (RoleMenu::on() ? admin_hub_css() : '')
-       . ($av !== null ? StaffAvatar::css() . ($av['phone'] ? StaffAvatar::phoneCss() : '') : '') . '</style>';
+       // fx1: the drawer's mode badge is a <span> inside a menu link - without this the 18px icon-slot rule above squeezed it to a dot
+       . ($av !== null ? StaffAvatar::css() . ($av['phone'] ? StaffAvatar::phoneCss() : '') . '.side a.side-me-h .sa-mode,.side a.side-me-h:hover .sa-mode{width:auto;color:#fff}' : '') . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
