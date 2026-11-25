@@ -46,6 +46,7 @@ if (Auth::isCounterAgent()) {
 $selfId    = (int) ($admin['id'] ?? 0);
 $canSettle = Auth::can('commissions.pay');      // may pay out / accept cash / issue loans / decide requests
 $canManage = Auth::can('staff.manage');         // may verify KYC / set the required deposit
+$mayLoginPhone = Auth::mayEditCredentials('staff.manage');   // 25 Nov 2026 (mp1-lg review): may change admins.phone (the sign-in mobile)
 $base      = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 
 $tabs = [
@@ -613,17 +614,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (strlen($phone) < 10 || strlen($phone) > 15) {
                 throw new RuntimeException('Enter a valid mobile number.');
             }
+            /* 25 Nov 2026 (mp1-lg review): admins.phone is the SIGN-IN mobile (the /team/ WhatsApp reset and
+               the WhatsApp door send their codes to it) - a super-admin's, or a staff.credentials grant.
+               Anyone else never writes it: their Mobile box is the number printed on tickets (display_phone). */
+            $keepLogin  = !$mayLoginPhone;
+            $phoneMoved = normalisePhone($phone) !== normalisePhone((string) ($agent['phone'] ?? ''));
             // 30 Oct 2026: one mobile may carry up to ap_phone_max_accounts IDs — an
             // unchanged number always saves; a changed one must still have room.
-            if (normalisePhone($phone) !== normalisePhone((string) ($agent['phone'] ?? ''))) {
+            if ($phoneMoved && !$keepLogin) {
                 require_once INCLUDE_PATH . '/agentpro.php';
                 if (count(AgentPro::phoneOwners($phone, $targetId)) >= AgentPro::phoneMax()) {
                     throw new RuntimeException('That mobile number already has the most logins one number may carry (' . AgentPro::phoneMax() . ').');
                 }
             }
-            $before = ['full_name' => $agent['full_name'], 'phone' => $agent['phone'],
+            $before = ['full_name' => $agent['full_name'], 'phone' => $agent['phone'], 'display_phone' => $profile['display_phone'] ?? null,
                        'whatsapp' => $profile['whatsapp'] ?? null, 'city' => $profile['counter_name'] ?? null];
-            Database::update('admins', ['full_name' => $nm, 'phone' => $phone], 'id = :id', ['id' => $targetId]);
+            $refused = $keepLogin && $phoneMoved && normalisePhone($phone) !== normalisePhone((string) ($profile['display_phone'] ?? ''));
+            Database::update('admins', $keepLogin ? ['full_name' => $nm] : ['full_name' => $nm, 'phone' => $phone], 'id = :id', ['id' => $targetId]);
             Database::run(
                 'INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name)
                       VALUES (:aid, :dp, :wa, :cn)
@@ -631,9 +638,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ['aid' => $targetId, 'dp' => $phone, 'wa' => $wa ?: null, 'cn' => $city ?: null,
                  'dp2' => $phone, 'wa2' => $wa ?: null, 'cn2' => $city ?: null]
             );
+            if ($refused) {
+                Logger::audit('staff.credentials_denied', 'admin', (string) $targetId, null, ['action' => 'agent360.edit_basic.phone'],
+                    'Login mobile change refused on Agent 360 (super-admin only); saved as the display / ticket number');
+            }
             Logger::audit('agent.edit', 'admin', (string) $agent['username'], $before,
-                ['full_name' => $nm, 'phone' => $phone, 'whatsapp' => $wa, 'city' => $city], 'agent 360 quick edit');
-            a360_flash('ok', 'Agent details saved.');
+                ['full_name' => $nm, 'phone' => $keepLogin ? $agent['phone'] : $phone, 'display_phone' => $phone, 'whatsapp' => $wa, 'city' => $city], 'agent 360 quick edit');
+            a360_flash('ok', 'Agent details saved.' . ($refused
+                ? ' लगइन मोबाइल super-admin ले मात्र बदल्छ · Login mobile not changed (only a super-admin changes it); the new number is saved as the number shown on tickets.'
+                : ''));
             a360_go($targetId, $backTab);
 
         } else {
@@ -1312,7 +1325,12 @@ $imgData = [
           <form method="post" class="rp-edit" style="margin-top:8px">
             <?= a360_form_head('report', 'edit_basic', $agentId, $csrf, $k) ?>
             <label class="muted" style="font-size:12px">Name<input name="full_name" maxlength="120" value="<?= $e($agent['full_name']) ?>" required></label>
+            <?php if ($mayLoginPhone): ?>
             <label class="muted" style="font-size:12px">Mobile<input name="phone" inputmode="tel" maxlength="20" value="<?= $e($agent['phone']) ?>" required></label>
+            <?php else: /* 25 Nov 2026 (mp1-lg review): the login mobile is the super-admin's; this box is the ticket number */ ?>
+            <label class="muted" style="font-size:12px">Mobile (on tickets) · टिकटमा देखिने<input name="phone" inputmode="tel" maxlength="20" value="<?= $e(($profile['display_phone'] ?? '') ?: $agent['phone']) ?>" required>
+              <span style="font-size:11px">लगइन मोबाइल <?= $e($agent['phone'] ?: '—') ?> super-admin ले मात्र बदल्छ · Login mobile: super-admin only</span></label>
+            <?php endif; ?>
             <label class="muted" style="font-size:12px">WhatsApp<input name="whatsapp" inputmode="tel" maxlength="20" value="<?= $e($profile['whatsapp'] ?? '') ?>" placeholder="same as mobile"></label>
             <label class="muted" style="font-size:12px">City / counter<input name="counter_name" maxlength="120" value="<?= $e($profile['counter_name'] ?? '') ?>"></label>
             <div class="rp-row"><button class="btn sm" type="submit">Save details</button>

@@ -16,6 +16,9 @@
  *      resetpw, login-requests.php open and sessions.php clear_qk; a super-admin
  *      (or a person granted staff.credentials) succeeds; the switch
  *      staff_credentials_lock_on = 0 gives login-requests back to staff.manage
+ *   D2 the sign-in mobile (admins.phone): a manager editing an agent on
+ *      agents.php / agent-360.php / the AgentPro office form of a live member
+ *      never moves it (the ticket number still saves); a super-admin does
  *   E  remember days: code default 90, capped by login_remember_max_days (90)
  *
  *  shari_test only. Every account, profile, file and row this suite makes is
@@ -142,7 +145,7 @@ $cleanup = static function () use ($PFX, $PHOTO_FILE): void {
         $id = (int) $r['id'];
         try { AgentWallet::setAgentCode($id, null); } catch (Throwable $e) {}
         try { Database::delete('kv_store', "kscope = 'nav_use' AND kkey = :k", ['k' => 'a' . $id]); } catch (Throwable $e) {}
-        foreach (['ap_members', 'admin_profiles', 'admin_sessions', 'login_recovery_requests', 'admin_devices', 'admin_remember'] as $t) {
+        foreach (['ap_applications', 'ap_members', 'admin_profiles', 'admin_sessions', 'login_recovery_requests', 'admin_devices', 'admin_remember'] as $t) {
             try { Database::delete($t, 'admin_id = :i', ['i' => $id]); } catch (Throwable $e) {}
         }
         try { Database::delete('admins', 'id = :i', ['i' => $id]); } catch (Throwable $e) { echo "  !! could not delete admin $id: " . $e->getMessage() . "\n"; }
@@ -170,7 +173,7 @@ $aSup   = $mk('sup', 'support', 'Mp Support');
 
 /* ===================================================================== */
 echo "-- A. StaffAvatar\n";
-foreach (['includes/staffavatar.php', 'admin/_guard.php', 'admin/login.php', 'admin/staff.php', 'admin/sessions.php', 'admin/login-requests.php', 'admin/agent.php', 'admin/agents.php'] as $f) {
+foreach (['includes/staffavatar.php', 'admin/_guard.php', 'admin/login.php', 'admin/staff.php', 'admin/sessions.php', 'admin/login-requests.php', 'admin/agent.php', 'admin/agents.php', 'admin/agent-360.php', 'includes/agentpro.php'] as $f) {
     $o = run('-l ' . escapeshellarg($ROOT . '/' . $f));
     check("$f lints", str_contains($o, 'No syntax errors'), trim(substr($o, 0, 160)));
 }
@@ -341,6 +344,58 @@ if (CodeLogin::ready()) {
 
 $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agent.php', 'get' => ['id' => $aAgent], 'post' => ['action' => 'credentials', 'target_id' => $aAgent, 'agent_id' => $aAgent, 'login_username' => $PFX . 'agent2', 'login_email' => '', 'login_password' => 'Hack#Pass2026']]);
 check('manager: agent.php credentials -> username unchanged', (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $aAgent], '') === $PFX . 'agent');
+
+/* review fix: admins.phone is the sign-in mobile (the /team/ WhatsApp reset + the WhatsApp door send
+   codes there) - a manager must not move it through the agents register, Agent 360 or the AgentPro
+   office form of a live member; the ticket number (display_phone) still saves. */
+echo "\n-- D2. The sign-in mobile on the agent pages\n";
+$loginPh = static fn(int $id): string => (string) Database::scalar('SELECT phone FROM admins WHERE id = :i', ['i' => $id], '');
+$dispPh  = static fn(int $id): string => (string) Database::scalar('SELECT display_phone FROM admin_profiles WHERE admin_id = :i', ['i' => $id], '');
+$denied  = static fn(int $id, string $act): bool => Database::exists(
+    "SELECT 1 FROM audit_logs WHERE action = 'staff.credentials_denied' AND entity_id = :e AND new_value LIKE :a", ['e' => (string) $id, 'a' => '%' . $act . '%']);
+$aPh = $mk('agph', 'agent', 'Mp Phone Agent');
+Database::update('admins', ['phone' => '9000000101'], 'id = :i', ['i' => $aPh]);
+$edit = static fn(string $phone): array => ['action' => 'edit', 'id' => $aPh, 'full_name' => 'Mp Phone Agent', 'phone' => $phone, 'agent_kind' => 'person'];
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php', 'post' => $edit('9000000102')]);
+check('manager: agents.php edit with a new mobile -> login mobile kept', $loginPh($aPh) === '9000000101', $loginPh($aPh));
+check('...the new number is the ticket number (display_phone)', $dispPh($aPh) === '9000000102', $dispPh($aPh));
+check('...the page says so and the rest saved', str_contains($o, 'Agent updated.') && str_contains($o, 'Login mobile not changed'));
+check('...the refusal is audited', $denied($aPh, 'agents.edit.phone'));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php']);
+check('manager: the register form shows the ticket number box + who changes the login one', str_contains($o, 'Mobile (on tickets)') && str_contains($o, 'value="9000000102"') && str_contains($o, 'Login mobile: super-admin only'));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agent-360.php', 'get' => ['agent' => $aPh], 'post' => ['action' => 'edit_basic', 'agent_id' => $aPh, 'tab' => 'report', 'full_name' => 'Mp Phone Agent', 'phone' => '9000000104']]);
+check('manager: agent-360 edit_basic with a new mobile -> login mobile kept', $loginPh($aPh) === '9000000101' && $dispPh($aPh) === '9000000104', $loginPh($aPh) . ' / ' . $dispPh($aPh));
+check('...audited', $denied($aPh, 'agent360.edit_basic.phone'));
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agents.php', 'post' => $edit('9000000103')]);
+check('super-admin: agents.php edit moves the login mobile', $loginPh($aPh) === '9000000103' && $dispPh($aPh) === '9000000103', $loginPh($aPh));
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agent-360.php', 'get' => ['agent' => $aPh], 'post' => ['action' => 'edit_basic', 'agent_id' => $aPh, 'tab' => 'report', 'full_name' => 'Mp Phone Agent', 'phone' => '9000000105']]);
+check('super-admin: agent-360 edit_basic moves the login mobile', $loginPh($aPh) === '9000000105', $loginPh($aPh));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php', 'post' => $edit('9000000106'), 'mem' => ['staff_credentials_lock_on' => ['0', 'bool']]]);
+check('staff_credentials_lock_on = 0: a manager moves it again (old rule)', $loginPh($aPh) === '9000000106', $loginPh($aPh));
+
+require_once INCLUDE_PATH . '/agentpro.php';
+if (AgentPro::available() && AgentPro::appHas('office_filled_by')) {
+    $key = bin2hex(random_bytes(16));
+    Database::insert('ap_applications', ['ref' => 'ML-' . strtoupper(substr($key, 0, 8)), 'draft_key' => $key, 'status' => 'approved', 'admin_id' => $aPh, 'phone' => '9000000106']);
+    $saved = $_SESSION ?? [];
+    $asAdmin = static function (int $id): void {
+        $a = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $id]);
+        $_SESSION[ADMIN_SESSION_KEY] = ['id' => (int) $a['id'], 'username' => (string) $a['username'], 'full_name' => (string) $a['full_name'],
+            'role' => (string) $a['role'], 'permissions' => jsonColumn($a['permissions'] ?? null), 'last_seen' => time()];
+    };
+    $asAdmin($aMgr);
+    $err = '';
+    try { AgentPro::officeVerify($key, $aMgr, 'came to the office', '9000000107', 'IN'); } catch (Throwable $e) { $err = $e->getMessage(); }
+    check('manager: AgentPro office form, live member, new mobile -> refused', str_contains($err, 'Only a super-admin changes a live member') && $loginPh($aPh) === '9000000106', $err);
+    check('...the form keeps its number and the refusal is audited', (string) Database::scalar('SELECT phone FROM ap_applications WHERE draft_key = :k', ['k' => $key], '') === '9000000106' && $denied($aPh, 'agentpro.office_verify'));
+    $asAdmin($aSa);
+    $err = '';
+    try { AgentPro::officeVerify($key, $aSa, 'came to the office', '9000000107', 'IN'); } catch (Throwable $e) { $err = $e->getMessage(); }
+    check('super-admin: AgentPro office form moves the live member\'s login mobile', $err === '' && $loginPh($aPh) === '9000000107', $err . ' / ' . $loginPh($aPh));
+    $_SESSION = $saved;
+} else {
+    check('ap_applications (af1) present for the AgentPro office-form check', false, 'run database/upgrade-2026-10-30-agentpro-af1.sql');
+}
 
 /* ===================================================================== */
 echo "\n-- E. Remember days\n";

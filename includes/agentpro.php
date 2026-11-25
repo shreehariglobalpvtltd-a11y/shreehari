@@ -2074,6 +2074,17 @@ final class AgentPro
         if (!Security::isValidPhone($phone, true)) {
             throw new RuntimeException('Enter the mobile number.');
         }
+        /* 25 Nov 2026 (mp1-lg review): on a LIVE member this writes admins.phone (syncApproved) - the
+           sign-in mobile the /team/ WhatsApp reset and the WhatsApp door send codes to. A super-admin's
+           (or a staff.credentials grant; staff_credentials_lock_on = 0 = the old manager rule). A form
+           not yet approved is onboarding and stays the office's. */
+        if ($app['status'] === 'approved' && !empty($app['admin_id']) && class_exists('Auth') && Auth::admin() !== null
+            && !Auth::mayEditCredentials('staff.manage')
+            && normalisePhone($phone) !== normalisePhone((string) Database::scalar('SELECT phone FROM admins WHERE id = :i', ['i' => (int) $app['admin_id']], ''))) {
+            Logger::audit('staff.credentials_denied', 'admin', (string) (int) $app['admin_id'], null, ['action' => 'agentpro.office_verify'],
+                'Login mobile change of a live member refused (super-admin only) for admin #' . $by);
+            throw new RuntimeException('लगइन मोबाइल super-admin ले मात्र बदल्छ · Only a super-admin changes a live member\'s sign-in mobile.');
+        }
         $share = $share || self::shareAgreed($app, $phone);
         self::assertPhoneFree($phone, (int) ($app['admin_id'] ?? 0), true, $share);
         $country = in_array($country, ['IN', 'NP'], true) ? $country : ((string) ($app['country'] ?? '') ?: (resolvePhoneCountry('', $rawPhone) ?: 'IN'));
