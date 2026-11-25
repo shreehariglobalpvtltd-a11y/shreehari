@@ -266,6 +266,7 @@ const CORE_SUITES = [
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'mp1-pay-test.php'                => 'Payment Management: ICICI strict fields, one Nepal QR, Gmail bank alerts + bank webhook -> credits ledger, exact-match auto-confirm only (25 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
+    'mp1-login-test.php'              => 'top bar photo / initials + mode badge, login mode cards never change the role, credential actions super-admin only, remember 90 days (25 Nov mp1-lg)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
     'mp1-dayreport-test.php'          => 'seller day = CounterBook (cash + cod, online, due, commission), Nepali bot reply, evening report once, free window only (25 Nov dy)',
 ];

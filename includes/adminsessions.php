@@ -428,7 +428,12 @@ final class AdminSessions
                 return 0;
             }
             if (self::rememberIsField($admin)) {
-                return max(0, min(730, Settings::getInt('login_remember_days', 365))) * 86400;
+                /* 25 Nov 2026 (mp1-lg, owner plan: "30-90 din samma login rahos"): the code default is
+                   90 days (was 365) and the window is capped by login_remember_max_days (default 90,
+                   at most 730) - a phone that is never used for 90 days asks for its PIN door again.
+                   The window still slides on every use, so a phone in daily use never signs out. */
+                $cap = max(1, min(730, Settings::getInt('login_remember_max_days', 90)));
+                return max(0, min($cap, Settings::getInt('login_remember_days', 90))) * 86400;
             }
             return max(0, min(720, Settings::getInt('login_remember_office_hours', 24))) * 3600;
         } catch (Throwable $e) {

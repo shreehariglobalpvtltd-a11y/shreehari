@@ -35,6 +35,7 @@ require_once INCLUDE_PATH . '/brand.php';
 require_once INCLUDE_PATH . '/opshub.php';   // 6 Nov 2026: recent-first menu, chalani ticks, staff door
 require_once __DIR__ . '/_pro.php';             // 7 Nov 2026: the professional look (pc-* components, no emoji in the chrome)
 require_once __DIR__ . '/_compat.php';
+require_once INCLUDE_PATH . '/staffavatar.php';   // 25 Nov 2026 (mp1-lg): photo / initials + mode badge in the top bar
 
 /**
  * Require a signed-in admin (optionally with a permission) and return them.
@@ -367,6 +368,29 @@ function admin_header(string $title, string $active = ''): void
     // link below points at APP_URL — that one really means the public website.
     $base  = '';
     $company = Settings::getString('company_name', APP_NAME);
+    /* 25 Nov 2026 (mp1-lg, owner plan 2): photo (else coloured initials), full name and a coloured
+       mode badge from the REAL role. staff_avatar_on = 0 gives the bar exactly as before. Any
+       failure here falls back to that old bar - the header is on 134 pages. */
+    $av = null;
+    try {
+        if (StaffAvatar::on() && !empty($admin['id'])) {
+            $phoneMin = Settings::getBool('staff_phone_min_on', true);
+            $isSa     = (string) ($admin['role'] ?? '') === 'superadmin';
+            // a super-admin's avatar opens their own record (photo upload lives there, team-member.php); everyone else their ID & wallet
+            $meHref = $isSa && is_file(__DIR__ . '/team-member.php') ? '/admin/team-member.php?id=' . (int) $admin['id'] : '/me/';
+            $av = [
+                'sm'    => StaffAvatar::html($admin, 28, 'sa-av sa-28'),
+                'md'    => StaffAvatar::html($admin, 32, 'sa-av sa-32'),
+                'lg'    => StaffAvatar::html($admin, 44, 'sa-av sa-44'),
+                'badge' => StaffAvatar::badge($admin),
+                'href'  => $meHref,
+                'phone' => $phoneMin,
+                'title' => $isSa ? 'फोटो / विवरण · Photo & details' : 'मेरो ID · My ID',
+            ];
+        }
+    } catch (Throwable $e) {
+        $av = null;
+    }
 
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
@@ -386,7 +410,8 @@ function admin_header(string $title, string $active = ''): void
     // the same session token the admin POST forms carry (Security::csrfField / verifyCsrf),
     // for staff JS that posts JSON with an X-CSRF-Token header (inline edit, AI bubble)
     echo '<meta name="shg-admin-csrf" content="' . Security::e(Security::csrfToken()) . '">';
-    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css() . '</style>';
+    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css()
+       . ($av !== null ? StaffAvatar::css() . ($av['phone'] ? StaffAvatar::phoneCss() : '') : '') . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
@@ -423,7 +448,7 @@ function admin_header(string $title, string $active = ''): void
     echo admin_pro_sprite();
 
     // Top bar
-    echo '<header class="tb">';
+    echo '<header class="tb' . ($av !== null && $av['phone'] ? ' tb-av' : '') . '">';
     echo '<button class="menu" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="Menu">☰</button>';
     // 30 Oct 2026: the logo goes home — the one home page when it is on (index.php 403'd scanners and officials)
     echo '<a class="brand" href="' . $base . (Auth::oneDoorOn() ? Auth::homeUrl() : '/admin/index.php') . '">'
@@ -459,12 +484,18 @@ function admin_header(string $title, string $active = ''): void
     $viaOtp = !empty($admin['via_otp']) && empty($admin['must_change_pw']);
     $pwLink = $viaOtp ? ''
         : ' · <a href="' . $base . '/admin/change-password.php" title="Change your password" aria-label="Change password"><svg class="a-ic"><use href="#a-key"/></svg></a>';
-    echo '<div class="who">' . $name . ' <em>' . $role . '</em> · '
+    $whoHead = $av !== null
+        ? '<a class="who-me" href="' . Security::e($av['href']) . '" title="' . Security::e($av['title']) . '">' . $av['sm'] . $name . '</a>' . $av['badge']
+        : $name . ' <em>' . $role . '</em>';
+    echo '<div class="who">' . $whoHead . ' · '
        . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode"><svg class="a-ic"><use href="#a-theme"/></svg></button>'
        . $pwLink
        . ' · <a href="' . $base . '/admin/quick-unlock.php" title="PIN / Pattern" aria-label="PIN / Pattern">🔐</a>'
        . ' · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
     // px1 (19 Nov 2026): on a phone the bar is one row - menu, search, lock; name / theme / PIN / sign-out sit in the drawer
+    if ($av !== null && $av['phone']) {   // mp1-lg: the avatar in the one 52px phone bar, between search and lock
+        echo '<a class="tb-me" href="' . Security::e($av['href']) . '" aria-label="' . Security::e($av['title']) . '" title="' . $name . '">' . $av['md'] . '</a>';
+    }
     echo '<a class="tb-lock" href="' . $base . '/admin/logout.php" aria-label="Lock" title="Lock">🔒</a>';
     echo '</header>';
 
@@ -475,7 +506,10 @@ function admin_header(string $title, string $active = ''): void
     echo '<nav class="side">';
     /* px1: the phone drawer starts with who is signed in and their four own buttons (the top bar's
        "who" strip is not drawn on a phone any more). Hidden on wide screens - admin_phone_css(). */
-    echo '<div class="side-me"><b>' . $name . '</b><em>' . $role . '</em><div class="side-me-b">'
+    $sideHead = $av !== null
+        ? '<a class="side-me-h" href="' . Security::e($av['href']) . '" style="text-decoration:none;color:inherit">' . $av['lg'] . '<div><b>' . $name . '</b><em>' . $role . '</em> ' . $av['badge'] . '</div></a>'
+        : '<b>' . $name . '</b><em>' . $role . '</em>';
+    echo '<div class="side-me">' . $sideHead . '<div class="side-me-b">'
        . '<button type="button" onclick="shgTheme()" aria-label="Dark / light">🌙<small>Dark</small></button>'
        . '<button type="button" id="sideSnd" onclick="try{var o=localStorage.getItem(\'shg_admin_sound\')===\'0\';localStorage.setItem(\'shg_admin_sound\',o?\'1\':\'0\');this.firstChild.nodeValue=o?\'🔔\':\'🔕\';}catch(e){}" aria-label="Sound on / off">🔔<small>Sound</small></button>'
        . '<a href="' . $base . '/admin/quick-unlock.php" aria-label="PIN / Pattern">🔐<small>PIN</small></a>'

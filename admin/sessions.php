@@ -123,6 +123,48 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'office cleared failed sign-ins / password lock' . ($qkReady ? ' + PIN / pattern lock' : ''));
             $flash = ['ok', $acct['full_name'] . ' unlocked — password' . ($qkReady ? ' and PIN / pattern' : '') . ' attempts reset to 0. / अनलक भयो।'];
         }
+    } elseif ($act === 'clear_qk') {
+        /* 25 Nov 2026 (mp1-lg, owner plan 4: "admin le PIN edit"): clear this person's PIN AND
+           pattern. The office still never sets a PIN: the account is opened for a first login
+           (CodeLogin::officeOpen, 60 min, one use) and the person chooses a new one at the door.
+           Super-admin only (or a 'staff.credentials' grant); never your own (quick-unlock.php). */
+        $acct = $account($personId);
+        if (!Auth::mayEditCredentials()) {
+            http_response_code(403);
+            Logger::audit('staff.credentials_denied', 'admin', (string) $personId, null, ['action' => 'clear_qk'],
+                'sessions.php clear PIN refused: super-admin only');
+            $flash = ['bad', 'PIN / pattern एडमिनले मात्र हटाउँछ · Only a super-admin clears a PIN / pattern.'];
+        } elseif (!$qkReady || !$mayTouch($acct)) {
+            $flash = ['bad', $acct === null ? 'No such account.' : 'That account cannot be changed here.'];
+        } elseif ((int) $acct['id'] === $me) {
+            $flash = ['bad', 'आफ्नो PIN यहाँबाट होइन — PIN / Pattern पेजबाट · Your own PIN: use the PIN / Pattern page.'];
+        } else {
+            $aid = (int) $acct['id'];
+            $was = QuickUnlock::status($aid);
+            QuickUnlock::remove($aid, 'pin');
+            QuickUnlock::remove($aid, 'pattern');
+            $set = ['unlock_failed' => 0, 'unlock_locked_until' => null];
+            if ($skReady) {
+                $set['unlock_strikes'] = 0;
+            }
+            Database::update('admins', $set, 'id = :id', ['id' => $aid]);
+            $opened = false;
+            try {
+                require_once INCLUDE_PATH . '/codelogin.php';
+                $opened = CodeLogin::ready() && CodeLogin::officeOpen($aid, $me);
+            } catch (Throwable $ex) {
+                $opened = false;
+            }
+            $ended = 0;
+            if (!empty($_POST['signout'])) {
+                $ended = AdminSessions::endAll($aid, $me, 'PIN cleared by ' . (string) ($admin['username'] ?? 'office'));
+            }
+            Logger::audit('staff.pin_cleared', 'admin', (string) $acct['username'], ['pin' => $was['pin'], 'pattern' => $was['pattern']],
+                ['pin' => false, 'pattern' => false, 'door_opened_min' => $opened ? 60 : 0, 'browsers_ended' => $ended],
+                'super-admin cleared the PIN / pattern; the person sets a new one at the door');
+            $flash = ['ok', '🧹 ' . $acct['full_name'] . ' — PIN / pattern हटाइयो। ' . ($opened ? '६० मिनेटभित्र आफ्नो code लेखेर नयाँ PIN राख्नुहोस् · Cleared: within 60 minutes they type their code and choose a new PIN / pattern.' : 'Cleared: they choose a new one after the office opens their login (Login setup).')
+                . ($ended > 0 ? ' ' . $ended . ' browser(s) signed out.' : '')];
+        }
     } elseif ($act === 'revoke_device') {
         $acct = $account($personId);
         $did  = (int) ($_POST['did'] ?? 0);
@@ -430,6 +472,15 @@ form.ss-inline{display:inline}
       <form method="post" class="ss-inline" onsubmit="return confirm('Sign this person out of every browser and WhatsApp?');">
         <?= $csrf ?><input type="hidden" name="act" value="end_all"><input type="hidden" name="person" value="<?= (int) $person['id'] ?>">
         <button class="btn danger">⏏ Sign out everywhere</button></form>
+      <?php if ($qkReady && Auth::mayEditCredentials() && (int) $person['id'] !== $me): /* 25 Nov 2026 (mp1-lg) */ ?>
+      <form method="post" class="ss-inline" onsubmit="return confirm('PIN र pattern हटाउने? उहाँले नयाँ राख्नुपर्छ · Clear this person\'s PIN and pattern? They must choose a new one.');">
+        <?= $csrf ?><input type="hidden" name="act" value="clear_qk"><input type="hidden" name="person" value="<?= (int) $person['id'] ?>">
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;min-height:44px"><input type="checkbox" name="signout" value="1" checked> सबैतिर लगआउट पनि · also sign out</label>
+        <button class="btn danger">🧹 PIN / Pattern हटाउने · Clear PIN</button></form>
+      <?php endif; ?>
+      <?php if (Auth::isSuperadmin() && is_file(__DIR__ . '/team-member.php')): ?>
+      <a class="btn" href="team-member.php?id=<?= (int) $person['id'] ?>">📷 फोटो / विवरण · Photo &amp; details</a>
+      <?php endif; ?>
       <a class="btn" href="staff.php">Password / switch off → Staff</a>
     </div>
     <?php else: ?>

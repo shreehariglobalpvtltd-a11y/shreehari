@@ -39,6 +39,7 @@ if (Auth::isCounterAgent()) {
 }
 
 $canManage = Auth::isSuperadmin() || Auth::can('staff.manage');
+$mayLoginPhone = Auth::mayEditCredentials('staff.manage');   // 25 Nov 2026 (mp1-lg review): may change admins.phone (the sign-in mobile)
 // The wallet-settlement modal posts through the $canManage gate below AND needs
 // the settle right Agent 360 asks for - the button is only offered to both.
 $canSettleWallet = $canManage && Auth::can('commissions.pay');
@@ -194,11 +195,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $wa    = AgentWallet::cleanPhone((string) ($_POST['whatsapp'] ?? ''));
             $tier  = strtolower(trim((string) ($_POST['agent_type'] ?? '')));
             $code  = trim((string) ($_POST['agent_code'] ?? ''));
+            /* 25 Nov 2026 (mp1-lg review): admins.phone is the SIGN-IN mobile - the /team/ WhatsApp
+               reset and the WhatsApp door send their codes to it. A super-admin's (or a staff.credentials
+               grant). Anyone else never writes it: their Mobile box is the number printed on tickets
+               (display_phone), the WhatsApp line saves too, the login mobile stays exactly as stored. */
+            $phoneMoved = normalisePhone($phone) !== normalisePhone((string) ($a['phone'] ?? ''));
+            $keepLogin  = !$mayLoginPhone;
             if (mb_strlen($name) < 2) {
                 $flash = ['bad', 'Enter the agent\'s name.'];
             } elseif (strlen($phone) < 10 || strlen($phone) > 15) {
                 $flash = ['bad', 'Enter a valid mobile number.'];
-            } elseif (normalisePhone($phone) !== normalisePhone((string) ($a['phone'] ?? ''))
+            } elseif ($phoneMoved && !$keepLogin
                       && count(AgentPro::phoneOwners($phone, $id)) >= AgentPro::phoneMax()) {
                 // 30 Oct 2026: one mobile may carry up to ap_phone_max_accounts IDs (office
                 // join form) — an unchanged number always saves; a new one must have room.
@@ -214,7 +221,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'daily_booking_limit' => $prevProfile['daily_booking_limit'], 'cash_limit' => $prevProfile['cash_limit'],
                     'tier' => AgentWallet::agentTypeFor($id), 'serial' => AgentWallet::agentCodeFor($id),
                 ];
-                Database::update('admins', ['full_name' => $name, 'phone' => $phone], 'id = :id', ['id' => $id]);
+                Database::update('admins', $keepLogin ? ['full_name' => $name] : ['full_name' => $name, 'phone' => $phone], 'id = :id', ['id' => $id]);
                 Database::run(
                     'INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name, agent_kind, contact_person, address, id_type, id_number, daily_booking_limit, cash_limit, notes)
                           VALUES (:aid, :dp, :wa, :cn, :kind, :cp, :addr, :it, :inum, :lim, :cash, :notes)
@@ -226,6 +233,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                      'it2' => $idT ?: null, 'inum2' => $idN ?: null, 'lim2' => $limit, 'cash2' => $cash, 'notes2' => $notes ?: null]
                 );
                 $notesOut = [];
+                // say so (and audit) only when a NEW number was typed - not the login one, not the ticket one already saved
+                if ($keepLogin && $phoneMoved && normalisePhone($phone) !== normalisePhone((string) ($prevProfile['display_phone'] ?? ''))) {
+                    Logger::audit('staff.credentials_denied', 'admin', (string) $id, null, ['action' => 'agents.edit.phone'],
+                        'Login mobile change refused on the agents register (super-admin only); saved as the display / ticket number');
+                    $notesOut[] = 'लगइन मोबाइल super-admin ले मात्र बदल्छ · Login mobile not changed (only a super-admin changes it); the new number is saved as the number shown on tickets.';
+                }
                 /* Sign-in details (4 Sep 2026): email is now half of the agent
                    login (email + username + password), so it goes through the
                    one writer that checks it is not already another account's,
@@ -238,6 +251,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $passRaw  = (string) ($_POST['login_password'] ?? '');
                 if ($emailRaw !== '' && $email === '') {
                     $notesOut[] = 'Email not changed: "' . Security::e($emailRaw) . '" is not a valid address.';
+                } elseif (!Auth::mayEditCredentials('staff.manage')) {
+                    /* 25 Nov 2026 (mp1-lg, owner plan 8): email / username / password are sign-in details -
+                       a super-admin's (or a staff.credentials grant). The rest of this edit still saves. */
+                    $curEmail = strtolower((string) Database::scalar('SELECT email FROM admins WHERE id = :i', ['i' => $id], ''));
+                    if ($userRaw !== '' || $passRaw !== '' || strtolower($email) !== $curEmail) {
+                        $notesOut[] = 'Sign-in details (email / username / password) not changed: only a super-admin changes them.';
+                    }
                 } else {
                     try {
                         $credIn = ['email' => $email];
@@ -269,7 +289,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         'Agent kind switched on the register by admin #' . $selfId . ' (serial, wallet and tier kept)');
                 }
                 Logger::audit('agent.edit', 'admin', (string) $a['username'], $before,
-                    ['full_name' => $name, 'phone' => $phone, 'email' => $email, 'agent_kind' => $kind, 'contact_person' => $cp, 'whatsapp' => $wa,
+                    ['full_name' => $name, 'phone' => $keepLogin ? $a['phone'] : $phone, 'display_phone' => $phone, 'email' => $email, 'agent_kind' => $kind, 'contact_person' => $cp, 'whatsapp' => $wa,
                      'city' => $city, 'address' => $addr, 'daily_booking_limit' => $limit, 'cash_limit' => $cash, 'tier' => $tier ?: $before['tier'],
                      'serial' => $code !== '' ? (int) $code : $before['serial']],
                     'agents register edit');
@@ -648,7 +668,12 @@ admin_header('Agents & Organization Hub', 'agents');
             <label>Serial (<?= AgentWallet::AGENT_CODE_MIN ?>–<?= AgentWallet::AGENT_CODE_MAX ?>)<input name="agent_code" type="number" min="<?= AgentWallet::AGENT_CODE_MIN ?>" max="<?= AgentWallet::AGENT_CODE_MAX ?>" step="1" value="<?= $r['serial'] === null ? '' : (int) $r['serial'] ?>"></label>
             <label><?= $isOrg ? 'Organization Name' : 'Full Name' ?><input name="full_name" value="<?= $e($r['full_name']) ?>" required maxlength="120"></label>
             <label>Contact Person<input name="contact_person" value="<?= $e($r['contact_person']) ?>" maxlength="120"></label>
+            <?php if ($mayLoginPhone): ?>
             <label>Mobile<input name="phone" value="<?= $e($r['phone']) ?>" required inputmode="numeric" maxlength="15"></label>
+            <?php else: /* 25 Nov 2026 (mp1-lg review): the login mobile is the super-admin's; this box is the ticket number */ ?>
+            <label>Mobile (on tickets) · टिकटमा देखिने<input name="phone" value="<?= $e(($r['display_phone'] ?? '') ?: $r['phone']) ?>" required inputmode="numeric" maxlength="15">
+              <span class="muted" style="font-size:11px">लगइन मोबाइल <?= $e($r['phone'] ?: '—') ?> super-admin ले मात्र बदल्छ · Login mobile: super-admin only</span></label>
+            <?php endif; ?>
             <label>WhatsApp<input name="whatsapp" value="<?= $e($r['whatsapp']) ?>" inputmode="numeric" maxlength="15"></label>
             <label>Commission Tier
               <select name="agent_type">

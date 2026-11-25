@@ -92,6 +92,7 @@ $aAgent = $mk('zzu7f-agent', 'agent', '9000071801');
 $aMgr   = $mk('zzu7f-mgr', 'manager', '9000071802');
 
 memSetting('login_remember_days', '365', 'int');
+memSetting('login_remember_max_days', '730', 'int');   // 25 Nov 2026 (mp1-lg): the 90-day cap raised for this 365-day suite
 memSetting('login_remember_office_hours', '24', 'int');
 memSetting('login_remember_roles', '["agent","counter","scanner","support","operations","staff"]', 'json');
 memSetting('session_timeout_min', '45', 'int');
