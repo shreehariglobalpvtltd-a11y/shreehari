@@ -16,6 +16,8 @@
  *   F edit / delete own same day (counter), any (office), audited
  *   G guards: bad kind, zero, too large, litres only on diesel
  *   H migration absent -> old route + day insert, still read back
+ *   I a cancelled trip keeps its costs + income on its bus (not "no trip")
+ *   J the bus frozen on the cost rows wins over a later re-plan / rotation
  *
  *    php -c .claude/php-dev.ini tests/op5-trip-expenses-test.php
  * =====================================================================
@@ -43,7 +45,7 @@ if (!TripExpense::hasSchema()) {
 
 $tag   = 'OP5X' . substr(bin2hex(random_bytes(3)), 0, 5);
 $today = todayISO();
-$ids   = ['route' => 0, 'bus' => 0, 'sA' => 0, 'sB' => 0, 'bk' => [], 'exp' => []];
+$ids   = ['route' => 0, 'bus' => 0, 'bus2' => 0, 'sA' => 0, 'sB' => 0, 'sC' => 0, 'sD' => 0, 'bk' => [], 'exp' => []];
 
 $office  = ['id' => 990000101, 'role' => 'manager',    'is_active' => 1];
 $account = ['id' => 990000102, 'role' => 'accountant', 'is_active' => 1];
@@ -181,6 +183,41 @@ try {
     check('legacy: trip list falls back to route + day', count($legacyRows) >= 4, (string) count($legacyRows));
     $range2 = TripExpense::range($today, $today);
     check('an entry with no trip is reported apart, totals still match', $range2['unlinked'] >= (float) $r5['total'] - 0.005);
+
+    /* ---- I: a cancelled trip keeps its costs + income on its bus ---- */
+    $ids['sC'] = Database::insert('schedules', ['route_id' => $ids['route'], 'travel_date' => $today, 'slot' => 3, 'bus_id' => $ids['bus'], 'status' => 'cancelled', 'is_blocked' => 1]);
+    $ids['sD'] = Database::insert('schedules', ['route_id' => $ids['route'], 'travel_date' => $today, 'slot' => 4, 'bus_id' => $ids['bus'], 'status' => 'cancelled', 'is_blocked' => 1]);
+    $sale('confirmed', 900.0, $ids['sC']);
+    $unlinkedBefore = $range2['unlinked'];
+    $busBefore = null;
+    foreach ($range2['buses'] as $b) { if ((int) $b['bus'] === $ids['bus']) { $busBefore = $b; } }
+    $d6 = TripExpense::add($counter, $ids['sC'], 'diesel', 2000, 'INR', null, 'broke down');
+    $d7 = TripExpense::add($counter, $ids['sC'], 'repair', 800, 'INR');
+    $ids['exp'][] = $d6; $ids['exp'][] = $d7;
+    $range3 = TripExpense::range($today, $today);
+    $tC = null; $tD = null; $bus3 = null;
+    foreach ($range3['trips'] as $t) { if ((int) $t['id'] === $ids['sC']) { $tC = $t; } if ((int) $t['id'] === $ids['sD']) { $tD = $t; } }
+    foreach ($range3['buses'] as $b) { if ((int) $b['bus'] === $ids['bus']) { $bus3 = $b; } }
+    check('cancelled trip with costs is listed, flagged, with its income', $tC !== null && $tC['cancelled'] === true && $tC['income'] === 900.0 && $tC['expenses'] === 2800.0, json_encode($tC));
+    check('cancelled trip with nothing on it is left out', $tD === null);
+    check('costs on a cancelled trip are NOT "old costs with no trip"', abs($range3['unlinked'] - $unlinkedBefore) < 0.005, $unlinkedBefore . ' -> ' . $range3['unlinked']);
+    check('...they stay on the bus (expenses +2800, income +900)', $busBefore !== null && $bus3 !== null
+        && abs($bus3['expenses'] - $busBefore['expenses'] - 2800) < 0.01 && abs($bus3['income'] - $busBefore['income'] - 900) < 0.01, json_encode([$busBefore, $bus3]));
+
+    /* ---- J: the bus frozen on the cost rows wins over a later re-plan ---- */
+    $ids['bus2'] = Database::insert('buses', ['bus_number' => $tag . '-BUS2', 'bus_name' => 'Op5 test bus 2 ' . $tag, 'is_active' => 0]);
+    check('saved bus read back per trip', (TripExpense::savedBuses([$ids['sA'], $ids['sB']])[$ids['sA']] ?? 0) === $ids['bus']
+        && !isset(TripExpense::savedBuses([$ids['sB']])[$ids['sB']]));
+    Database::run('UPDATE schedules SET bus_id = :b WHERE id IN (:a, :c)', ['b' => $ids['bus2'], 'a' => $ids['sA'], 'c' => $ids['sB']]);
+    $range4 = TripExpense::range($today, $today);
+    $tA = null; $tB = null;
+    foreach ($range4['trips'] as $t) { if ((int) $t['id'] === $ids['sA']) { $tA = $t; } if ((int) $t['id'] === $ids['sB']) { $tB = $t; } }
+    check('a trip with costs stays on the bus it was filed on', $tA !== null && (int) $tA['bus'] === $ids['bus'] && $tA['bus_label'] === $tag . '-BUS', json_encode([$tA['bus'] ?? null, $tA['bus_label'] ?? null]));
+    check('a trip with no costs follows the live plan', $tB !== null && (int) $tB['bus'] === $ids['bus2']);
+    $one = TripExpense::trip($ids['sA']);
+    check('trip card shows the saved bus too', $one !== null && (int) $one['bus'] === $ids['bus'] && $one['bus_label'] === $tag . '-BUS');
+    $onDay = array_values(array_filter(TripExpense::tripsOn($today), static fn(array $t): bool => (int) $t['id'] === $ids['sA']));
+    check('day list shows the saved bus', $onDay !== [] && (int) $onDay[0]['bus'] === $ids['bus']);
 } catch (Throwable $ex) {
     check('no exception', false, get_class($ex) . ': ' . $ex->getMessage() . ' @ ' . basename($ex->getFile()) . ':' . $ex->getLine());
 } finally {
@@ -198,9 +235,9 @@ try {
             Database::run('DELETE FROM booking_legs WHERE booking_id = :b', ['b' => $b]);
             Database::run('DELETE FROM bookings WHERE id = :b', ['b' => $b]);
         }
-        foreach (['sA', 'sB'] as $k) { if ($ids[$k] > 0) { Database::run('DELETE FROM schedules WHERE id = :i', ['i' => $ids[$k]]); } }
+        foreach (['sA', 'sB', 'sC', 'sD'] as $k) { if ($ids[$k] > 0) { Database::run('DELETE FROM schedules WHERE id = :i', ['i' => $ids[$k]]); } }
         if ($ids['route'] > 0) { Database::run('DELETE FROM routes WHERE id = :i', ['i' => $ids['route']]); }
-        if ($ids['bus'] > 0) { Database::run('DELETE FROM buses WHERE id = :i', ['i' => $ids['bus']]); }
+        foreach (['bus', 'bus2'] as $k) { if ($ids[$k] > 0) { Database::run('DELETE FROM buses WHERE id = :i', ['i' => $ids[$k]]); } }
         $left = $ids['route'] > 0 ? (int) Database::scalar('SELECT COUNT(*) FROM trip_expenses WHERE route_id = :r', ['r' => $ids['route']], 0) : 0;
         check('clean-up left no rows', $left === 0 && !Database::exists('SELECT 1 FROM routes WHERE route_code = :c', ['c' => $tag]));
     } catch (Throwable $ex) {

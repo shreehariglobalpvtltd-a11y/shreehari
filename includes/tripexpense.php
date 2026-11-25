@@ -205,16 +205,48 @@ final class TripExpense
             return null;
         }
         $s = Database::fetch(self::TRIP_SQL . ' WHERE s.id = :i', ['i' => $scheduleId]);
-        return $s === null ? null : self::decorate($s);
+        return $s === null ? null : self::decorate($s, self::savedBuses([$scheduleId])[$scheduleId] ?? null);
     }
 
     /** @return list<array<string,mixed>> the trips of a date (cancelled ones last, still listed) */
     public static function tripsOn(string $date): array
     {
+        $rows = Database::fetchAll(self::TRIP_SQL . " WHERE s.travel_date = :d
+                   ORDER BY s.status = 'cancelled', dep_time, r.sort_order, s.route_id, s.slot", ['d' => $date]);
+        $saved = self::savedBuses(array_map(static fn(array $s): int => (int) $s['id'], $rows));
         $out = [];
-        foreach (Database::fetchAll(self::TRIP_SQL . " WHERE s.travel_date = :d
-                   ORDER BY s.status = 'cancelled', dep_time, r.sort_order, s.route_id, s.slot", ['d' => $date]) as $s) {
-            $out[] = self::decorate($s);
+        foreach ($rows as $s) {
+            $out[] = self::decorate($s, $saved[(int) $s['id']] ?? null);
+        }
+        return $out;
+    }
+
+    /**
+     * The bus frozen on a trip's cost rows (trip_expenses.bus_id, set by add()),
+     * so a later bus_rotation change cannot move a past trip to another coach.
+     *
+     * @param list<int> $scheduleIds
+     * @return array<int,int> schedule_id => bus_id
+     */
+    public static function savedBuses(array $scheduleIds): array
+    {
+        $scheduleIds = array_values(array_unique(array_filter(array_map('intval', $scheduleIds), static fn(int $i): bool => $i > 0)));
+        if ($scheduleIds === [] || !self::hasSchema()) {
+            return [];
+        }
+        $out = [];
+        try {
+            foreach (array_chunk($scheduleIds, 500) as $chunk) {
+                $in = implode(',', $chunk);   /* ints only */
+                foreach (Database::fetchAll("SELECT schedule_id, MAX(bus_id) AS bus FROM trip_expenses
+                                              WHERE schedule_id IN ($in) AND bus_id IS NOT NULL GROUP BY schedule_id") as $r) {
+                    if ((int) $r['bus'] > 0) {
+                        $out[(int) $r['schedule_id']] = (int) $r['bus'];
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            return [];
         }
         return $out;
     }
@@ -222,9 +254,10 @@ final class TripExpense
     /** @var array<int,array<string,mixed>> */
     private static array $busCache = [];
 
-    private static function decorate(array $s): array
+    /** @param int|null $savedBus the bus frozen on the trip's cost rows: it wins over the live resolution */
+    private static function decorate(array $s, ?int $savedBus = null): array
     {
-        $bus = self::busOf($s);
+        $bus = $savedBus !== null && $savedBus > 0 ? $savedBus : self::busOf($s);
         $s['bus'] = $bus;
         $s['bus_label'] = '';
         if ($bus !== null) {
@@ -487,16 +520,23 @@ final class TripExpense
      * same rolled up per bus. Old rows with no trip on them are reported apart
      * (unlinked) so the totals still match admin/pnl.php.
      *
+     * Cancelled trips are loaded too (flag 'cancelled'): a coach that broke down
+     * still burnt its diesel, so its costs and any ticket income stay on its bus.
+     * A cancelled trip with no income and no costs is left out.
+     *
      * @return array{trips: list<array<string,mixed>>, buses: list<array<string,mixed>>, unlinked: float, total: array{trips:int,income:float,expenses:float,profit:float}}
      */
     public static function range(string $from, string $to): array
     {
         $trips = [];
         try {
-            foreach (Database::fetchAll(self::TRIP_SQL . " WHERE s.travel_date BETWEEN :f AND :t AND s.status <> 'cancelled'
-                                          ORDER BY s.travel_date, dep_time, s.route_id, s.slot", ['f' => $from, 't' => $to]) as $s) {
-                $s = self::decorate($s);
-                $trips[(int) $s['id']] = $s + ['tickets' => 0, 'seats' => 0, 'income' => 0.0, 'expenses' => 0.0];
+            $rows  = Database::fetchAll(self::TRIP_SQL . " WHERE s.travel_date BETWEEN :f AND :t
+                                          ORDER BY s.travel_date, s.status = 'cancelled', dep_time, s.route_id, s.slot", ['f' => $from, 't' => $to]);
+            $saved = self::savedBuses(array_map(static fn(array $s): int => (int) $s['id'], $rows));
+            foreach ($rows as $s) {
+                $s = self::decorate($s, $saved[(int) $s['id']] ?? null);
+                $trips[(int) $s['id']] = $s + ['cancelled' => (string) $s['status'] === 'cancelled',
+                                               'tickets' => 0, 'seats' => 0, 'income' => 0.0, 'expenses' => 0.0];
             }
             foreach (Database::fetchAll("SELECT bl.schedule_id, COUNT(DISTINCT b.id) AS tickets, COALESCE(SUM(bl.seat_count), 0) AS seats, COALESCE(SUM(bl.leg_total), 0) AS income
                                            FROM booking_legs bl JOIN bookings b ON b.id = bl.booking_id
@@ -543,6 +583,9 @@ final class TripExpense
         } catch (Throwable $e) {
             Logger::warning('TripExpense::range expenses: ' . $e->getMessage());
         }
+
+        /* a cancelled trip that took no money and filed no cost is just noise */
+        $trips = array_filter($trips, static fn(array $t): bool => !$t['cancelled'] || $t['tickets'] > 0 || $t['income'] != 0.0 || $t['expenses'] != 0.0);
 
         $buses = [];
         $total = ['trips' => 0, 'income' => 0.0, 'expenses' => 0.0, 'profit' => 0.0];
