@@ -339,6 +339,8 @@ final class Auth
         ],
         'People & Customers' => [
             'staff.manage'   => 'Staff, agents, logins, team approvals',
+            // 25 Nov 2026 (mp1-lg): no role holds it by default - super-admin only (Auth::mayEditCredentials)
+            'staff.credentials' => 'Change others\' password, login mobile, 2FA, PIN / pattern',
             'customers.view' => 'Customer CRM, agents register, invites',
             'coupons.view'   => 'Offers & coupons (read)',
             'coupons.edit'   => 'Create / edit offers',
@@ -359,6 +361,7 @@ final class Auth
     public const SENSITIVE_PERMISSIONS = [
         'bookings.cancel', 'bookings.reassign', 'refunds.process', 'commissions.pay',
         'staff.manage', 'settings.manage', 'reports.export', 'reports.view', 'marketing.send',
+        'staff.credentials',
     ];
 
     /** Roles the matrix may change. superadmin is everything, always. */
@@ -2338,6 +2341,31 @@ final class Auth
         $admin = self::admin();
 
         return $admin !== null && (string) ($admin['role'] ?? '') === 'superadmin';
+    }
+
+    /**
+     * 25 Nov 2026 (mp1-lg, owner plan 8: "user ko photo / password / PIN / permission edit:
+     * Admin matra"): may the signed-in person change SOMEONE ELSE's sign-in — password,
+     * username / email, login mobile + DOB, two-factor, PIN / pattern (open a reset, issue an
+     * activation code, clear it)? A super-admin always; anyone else only with the permission
+     * 'staff.credentials', which no role holds by default (the super-admin can grant it per
+     * person or per role in admin/permissions.php).
+     *
+     * $legacyPerm: the permission the page used before this release. While the switch
+     * staff_credentials_lock_on is OFF (default ON) that old rule applies again, so the owner
+     * can undo this in one tap. '' = the page was already super-admin-only (no fallback).
+     */
+    public static function mayEditCredentials(string $legacyPerm = ''): bool
+    {
+        if (self::isSuperadmin() || self::can('staff.credentials')) {
+            return true;
+        }
+        try {
+            $locked = Settings::getBool('staff_credentials_lock_on', true);
+        } catch (Throwable $e) {
+            $locked = true;
+        }
+        return !$locked && $legacyPerm !== '' && self::can($legacyPerm);
     }
 
     /**

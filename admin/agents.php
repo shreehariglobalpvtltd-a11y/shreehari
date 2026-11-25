@@ -238,6 +238,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $passRaw  = (string) ($_POST['login_password'] ?? '');
                 if ($emailRaw !== '' && $email === '') {
                     $notesOut[] = 'Email not changed: "' . Security::e($emailRaw) . '" is not a valid address.';
+                } elseif (!Auth::mayEditCredentials('staff.manage')) {
+                    /* 25 Nov 2026 (mp1-lg, owner plan 8): email / username / password are sign-in details -
+                       a super-admin's (or a staff.credentials grant). The rest of this edit still saves. */
+                    $curEmail = strtolower((string) Database::scalar('SELECT email FROM admins WHERE id = :i', ['i' => $id], ''));
+                    if ($userRaw !== '' || $passRaw !== '' || strtolower($email) !== $curEmail) {
+                        $notesOut[] = 'Sign-in details (email / username / password) not changed: only a super-admin changes them.';
+                    }
                 } else {
                     try {
                         $credIn = ['email' => $email];

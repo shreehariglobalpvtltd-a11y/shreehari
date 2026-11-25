@@ -28,11 +28,25 @@ $ROLE_DESC = [
 
 $flash = null;
 
+/* 25 Nov 2026 (mp1-lg, owner plan 8): the sign-in actions. Every write here was already
+   super-admin only; a person holding the new 'staff.credentials' grant may now do these four
+   too (and nothing else here). A refusal answers 403. */
+$CRED_ACTS = ['resetpw', 'setcreds', 'setphone', 'reset_2fa'];
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    $postAct = (string) ($_POST['action'] ?? '');
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
-    } elseif (!$isSuper) {
-        $flash = ['bad', 'Only a super-admin can manage staff.'];
+    } elseif (!$isSuper && !(in_array($postAct, $CRED_ACTS, true) && Auth::can('staff.credentials'))) {
+        http_response_code(403);
+        Logger::audit('staff.credentials_denied', 'admin', (string) (int) ($_POST['id'] ?? 0), null, ['action' => mb_substr($postAct, 0, 30)],
+            'staff.php action refused: super-admin only');
+        $flash = ['bad', in_array($postAct, $CRED_ACTS, true)
+            ? 'पासवर्ड / मोबाइल / 2FA एडमिनले मात्र बदल्छ · Only a super-admin changes sign-in details.'
+            : 'Only a super-admin can manage staff.'];
+    } elseif (!$isSuper && (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => (int) ($_POST['id'] ?? 0)], '') === 'superadmin') {
+        // mp1-lg: a staff.credentials grant never reaches a super-admin's password, mobile or 2FA
+        http_response_code(403);
+        $flash = ['bad', 'A super-admin\'s sign-in details are changed only by a super-admin.'];
     } else {
         $act = (string) ($_POST['action'] ?? '');
 
@@ -462,6 +476,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['return
 admin_header('Staff & Approvals', 'staff');
 
 if (!$isSuper) {
+    if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>'; }   // 25 Nov 2026 (mp1-lg): say what happened to the POST
     echo '<div class="flash bad">Only a super-admin can manage staff and agents.</div>';
     admin_footer();
     exit;

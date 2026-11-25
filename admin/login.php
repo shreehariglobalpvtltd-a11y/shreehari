@@ -934,13 +934,71 @@ body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F
     <div id="pkMsg" class="msg ok" data-cls="msg" hidden></div>
     <button type="button" class="btn pk" data-pk="login" data-pk-soft hidden style="margin-bottom:12px">👆 फिंगरप्रिन्ट / Face ले भित्र · Fingerprint / Face ID</button>
   <?php endif; ?>
+  <?php
+  /* 25 Nov 2026 (mp1-lg, owner plan 2: "4 ota rangin mode card - Staff, Agent, Counter, Admin").
+     A card only changes the words around the code box (label, example, hint) and is remembered on
+     this phone (localStorage shg_login_mode). It is NOT part of the form: nothing is posted, the
+     role always comes from the account the code names. login_mode_cards_on = 0 hides them. */
+  if (Settings::getBool('login_mode_cards_on', true)): ?>
+  <style>
+  .lm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+  .lm-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-height:68px;padding:10px 12px;border:2px solid transparent;border-radius:16px;color:#fff;font:inherit;text-align:left;cursor:pointer;box-shadow:0 6px 16px -8px rgba(11,18,32,.55);transition:transform .14s,box-shadow .2s,border-color .2s}
+  .lm-card b{font-size:16px;font-weight:800;line-height:1.15}
+  .lm-card small{font-size:12px;font-weight:600;opacity:.9}
+  .lm-card i{position:absolute;right:10px;top:8px;font-style:normal;font-size:20px;opacity:.9}
+  .lm-staff{background:linear-gradient(135deg,#0E7C66,#0A5A4A)}
+  .lm-agent{background:linear-gradient(135deg,#B4530A,#8A3F06)}
+  .lm-counter{background:linear-gradient(135deg,#1D4FA3,#123677)}
+  .lm-admin{background:linear-gradient(135deg,#6B2FA3,#4B1F75)}
+  .lm-card[aria-pressed="true"]{border-color:#fff;box-shadow:0 0 0 3px rgba(240,124,31,.85),0 8px 18px -8px rgba(11,18,32,.6)}
+  .lm-card:active{transform:scale(.96)}
+  .lm-card:focus-visible{outline:3px solid #F07C1F;outline-offset:2px}
+  .lm-hint{margin:-2px 0 10px;font-size:13px;opacity:.85}
+  @media (prefers-reduced-motion:no-preference){
+    .lm-card{animation:lmIn .42s cubic-bezier(.2,.8,.2,1) both}
+    .lm-card:nth-child(2){animation-delay:.05s}.lm-card:nth-child(3){animation-delay:.1s}.lm-card:nth-child(4){animation-delay:.15s}
+    .lm-card[aria-pressed="true"] i{animation:lmPop .35s ease-out}
+  }
+  @keyframes lmIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+  @keyframes lmPop{0%{transform:scale(.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+  @media (max-width:340px){.lm-card{min-height:60px;padding:8px 10px}.lm-card b{font-size:15px}}
+  </style>
+  <div class="lm-grid" role="group" aria-label="कुन मोड? · Which mode?" data-lm>
+    <button type="button" class="lm-card lm-staff" data-lm-mode="staff" aria-pressed="false"
+            data-lm-label="स्टाफ कोड · Staff code" data-lm-ph="SHG-S-0003" data-lm-hint="तपाईंको स्टाफ ID कार्डको कोड · The code on your staff ID card"><i aria-hidden="true">🧑‍💼</i><b>स्टाफ</b><small>Staff</small></button>
+    <button type="button" class="lm-card lm-agent" data-lm-mode="agent" aria-pressed="false"
+            data-lm-label="एजेन्ट कोड · Agent code" data-lm-ph="SHG-0008" data-lm-hint="एजेन्ट कार्डको SHG कोड · The SHG code on your agent card"><i aria-hidden="true">🎫</i><b>एजेन्ट</b><small>Agent</small></button>
+    <button type="button" class="lm-card lm-counter" data-lm-mode="counter" aria-pressed="false"
+            data-lm-label="काउन्टर कोड / युजरनेम · Counter code / username" data-lm-ph="SHG-S-0005 / username" data-lm-hint="काउन्टरको आफ्नै लगइन · The desk's own login"><i aria-hidden="true">🏪</i><b>काउन्टर मोड</b><small>Counter mode</small></button>
+    <button type="button" class="lm-card lm-admin" data-lm-mode="admin" aria-pressed="false"
+            data-lm-label="एडमिन युजरनेम / मोबाइल · Admin username / mobile" data-lm-ph="username / 98XXXXXXXX" data-lm-hint="कार्यालय खाता — पछि PIN र WhatsApp कोड · Office account: PIN and WhatsApp code follow"><i aria-hidden="true">🛡️</i><b>एडमिन मोड</b><small>Admin mode</small></button>
+  </div>
+  <?php endif; ?>
   <form method="post" action="/admin/login.php" autocomplete="on">
     <?= $hid() ?><input type="hidden" name="mode" value="c_code">
-    <label for="code">एजेन्ट / स्टाफ / एडमिन कोड · Agent / Staff / Admin code</label>
+    <label for="code" id="codeLbl">एजेन्ट / स्टाफ / एडमिन कोड · Agent / Staff / Admin code</label>
+    <p class="note lm-hint" id="lmHint" hidden></p>
     <input id="code" name="code" autocomplete="username" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="60" required autofocus
            placeholder="SHG-0008 / SHG-S-0003" value="<?= $h($cs['code'] ?? '') ?>">
     <button class="btn" type="submit">अगाडि बढ्नुहोस् · Continue →</button>
   </form>
+  <?php if (Settings::getBool('login_mode_cards_on', true)): ?>
+  <script>(function(){try{
+    var g=document.querySelector('[data-lm]');if(!g)return;
+    var lbl=document.getElementById('codeLbl'),inp=document.getElementById('code'),hint=document.getElementById('lmHint');
+    var dl=lbl?lbl.textContent:'',dp=inp?inp.getAttribute('placeholder'):'';
+    function pick(m,save){
+      var on=null;[].forEach.call(g.querySelectorAll('[data-lm-mode]'),function(b){var y=b.getAttribute('data-lm-mode')===m;b.setAttribute('aria-pressed',y?'true':'false');if(y)on=b;});
+      if(lbl)lbl.textContent=on?on.getAttribute('data-lm-label'):dl;
+      if(inp)inp.setAttribute('placeholder',on?on.getAttribute('data-lm-ph'):dp);
+      if(hint){hint.textContent=on?on.getAttribute('data-lm-hint'):'';hint.hidden=!on;}
+      if(save){try{localStorage.setItem('shg_login_mode',on?m:'');}catch(e){}}
+    }
+    g.addEventListener('click',function(ev){var b=ev.target.closest('[data-lm-mode]');if(!b)return;pick(b.getAttribute('data-lm-mode'),true);if(inp)inp.focus();});
+    var s='';try{s=localStorage.getItem('shg_login_mode')||'';}catch(e){}
+    if(/^(staff|agent|counter|admin)$/.test(s))pick(s,false);
+  }catch(e){}})();</script>
+  <?php endif; ?>
 
   <?php elseif ($step === 'c_unlock'): $cPat = $cKinds['pattern'] && !$cKinds['pin']; ?>
   <?php if ($cLock): ?><div class="lk-clock" id="lkClock" aria-hidden="true">--:--</div><div class="lk-date" id="lkDate"></div><?php endif; ?>
