@@ -156,6 +156,7 @@ function admin_nav(): array
 
         // 4. Financial Management — every rupee in / out per person: salary, commission, loans, wallet
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments (UPI/eSewa)', 'perm' => 'payments.view', 'section' => $S4],
+        ...(Auth::isSuperadmin() ? [['href' => 'payment-center.php', 'icon' => 'card', 'label' => '💳 Payment Management', 'perm' => 'payments.view', 'section' => $S4]] : []),   // 25 Nov 2026 (mp1): Nepal QR + Gmail bank alerts, India bank API, counter cash - super-admin only
         ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting, Loans & Ledgers', 'perm' => 'payments.view', 'also' => 'reports.view', 'section' => $S4],   // 19 Nov: the page also asks reports.view
         ['href' => 'payroll.php',      'icon' => 'users',     'label' => 'Salary / Payroll',       'perm' => 'payments.view', 'also' => 'reports.view', 'section' => $S4],
         ['href' => 'settlements.php',  'icon' => 'refund',    'label' => $agentView ? 'My Settlements' : 'Commission & Wallet Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S4],
