@@ -4,19 +4,37 @@
  *  mp1-pay-test.php — Payment Management release "pay" (25 Nov 2026).
  *
  *   A hardening: test_sandbox.php is CLI-only; ICICI signed success with no amount /
- *     merchant id / currency is NOT auto-confirmed (icici_strict_fields_on), a full one still is
+ *     merchant id (or a non-INR currency) is NOT auto-confirmed (icici_strict_fields_on); a
+ *     missing currency alone is fine; a full one still is
  *   B one Nepal QR: ManualQrAdapter shows the uploaded NPJ QR + nepal_esewa_id for an NPR sale
  *   C/D the credits ledger + PayCredits rules
  *   E BankMail: parser fixtures (credit with 5- and 4-digit PNR, debit ignored, html/base64,
- *     Devanagari digits, forged lower Authentication-Results, the credited account read and
- *     masked - never from the remarks), the IMAP wire client on a scripted stream, poll():
+ *     Devanagari digits, forged lower Authentication-Results, "dkim=pass" faked in an spf
+ *     comment / smtp.mailfrom, dmarc=fail, From not aligned, a genuine dkim+dmarc pass, the
+ *     credited account read and masked - never from the remarks; AMBIGUITY-REFUSING amount /
+ *     txn id / PNR: every figure and every txn id in the WHOLE alert, exactly one distinct value
+ *     or none - a payer-typed second figure or second txn id (any label, next line, next table
+ *     row, "10.00 NPR", "Amount: 10.00", a mid-line "bal") -> amount 0 / txn '' -> never auto;
+ *     only a line that BEGINS with a balance label is left out; credit + debit words -> kept
+ *     for a person; every probe fixture of the previous checker end to end through poll(): the
+ *     booking stays pending, each credit unmatched with its reason), the IMAP wire client on a scripted stream, poll():
  *     happy path confirms + chalani tick, replay no-op, the same txn on ANOTHER e-mail kept
  *     for a person (never dropped), missing DKIM / wrong sender / amount mismatch / money into
  *     another account / no account digits -> unmatched + bell, debit skipped, an odd message
  *     (unknown charset, absurd amount, 8-bit subject, one that throws) never stops the reader
+ *   E (25 Nov 2026, owner-safety) Gmail auto-PAID OFF by default: with pay_bankmail_autoconfirm_on
+ *     not stored a perfect alert ends 'matched' as a SUGGESTION (booking still pending, no proof, bell
+ *     "बैंक इमेल: रू X आयो · PNR Y …"), link() = Confirm then confirms it (chalani "PAID - Nepali online
+ *     (Gmail)", "confirmed by <name>"); with the switch ON (set here, restored) the old auto path still
+ *     confirms the genuine fixtures. Fail-closed Authentication-Results (quote / backslash / nested or
+ *     unbalanced brackets / non-ASCII / control -> dkim_ok false 'auth header not simple'; P4 + P5 are
+ *     real checks now); lines split only on \n (U+2028 / U+2029 / U+0085 / VT / FF = a space), NBSP and
+ *     the other Unicode spaces = a space in text/plain too
  *   G bank webhook: bad signature 401, sandbox -> 'test' never confirms, live confirms,
  *     replay no-op, same UTR with another amount -> unmatched, stale timestamp 401, wrong merchant 403
- *   H admin/payment-center.php renders its three tabs for a super-admin, refuses others
+ *   H admin/payment-center.php renders its three tabs for a super-admin, refuses others; the Nepal tab
+ *     shows the note + the auto switch read-only (no toggle) and a suggestion with PNR / passenger / due
+ *     vs credited / ✓ chips / "✅ Confirm"; the Confirm POST (CSRF + "I saw it in the bank app") confirms
  *
  *    php -c .claude/php-dev.ini tests/mp1-pay-test.php
  *  Creates its own bookings (phone 9000017725) and removes them, the credits, the bells,
@@ -58,6 +76,10 @@ if (($argv[1] ?? '') === '--page') {
     if ($a === null) { exit(2); }
     $_SESSION[ADMIN_SESSION_KEY] = ['id' => (int) $a['id'], 'username' => (string) $a['username'], 'full_name' => (string) ($a['full_name'] ?? ''),
         'role' => (string) $a['role'], 'permissions' => jsonColumn($a['permissions'] ?? null), 'last_seen' => time()];
+    if (isset($cfg['post']) && is_array($cfg['post'])) {   // one form post (CSRF token from this session unless 'nocsrf')
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_POST = $cfg['post'] + (empty($cfg['nocsrf']) ? [CSRF_TOKEN_NAME => Security::csrfToken()] : [CSRF_TOKEN_NAME => 'forged-token']);
+    }
     if (!empty($cfg['nav'])) {
         require_once $ROOT . '/admin/_guard.php';
         echo json_encode(array_column(admin_nav(), 'href'));
@@ -91,6 +113,13 @@ function setKeep(string $k, string $v, string $t = 'string'): void {
     Settings::set($k, $v, $t, 'payments', false);
     Settings::flush();
 }
+/** The setting not stored at all = its code default (restored at the end like setKeep). */
+function unsetKeep(string $k): void {
+    global $keep;
+    if (!array_key_exists($k, $keep)) { $keep[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]); }
+    Database::delete('settings', 'skey = :k', ['k' => $k]);
+    Settings::flush();
+}
 $credIds = [];
 $tmpFiles = [];
 $wroteCfg = false;
@@ -112,7 +141,7 @@ function cleanup(): void {
         try { Database::run("DELETE FROM audit_logs WHERE entity_type = 'bank_credit' AND entity_id = :i", ['i' => (string) $id]); } catch (Throwable $e) {}
     }
     try { Database::run("DELETE FROM bank_credits WHERE txn_id LIKE 'MP1T%' OR note LIKE 'Txn MP1T%'"); } catch (Throwable $e) {}
-    try { Database::run("DELETE FROM notifications WHERE id > :f AND (title LIKE 'Bank credit needs a person%' OR title LIKE 'Auto-confirmed%' OR title LIKE 'Bank mail could not be read%')", ['f' => $bellFloor]); } catch (Throwable $e) {}
+    try { Database::run("DELETE FROM notifications WHERE id > :f AND (title LIKE 'Bank credit needs a person%' OR title LIKE 'Auto-confirmed%' OR title LIKE 'Bank mail could not be read%' OR title LIKE 'बैंक इमेल:%')", ['f' => $bellFloor]); } catch (Throwable $e) {}
     try { Database::run('DELETE FROM rate_limits WHERE identifier = :i', ['i' => MP_IP]); } catch (Throwable $e) {}
     foreach ($madeAdmins as $aid) {
         try { Database::delete('kv_store', "kscope = 'nav_use' AND kkey = :k", ['k' => 'a' . $aid]); } catch (Throwable $e) {}
@@ -121,7 +150,8 @@ function cleanup(): void {
     }
     foreach ($keep as $k => $row) {
         if ($row === null) { Database::delete('settings', 'skey = :k', ['k' => $k]); }
-        else { Database::run('UPDATE settings SET svalue = :v, stype = :t WHERE skey = :k', ['v' => $row['svalue'], 't' => $row['stype'], 'k' => $k]); }
+        elseif (Database::exists('SELECT 1 FROM settings WHERE skey = :k', ['k' => $k])) { Database::run('UPDATE settings SET svalue = :v, stype = :t WHERE skey = :k', ['v' => $row['svalue'], 't' => $row['stype'], 'k' => $k]); }
+        else { try { Database::insert('settings', ['skey' => $k] + $row + ['sgroup' => 'payments']); } catch (Throwable $e) {} }   // unsetKeep() removed it
     }
     $keep = [];
     Settings::flush();
@@ -182,8 +212,15 @@ check('E the balance figure is never read as the credit', abs($p['amount'] - 550
 $p4 = BankMail::parse($mail(['plain' => $credit('shg 2026 0842', '1,250', 'FT26330AB12')]), $opts);
 check('E 4-digit PNR written with spaces -> SHG-2026-0842, candidates include the 5-digit number',
     $p4['pnr'] === 'SHG-2026-0842' && in_array('SHG-2026-00842', PayCredits::pnrCandidates($p4['pnr']), true) && abs($p4['amount'] - 1250.0) < 0.001 && $p4['txn_id'] === 'FT26330AB12', json_encode($p4));
-$pd = BankMail::parse($mail(['plain' => "Your A/C 0123456789012 has been debited by NPR 2,400.00. Remarks: SHG-2026-00842 Txn ID: 7712345699"]), $opts);
-check('E debit alert -> is_debit, not a credit', $pd['is_debit'] && !$pd['is_credit'] && $pd['why'] === 'debit alert');
+/* (the default subject says "Credit Alert": a debit fixture now carries a debit subject - a debit body
+   under a "Credit Alert" subject is ambiguous and kept for a person, see "credit AND debit words" below) */
+$pd = BankMail::parse($mail(['plain' => "Your A/C 0123456789012 has been debited by NPR 2,400.00. Remarks: SHG-2026-00842 Txn ID: 7712345699", 'subject' => 'Debit Alert']), $opts);
+check('E debit alert -> is_debit, not a credit', $pd['is_debit'] && !$pd['is_credit'] && !$pd['mixed'] && $pd['why'] === 'debit alert');
+$pm = BankMail::parse($mail(['plain' => "Your A/C 0123456789012 has been debited by NPR 2,400.00. Remarks: SHG-2026-00842 Txn ID: 7712345698"]), $opts);
+check('E credit AND debit words ("Credit Alert" subject, "debited" body) -> mixed: kept as a credit for a person (hold), never a silent drop',
+    $pm['is_credit'] && !$pm['is_debit'] && $pm['mixed'] && $pm['why'] === 'credit and debit words' && str_contains($pm['hold'], 'credit and debit'), json_encode([$pm['is_credit'], $pm['is_debit'], $pm['mixed'], $pm['hold']]));
+$pm = BankMail::parse($mail(['plain' => "NPR 2,400.00 has been credited to your A/C ****9012.\nAvailable Balance after withdrawal: NPR 9,000.00\nTxn ID: 7712345697"]), $opts);
+check('E a debit word on a balance line only does not make a credit ambiguous', $pm['is_credit'] && !$pm['mixed'] && $pm['hold'] === '' && $pm['amount'] === 2400.0, json_encode([$pm['mixed'], $pm['hold'], $pm['amount']]));
 $ph = BankMail::parse($mail(['html' => '<html><head><style>p{}</style></head><body><table><tr><td>खातामा</td><td>रु २,४००.००</td></tr><tr><td>जम्मा भयो · credited</td></tr><tr><td>Narration: SHG-2026-00843</td></tr><tr><td>Reference No: 99001122334</td></tr></table></body></html>']), $opts);
 check('E HTML-only (base64) + Devanagari digits: रु २,४०० -> 2400, narration PNR, reference id',
     $ph['is_credit'] && abs($ph['amount'] - 2400.0) < 0.001 && $ph['pnr'] === 'SHG-2026-00843' && $ph['txn_id'] === '99001122334', json_encode($ph, JSON_UNESCAPED_UNICODE));
@@ -197,8 +234,201 @@ $po = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7
 check('E Authentication-Results from another server (authserv-id) -> no DKIM', $po['dkim_ok'] === false);
 $pw = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345604'), 'auth' => 'mx.google.com; dkim=pass header.d=gibl-test.evil.example']), $opts);
 check('E DKIM from a look-alike domain -> no DKIM', $pw['dkim_ok'] === false);
-$pr = BankMail::parse($mail(['plain' => "Credited NPR 10.00 Remarks: x Txn ID: 1234567"]), $opts + ['amount_regex' => '/Credited NPR ([0-9.,]+)/', 'txn_regex' => '/Txn ID: (\d+)/']);
-check('E owner regex overrides (group 1) read amount and txn', abs($pr['amount'] - 10.0) < 0.001 && $pr['txn_id'] === '1234567');
+/* the topmost Authentication-Results is read unit by unit: comments + quoted strings cut out, only a unit that BEGINS
+   "dkim=pass" counts (its own header.d / header.i), a dmarc unit must pass, From: must sit with the signer */
+$spfTrick = 'mx.google.com; dkim=pass header.i=@evil.example header.s=s1 header.b=abc; spf=pass (google.com: domain of dkim=pass+header.d=gibl.test@evil.example designates 1.2.3.4 as permitted sender) smtp.mailfrom="dkim=pass+header.d=gibl.test@evil.example"';
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345605'), 'auth' => $spfTrick]), $opts);
+check('E (a) "dkim=pass+header.d=gibl.test" in an spf comment + quoted smtp.mailfrom -> no DKIM (a double quote: the header is not read at all, fail-closed)',
+    $pk['dkim_ok'] === false && $pk['dkim_domains'] === [] && $pk['dkim_why'] === 'auth header not simple', json_encode([$pk['dkim_domains'], $pk['dkim_why']]));
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345605'), 'auth' => str_replace('"', '', $spfTrick)]), $opts);
+check('E (a) the same trick without the quotes is read unit by unit -> no DKIM (the one dkim unit says evil.example)',
+    $pk['dkim_ok'] === false && $pk['dkim_domains'] === ['evil.example'] && $pk['dkim_why'] === '', json_encode([$pk['dkim_domains'], $pk['dkim_why']]));
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345606'), 'auth' => 'mx.google.com; spf=pass smtp.mailfrom=dkim=pass+header.d=gibl.test@evil.example']), $opts);
+check('E (a) the same trick unquoted inside the spf unit -> no DKIM', $pk['dkim_ok'] === false && $pk['dkim_domains'] === [], json_encode($pk['dkim_domains']));
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345607'),
+    'auth' => 'mx.google.com; dkim=pass header.i=@gibl.test header.s=s1 header.b=AbC; spf=pass smtp.mailfrom=alerts@gibl.test; dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=gibl.test']), $opts);
+check('E (b) dkim=pass for the bank but dmarc=fail in the same header -> no DKIM', $pk['dkim_ok'] === false && $pk['dkim_domains'] === ['gibl.test'], json_encode($pk['dkim_domains']));
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345608'),
+    'auth' => 'mx.google.com; dkim=pass header.i=@gibl.test header.s=s1; dmarc=pass (p=NONE) header.from=evil.example']), $opts);
+check('E (b) dmarc=pass but for another header.from -> no DKIM', $pk['dkim_ok'] === false);
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345609'), 'from' => 'Global IME Bank <alerts@evil.example>']), $opts);
+check('E (c) bank-signed (header.i=@gibl.test) but From: alerts@evil.example -> no DKIM (From not aligned)', $pk['dkim_ok'] === false);
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345610'), 'from' => 'Global IME Bank <alerts@other.gibl.test>',
+    'auth' => 'mx.google.com; dkim=pass header.d=mail.gibl.test header.s=s1']), $opts);
+check('E (c) From: other.gibl.test signed by mail.gibl.test (siblings, neither under the other) -> no DKIM', $pk['dkim_ok'] === false);
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345611'), 'auth' => 'mx.google.com; dkim=pass header.d=gibl.test header.i=@evil.example header.s=s1']), $opts);
+check('E a dkim unit whose header.i sits outside its header.d is not trusted -> no DKIM', $pk['dkim_ok'] === false && $pk['dkim_domains'] === []);
+/* (d) Gmail's own shape: one-level comments only (the old fixture's "(good (2048-bit rsa) signature)" is NESTED: not simple) */
+$genuine = 'mx.google.com; dkim=pass header.d=gibl.test header.s=s1 header.b=AbC+/9=; spf=pass (google.com: domain of alerts@gibl.test designates 1.2.3.4 as permitted sender) smtp.mailfrom=alerts@gibl.test; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=gibl.test';
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345612'), 'auth' => $genuine]), $opts);
+check('E (d) genuine: dkim=pass header.d=gibl.test + dmarc=pass header.from=gibl.test, From alerts@gibl.test -> DKIM ok',
+    $pk['dkim_ok'] === true && $pk['dkim_domains'] === ['gibl.test'] && $pk['dkim_why'] === '', json_encode($pk['dkim_domains']));
+/* FAIL-CLOSED (round 3): the topmost header with a quote, a backslash, nested / unbalanced brackets, non-ASCII or a control
+   character is not read at all -> dkim_ok false, 'auth header not simple' - even when everything else in it says pass */
+$notSimple = [
+    'nested comment'       => str_replace('dkim=pass header.d', 'dkim=pass (good (2048-bit rsa) signature) header.d', $genuine),
+    'double quote'         => str_replace('smtp.mailfrom=alerts@gibl.test', 'smtp.mailfrom="alerts"@gibl.test', $genuine),
+    'backslash'            => str_replace('(p=REJECT', '(p\\=REJECT', $genuine),
+    'unclosed ('           => str_replace('dis=NONE)', 'dis=NONE', $genuine),
+    'stray )'              => str_replace('(google.com:', 'google.com:)', $genuine),
+    ') before ('           => str_replace('(p=REJECT sp=REJECT dis=NONE)', ')p=REJECT sp=REJECT dis=NONE(', $genuine),
+    'non-ASCII (é)'        => str_replace('permitted sender', 'permitted sendér', $genuine),
+    'non-ASCII NBSP'       => str_replace('dkim=pass header.d', "dkim=pass\u{00A0}header.d", $genuine),
+    'control (tab)'        => str_replace('dkim=pass header.d', "dkim=pass\theader.d", $genuine),
+    'control (\x01)'       => str_replace('header.s=s1', "header.s=s1\x01", $genuine),
+];
+$nsBad = [];
+foreach ($notSimple as $nk => $au) {
+    $pq = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345614'), 'auth' => $au]), $opts);
+    if ($pq['dkim_ok'] !== false || $pq['dkim_why'] !== 'auth header not simple' || $pq['dkim_domains'] !== []) { $nsBad[$nk] = [$pq['dkim_ok'], $pq['dkim_why']]; }
+}
+check('E fail-closed: nested comment, double quote, backslash, unclosed "(", stray ")", ")" before "(", non-ASCII (é, NBSP), tab, \x01 in the topmost Authentication-Results -> dkim_ok false, "auth header not simple"',
+    $nsBad === [] && BankMail::authSimple($genuine) && !BankMail::authSimple(''), json_encode($nsBad));
+check('E fail-closed: authResults() of a not-simple header reads nothing (serv_ok false, no dkim, no dmarc, the note)',
+    BankMail::authResults($notSimple['double quote'], 'mx.google.com') === ['serv_ok' => false, 'dkim' => [], 'dmarc' => [], 'note' => 'auth header not simple']
+    && BankMail::authResults($genuine, 'mx.google.com')['note'] === '' && BankMail::authResults($genuine, 'mx.google.com')['serv_ok'] === true);
+$pk = BankMail::parse($mail(['plain' => $credit('SHG-2026-00842', '2,400.00', '7712345613'), 'from' => 'Global IME Bank <alerts@alerts.gibl.test>',
+    'auth' => "mx.google.com;\r\n       dkim=pass header.i=@gibl.test header.s=s1 header.b=AbC;\r\n       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=alerts.gibl.test"]), $opts);
+check('E (d) folded header, From: alerts.gibl.test signed by gibl.test (subdomain of the signer), dmarc pass -> DKIM ok', $pk['dkim_ok'] === true);
+/* the owner's rules (group 1): the override is really applied ([...] + $opts: $opts holds '' for both keys), on
+   the bank's text - the bank's Txn ID sits on its own line, not after "Remarks:" on the payer's line */
+$pr = BankMail::parse($mail(['plain' => "Credited NPR 10.00\nRemarks: x\nJournal: 1234567"]), ['amount_regex' => '/Credited NPR ([0-9.,]+)/', 'txn_regex' => '/Journal: (\d+)/'] + $opts);
+check('E owner regex overrides (group 1) read amount and txn', abs($pr['amount'] - 10.0) < 0.001 && $pr['txn_id'] === '1234567', json_encode([$pr['amount'], $pr['txn_id']]));
+/* AMBIGUITY-REFUSING (25 Nov 2026, round 2): the bank's exact layout is unknown, so the parser no longer
+   tries to tell the bank's figure from the payer's. (e)/(f)/(g) used to expect the bank's value to win;
+   now a payer-typed SECOND figure or SECOND txn id makes the amount 0 / the txn id '' (a person checks,
+   with the reason in 'hold') - so such an alert can never auto-confirm, whichever value is the bank's. */
+$pe = BankMail::parse($mail(['plain' => "NPR 10.00 has been credited to your A/C ****9012 on 25-11-2026.\nRemarks: SHG-2026-00842 credited by NPR 2400\nTxn ID: 88112233"]), $opts);
+check('E (e) "credited by NPR 2400" typed in the remarks + the bank\'s NPR 10 -> two figures: amount 0 (held), txn 88112233, PNR, account XXXX9012',
+    $pe['amount'] === 0.0 && $pe['amounts'] === [10.0, 2400.0] && str_starts_with($pe['hold'], 'Different amounts') && $pe['txn_id'] === '88112233'
+    && $pe['pnr'] === 'SHG-2026-00842' && $pe['account'] === 'XXXX9012', json_encode([$pe['amount'], $pe['amounts'], $pe['txn_id'], $pe['pnr'], $pe['account'], $pe['hold']], JSON_UNESCAPED_UNICODE));
+$pv = BankMail::parse($mail(['html' => '<html><body><table><tr><td>खातामा</td><td>रु १०.००</td></tr><tr><td>जम्मा भयो · credited</td></tr><tr><td>Narration</td><td>SHG-2026-00843 credited by NPR 2400</td></tr><tr><td>Reference No: 99001122335</td></tr></table></body></html>']), $opts);
+check('E (f) HTML + Devanagari: रु १० + a Narration cell "credited by NPR 2400" -> two figures: amount 0, reference id, PNR',
+    $pv['is_credit'] && $pv['amount'] === 0.0 && $pv['hold'] !== '' && $pv['txn_id'] === '99001122335' && $pv['pnr'] === 'SHG-2026-00843', json_encode([$pv['amount'], $pv['txn_id'], $pv['pnr']]));
+$pg = BankMail::parse($mail(['plain' => "Your A/C 0123456789012 has been credited by NPR 500.00.\nRemarks: SHG-2026-00842 ref 55554444\nTxn ID: 99887766"]), $opts);
+check('E (g) "ref 55554444" typed in the remarks + the bank\'s Txn ID 99887766 -> two txn ids: txn \'\' (held), amount 500, PNR',
+    $pg['txn_id'] === '' && $pg['txns'] === ['55554444', '99887766'] && str_starts_with($pg['hold'], 'Different transaction') && $pg['pnr'] === 'SHG-2026-00842' && abs($pg['amount'] - 500.0) < 0.001,
+    json_encode([$pg['amount'], $pg['txn_id'], $pg['txns'], $pg['pnr']]));
+$pp = BankMail::parse($mail(['plain' => "NPR 500.00 has been credited to your A/C ****9012.\nRemarks: SHG-2026-00842 SHG-2026-00843\nTxn ID: 99887765"]), $opts);
+check('E two different PNRs anywhere -> no PNR, and ref_text names both (the ledger never sees just one)', $pp['pnr'] === '' && count($pp['pnrs']) === 2
+    && count(PayCredits::pnrsIn($pp['remarks'])) === 2, json_encode([$pp['pnr'], $pp['pnrs'], $pp['remarks']]));
+$pp = BankMail::parse($mail(['plain' => "NPR 500.00 has been credited to your A/C ****9012.\nRemarks: SHG-2026-0842 (SHG-2026-00842)\nTxn ID: 99887764"]), $opts);
+check('E the same PNR written 4- and 5-digit is ONE PNR', $pp['pnr'] === 'SHG-2026-0842' && count($pp['pnrs']) === 1, json_encode($pp['pnrs']));
+$pg = BankMail::parse($mail(['plain' => "Your A/C 0123456789012 has been credited by NPR 500.00.\nRemarks: SHG-2026-00842 ref 55554444 credited by NPR 2400\nTxn ID: 99887766"]),
+    ['amount_regex' => '/credited by NPR ([0-9.,]+)\s*$/m', 'txn_regex' => '/ref (\d+)/'] + $opts);
+check('E the owner regexes never read the remarks either (only there do they match -> amount 0, no txn id)', $pg['amount'] === 0.0 && $pg['txn_id'] === '', json_encode([$pg['amount'], $pg['txn_id']]));
+$pt = BankMail::parse($mail(['plain' => "NPR 10.00 has been credited to your A/C ****9012.\nSender note: credited by NPR 2,400.00\nTxn ID: 88112238\nAvailable Balance: NPR 55,000.00"]), $opts);
+check('E two different NPR figures outside the balance line (an unlabelled payer note) -> amount 0, a person checks', $pt['amount'] === 0.0, (string) $pt['amount']);
+/* only a line that BEGINS with a balance label is left out (was: a "bal" up to 40 characters before the figure on
+   the same line - a payer could type "bal" right before the bank's figure). A mid-line balance now makes it 0. */
+check('E a balance figure is not a second figure when its LINE BEGINS with a balance label (Avl Bal / Available Balance / Avail. Bal / मौज्दात / ब्यालेन्स)',
+    BankMail::amountIn("credited by NPR 2,400.00\nAvl Bal NPR 9,000.00") === 2400.0 && BankMail::amountIn("credited by NPR 2,400.00\n   Available Balance: NPR 9,000.00") === 2400.0
+    && BankMail::amountIn("credited by NPR 2,400.00\nAvail. Bal: NPR 9,000.00") === 2400.0 && BankMail::amountIn("रु 2,400.00 जम्मा भयो\nमौज्दात रु ९,०००.००") === 2400.0
+    && BankMail::amountIn("credited by NPR 2,400.00\nब्यालेन्स: NPR 9,000.00") === 2400.0 && BankMail::amountIn("credited by NPR 2,400.00\nBalance\nNPR 9,000.00") === 0.0
+    && BankMail::amountIn('NPR 2,400.00 has been credited (NPR 2,400.00)') === 2400.0 && BankMail::amountIn("credited by NPR 2,400.00\nBalaju branch, NPR 2,400.00") === 2400.0);
+check('E a mid-line "bal" never excludes anything: "…, Avl Bal: NPR 9,000" on the credit line -> 0; a line BEGINNING "Avl Bal" holds no credit either -> 0',
+    BankMail::amountIn('credited by NPR 2,400.00, Avl Bal: NPR 9,000.00') === 0.0 && BankMail::amountIn('Avl Bal: NPR 9,000.00. NPR 2,400.00 has been credited') === 0.0
+    && BankMail::amountIn('SHG-2026-00842 credited by NPR 2400 bal NPR 10.00') === 0.0);
+/* round 3: lines split ONLY on \n (\r\n and \r become \n); U+2028 / U+2029 / U+0085 / VT / FF are a space, so a separator the
+   payer types can never start a fake "Bal" line that blanks the bank's own figure */
+$seps = ['U+2028' => "\u{2028}", 'U+2029' => "\u{2029}", 'U+0085' => "\u{0085}", 'VT' => "\x0B", 'FF' => "\x0C"];
+$sepBad = [];
+foreach ($seps as $sk => $sc) {
+    if (BankMail::amountIn("credited by NPR 2,400.00{$sc}Avl Bal NPR 9,000.00") !== 0.0) { $sepBad[] = $sk . ' split'; }
+    if (str_contains(BankMail::scanText("a{$sc}b"), "\n") || BankMail::scanText("a{$sc}b") !== 'a b') { $sepBad[] = $sk . ' scan'; }
+    /* the attack: bank line "Remarks: <payer> Amount: NPR 10.00" - the payer types "<due> <sep>Bal" so the bank's NPR 10 would sit on a "Bal" line */
+    $pa2 = BankMail::parse($mail(['plain' => "Your A/C ****9012 has been credited. Remarks: SHG-2026-00842 credited by NPR 2400 {$sc}Bal Amount: NPR 10.00\nTxn ID: 88112240", 'subject' => 'Credit Alert']), $opts);
+    if ($pa2['amount'] !== 0.0 || $pa2['amounts'] !== [2400.0, 10.0] || $pa2['hold'] === '') { $sepBad[] = $sk . ' parse ' . json_encode([$pa2['amount'], $pa2['amounts']]); }
+}
+check('E a payer-typed U+2028 / U+2029 / U+0085 / VT / FF never starts a "Bal" line: the bank\'s NPR 10 still counts -> two figures, held',
+    $sepBad === [], json_encode($sepBad, JSON_UNESCAPED_UNICODE));
+check('E \r\n is a line end for the balance rule ("…2,400.00\r\nAvl Bal …" -> 2400); a LONE \r is only a space (payer-typed CR: two figures -> 0, held)',
+    BankMail::amountIn("credited by NPR 2,400.00\r\nAvl Bal NPR 9,000.00") === 2400.0 && BankMail::amountIn("credited by NPR 2,400.00\rAvl Bal NPR 9,000.00") === 0.0
+    && BankMail::scanText("x\r\ny\rz") === "x\ny z");
+/* HTML: an entity line break (&#10; / &#13; / &#8232;) inside a cell is a space - only real tags (<br>, </p>, </tr> ...) make lines */
+check('E HTML entity &#10; inside the remarks cannot start a fake "Bal" line (bank NPR 10 still counts -> two figures -> 0)',
+    str_contains(BankMail::htmlToText('<p>Remarks: SHG-2026-00842 NPR 2400&#10;Bal Amount: NPR 10.00</p><p>x</p>'), "NPR 2400 Bal Amount")
+    && BankMail::amountIn(BankMail::htmlToText('<p>Remarks: SHG-2026-00842 NPR 2400&#10;Bal Amount: NPR 10.00</p>')) === 0.0
+    && BankMail::htmlToText('<p>a</p><p>b<br>c</p>') === "a\nb\nc");
+/* NBSP and the other Unicode spaces are a plain space in text/plain (not only HTML): the bank's "NPR\u{00A0}10" must be seen */
+$pn1 = BankMail::parse($mail(['plain' => "NPR\u{00A0}2,400 has been credited to your A/C\u{00A0}****9012.\nRemarks: SHG-2026-00842\nTxn ID: 88112241", 'subject' => 'Credit Alert']), $opts);
+$pn2 = BankMail::parse($mail(['plain' => "NPR\u{00A0}10 has been credited to your A/C ****9012.\nRemarks: SHG-2026-00842 credited by NPR 2400\nTxn ID: 88112242", 'subject' => 'Credit Alert']), $opts);
+$pn3 = BankMail::parse($mail(['plain' => "NPR\u{202F}10 credited\u{2007}to A/C ****9012. Remarks: SHG-2026-00842 credited by NPR\u{3000}2400\nTxn ID: 88112243", 'subject' => 'Credit Alert']), $opts);
+check('E text/plain NBSP: "NPR 2,400" reads 2400 (account too); the bank\'s "NPR 10" beside a payer\'s NPR 2400 -> two figures, held; U+202F / U+2007 / U+3000 the same',
+    $pn1['amount'] === 2400.0 && $pn1['account'] === 'XXXX9012' && !str_contains($pn1['text'], "\u{00A0}")
+    && $pn2['amount'] === 0.0 && $pn2['amounts'] === [10.0, 2400.0] && $pn2['hold'] !== ''
+    && $pn3['amount'] === 0.0 && $pn3['amounts'] === [10.0, 2400.0],
+    json_encode([[$pn1['amount'], $pn1['account']], $pn2['amounts'], $pn3['amounts']]));
+$ph2 = BankMail::parse($mail(['html' => "<table><tr><td>A/C ****9012 credited</td></tr><tr><td>Remarks: SHG-2026-00842 credited by NPR 2400\nAvl Bal</td><td>NPR&nbsp;10.00</td></tr><tr><td>Txn ID: 88112244</td></tr></table>", 'subject' => 'Credit Alert']), $opts);
+check('E HTML: a newline in the HTML source (a payer\'s, inside a cell) is only a space, never a line start - "…NPR 2400\nAvl Bal | NPR&nbsp;10.00" keeps the bank\'s 10 -> two figures, held',
+    $ph2['amount'] === 0.0 && $ph2['amounts'] === [2400.0, 10.0] && $ph2['hold'] !== '', json_encode($ph2['amounts']));
+check('E every money form counts: "10.00 NPR", "Amount: 10.00", "Amount (NPR) 10", "रकम: 10", "credited with 10.00", a bare 10.00 cell, "Rs.10", "₹10" (each beside NPR 2,400 -> 0)',
+    BankMail::figures("credited 10.00 NPR\nAmount: 11.00\nAmount (NPR) 12\nरकम: 13\ncredited with 14\nDetails 15.00 x\nRs.16 ₹17 NRs 18 INR 19 रू 20")
+        === [16.0, 17.0, 18.0, 19.0, 20.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
+    && BankMail::amountIn("NPR 2,400.00 credited\nAmount: 10") === 0.0 && BankMail::amountIn("NPR 2,400.00 credited\nAmount\n10") === 0.0
+    && BankMail::amountIn("NPR 2,400.00 credited\n25-11 Details 10.00") === 0.0, json_encode(BankMail::figures("credited 10.00 NPR\nAmount: 11.00\nAmount (NPR) 12\nरकम: 13\ncredited with 14\nDetails 15.00 x\nRs.16 ₹17 NRs 18 INR 19 रू 20")));
+check('E ids, accounts, phones and dates are not figures: Txn 7712345678 NPR, A/C 0123456789012 NPR, ****9012 NPR, SHG-2026-00842 NPR, 25.11.2026, deposited by 9812345678',
+    BankMail::figures("Txn 7712345678 NPR 2,400.00 credited A/C ****9012 NPR\nA/C 0123456789012 NPR, SHG-2026-00842 NPR, on 25.11.2026, deposited by 9812345678") === [2400.0]);
+check('E owner amount regex must AGREE with the one figure (another value / no match / a broken pattern -> 0, with the reason)',
+    BankMail::amountIn('NPR 10.00 credited. Journal NPR 10.00', '/Journal NPR ([0-9.,]+)/') === 10.0
+    && BankMail::amountIn('NPR 10.00 credited.', '/Journal NPR ([0-9.,]+)/') === 0.0 && BankMail::amountIn('NPR 10.00 credited.', '/(unclosed/') === 0.0
+    && str_starts_with(BankMail::parse($mail(['plain' => "NPR 10.00 credited to A/C ****9012. Txn ID: 88112239"]), ['amount_regex' => '/Journal NPR ([0-9.,]+)/'] + $opts)['hold'], 'bankmail_amount_regex does not agree'));
+check('E txn ids: every label (Txn ID / Ref. No. / Reference No / UTR / ट्रान्जेक्सन नं) + the owner\'s txn regex are all candidates; one distinct -> it, two -> \'\'',
+    BankMail::txnIn("Txn ID: 88112233\nRef. No.: 88112233") === '88112233' && BankMail::txnIn("Txn ID: 88112233\nRef. No.: 99112233") === ''
+    && BankMail::txnIn('ट्रान्जेक्सन नं: 7712345678') === '7712345678' && BankMail::txnIn("UTR: 123456789012\nJournal 5544332211", '/Journal (\d+)/') === ''
+    && BankMail::txnIn('Journal 5544332211', '/Journal (\d+)/') === '5544332211' && BankMail::txnIn('Ref: SHG-2026-00842') === '');
+
+/* the previous checker's probe fixtures (scratchpad probe.php / probe2.php), unchanged: none may auto-confirm.
+   $canAuto = what tryAutoConfirm needs from the parse (a credit, not held, an amount, a txn id, one PNR, DKIM). */
+$canAuto = static fn(array $p): bool => $p['is_credit'] && !$p['mixed'] && $p['hold'] === '' && $p['amount'] > 0 && $p['txn_id'] !== '' && $p['pnr'] !== '' && $p['dkim_ok'];
+$probeAuth = 'mx.google.com; dkim=pass header.i=@gibl.test header.s=s1 header.b=AbC; spf=pass smtp.mailfrom=alerts@gibl.test';
+$probes = [   // label => [mail fixture, extra opts, expected amount, expected txn]
+    'P1 Remarks: label alone, payer text on the next line, "Amount: 10.00"' => [['plain' => "Your A/C ****9012 has been credited.\nAmount: 10.00\nRemarks:\nSHG-2026-00842 credited by NPR 2400\nTxn ID: 88112233"], [], 0.0, '88112233'],
+    'P1b HTML "Remarks<br>value", "Amount (NPR)" cell 10.00' => [['html' => "<table><tr><td>A/C</td><td>****9012</td></tr><tr><td>Amount (NPR)</td><td>10.00</td></tr><tr><td>Status</td><td>credited</td></tr><tr><td>Remarks<br>SHG-2026-00842 credited by NPR 2400</td></tr><tr><td>Txn ID</td><td>88112233</td></tr></table>"], [], 0.0, '88112233'],
+    'P1c HTML Remarks row / value row (+ ref), NPR 10.00' => [['html' => "<table><tr><td>NPR 10.00 has been credited to A/C ****9012</td></tr><tr><td>Remarks</td></tr><tr><td>SHG-2026-00842 ref 55554444 credited by NPR 2400</td></tr><tr><td>Txn ID: 88112233</td></tr></table>"], [], 0.0, ''],
+    'P2 Devanagari कैफियत label + "ref 55554444"' => [['plain' => "तपाईंको खाता ****9012 मा रु 10.00 जम्मा भयो (credited).\nकैफियत: SHG-2026-00842 ref 55554444\nTxn ID: 99887766"], [], 10.0, ''],
+    'P2b कैफियत + "रकम: 10.00" without currency' => [['plain' => "तपाईंको खाता ****9012 मा जम्मा भयो (credited).\nरकम: 10.00\nकैफियत: SHG-2026-00842 credited by NPR 2400\nTxn ID: 99887766"], [], 0.0, '99887766'],
+    'P3 "Note:" label + Amount: 10.00' => [['plain' => "Your A/C ****9012 has been credited.\nAmount: 10.00\nNote: SHG-2026-00842 credited by NPR 2400\nTxn ID: 88112233"], [], 0.0, '88112233'],
+    'P6 columnar row, payer "bal" before the bank\'s NPR 10' => [['html' => "<table><tr><th>Date</th><th>Details</th><th>Credit</th></tr><tr><td>25-11-2026</td><td>SHG-2026-00842 credited by NPR 2400 bal</td><td>NPR 10.00</td></tr><tr><td>A/C ****9012 credited</td></tr></table>"], [], 0.0, ''],
+    'P7 bank "10.00 NPR" (currency after) + an unlabelled note' => [['plain' => "Your A/C ****9012 has been credited with 10.00 NPR.\nSender note: credited by NPR 2400\nTxn ID: 88112233"], [], 0.0, '88112233'],
+    'P12 owner amount regex + Remarks value on the next line' => [['plain' => "Your A/C ****9012 has been credited.\nAmount: 10.00\nRemarks:\nCredited NPR 2400\nTxn ID: 88112233"], ['amount_regex' => '/Credited NPR ([0-9.,]+)/i'], 0.0, '88112233'],
+    'Q1 plain "Remarks:" then value line (+ ref) then Txn ID' => [['plain' => "Your A/C 0123456789012 has been credited by NPR 500.00.\nRemarks:\nSHG-2026-00842 ref 55554444\nTxn ID: 99887766"], [], 500.0, ''],
+    'Q2 HTML "Remarks:" row / value row (+ ref) then Txn ID' => [['html' => "<table><tr><td>NPR 500.00 has been credited to A/C ****9012</td></tr><tr><td>Remarks:</td></tr><tr><td>SHG-2026-00842 ref 55554444</td></tr><tr><td>Txn ID: 99887766</td></tr></table>"], [], 500.0, ''],
+    'Q3 HTML "Remarks:<br>value", Amount: 500.00' => [['html' => "<p>Your A/C ****9012 has been credited.</p><p>Amount: 500.00</p><p>Remarks:<br>SHG-2026-00842 credited by NPR 2400</p><p>Txn ID: 99887766</p>"], [], 0.0, '99887766'],
+    /* Q4 was the checker's "legit" layout: the balance VALUE sits on its own row under an "Available Balance" row, so its
+       line does not begin with a balance label -> it counts -> two figures -> a person checks (fails safe, never auto) */
+    'Q4 balance label row / value row (fails safe: a person checks)' => [['html' => "<table><tr><td>NPR 2,400.00 has been credited to A/C ****9012</td></tr><tr><td>Remarks: SHG-2026-00842</td></tr><tr><td>Txn ID: 99887766</td></tr><tr><td>Available Balance</td></tr><tr><td>NPR 55,000.00</td></tr></table>"], [], 0.0, '99887766'],
+    'P10 dmarc=bestguesspass (no DKIM pass)' => [['plain' => "NPR 2,400.00 has been credited to your A/C ****9012.\nRemarks: SHG-2026-00842\nTxn ID: 88112233", 'auth' => 'mx.google.com; dkim=pass header.i=@gibl.test header.s=s1 header.b=AbC; spf=pass smtp.mailfrom=alerts@gibl.test; dmarc=bestguesspass header.from=gibl.test'], [], 2400.0, '88112233'],
+];
+foreach ($probes as $label => [$fx, $xo, $wantAmt, $wantTxn]) {
+    $pq = BankMail::parse($mail($fx + ['auth' => $probeAuth, 'subject' => 'Credit Alert']), $xo + $opts);
+    check('E probe ' . $label . ' -> amount ' . $wantAmt . ', txn ' . ($wantTxn !== '' ? $wantTxn : "''") . ', never auto-confirms',
+        !$canAuto($pq) && abs($pq['amount'] - $wantAmt) < 0.001 && $pq['txn_id'] === $wantTxn && ($pq['hold'] !== '' || !$pq['dkim_ok']),
+        json_encode(['amt' => $pq['amount'], 'amounts' => $pq['amounts'], 'txn' => $pq['txn_id'], 'txns' => $pq['txns'], 'pnr' => $pq['pnr'], 'dkim' => $pq['dkim_ok'], 'hold' => $pq['hold']], JSON_UNESCAPED_UNICODE));
+}
+/* the genuine single-figure probes read cleanly (and so may auto-confirm; end to end below) */
+$pq = BankMail::parse($mail(['plain' => "NPR 2,400.00 credited to A/C ****9012 Remarks: SHG-2026-00842 Txn ID: 88112233", 'auth' => $probeAuth, 'subject' => 'Credit Alert']), $opts);
+check('E probe P8 one-line genuine alert -> 2400, txn 88112233 (no longer cut away after "Remarks:"), PNR, not held', $canAuto($pq) && $pq['amount'] === 2400.0 && $pq['txn_id'] === '88112233' && $pq['account'] === 'XXXX9012', json_encode([$pq['amount'], $pq['txn_id'], $pq['hold']]));
+$pq = BankMail::parse($mail(['plain' => "NPR 2,400.00 has been credited to your A/C ****9012.\nRemarks: SHG-2026-00842\nTxn ID: 88112233", 'subject' => 'Credit Alert',
+    'auth' => 'mx.google.com; dkim=pass header.i=@gibl.test header.s=s1 header.b=AbCdEf12; arc=pass (i=1); spf=pass (google.com: domain of alerts@gibl.test designates 1.2.3.4 as permitted sender) smtp.mailfrom=alerts@gibl.test; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=gibl.test']), $opts);
+check('E probe P9 genuine Gmail (dkim + arc + spf + dmarc pass) -> readable, not held', $canAuto($pq) && $pq['amount'] === 2400.0 && $pq['txn_id'] === '88112233', json_encode([$pq['amount'], $pq['txn_id'], $pq['hold']]));
+$pq = BankMail::parse($mail(['plain' => "Rs. 10.00 credited to A/C ****9012.\nAmount NPR 10\nTxn ID: 88112233", 'auth' => $probeAuth, 'subject' => 'Credit Alert']), $opts);
+check('E probe P11 the same figure twice (Rs. 10.00 / NPR 10) is ONE figure -> 10 (no PNR: not auto)', $pq['amount'] === 10.0 && $pq['amounts'] === [10.0] && $pq['hold'] === '' && $pq['pnr'] === '' && !$canAuto($pq));
+$pq = BankMail::parse($mail(['plain' => "NPR 2,400.00 has been credited to A/C ****9012\nRemarks\nTxn ID: 99887766\nSHG-2026-00842", 'auth' => $probeAuth, 'subject' => 'Credit Alert']), $opts);
+check('E probe Q5 empty "Remarks" then the bank\'s Txn line -> 2400, txn 99887766 (no longer eaten), PNR', $canAuto($pq) && $pq['amount'] === 2400.0 && $pq['txn_id'] === '99887766' && $pq['pnr'] === 'SHG-2026-00842');
+/* P4 / P5 attack the Authentication-Results reader (a ')' inside a quoted local part in the spf comment closes the
+   comment early; an unclosed '(' swallows dmarc=fail). Round 3: the reader fails closed on any quote / backslash /
+   nested or unbalanced bracket, so both are real checks now (they were NOTE lines that printed "WOULD AUTO-CONFIRM"). */
+$a4 = 'mx.google.com; dkim=pass header.i=@evil.example header.s=s1 header.b=abc; spf=pass (google.com: domain of "x);dkim=pass header.i=@gibl.test;(y"@evil.example designates 1.2.3.4 as permitted sender) smtp.mailfrom="x);dkim=pass header.i=@gibl.test;(y"@evil.example';
+$a5 = 'mx.google.com; dkim=pass header.i=@evil.example header.s=s1 header.b=abc; spf=pass (google.com: domain of "x);dkim=pass header.i=@gibl.test;(("@evil.example designates 1.2.3.4 as permitted sender) smtp.mailfrom="x);dkim=pass header.i=@gibl.test;(("@evil.example; dmarc=fail (p=REJECT sp=REJECT dis=NONE) header.from=gibl.test';
+$a5b = 'mx.google.com; dkim=pass header.i=@gibl.test header.s=s1; spf=pass (google.com: domain of x@evil.example designates 1.2.3.4 as permitted sender) smtp.mailfrom=x"@evil.example; dmarc=fail (p=REJECT) header.from=gibl.test';
+foreach (['P4 ")" breakout in the spf comment, no dmarc' => $a4, 'P5 unclosed "((" hides dmarc=fail' => $a5, 'P5b unclosed quote hides dmarc=fail' => $a5b] as $label => $au) {
+    $pq = BankMail::parse($mail(['plain' => "NPR 2,400.00 has been credited to your A/C ****9012. Remarks: SHG-2026-00842\nTxn ID: 88112233", 'auth' => $au, 'subject' => 'Credit Alert']), $opts);
+    check('E DKIM probe ' . $label . ' -> dkim_ok false ("auth header not simple"), no signing domain read, never auto-confirms',
+        $pq['dkim_ok'] === false && $pq['dkim_why'] === 'auth header not simple' && $pq['dkim_domains'] === [] && !$canAuto($pq)
+        && BankMail::authResults($au, 'mx.google.com')['serv_ok'] === false,
+        json_encode(['dkim' => $pq['dkim_ok'], 'why' => $pq['dkim_why'], 'domains' => $pq['dkim_domains']]));
+}
 check('E legacy PNR SHG-R-MXYZ12-AB3D is found, two PNRs both listed',
     PayCredits::pnrsIn('paid for SHG-R-MXYZ12-AB3D') === ['SHG-R-MXYZ12-AB3D'] && count(PayCredits::pnrsIn('SHG-2026-00842 and SHG-2026-00843')) === 2);
 /* the credited account: a genuine signed alert for money paid into SOMEONE ELSE's account must not pay our ticket */
@@ -313,7 +543,7 @@ $icici = static function (array $data) use ($ini): array {
 };
 $ip = static fn(array $b, string $bank): array => ['merchantId' => 'TESTMERCHANT1', 'merchantTxnNo' => 'SHG' . $b['id'] . 'T' . date('YmdHis') . '123',
     'txnID' => $bank, 'responseCode' => '000', 'amount' => number_format((float) $b['total_amount'], 2, '.', ''), 'currencyCode' => '356', 'respDescription' => 'ok'];
-foreach (['amount', 'merchantId', 'currencyCode'] as $drop) {
+foreach (['amount', 'merchantId'] as $drop) {
     $b = $mk();
     $d = $ip($b, 'BANK' . random_int(100000000, 999999999));
     unset($d[$drop]);
@@ -322,6 +552,19 @@ foreach (['amount', 'merchantId', 'currencyCode'] as $drop) {
         $r['state'] === 'success' && $status($b) === 'pending' && $count('payment.auto_confirmed', $b) === 0
         && Database::exists("SELECT 1 FROM payments WHERE booking_id = :b AND utr_number LIKE 'ICICI-%'", ['b' => (int) $b['id']]), json_encode($r) . ' ' . $status($b));
 }
+/* 25 Nov 2026 (mp1 review): nothing shows ICICI returns a currency field, so a missing one no
+   longer blocks auto-confirm (amount + merchant id still must be there); a currency that IS
+   sent must be INR / 356. */
+$b = $mk();
+$d = $ip($b, 'BANK' . random_int(100000000, 999999999));
+unset($d['currencyCode']);
+$r = $icici($d);
+check('A signed production success WITHOUT currencyCode (amount + merchant id there) -> still auto-confirms', $r['state'] === 'success' && $status($b) === 'confirmed' && $count('payment.auto_confirmed', $b) === 1, json_encode($r) . ' ' . $status($b));
+$b = $mk();
+$d = $ip($b, 'BANK' . random_int(100000000, 999999999));
+$d['currencyCode'] = '840';
+$r = $icici($d);
+check('A signed production success with currencyCode 840 (USD) -> proof kept, stays pending for a person', $r['state'] === 'success' && $status($b) === 'pending' && $count('payment.auto_confirmed', $b) === 0, json_encode($r) . ' ' . $status($b));
 $b = $mk();
 $r = $icici($ip($b, 'BANK' . random_int(100000000, 999999999)));
 check('A full signed production success still auto-confirms (ICICI happy path unchanged)', $r['state'] === 'success' && $status($b) === 'confirmed' && $count('payment.auto_confirmed', $b) === 1, json_encode($r));
@@ -349,7 +592,7 @@ check('B pay.php reads the same QR (ManualQrAdapter::esewaQrSrc)', str_contains(
 /* ---------------- E. Gmail poll end to end ---------------- */
 echo "\n-- E Gmail credits -> PayCredits\n";
 setKeep('bankmail_on', '1', 'bool');
-setKeep('pay_bankmail_autoconfirm_on', '1', 'bool');
+unsetKeep('pay_bankmail_autoconfirm_on');   // not stored = the code default (OFF); switched ON further down, restored at the end
 setKeep('bankmail_from', 'alerts@gibl.test, @alerts.gibl.test', 'string');
 setKeep('bankmail_dkim_domain', 'gibl.test', 'string');
 setKeep('bankmail_authserv', 'mx.google.com', 'string');
@@ -362,7 +605,7 @@ setKeep('bankmail_uidvalidity', '4242', 'string');
 setKeep('bankmail_last_poll', '{}', 'json');
 
 $happy = $mk();
-$debitRaw = $mail(['plain' => "Your A/C 0123456789012 has been debited by NPR 999.00. Txn ID: " . $T('D1')]);
+$debitRaw = $mail(['plain' => "Your A/C 0123456789012 has been debited by NPR 999.00. Txn ID: " . $T('D1'), 'subject' => 'Debit Alert']);
 $happyRaw = $mail(['plain' => $credit((string) $happy['pnr'], $npr($happy), $T('H1')), 'mid' => 'mp1happy' . $tag]);
 $script = static function (array $msgs): string {   // [uid => raw]
     $s = "* 9 EXISTS\r\n* OK [UIDVALIDITY 4242] ok\r\nS0001 OK [READ-ONLY] done\r\n* SEARCH 4999 " . implode(' ', array_keys($msgs)) . "\r\nS0002 OK done\r\n";
@@ -376,6 +619,60 @@ $imapFor = static function (array $msgs) use ($script): BankMailImap {
     $in = fopen('php://temp', 'w+'); fwrite($in, $script($msgs)); rewind($in);
     return new BankMailImap($in, fopen('php://memory', 'w+'));
 };
+
+/* ---- owner-safety (25 Nov 2026): Gmail auto-PAID is OFF by default - a perfect alert is only a SUGGESTION ---- */
+check('E pay_bankmail_autoconfirm_on not stored -> Gmail auto-PAID is OFF (the code default)',
+    Settings::get('pay_bankmail_autoconfirm_on', null) === null && PayCredits::gmailAutoOn() === false);
+$sug = $mk();
+$sugRaw = $mail(['plain' => $credit((string) $sug['pnr'], $npr($sug), $T('SG')), 'mid' => 'mp1sug' . $tag]);
+setKeep('bankmail_last_uid', '4998', 'int');
+$resS = BankMail::poll(50, $imapFor([4999 => $sugRaw]));
+setKeep('bankmail_last_uid', '5000', 'int');
+$sc = Database::fetch('SELECT * FROM bank_credits WHERE source = \'gmail\' AND txn_id = :t', ['t' => $T('SG')]);
+if ($sc !== null) { $credIds[] = (int) $sc['id']; }
+check('E default OFF: a perfect alert (DKIM, sender, our account, one PNR, exact amount) -> poll counts it "suggested", not confirmed, not unmatched',
+    $resS['ok'] && $resS['credits'] === 1 && $resS['suggested'] === 1 && $resS['confirmed'] === 0 && $resS['unmatched'] === 0 && str_contains((string) $resS['msg'], '1 suggested'), json_encode($resS));
+check('E default OFF: the credit ends \'matched\' as a SUGGESTION: booking_id = that booking, acted_at empty, note "सुझाव · Suggested: <PNR> NPR <amount>"',
+    $sc !== null && $sc['state'] === 'matched' && (int) $sc['booking_id'] === (int) $sug['id'] && $sc['acted_at'] === null
+    && $sc['note'] === PayCredits::SUGGEST_NOTE . $sug['pnr'] . ' NPR ' . $npr($sug) && PayCredits::isSuggestion($sc), json_encode($sc, JSON_UNESCAPED_UNICODE));
+check('E default OFF: the booking stays pending - no proof recorded, no chalani tick, no booking.confirm / payment.auto_confirmed',
+    $status($sug) === 'pending' && !Database::exists('SELECT 1 FROM payments WHERE booking_id = :b AND utr_number = :u', ['b' => (int) $sug['id'], 'u' => 'GIME-' . $T('SG')])
+    && $tick($sug) === null && $count('booking.confirm', $sug) === 0 && $count('payment.auto_confirmed', $sug) === 0, $status($sug));
+$sugBell = 'बैंक इमेल: रू ' . $npr($sug) . ' आयो · PNR ' . $sug['pnr'] . ' — Payment Management मा Confirm थिच्नुहोस्';
+check('E default OFF: the admin bell "बैंक इमेल: रू X आयो · PNR Y — Payment Management मा Confirm थिच्नुहोस्" (on the booking, opens the Nepal tab); no "needs a person" bell',
+    (int) Database::scalar("SELECT COUNT(*) FROM notifications WHERE booking_id = :b AND title = :t AND link = '/admin/payment-center.php?tab=np'", ['b' => (int) $sug['id'], 't' => $sugBell], 0) === 1
+    && (int) Database::scalar("SELECT COUNT(*) FROM notifications WHERE booking_id = :b AND title LIKE 'Bank credit needs a person%'", ['b' => (int) $sug['id']], 0) === 0,
+    json_encode(Database::fetchAll('SELECT title, link FROM notifications WHERE booking_id = :b', ['b' => (int) $sug['id']]), JSON_UNESCAPED_UNICODE));
+$again = $sc !== null ? PayCredits::tryAutoConfirm((int) $sc['id']) : ['ok' => true, 'why' => ''];
+$rp = PayCredits::record(['source' => 'gmail', 'currency' => 'NPR', 'amount' => 1, 'txn_id' => 'X', 'message_id' => 'mp1sug' . $tag . '@gibl.test']);
+check('E a suggestion is left alone: tryAutoConfirm again = no-op, the same e-mail again = replay; open / suggested lists + counts show it',
+    !$again['ok'] && $again['why'] === 'already matched' && PayCredits::lastOutcome() === 'replay' && $rp === (int) ($sc['id'] ?? -1)
+    && in_array((int) ($sc['id'] ?? -1), array_map('intval', array_column(PayCredits::listRecent(['source' => 'gmail', 'state' => 'open', 'limit' => 200]), 'id')), true)
+    && in_array((int) ($sc['id'] ?? -1), array_map('intval', array_column(PayCredits::listRecent(['source' => 'gmail', 'state' => 'suggested', 'limit' => 200]), 'id')), true)
+    && (PayCredits::counts('gmail')['suggested'] ?? 0) >= 1 && $status($sug) === 'pending', json_encode($again));
+/* Confirm = link(): the person checked the bank app; approveReviewed via 'queue' (PaymentRisk + the person in the loop) */
+$sys0 = PayAuto::systemAdmin() ?? ['id' => 0];
+$sysRow = Database::fetch('SELECT full_name, username FROM admins WHERE id = :i', ['i' => (int) $sys0['id']]) ?? [];
+$sysName = trim((string) (($sysRow['full_name'] ?? '') ?: ($sysRow['username'] ?? '')));
+$cr = $sc !== null ? PayCredits::link((int) $sc['id'], (string) $sug['pnr'], (int) $sys0['id']) : ['ok' => false, 'msg' => 'no credit'];
+$scRow = $sc !== null ? (PayCredits::get((int) $sc['id']) ?? []) : [];
+$tk = $tick($sug);
+check('E Confirm (link()) on the suggestion: booking confirmed through the queue gate, credit linked + acted_by, payment verified GIME-…, no auto audit',
+    $cr['ok'] && $status($sug) === 'confirmed' && ($scRow['state'] ?? '') === 'linked' && (int) ($scRow['acted_by'] ?? 0) === (int) $sys0['id'] && !empty($scRow['acted_at'])
+    && str_starts_with((string) ($scRow['note'] ?? ''), 'Confirmed ' . $sug['pnr'] . ' (Gmail suggestion) by ')
+    && Database::exists("SELECT 1 FROM payments WHERE booking_id = :b AND utr_number = :u AND status = 'verified'", ['b' => (int) $sug['id'], 'u' => 'GIME-' . $T('SG')])
+    && $count('booking.confirm', $sug) === 1 && $count('payment.auto_confirmed', $sug) === 0, json_encode([$cr, $scRow['state'] ?? null, $scRow['note'] ?? null], JSON_UNESCAPED_UNICODE));
+check('E chalani tick "PAID - Nepali online (Gmail)" (OpsHub keeps 40 chars), its note "UTR … · confirmed by <name>"; audited bank_credit.link',
+    ($tk['mode'] ?? '') === 'PAID - Nepali online (Gmail)' && mb_strlen(PayCredits::LABEL_CONFIRMED['gmail']) <= 40
+    && str_contains((string) ($tk['note'] ?? ''), $T('SG')) && $sysName !== '' && str_contains((string) ($tk['note'] ?? ''), 'confirmed by ' . $sysName)
+    && (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'bank_credit.link' AND entity_id = :i", ['i' => (string) ($sc['id'] ?? '')], 0) === 1, json_encode($tk));
+$threw = ''; $threw2 = '';
+try { PayCredits::link((int) ($sc['id'] ?? 0), (string) $sug['pnr'], (int) $sys0['id']); } catch (Throwable $ex) { $threw = $ex->getMessage(); }
+try { PayCredits::ignore((int) ($sc['id'] ?? 0), (int) $sys0['id'], 'x'); } catch (Throwable $ex) { $threw2 = $ex->getMessage(); }
+check('E a confirmed suggestion can be neither confirmed again nor ignored', str_contains($threw, 'already paid') && str_contains($threw2, 'already paid') && $count('booking.confirm', $sug) === 1, $threw . ' | ' . $threw2);
+
+/* ---- the switch ON (set here, restored at the end): the old auto path, unchanged, for the genuine fixtures ---- */
+setKeep('pay_bankmail_autoconfirm_on', '1', 'bool');
 $res = BankMail::poll(50, $imapFor([5001 => $debitRaw, 5002 => $happyRaw]));
 $hc = Database::fetch('SELECT * FROM bank_credits WHERE source = \'gmail\' AND txn_id = :t', ['t' => $T('H1')]);
 if ($hc !== null) { $credIds[] = (int) $hc['id']; }
@@ -431,8 +728,21 @@ $idNoDk = $fromParse($mail(['plain' => $credit((string) $noDk['pnr'], $npr($noDk
 $r = PayCredits::tryAutoConfirm($idNoDk);
 check('E missing DKIM -> not auto: unmatched + bell, booking pending', !$r['ok'] && PayCredits::get($idNoDk)['state'] === 'unmatched' && $status($noDk) === 'pending' && $bell($idNoDk) === 1, json_encode($r));
 
+/* fail-closed end to end, switch ON: an otherwise perfect alert whose topmost Authentication-Results is not simple
+   (Gmail's real header + a nested comment) is held with the reason, never confirmed */
+$ns = $mk();
+$resNs = ['seen' => 0, 'credits' => 0, 'new' => 0, 'duplicates' => 0, 'debits' => 0, 'other' => 0, 'confirmed' => 0, 'suggested' => 0, 'unmatched' => 0, 'failed' => 0];
+BankMail::handle($mail(['plain' => $credit((string) $ns['pnr'], $npr($ns), $T('NS')), 'mid' => 'mp1ns' . $tag, 'auth' => $notSimple['nested comment']]), $resNs);
+$nsRow = Database::fetch('SELECT * FROM bank_credits WHERE txn_id = :t', ['t' => $T('NS')]);
+if ($nsRow !== null) { $credIds[] = (int) $nsRow['id']; }
+check('E fail-closed end to end (switch ON): a perfect alert with a nested comment in Authentication-Results -> unmatched "No DKIM pass: auth header not simple …", booking pending',
+    PayCredits::gmailAutoOn() && $resNs['unmatched'] === 1 && $resNs['confirmed'] === 0 && $nsRow !== null && $nsRow['state'] === 'unmatched' && (int) $nsRow['dkim_ok'] === 0
+    && str_starts_with((string) $nsRow['note'], 'No DKIM pass: auth header not simple') && $status($ns) === 'pending', json_encode([$resNs, $nsRow['note'] ?? null]));
+
 $wrongFrom = $mk();
-$idWf = $fromParse($mail(['plain' => $credit((string) $wrongFrom['pnr'], $npr($wrongFrom), $T('W1')), 'from' => 'Bank <alerts@gibl.test.evil.example>',
+/* the bank's own signed marketing address (From aligned with DKIM), just not an allowed sender. (Was
+   alerts@gibl.test.evil.example "signed" by gibl.test: a From outside the signer is no DKIM pass any more) */
+$idWf = $fromParse($mail(['plain' => $credit((string) $wrongFrom['pnr'], $npr($wrongFrom), $T('W1')), 'from' => 'Bank <offers@gibl.test>',
     'auth' => 'mx.google.com; dkim=pass header.d=gibl.test']));
 $r = PayCredits::tryAutoConfirm($idWf);
 check('E wrong sender (DKIM ok) -> not auto: unmatched, booking pending', !$r['ok'] && str_contains($r['why'], 'not on the allowed list') && $status($wrongFrom) === 'pending', json_encode($r));
@@ -491,8 +801,89 @@ setKeep('pay_bankmail_autoconfirm_on', '0', 'bool');
 $off = $mk();
 $idOff = $fromParse($mail(['plain' => $credit((string) $off['pnr'], $npr($off), $T('O1'))]));
 $r = PayCredits::tryAutoConfirm($idOff);
-check('E switch pay_bankmail_autoconfirm_on off -> waits for a person', !$r['ok'] && $status($off) === 'pending', json_encode($r));
+check('E switch pay_bankmail_autoconfirm_on stored "0" -> a suggestion (matched, booking pending) that waits for a person',
+    !$r['ok'] && $r['state'] === 'matched' && $r['why'] === 'suggested' && $r['bookingId'] === (int) $off['id'] && PayCredits::isSuggestion(PayCredits::get($idOff)) && $status($off) === 'pending', json_encode($r));
+PayCredits::ignore($idOff, (int) (PayAuto::systemAdmin()['id'] ?? 0), 'not in the bank app');
+check('E Ignore sets a suggestion aside (the bank app does not show it): ignored, booking pending',
+    (PayCredits::get($idOff)['state'] ?? '') === 'ignored' && $status($off) === 'pending' && $count('booking.confirm', $off) === 0);
 setKeep('pay_bankmail_autoconfirm_on', '1', 'bool');
+
+/* every probe fixture end to end through poll(), against ONE real pending booking: the PAYER types the booking's own
+   PNR and its exact NPR due ("credited by NPR <due>") - the bank's figure is NPR 10.00 - or the bank's figure IS the due
+   and the payer types a second "ref …" id. Whatever the layout, nothing confirms; every alert is stored (never
+   dropped) and unmatched with its reason + a bell. */
+$vic = $mk();
+$VP = (string) $vic['pnr'];
+$VD = $npr($vic);
+$uidV = 5004;   // UIDs 5005-5021: after the polls above, before the 5101+ ones below
+$probeMails = [
+    'P1'  => ['plain' => "Your A/C ****9012 has been credited.\nAmount: 10.00\nRemarks:\n$VP credited by NPR $VD\nTxn ID: " . $T('V1')],
+    'P1b' => ['html' => "<table><tr><td>A/C</td><td>****9012</td></tr><tr><td>Amount (NPR)</td><td>10.00</td></tr><tr><td>Status</td><td>credited</td></tr><tr><td>Remarks<br>$VP credited by NPR $VD</td></tr><tr><td>Txn ID</td><td>" . $T('V2') . "</td></tr></table>"],
+    'P1c' => ['html' => "<table><tr><td>NPR 10.00 has been credited to A/C ****9012</td></tr><tr><td>Remarks</td></tr><tr><td>$VP ref " . $T('V3R') . " credited by NPR $VD</td></tr><tr><td>Txn ID: " . $T('V3') . "</td></tr></table>"],
+    'P2'  => ['plain' => "तपाईंको खाता ****9012 मा रु $VD जम्मा भयो (credited).\nकैफियत: $VP ref " . $T('V4R') . "\nTxn ID: " . $T('V4')],
+    'P2b' => ['plain' => "तपाईंको खाता ****9012 मा जम्मा भयो (credited).\nरकम: 10.00\nकैफियत: $VP credited by NPR $VD\nTxn ID: " . $T('V5')],
+    'P3'  => ['plain' => "Your A/C ****9012 has been credited.\nAmount: 10.00\nNote: $VP credited by NPR $VD\nTxn ID: " . $T('V6')],
+    'P6'  => ['html' => "<table><tr><th>Date</th><th>Details</th><th>Credit</th></tr><tr><td>25-11-2026</td><td>$VP credited by NPR $VD bal</td><td>NPR 10.00</td></tr><tr><td>A/C ****9012 credited</td></tr><tr><td>Txn ID: " . $T('V7') . "</td></tr></table>"],
+    'P7'  => ['plain' => "Your A/C ****9012 has been credited with 10.00 NPR.\nSender note: $VP credited by NPR $VD\nTxn ID: " . $T('V8')],
+    'Q1'  => ['plain' => "Your A/C 0123456789012 has been credited by NPR $VD.\nRemarks:\n$VP ref " . $T('V9R') . "\nTxn ID: " . $T('V9')],
+    'Q2'  => ['html' => "<table><tr><td>NPR $VD has been credited to A/C ****9012</td></tr><tr><td>Remarks:</td></tr><tr><td>$VP ref " . $T('VAR') . "</td></tr><tr><td>Txn ID: " . $T('VA') . "</td></tr></table>"],
+    'Q3'  => ['html' => "<p>Your A/C ****9012 has been credited.</p><p>Amount: 10.00</p><p>Remarks:<br>$VP credited by NPR $VD</p><p>Txn ID: " . $T('VB') . "</p>"],
+    'Q4'  => ['html' => "<table><tr><td>NPR $VD has been credited to A/C ****9012</td></tr><tr><td>Remarks: $VP</td></tr><tr><td>Txn ID: " . $T('VC') . "</td></tr><tr><td>Available Balance</td></tr><tr><td>NPR 55,000.00</td></tr></table>"],
+    'MIX' => ['plain' => "Your A/C 0123456789012 has been credited by NPR $VD (the amount debited on 24-11-2026, returned).\nRemarks: $VP\nTxn ID: " . $T('VM')],
+];
+$vMsgs = [];
+foreach ($probeMails as $k => $fx) {
+    $vMsgs[++$uidV] = $mail($fx + ['mid' => 'mp1v' . strtolower($k) . $tag, 'subject' => 'Credit Alert']);
+}
+$resV = BankMail::poll(50, $imapFor($vMsgs));
+$vRows = [];
+foreach (array_keys($probeMails) as $k) {
+    $vRows[$k] = Database::fetch('SELECT * FROM bank_credits WHERE message_id = :m', ['m' => 'mp1v' . strtolower($k) . $tag . '@gibl.test']);
+    if ($vRows[$k] !== null) { $credIds[] = (int) $vRows[$k]['id']; }
+}
+$vBad = array_keys(array_filter($vRows, static fn(?array $r): bool => $r === null || $r['state'] !== 'unmatched' || (string) $r['note'] === '' || (string) $r['note'] === 'checking…'));
+check('E every probe layout end to end (payer types the PNR + the exact NPR due, or a second ref id): booking stays pending, all ' . count($probeMails) . ' stored unmatched (none dropped, none confirmed)',
+    $resV['ok'] && $resV['seen'] === count($probeMails) && $resV['credits'] === count($probeMails) && $resV['confirmed'] === 0 && $resV['unmatched'] === count($probeMails)
+    && $resV['debits'] === 0 && $vBad === [] && $status($vic) === 'pending' && $count('booking.confirm', $vic) === 0,
+    json_encode(['res' => $resV, 'bad' => $vBad, 'status' => $status($vic)]));
+check('E each held probe carries its reason: two amounts (P1), two txn ids (Q1), credit + debit words (MIX), balance value row (Q4) - and a bell',
+    str_starts_with((string) ($vRows['P1']['note'] ?? ''), 'Different amounts') && str_starts_with((string) ($vRows['Q1']['note'] ?? ''), 'Different transaction')
+    && str_contains((string) ($vRows['MIX']['note'] ?? ''), 'credit and debit') && str_starts_with((string) ($vRows['Q4']['note'] ?? ''), 'Different amounts')
+    && $vRows['Q1'] !== null && $vRows['Q1']['txn_id'] === null && abs((float) ($vRows['MIX']['amount'] ?? 0) - (float) str_replace(',', '', $VD)) < 0.01
+    && (int) Database::scalar("SELECT COUNT(*) FROM notifications WHERE id > :f AND title LIKE 'Bank credit needs a person%' AND body LIKE '%check the bank statement%'", ['f' => $bellFloor], 0) >= count($probeMails),
+    json_encode(array_map(static fn(?array $r): string => (string) ($r['note'] ?? 'MISSING'), $vRows), JSON_UNESCAPED_UNICODE));
+setKeep('bankmail_amount_regex', '/Credited NPR ([0-9.,]+)/i', 'string');
+$p12 = $mail(['plain' => "Your A/C ****9012 has been credited.\nAmount: 10.00\nRemarks:\nCredited NPR $VD\nTxn ID: " . $T('VD'), 'mid' => 'mp1vp12' . $tag, 'subject' => 'Credit Alert']);
+$resP12 = BankMail::poll(50, $imapFor([++$uidV => $p12]));
+setKeep('bankmail_amount_regex', '', 'string');
+$r12 = Database::fetch('SELECT * FROM bank_credits WHERE message_id = :m', ['m' => 'mp1vp12' . $tag . '@gibl.test']);
+if ($r12 !== null) { $credIds[] = (int) $r12['id']; }
+check('E probe P12 end to end: the owner\'s amount regex matches the payer\'s "Credited NPR <due>" - still two figures -> unmatched, booking pending',
+    $resP12['confirmed'] === 0 && $resP12['unmatched'] === 1 && $r12 !== null && $r12['state'] === 'unmatched' && (float) $r12['amount'] === 0.0 && $status($vic) === 'pending', json_encode([$resP12, $r12['note'] ?? null]));
+
+/* the genuine single-figure alerts still auto-confirm: plain with an "Avl Bal: NPR 50,000" line, Devanagari HTML
+   (रु + Devanagari digits, मौज्दात row), the one-line alert (its Txn ID after "Remarks:" on the same line) */
+$dev = static fn(string $s): string => strtr($s, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४', '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९']);
+$g1 = $mk(); $g2 = $mk(); $g3 = $mk();
+$gMsgs = [
+    ++$uidV => $mail(['plain' => "Dear Customer,\nYour A/C 0123456789012 has been credited by NPR " . $npr($g1) . " on 25-11-2026.\nRemarks: " . $g1['pnr'] . "\nTxn ID: " . $T('G1') . "\nAvl Bal: NPR 50,000.00", 'mid' => 'mp1g1' . $tag]),
+    ++$uidV => $mail(['html' => '<html><body><table><tr><td>खाता नं.</td><td>0123456789012</td></tr><tr><td>रकम</td><td>रु ' . $dev($npr($g2)) . '</td></tr><tr><td>जम्मा भयो · credited</td></tr>'
+        . '<tr><td>कैफियत</td><td>' . $g2['pnr'] . '</td></tr><tr><td>Reference No: ' . $T('G2') . '</td></tr><tr><td>मौज्दात</td><td>रु ५०,०००.००</td></tr></table></body></html>', 'mid' => 'mp1g2' . $tag]),
+    ++$uidV => $mail(['plain' => 'NPR ' . $npr($g3) . ' credited to A/C 0123456789012 Remarks: ' . $g3['pnr'] . ' Txn ID: ' . $T('G3'), 'mid' => 'mp1g3' . $tag]),
+];
+$resG = BankMail::poll(50, $imapFor($gMsgs));
+foreach (['G1', 'G2', 'G3'] as $k) {
+    if (($x = (int) Database::scalar('SELECT id FROM bank_credits WHERE txn_id = :t', ['t' => $T($k)], 0)) > 0) { $credIds[] = $x; }
+}
+check('E genuine single-figure alerts still auto-confirm: plain + "Avl Bal: NPR 50,000" line, Devanagari HTML (रकम / रु digits / मौज्दात row), one-line alert',
+    $resG['ok'] && $resG['confirmed'] === 3 && $resG['unmatched'] === 0 && $status($g1) === 'confirmed' && $status($g2) === 'confirmed' && $status($g3) === 'confirmed',
+    json_encode(['res' => $resG, 'st' => [$status($g1), $status($g2), $status($g3)],
+        'notes' => Database::fetchAll("SELECT txn_id, state, note FROM bank_credits WHERE message_id IN ('mp1g1$tag@gibl.test','mp1g2$tag@gibl.test','mp1g3$tag@gibl.test')")], JSON_UNESCAPED_UNICODE));
+$threw = '';
+try { PayCredits::link((int) ($vRows['Q1']['id'] ?? 0), $VP, (int) (PayAuto::systemAdmin()['id'] ?? 0)); } catch (Throwable $ex) { $threw = $ex->getMessage(); }
+$lm = PayCredits::hold((int) ($vRows['P1']['id'] ?? 0), 'again');
+check('E a held credit with no txn id cannot be linked from the queue; hold() leaves a non-new credit alone',
+    str_contains($threw, 'no own transaction id') && !$lm['ok'] && $lm['why'] === 'already unmatched' && $status($vic) === 'pending', $threw . ' ' . json_encode($lm));
 
 /* the person's doors */
 $sys = PayAuto::systemAdmin();
@@ -510,8 +901,8 @@ check('E Ignore sets it aside (audited), booking untouched', PayCredits::get($id
 $threw = '';
 try { PayCredits::ignore((int) $hc['id'], (int) ($sys['id'] ?? 0), 'x'); } catch (Throwable $ex) { $threw = $ex->getMessage(); }
 check('E a credit that paid a ticket cannot be ignored', $threw !== '');
-check('E listRecent shows open credits only with state=open', array_filter(PayCredits::listRecent(['source' => 'gmail', 'state' => 'open', 'limit' => 200]),
-    static fn(array $c): bool => !in_array($c['state'], ['new', 'unmatched'], true)) === []);
+check('E listRecent state=open shows only open credits (new, unmatched, suggestions)', array_filter(PayCredits::listRecent(['source' => 'gmail', 'state' => 'open', 'limit' => 200]),
+    static fn(array $c): bool => !in_array($c['state'], ['new', 'unmatched'], true) && !PayCredits::isSuggestion($c)) === []);
 
 /* one odd message never stops the reader */
 $okB = $mk();
@@ -616,18 +1007,56 @@ $mkAdmin = static function (string $role) use (&$madeAdmins, $tag): int {
     $madeAdmins[] = $id;
     return $id;
 };
-$page = static function (int $admin, array $get = [], bool $nav = false) use ($ini): string {
-    $cmd = escapeshellarg(PHP_BINARY) . ($ini ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__) . ' --page ' . escapeshellarg(base64_encode((string) json_encode(['admin' => $admin, 'get' => $get, 'nav' => $nav]))) . ' 2>&1';
+$page = static function (int $admin, array $get = [], bool $nav = false, ?array $post = null, bool $nocsrf = false) use ($ini): string {
+    $cmd = escapeshellarg(PHP_BINARY) . ($ini ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__) . ' --page '
+        . escapeshellarg(base64_encode((string) json_encode(['admin' => $admin, 'get' => $get, 'nav' => $nav, 'post' => $post, 'nocsrf' => $nocsrf]))) . ' 2>&1';
     return (string) shell_exec($cmd);
 };
 $SUP = $mkAdmin('superadmin');
 $MGR = $mkAdmin('manager');
 $warn = static fn(string $h): bool => preg_match('/(Warning|Notice|Deprecated|Fatal error|Uncaught)[: ]/', $h) === 1;
+/* a fresh Gmail suggestion for the page, with the switch back at its code default (not stored = OFF) */
+unsetKeep('pay_bankmail_autoconfirm_on');
+setKeep('bankmail_on', '1', 'bool');
+$pc = $mk();
+$resPc = BankMail::poll(50, $imapFor([5301 => $mail(['plain' => $credit((string) $pc['pnr'], $npr($pc), $T('PC')), 'mid' => 'mp1pc' . $tag])]));
+$pcRow = Database::fetch('SELECT * FROM bank_credits WHERE source = \'gmail\' AND txn_id = :t', ['t' => $T('PC')]);
+if ($pcRow !== null) { $credIds[] = (int) $pcRow['id']; }
+$pcId = (int) ($pcRow['id'] ?? 0);
+check('H a fresh suggestion for the page (switch not stored = OFF): matched, booking pending', $resPc['suggested'] === 1 && PayCredits::isSuggestion($pcRow) && $status($pc) === 'pending', json_encode($resPc));
 $h = $page($SUP, ['tab' => 'np']);
 check('H Nepal tab renders (QR card, Gmail box, Test button, credits), no PHP warning',
     !$warn($h) && str_contains($h, 'नेपाली QR') && str_contains($h, 'name="bankmail_app_password"') && str_contains($h, 'value="np_test"') && str_contains($h, 'Credits (Gmail)')
     && str_contains($h, 'name="bankmail_account_hint"')
     && !str_contains($h, 'whsec_mp1_local_test'), substr((string) preg_replace('/\s+/', ' ', strip_tags($h)), 0, 300));
+check('H Nepal tab: the Nepali note + the auto switch shown read-only (○ बन्द · OFF), no toggle for it on this page',
+    str_contains($h, 'Gmail बाट आएको पैसा अहिले सुझावको रूपमा आउँछ; बैंक app मा हेरेर Confirm थिच्नुहोस्। Global IME को साँचो alert email को नमुना मिलाएपछि Auto-PAID खोल्न सकिन्छ।')
+    && str_contains($h, 'id="pc-auto-state"') && str_contains($h, '○ बन्द · OFF') && !str_contains($h, 'name="pay_bankmail_autoconfirm_on"'));
+$pcAt = strpos($h, 'name="id" value="' . $pcId . '"');
+$pcBlock = $pcAt === false ? '' : (string) substr($h, max(0, $pcAt - 2500), 5000);
+check('H the suggestion row: PNR, passenger, due vs credited (NPR), ✓ DKIM / ✓ A/C …9012 / ✓ Sender / ✓ amount chips, the big "✅ Confirm" (CSRF) with the bank-app tick',
+    $pcId > 0 && str_contains($h, '💡 सुझाव · Suggested') && str_contains($pcBlock, (string) $pc['pnr']) && str_contains($pcBlock, 'ZZTEST mp1pay')
+    && substr_count($pcBlock, 'NPR ' . $npr($pc)) >= 2 && str_contains($pcBlock, '✓ DKIM') && str_contains($pcBlock, '✓ A/C …9012') && str_contains($pcBlock, '✓ Sender')
+    && str_contains($pcBlock, '✓ रकम मिल्यो') && str_contains($pcBlock, '✅ Confirm · पुष्टि गर्नुहोस्') && str_contains($pcBlock, 'name="act" value="confirm"')
+    && str_contains($pcBlock, 'name="bank_checked" value="1" required') && str_contains($pcBlock, 'name="' . CSRF_TOKEN_NAME . '"'),
+    substr((string) preg_replace('/\s+/', ' ', strip_tags($pcBlock)), 0, 600));
+$cPost = ['act' => 'confirm', 'tab' => 'np', 'id' => (string) $pcId, 'bank_checked' => '1'];
+$h = $page($MGR, ['tab' => 'np'], false, $cPost);
+check('H a manager\'s Confirm post is refused (super-admin only), booking pending', $status($pc) === 'pending' && !str_contains($h, 'confirmed — ticket sent'));
+$h = $page($SUP, ['tab' => 'np'], false, $cPost, true);
+check('H Confirm with a forged CSRF token -> "Session expired", booking pending', str_contains($h, 'Session expired') && $status($pc) === 'pending');
+$h = $page($SUP, ['tab' => 'np'], false, ['bank_checked' => ''] + $cPost);
+check('H Confirm without the "I saw it in the bank app" tick -> refused with the reason, booking pending',
+    str_contains($h, 'पहिले बैंक app मा पैसा आएको हेर्नुहोस्') && $status($pc) === 'pending' && PayCredits::isSuggestion(PayCredits::get($pcId)));
+$h = $page($SUP, ['tab' => 'np'], false, $cPost);
+$pcTk = $tick($pc);
+$pcAfter = PayCredits::get($pcId) ?? [];
+check('H Confirm (super-admin, CSRF, bank-app tick) -> "✅ … confirmed — ticket sent", booking confirmed, credit linked by that person, chalani "PAID - Nepali online (Gmail)" confirmed by MP1 superadmin',
+    !$warn($h) && str_contains($h, '✅ ' . $pc['pnr'] . ' confirmed — ticket sent.') && $status($pc) === 'confirmed' && ($pcAfter['state'] ?? '') === 'linked'
+    && (int) ($pcAfter['acted_by'] ?? 0) === $SUP && ($pcTk['mode'] ?? '') === 'PAID - Nepali online (Gmail)' && str_contains((string) ($pcTk['note'] ?? ''), 'confirmed by MP1 superadmin'),
+    json_encode([$status($pc), $pcAfter['state'] ?? null, $pcAfter['note'] ?? null, $pcTk], JSON_UNESCAPED_UNICODE) . ' ' . substr((string) preg_replace('/\s+/', ' ', strip_tags($h)), 0, 300));
+$h = $page($SUP, ['tab' => 'np'], false, $cPost);
+check('H Confirm again -> "no longer a suggestion", still one booking.confirm', str_contains($h, 'no longer a suggestion') && $count('booking.confirm', $pc) === 1);
 $h = $page($SUP, ['tab' => 'in']);
 check('H India tab renders with the webhook address and never prints a secret', !$warn($h) && str_contains($h, 'payment/bank-webhook.php') && str_contains($h, 'Field map') && !str_contains($h, 'whsec_mp1_local_test'));
 $h = $page($SUP, ['tab' => 'cash', 'day' => $TD]);

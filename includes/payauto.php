@@ -134,7 +134,7 @@ final class PayAuto
     {
         $no = static fn(string $why): array => ['ok' => false, 'why' => $why];
         if ($source === 'gmail') {
-            if (!Settings::getBool('bankmail_on', false) || !Settings::getBool('pay_bankmail_autoconfirm_on', true)) {
+            if (!Settings::getBool('bankmail_on', false) || !Settings::getBool('pay_bankmail_autoconfirm_on', false)) {
                 return $no('off');
             }
         } elseif ($source === 'bankapi') {

@@ -76,7 +76,8 @@ $ES_SECRETS = [
    check as admin/settings.php) | json (an object; '{}' allowed) | list (comma words -> JSON
    list, only 'opts' words) | phones (WhatsApp numbers with 91 / 977, stored "91…,977…").
    Spec 'on_from' = a page that must switch the key ON (its checks run there); here it can
-   only go OFF. 'def' = the default the code reads the key with, so a key with
+   only go OFF. Spec 'super' = only a super-admin may change it (a lock on the managers
+   themselves, e.g. staff_credentials_lock_on). 'def' = the default the code reads the key with, so a key with
    no row shows what really happens. Only these keys can be written by act=nset; each save
    is CSRF-checked, Auth::canManageSettings only, audited settings.easy (old -> new).
    Not here on purpose: wa_auth_tpl_last_test, wa_flow_waba, wa_flow_dropped (state the code
@@ -149,6 +150,10 @@ $ES_NEW = [
         'login_remember_office_hours' => ['🏢 Office signed in (घण्टा) · Office roles stay signed in', 'int', 'A fixed cap from sign-in for every other role; the idle timeout still applies.', ['def' => 24, 'min' => 0, 'max' => 720, 'unit' => 'h']],
         'login_remember_roles'        => ['👥 Field role हरू · Field roles', 'list', 'Comma list. Superadmin, manager and accountant are never field roles.', ['def' => ['agent', 'counter', 'scanner', 'support', 'operations', 'staff'], 'opts' => ['agent', 'counter', 'scanner', 'support', 'operations', 'staff', 'official']]],
         'customer_remember_days'      => ['🧳 यात्री signed in (दिन) · Passengers stay signed in', 'int', 'Days a passenger stays signed in after a proven door. 0 = off.', ['def' => 365, 'min' => 0, 'max' => 730, 'unit' => 'days']],
+        // 25 Nov 2026 (mp1): the release's own switches, so the owner can roll each back from here
+        'staff_credentials_lock_on'   => ['🔐 लगइन विवरण सुपर-एडमिन मात्र · Sign-in details: super-admin only', 'bool', 'Someone else\'s password, username / email, login mobile, 2FA, PIN / pattern: a super-admin (or a staff.credentials grant). OFF = the old rule (staff.manage, e.g. a manager). Only a super-admin can switch this.', ['def' => true, 'super' => true]],
+        'login_mode_cards_on'         => ['🪪 लगइन मोड कार्ड · Login mode cards', 'bool', 'Staff / Agent / Counter / Admin cards on the login door (label + hint only; the role always comes from the account). OFF = the door as before.', ['def' => true]],
+        'staff_avatar_on'             => ['🙂 माथि फोटो र मोड · Top bar photo + mode badge', 'bool', 'Photo (or coloured initials) + the coloured mode badge in the staff top bar and drawer. OFF = the bar as before.', ['def' => true]],
     ],
     '🧠 AI' => [
         'ai_review_on'         => ['🌙 राति AI review · Nightly AI review', 'bool', 'A paid Claude call once a night, inside the two caps below.', ['def' => true]],
@@ -181,6 +186,7 @@ $ES_NEW = [
         'pay_app_chooser_on'      => ['📱 App छान्ने · Phone app chooser', 'bool', 'Let the phone offer its own app chooser for the UPI link.', ['def' => false]],
         'pay_claim_screenshot_on' => ['🖼 Screenshot सहित claim · Payment claim with a screenshot', 'bool', 'The pay page asks for a screenshot with the UTR. The office still confirms by hand.', ['def' => true]],
         'search_low_seats_at'     => ['🪑 "केवल N सिट बाँकी" · Low-seats badge at', 'int', 'Search results say "Only N seats left" at or below this. 0 = never.', ['def' => 6, 'min' => 0, 'max' => 60, 'unit' => 'seats']],
+        'icici_strict_fields_on'  => ['🏦 ICICI कडा जाँच · ICICI strict fields', 'bool', 'A signed ICICI success auto-confirms only when it carries the amount and merchant id (both equal ours) and, if a currency is sent, INR. Otherwise the proof waits in Verify Payments. OFF = the old check.', ['def' => true]],
     ],
     '🧾 Chalani / Reports' => [
         'counter_day_close_on'         => ['🔒 Counter दिन बन्द · Counter day close', 'bool', 'One close per desk per day, totals frozen; office only.', ['def' => true]],
@@ -196,6 +202,9 @@ $ES_NEW = [
         'driver_list_final_hours'      => ['🚌 अन्तिम list · Final list before departure', 'int', 'Hours before departure for the final list. 0 = no final list.', ['def' => 2, 'min' => 0, 'max' => 48, 'unit' => 'h']],
         'driver_list_window_hours'     => ['🚌 कहिलेदेखि · Start sending within', 'int', 'Lists are sent only for departures within this many hours.', ['def' => 24, 'min' => 1, 'max' => 168, 'unit' => 'h']],
         'driver_list_phones'           => ['📞 Driver list मा फोन · Passenger phones on the driver list', 'bool', 'on = the driver also gets the chalani picture with passenger phones.', ['def' => false]],
+        // 25 Nov 2026 (mp1 ch): the chalani money strip + who may export it
+        'chalani_money_strip_on'       => ['💰 चलानी पैसा पट्टी · Chalani money strip', 'bool', 'The paid / due money strip and the Paid / Due badge on each chalani row (screen, PNG, PDF). OFF = the old look.', ['def' => true]],
+        'chalani_export_perm_on'       => ['🔏 चलानी export अनुमति · Chalani export needs its permission', 'bool', 'Chalani PNG / PDF / WhatsApp share need the chalani.export permission. OFF = bookings.view, as before. Only a super-admin can switch this.', ['def' => true, 'super' => true]],
     ],
 ];
 /* the settings group a key gets when it has no row yet (an existing row keeps its own) */
@@ -382,6 +391,10 @@ if (($canEdit || ($canCmd && in_array((string) ($_POST['act'] ?? ''), ['cmd', 'y
         $k = (string) ($_POST['key'] ?? '');
         if (!isset($esNewFlat[$k])) {
             $flash = ['bad', '✖ यो सेटिङ यहाँबाट बदलिँदैन · That setting is not on this page.'];
+        } elseif ((!empty($esNewFlat[$k][3]['super']) || AiOps::superOnlySetting($k)) && !Auth::isSuperadmin()) {
+            // 25 Nov 2026 (mp1-lg review): a manager never unlocks the lock placed on managers (the one list: AiOps::SUPER_ONLY_SETTINGS;
+            // the cmd / yes path is held by AiOps::settingEditable + allowed)
+            $flash = ['bad', '✖ सुपर-एडमिन मात्र · Only a super-admin can change this switch.'];
         } else {
             $old = $esNewCur($k);
             $raw = $esNewFlat[$k][1] === 'bool' ? ($old === '1' ? '0' : '1') : (string) ($_POST['value'] ?? '');
@@ -610,7 +623,7 @@ admin_header('🤖 S Hari AI · सेटिङ र काम (बोलेर)'
             <form method="post" class="num" data-esn="<?= $e($k) ?>">
               <?= Security::csrfField() ?><input type="hidden" name="act" value="nset"><input type="hidden" name="key" value="<?= $e($k) ?>">
               <?php if ($t === 'bool'): ?>
-                <button type="submit" class="esn-t" <?= $canEdit ? '' : 'disabled' ?>><span><?= $e($lbl) ?></span><span class="pill <?= $v === '1' ? 'on' : 'off' ?>"><?= $v === '1' ? 'ON' : 'OFF' ?></span></button>
+                <button type="submit" class="esn-t" <?= $canEdit && ((empty($spec['super']) && !AiOps::superOnlySetting($k)) || Auth::isSuperadmin()) ? '' : 'disabled' ?>><span><?= $e($lbl) ?></span><span class="pill <?= $v === '1' ? 'on' : 'off' ?>"><?= $v === '1' ? 'ON' : 'OFF' ?></span></button>
                 <small class="muted"><?= $e($hint) ?> <code><?= $e($k) ?></code><?php if (isset($spec['on_from'])): ?> · <a href="<?= $e($spec['on_from']) ?>">ON गर्न यहाँ · Switch ON here →</a><?php endif; ?></small>
               <?php else: ?>
                 <label for="esx-<?= $e($k) ?>"><span><?= $e($lbl) ?></span><small><?= $e($hint) ?> <code><?= $e($k) ?></code></small></label>

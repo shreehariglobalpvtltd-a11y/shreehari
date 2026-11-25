@@ -197,15 +197,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $code  = trim((string) ($_POST['agent_code'] ?? ''));
             /* 25 Nov 2026 (mp1-lg review): admins.phone is the SIGN-IN mobile - the /team/ WhatsApp
                reset and the WhatsApp door send their codes to it. A super-admin's (or a staff.credentials
-               grant). Anyone else never writes it: their Mobile box is the number printed on tickets
-               (display_phone), the WhatsApp line saves too, the login mobile stays exactly as stored. */
-            $phoneMoved = normalisePhone($phone) !== normalisePhone((string) ($a['phone'] ?? ''));
-            $keepLogin  = !$mayLoginPhone;
+               grant; Auth::mayEditCredentials). Anyone else sees the Mobile box disabled (not posted) and
+               never writes the mobile at all - neither admins.phone nor admin_profiles.display_phone
+               (tickets read admins.phone). A changed number posted anyway is refused (audited); the
+               other fields still save. */
+            $keepLogin    = !$mayLoginPhone;
+            $phoneRefused = $keepLogin && $phone !== '' && normalisePhone($phone) !== normalisePhone((string) ($a['phone'] ?? ''));
+            $phoneMoved   = !$keepLogin && normalisePhone($phone) !== normalisePhone((string) ($a['phone'] ?? ''));
             if (mb_strlen($name) < 2) {
                 $flash = ['bad', 'Enter the agent\'s name.'];
-            } elseif (strlen($phone) < 10 || strlen($phone) > 15) {
+            } elseif (!$keepLogin && (strlen($phone) < 10 || strlen($phone) > 15)) {
                 $flash = ['bad', 'Enter a valid mobile number.'];
-            } elseif ($phoneMoved && !$keepLogin
+            } elseif ($phoneMoved
                       && count(AgentPro::phoneOwners($phone, $id)) >= AgentPro::phoneMax()) {
                 // 30 Oct 2026: one mobile may carry up to ap_phone_max_accounts IDs (office
                 // join form) — an unchanged number always saves; a new one must have room.
@@ -222,22 +225,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'tier' => AgentWallet::agentTypeFor($id), 'serial' => AgentWallet::agentCodeFor($id),
                 ];
                 Database::update('admins', $keepLogin ? ['full_name' => $name] : ['full_name' => $name, 'phone' => $phone], 'id = :id', ['id' => $id]);
+                // display_phone: a super-admin's save writes it as before; anyone else leaves it as stored (NULL = keep)
+                $dpNew = $keepLogin ? null : $phone;
                 Database::run(
                     'INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name, agent_kind, contact_person, address, id_type, id_number, daily_booking_limit, cash_limit, notes)
                           VALUES (:aid, :dp, :wa, :cn, :kind, :cp, :addr, :it, :inum, :lim, :cash, :notes)
-                     ON DUPLICATE KEY UPDATE display_phone = :dp2, whatsapp = :wa2, counter_name = :cn2, agent_kind = :kind2, contact_person = :cp2, address = :addr2,
+                     ON DUPLICATE KEY UPDATE display_phone = COALESCE(:dp2, display_phone), whatsapp = :wa2, counter_name = :cn2, agent_kind = :kind2, contact_person = :cp2, address = :addr2,
                                              id_type = :it2, id_number = :inum2, daily_booking_limit = :lim2, cash_limit = :cash2, notes = :notes2',
-                    ['aid' => $id, 'dp' => $phone, 'wa' => $wa ?: null, 'cn' => $city ?: null, 'kind' => $kind, 'cp' => $cp ?: null, 'addr' => $addr ?: null,
+                    ['aid' => $id, 'dp' => $dpNew, 'wa' => $wa ?: null, 'cn' => $city ?: null, 'kind' => $kind, 'cp' => $cp ?: null, 'addr' => $addr ?: null,
                      'it' => $idT ?: null, 'inum' => $idN ?: null, 'lim' => $limit, 'cash' => $cash, 'notes' => $notes ?: null,
-                     'dp2' => $phone, 'wa2' => $wa ?: null, 'cn2' => $city ?: null, 'kind2' => $kind, 'cp2' => $cp ?: null, 'addr2' => $addr ?: null,
+                     'dp2' => $dpNew, 'wa2' => $wa ?: null, 'cn2' => $city ?: null, 'kind2' => $kind, 'cp2' => $cp ?: null, 'addr2' => $addr ?: null,
                      'it2' => $idT ?: null, 'inum2' => $idN ?: null, 'lim2' => $limit, 'cash2' => $cash, 'notes2' => $notes ?: null]
                 );
                 $notesOut = [];
-                // say so (and audit) only when a NEW number was typed - not the login one, not the ticket one already saved
-                if ($keepLogin && $phoneMoved && normalisePhone($phone) !== normalisePhone((string) ($prevProfile['display_phone'] ?? ''))) {
+                if ($phoneRefused) {
                     Logger::audit('staff.credentials_denied', 'admin', (string) $id, null, ['action' => 'agents.edit.phone'],
-                        'Login mobile change refused on the agents register (super-admin only); saved as the display / ticket number');
-                    $notesOut[] = 'लगइन मोबाइल super-admin ले मात्र बदल्छ · Login mobile not changed (only a super-admin changes it); the new number is saved as the number shown on tickets.';
+                        'Login mobile change refused on the agents register (super-admin only); mobile not saved, the other fields saved');
+                    $notesOut[] = 'मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile.';
                 }
                 /* Sign-in details (4 Sep 2026): email is now half of the agent
                    login (email + username + password), so it goes through the
@@ -289,7 +293,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         'Agent kind switched on the register by admin #' . $selfId . ' (serial, wallet and tier kept)');
                 }
                 Logger::audit('agent.edit', 'admin', (string) $a['username'], $before,
-                    ['full_name' => $name, 'phone' => $keepLogin ? $a['phone'] : $phone, 'display_phone' => $phone, 'email' => $email, 'agent_kind' => $kind, 'contact_person' => $cp, 'whatsapp' => $wa,
+                    ['full_name' => $name, 'phone' => $keepLogin ? $a['phone'] : $phone, 'email' => $email, 'agent_kind' => $kind, 'contact_person' => $cp, 'whatsapp' => $wa,
                      'city' => $city, 'address' => $addr, 'daily_booking_limit' => $limit, 'cash_limit' => $cash, 'tier' => $tier ?: $before['tier'],
                      'serial' => $code !== '' ? (int) $code : $before['serial']],
                     'agents register edit');
@@ -670,9 +674,9 @@ admin_header('Agents & Organization Hub', 'agents');
             <label>Contact Person<input name="contact_person" value="<?= $e($r['contact_person']) ?>" maxlength="120"></label>
             <?php if ($mayLoginPhone): ?>
             <label>Mobile<input name="phone" value="<?= $e($r['phone']) ?>" required inputmode="numeric" maxlength="15"></label>
-            <?php else: /* 25 Nov 2026 (mp1-lg review): the login mobile is the super-admin's; this box is the ticket number */ ?>
-            <label>Mobile (on tickets) · टिकटमा देखिने<input name="phone" value="<?= $e(($r['display_phone'] ?? '') ?: $r['phone']) ?>" required inputmode="numeric" maxlength="15">
-              <span class="muted" style="font-size:11px">लगइन मोबाइल <?= $e($r['phone'] ?: '—') ?> super-admin ले मात्र बदल्छ · Login mobile: super-admin only</span></label>
+            <?php else: /* 25 Nov 2026 (mp1-lg review): the login mobile is the super-admin's - shown, never posted */ ?>
+            <label>Mobile<input value="<?= $e($r['phone']) ?>" disabled inputmode="numeric" maxlength="15">
+              <span class="muted" style="font-size:11px">मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile</span></label>
             <?php endif; ?>
             <label>WhatsApp<input name="whatsapp" value="<?= $e($r['whatsapp']) ?>" inputmode="numeric" maxlength="15"></label>
             <label>Commission Tier

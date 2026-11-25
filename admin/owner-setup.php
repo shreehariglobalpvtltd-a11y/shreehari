@@ -17,6 +17,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/aiops.php';   // AiOps::superOnlySetting (payment ids are a super-admin's)
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/driverauth.php';
@@ -107,6 +108,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         Settings::flush();
         Logger::audit('settings.normal_fare', 'settings', 'owner-setup', null, ['fares' => $nf, 'on' => $on], 'Normal fare (struck-through price)');
         $flash[] = ['ok', 'सामान्य भाडा सेभ भयो · normal fare saved' . ($on === '1' ? ' (ON)' : ' (OFF)')];
+    } elseif ((string) ($_POST['act'] ?? '') === 'esewa_qr' && !Auth::isSuperadmin()) {
+        /* 25 Nov 2026 (mp1): the Nepal payment QR is a super-admin's (Payment Management). */
+        $flash[] = ['bad', 'नेपाली QR सुपर-एडमिनले मात्र राख्न/हटाउन मिल्छ · only a super-admin can change the Nepal QR'];
     } elseif ((string) ($_POST['act'] ?? '') === 'esewa_qr') {
         /* 21 Nov 2026 (owner: "NPJ branch ko chhuttai Nepali wala QR rakhdinus"): the
            Nepal counter's own eSewa / Fonepay QR image, printed on NPR tickets that
@@ -163,6 +167,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         foreach ($keys as $k => $spec) {
             if (!array_key_exists($k, $_POST)) { continue; }
             $v = trim((string) $_POST[$k]);
+            /* 25 Nov 2026 (mp1): payment ids / QR are a super-admin's (AiOps::superOnlySetting). */
+            if (!Auth::isSuperadmin() && AiOps::superOnlySetting($k)) {
+                if ($v !== Settings::getString($k, '')) {
+                    $flash[] = ['bad', $k . ': भुक्तानी ID सुपर-एडमिनले मात्र बदल्न मिल्छ · only a super-admin can change it'];
+                }
+                continue;
+            }
             if ($spec[0] === 'secret' && $v === '') { continue; }          // blank = keep the saved secret
             if ($spec[0] === 'map' && $v !== '') {
                 if (Ticket::mapLink($v) === '') {

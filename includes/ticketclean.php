@@ -27,7 +27,10 @@
  *  bar, the passenger list for a group, the note / extras strips, then the
  *  pickup location QR with that place's phone beside the pay QR (only while
  *  money is due) or the PAID stamp, the barcode + SECURITY CODE, the Nepal
- *  office (smaller), "टिकट काट्ने · Booked by", and the legal lines.
+ *  office (smaller), "टिकट काट्ने · Booked by", and the legal lines (+ cp1's "Booked at"
+ *  GPS row when the booking phone gave a fix). With money due on the Nepal QR path but no
+ *  QR image on the server, the pay card shows the due + the eSewa / Fonepay id instead
+ *  (v2PayCard() 'id').
  *  Mantra, blessing, heritage photos, mandalas, the berth-mode badge, the
  *  verify QR beside the PNR and the double flag pair are not drawn here
  *  (their settings and the old layout are untouched).
@@ -259,6 +262,32 @@ trait TicketClean
      *  Clean PNG
      * -------------------------------------------------------------- */
 
+    /**
+     * Which card the clean PNG draws right of the pickup card (the renderer's own pick):
+     *   'qr'    a pay QR while money is due (UPI with the exact due, the live pay.php link, WhatsApp)
+     *   'img'   the office's Nepal eSewa / Fonepay QR image (paymentQr mode 'npr')
+     *   'id'    Nepal QR path, money due, NO QR image on the server but an eSewa / Fonepay id:
+     *           the due big + the id + "write the PNR in remarks", no QR frame (25 Nov 2026)
+     *   'stamp' nothing to scan: the PAID stamp, or the due in words (the old fallback)
+     */
+    public static function v2PayCard(array $booking, ?array $sum = null, ?array $payQ = null): string
+    {
+        $sum  ??= self::paymentSummary($booking);
+        $payQ ??= self::paymentQr($booking, $sum);
+        if (!($sum['due'] > 0 && in_array((string) ($booking['status'] ?? ''), ['pending', 'confirmed'], true))) {
+            return 'stamp';
+        }
+        if ($payQ['mode'] === 'npr') {
+            if ((string) ($payQ['esewaImg'] ?? '') !== '') {
+                return 'img';
+            }
+            if (trim((string) ($payQ['esewa'] ?? '')) !== '') {
+                return 'id';
+            }
+        }
+        return $payQ['qr'] !== '' ? 'qr' : 'stamp';
+    }
+
     /** Largest Poppins size in [$max..$min] that fits $maxW, the text clamped with … at $min. */
     private static function v2Fit(int $max, int $min, string $text, int $maxW, string $wt = 'Bold'): array
     {
@@ -387,6 +416,7 @@ trait TicketClean
             if ($mq['kind'] === 'nepal' && $nepal === null) { $nepal = $mq; }
         }
         $address = self::latin((string) (($co['desk']['address'] ?? '') !== '' ? $co['desk']['address'] : ($co['address'] ?? '')));
+        $geo     = self::bookedAtLine($booking);   // cp1: "Booked at: <place> (lat, lng)" - '' without a GPS fix
 
         /* ---- heights, top to bottom (all fixed but the list / strips) ---- */
         $headB  = 256;                          // header band bottom
@@ -401,7 +431,7 @@ trait TicketClean
         $yQ1    = $yTear + 34;                  // pickup + pay / stamp cards, 360
         $yQ2    = $yQ1 + 360 + 22;              // barcode + security code | Nepal office, 250
         $yFoot  = $yQ2 + 250 + 20;              // booked-by tile 72
-        $cardB  = $yFoot + 72 + 22 + 30 + 28 + 26 + ($address !== '' ? 24 : 0) + 2 * 21 + 24;
+        $cardB  = $yFoot + 72 + 22 + 30 + 28 + 26 + ($address !== '' ? 24 : 0) + 2 * 21 + ($geo !== '' ? 21 : 0) + 24;
         $H      = $cardB + 40;
 
         $im = imagecreatetruecolor($W, $H);
@@ -682,10 +712,9 @@ trait TicketClean
             self::gdText($im, $phSz, $qL1 + intdiv(($qL2 - $qL1) - self::gdWidth($phSz, $phT), 2), $qy2 - 16, $green, $phT, true);
         }
 
-        $payable = $sum['due'] > 0 && in_array((string) ($booking['status'] ?? ''), ['pending', 'confirmed'], true);
         $payImg  = $payQ['mode'] === 'npr' ? (string) ($payQ['esewaImg'] ?? '') : '';
-        $hasPayQr = $payable && ($payQ['qr'] !== '' || $payImg !== '');
-        if ($hasPayQr) {
+        $payCard = self::v2PayCard($booking, $sum, $payQ);
+        if ($payCard === 'qr' || $payCard === 'img') {
             $isNp = $payQ['mode'] === 'npr';
             /* review: a Nepal-side pay-at-boarding / pending ticket keeps the LIVE pay link
                (pay.php: UPI or eSewa + "I paid, here is the UTR") - say so, with the रू too. */
@@ -722,6 +751,32 @@ trait TicketClean
                         : ($liveNp ? 'Scan, pay, send the UTR there' : ($payQ['vpa'] !== '' ? 'UPI: ' . self::latin((string) $payQ['vpa']) : 'UPI'));
             [$l2s, $l2t] = self::v2Fit(17, 12, $l2, $qR2 - $qR1 - 36, 'Medium');
             self::gdTextP($im, $l2s, $qR1 + intdiv(($qR2 - $qR1) - self::gdWidthP($l2s, $l2t, 'Medium'), 2), $qy2 - 16, $mut, $l2t, 'Medium');
+        } elseif ($payCard === 'id') {
+            /* 25 Nov 2026: money due on the Nepal QR path, an eSewa / Fonepay id typed but no QR image
+               on the server - no QR frame and no stamp ring: the due big, the id to pay to and the PNR
+               for the remarks, centred in the card. Words only - the office still approves the money. */
+            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, 'भुक्तानी · eSewa / Fonepay', self::P_ORG, self::P_ORG_D);
+            $mx   = intdiv($qR1 + $qR2, 2);
+            $room = $qR2 - $qR1 - 48;
+            $dl   = 'तिर्न बाँकी · Amount due';
+            $dlS  = 18;
+            while ($dlS > 13 && self::gdWidth($dlS, $dl) > $room) { $dlS--; }
+            self::gdText($im, $dlS, $mx - intdiv(self::gdWidth($dlS, $dl), 2), $qy1 + 104, $mut, $dl, true);
+            $amt = 'रू ' . indianNumber(self::nprDue($booking, (float) $sum['due']));
+            $aSz = 46;
+            while ($aSz > 22 && self::gdWidth($aSz, $amt) > $room) { $aSz--; }
+            self::gdText($im, $aSz, $mx - intdiv(self::gdWidth($aSz, $amt), 2), $qy1 + 164, $orgD, $amt, true);
+            $iy1 = $qy1 + 194; $iy2 = $qy1 + 252;
+            self::gdRounded($im, $qR1 + 22, $iy1, $qR2 - 22, $iy2, 14, DocArt::col($im, [255, 241, 228]));
+            DocArt::roundOutline($im, $qR1 + 22, $iy1, $qR2 - 22, $iy2, 14, DocArt::col($im, [250, 214, 180]), 1);
+            [$iS, $iT] = self::v2Fit(24, 12, 'eSewa / Fonepay ID: ' . self::latin((string) $payQ['esewa']), $qR2 - $qR1 - 72);
+            self::gdTextP($im, $iS, $mx - intdiv(self::gdWidthP($iS, $iT, 'Bold'), 2), $iy1 + intdiv(($iy2 - $iy1) + (int) round($iS * 0.93), 2), $ink, $iT, 'Bold');
+            $rm = 'भुक्तानी गर्दा Remarks मा PNR लेख्नुहोस्';
+            $rmS = 17;
+            while ($rmS > 12 && self::gdWidth($rmS, $rm) > $room) { $rmS--; }
+            self::gdText($im, $rmS, $mx - intdiv(self::gdWidth($rmS, $rm), 2), $qy1 + 290, $mut, $rm, false);
+            [$reS, $reT] = self::v2Fit(18, 12, 'Write PNR in remarks: ' . self::latin($pnr), $room, 'SemiBold');
+            self::gdTextP($im, $reS, $mx - intdiv(self::gdWidthP($reS, $reT, 'SemiBold'), 2), $qy1 + 324, $navy, $reT, 'SemiBold');
         } else {
             /* No pay QR: the PAID stamp (rule A), or the due in words when there is no QR to give. */
             $sCol  = $isPaid ? [23, 122, 72] : [212, 87, 12];
@@ -843,6 +898,13 @@ trait TicketClean
             if ($n4 === '') { continue; }
             [$s4, $t4] = self::v2Fit(12, 10, $n4, $X2 - $X1, 'Regular');
             self::gdTextP($im, $s4, intdiv($W - self::gdWidthP($s4, $t4, 'Regular'), 2), $cy, $mut, $t4, 'Regular');
+            $cy += 21;
+        }
+        /* cp1 (25 Nov 2026): where the ticket was cut - the booking phone's GPS (BookGeo) - one more
+           small row under the statutory ones, as on the old layout; the card grew 21 px for it above. */
+        if ($geo !== '') {
+            [$sg, $tg] = self::v2Fit(12, 10, $geo, $X2 - $X1, 'Regular');
+            self::gdTextP($im, $sg, intdiv($W - self::gdWidthP($sg, $tg, 'Regular'), 2), $cy, $mut, $tg, 'Regular');
             $cy += 21;
         }
 

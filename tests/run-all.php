@@ -244,6 +244,8 @@ const CORE_SUITES = [
     'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; COD and pending tickets print the live link',
     // 25 Nov 2026 (mp1 tk), registered with the clean ticket + cash / country pay-QR rule it guards.
     'mp1-ticket-test.php'             => 'clean ticket: paid (cash) = no pay QR + PAID stamp, Nepal QR by country while due, one flag by direction, v2 off = old layout',
+    // 25 Nov 2026 (cp1), the "Booked at" GPS line the clean ticket now prints too.
+    'cp1-bookgeo-test.php'            => 'booking GPS headers -> booked_lat / lng / place (junk / 0,0 / out of range refused), "Booked at" ticket line',
     'u4-desk-test.php'                => 'sales closing clock per route + channel, office never blocked, Nepal desks and quick agent',
     'u5-ag-staff-headcount-test.php'  => 'staff / office logins earn a head count, not new commission; agents and counter unchanged',
     'u5-ag-payout-test.php'           => 'agent withdrawal request + manual office pay / decline, verify tick only when switched on',

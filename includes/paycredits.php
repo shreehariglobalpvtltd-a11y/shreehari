@@ -29,6 +29,19 @@
  *  Then it goes through BookingService::submitPaymentProof + PayAuto (the same
  *  approveReviewed() gate a person uses) and OpsHub::markPaid ticks the
  *  chalani "PAID - Nepali online (Gmail Auto)" / "PAID - Indian UPI (API Auto)".
+ *
+ *  GMAIL = A SUGGESTION, NOT AUTO-PAID (owner-safety, 25 Nov 2026): a free-text
+ *  Gmail alert is not trusted for unattended auto-PAID until the real Global IME
+ *  alert template is locked, so pay_bankmail_autoconfirm_on is OFF by default
+ *  (gmailAutoOn()). While it is off, a Gmail credit that passes EVERY check above
+ *  is stored as a SUGGESTION: state 'matched' with booking_id = that one booking,
+ *  acted_at still NULL (isSuggestion()), note "सुझाव · Suggested: <PNR> NPR <amount>",
+ *  a bell "बैंक इमेल: रू X आयो · PNR Y — … Confirm थिच्नुहोस्" - and the booking stays
+ *  pending. A person checks the bank app and presses Confirm on Payment
+ *  Management = link() (approveReviewed via 'queue'), chalani "PAID - Nepali
+ *  online (Gmail)" with "confirmed by <name>" in the tick note. The India bank
+ *  API (signed webhook, live mode) path is unchanged.
+ *
  *  Anything else: state 'unmatched' + an admin bell with the reason. A person
  *  can then "Link to PNR" (approveReviewed via 'queue': PaymentRisk + a person
  *  stay in the loop, and the amount must still match) or Ignore it.
@@ -53,6 +66,11 @@ final class PayCredits
         'gmail'   => 'PAID - Nepali online (Linked)',
         'bankapi' => 'PAID - Indian UPI (Linked)',
     ];
+    /** A person confirmed a Gmail SUGGESTION (OpsHub::markPaid keeps 40 characters: who confirmed goes in the tick note). */
+    public const LABEL_CONFIRMED = [
+        'gmail'   => 'PAID - Nepali online (Gmail)',
+    ];
+    public const SUGGEST_NOTE = 'सुझाव · Suggested: ';
     private const PREFIX = ['gmail' => 'GIME-', 'bankapi' => 'UPIAPI-'];
     /** No single booking is a crore: a bigger figure means the alert was misread (and would not fit DECIMAL(12,2) safely). */
     public const MAX_AMOUNT = 10000000.0;
@@ -246,6 +264,27 @@ final class PayCredits
         }
         $n = min(strlen($m[1]), strlen($hint));
         return substr($m[1], -$n) === substr($hint, -$n);
+    }
+
+    /**
+     * May a Gmail credit mark a ticket PAID with no person (pay_bankmail_autoconfirm_on)?
+     * OFF by default (owner-safety, 25 Nov 2026): a full match is then only a suggestion.
+     */
+    public static function gmailAutoOn(): bool
+    {
+        return Settings::getBool('pay_bankmail_autoconfirm_on', false);
+    }
+
+    /**
+     * A Gmail credit that passed every auto check while auto-PAID was off: state 'matched',
+     * a booking, and nobody has acted on it yet (an auto-confirmed or linked credit always
+     * carries acted_at). The booking is NOT paid - a person presses Confirm (link()).
+     *
+     * @param array<string,mixed>|null $c
+     */
+    public static function isSuggestion(?array $c): bool
+    {
+        return $c !== null && (string) ($c['state'] ?? '') === 'matched' && empty($c['acted_at']) && !empty($c['booking_id']);
     }
 
     /** payments.utr_number this credit is recorded under. */
@@ -458,8 +497,10 @@ final class PayCredits
 
         /* 1. the source */
         if ($source === 'gmail') {
-            if (!Settings::getBool('bankmail_on', false) || !Settings::getBool('pay_bankmail_autoconfirm_on', true)) {
-                return self::unmatched($id, 'Gmail auto-confirm is off — link it by hand', null);
+            /* pay_bankmail_autoconfirm_on is read at step 5: while it is off (the default) a credit that
+               passes every check below is only a SUGGESTION for a person, never PAID */
+            if (!Settings::getBool('bankmail_on', false)) {
+                return self::unmatched($id, 'Gmail bank alerts are off (bankmail_on) — link it by hand', null);
             }
             if ((int) $c['dkim_ok'] !== 1) {
                 return self::unmatched($id, 'No DKIM pass from the bank domain — could be a forged e-mail', null);
@@ -547,7 +588,13 @@ final class PayCredits
             return self::unmatched($id, sprintf('Amount %s %s, but %s needs %s %s', $cur, number_format($amount, 2), (string) $b['pnr'], $cur, number_format($expected, 2)), $bid);
         }
 
-        /* 5. record the proof, then the same gate a person uses */
+        /* 5. Gmail with auto-PAID off (the default): every check passed - a suggestion for a person,
+              the booking stays pending, nothing is recorded on it */
+        if ($source === 'gmail' && !self::gmailAutoOn()) {
+            return self::suggest($id, $b, $amount, $cur, $expected);
+        }
+
+        /* 6. record the proof, then the same gate a person uses */
         $tag = $source === 'gmail' ? 'Global IME credit (Gmail)' : 'Bank UPI API';
         try {
             self::recordProof($b, $source, $txn, $ref, $due, $amount, $cur, $tag, 'auto');
@@ -567,9 +614,34 @@ final class PayCredits
     }
 
     /**
-     * A person links a credit to a PNR ("Link to PNR"). The amount must still
-     * match exactly, and approveReviewed() runs via 'queue', so PaymentRisk can
-     * still ask for the bank-statement tick, a reason or a second person.
+     * Keep a 'new' credit for a person WITHOUT trying to confirm anything: an
+     * ambiguous bank alert (BankMail: two different amounts, two different txn
+     * ids, credit and debit words). Same end as a failed auto-confirm: unmatched,
+     * the reason as its note, an admin bell. Any other state is left alone.
+     *
+     * @return array{ok:bool, state:string, why:string, bookingId:?int}
+     */
+    public static function hold(int $id, string $why): array
+    {
+        $c = self::get($id);
+        if ($c === null) {
+            return ['ok' => false, 'state' => '', 'why' => 'no such credit', 'bookingId' => null];
+        }
+        if ((string) $c['state'] !== 'new') {
+            return ['ok' => false, 'state' => (string) $c['state'], 'why' => 'already ' . $c['state'], 'bookingId' => $c['booking_id'] !== null ? (int) $c['booking_id'] : null];
+        }
+        $claimed = Database::query("UPDATE bank_credits SET state = 'unmatched', note = 'checking…' WHERE id = :i AND state = 'new'", ['i' => $id])->rowCount();
+        if ($claimed !== 1) {
+            return ['ok' => false, 'state' => 'unmatched', 'why' => 'busy', 'bookingId' => null];
+        }
+        return self::unmatched($id, $why !== '' ? $why : 'Kept for a person', null);
+    }
+
+    /**
+     * A person links a credit to a PNR ("Link to PNR"), or confirms a Gmail
+     * SUGGESTION ("✅ Confirm" - the same call). The amount must still match
+     * exactly, and approveReviewed() runs via 'queue', so PaymentRisk can still
+     * ask for the bank-statement tick, a reason or a second person.
      *
      * @return array{ok:bool, msg:string, bookingId:?int}
      */
@@ -579,17 +651,19 @@ final class PayCredits
         if ($c === null) {
             throw new RuntimeException('Credit not found.');
         }
-        if (in_array((string) $c['state'], ['matched', 'linked'], true)) {
+        $suggested = self::isSuggestion($c);
+        if (!$suggested && in_array((string) $c['state'], ['matched', 'linked'], true)) {
             throw new RuntimeException('This credit already paid ' . ($c['pnr'] ?? 'a ticket') . '.');
         }
         if ((string) $c['state'] === 'test') {
             throw new RuntimeException('A sandbox test credit is not real money — it cannot pay a ticket.');
         }
         self::boot();
-        $admin = Database::fetch('SELECT id, role FROM admins WHERE id = :i AND is_active = 1', ['i' => $adminId]);
+        $admin = Database::fetch('SELECT id, role, full_name, username FROM admins WHERE id = :i AND is_active = 1', ['i' => $adminId]);
         if ($admin === null) {
             throw new RuntimeException('Unknown staff account.');
         }
+        $who = mb_substr(trim((string) (($admin['full_name'] ?? '') ?: ($admin['username'] ?? ''))) ?: '#' . (int) $admin['id'], 0, 60);
         $source = (string) $c['source'];
         $txn    = trim((string) ($c['txn_id'] ?? ''));
         $amount = round((float) $c['amount'], 2);
@@ -620,16 +694,16 @@ final class PayCredits
         if ($due <= 0 || abs($amount - round($expected, 2)) > 0.004) {
             throw new RuntimeException(sprintf('Amount does not match: credit %s %s, %s needs %s %s.', $cur, number_format($amount, 2), (string) $b['pnr'], $cur, number_format($expected, 2)));
         }
-        $tag = $source === 'gmail' ? 'Global IME credit (Gmail, linked)' : 'Bank UPI API (linked)';
+        $tag = $source === 'gmail' ? ($suggested ? 'Global IME credit (Gmail, confirmed)' : 'Global IME credit (Gmail, linked)') : 'Bank UPI API (linked)';
         if (!Database::exists('SELECT 1 FROM payments WHERE booking_id = :b AND utr_number = :u', ['b' => $bid, 'u' => $ref])) {
-            self::recordProof($b, $source, $txn, $ref, $due, $amount, $cur, $tag, 'link');
+            self::recordProof($b, $source, $txn, $ref, $due, $amount, $cur, $tag, $suggested ? 'confirm' : 'link');
         }
         $note = Security::clean($note, 120);
         Database::update('bank_credits', ['booking_id' => $bid, 'pnr' => (string) $b['pnr']], 'id = :i', ['i' => $id]);
         try {
             $r = BookingService::approveReviewed($bid, ['id' => (int) $admin['id'], 'role' => (string) $admin['role']], [
                 'via' => 'queue', 'bankChecked' => $bankChecked, 'amountSeen' => $due,
-                'note' => mb_substr('Bank credit #' . $id . ' linked: txn ' . mb_substr($txn, -14) . ', ' . $cur . ' ' . number_format($amount, 2) . ($note !== '' ? ' · ' . $note : ''), 0, 255),
+                'note' => mb_substr('Bank credit #' . $id . ($suggested ? ' (Gmail suggestion) confirmed' : ' linked') . ': txn ' . mb_substr($txn, -14) . ', ' . $cur . ' ' . number_format($amount, 2) . ($note !== '' ? ' · ' . $note : ''), 0, 255),
             ]);
         } catch (Throwable $e) {
             Database::update('bank_credits', ['note' => mb_substr('Proof on ' . $b['pnr'] . '; not approved: ' . $e->getMessage(), 0, 255)], 'id = :i', ['i' => $id]);
@@ -639,24 +713,29 @@ final class PayCredits
             Database::update('bank_credits', ['note' => 'First approval saved on ' . $b['pnr'] . '; a second person approves on Verify Payments'], 'id = :i', ['i' => $id]);
             return ['ok' => false, 'msg' => (string) $b['pnr'] . ': first approval saved — a manager / accountant gives the second on Verify Payments.', 'bookingId' => $bid];
         }
-        self::tick($bid, self::LABEL_LINKED[$source], $due, $txn, ['id' => (int) $admin['id'], 'role' => (string) $admin['role']]);
+        $label = $suggested ? (self::LABEL_CONFIRMED[$source] ?? self::LABEL_LINKED[$source]) : self::LABEL_LINKED[$source];
+        self::tick($bid, $label, $due, $txn, ['id' => (int) $admin['id'], 'role' => (string) $admin['role']], $suggested ? 'confirmed by ' . $who : '');
         Database::update('bank_credits', [
             'state' => 'linked', 'booking_id' => $bid, 'pnr' => (string) $b['pnr'], 'acted_by' => (int) $admin['id'], 'acted_at' => date('Y-m-d H:i:s'),
-            'note' => mb_substr('Linked to ' . $b['pnr'] . ' by #' . (int) $admin['id'] . ($note !== '' ? ' · ' . $note : ''), 0, 255),
+            'note' => mb_substr(($suggested ? 'Confirmed ' . $b['pnr'] . ' (Gmail suggestion) by ' . $who : 'Linked to ' . $b['pnr'] . ' by #' . (int) $admin['id']) . ($note !== '' ? ' · ' . $note : ''), 0, 255),
         ], 'id = :i', ['i' => $id]);
-        Logger::audit('bank_credit.link', 'bank_credit', (string) $id, ['state' => (string) $c['state']],
-            ['state' => 'linked', 'pnr' => (string) $b['pnr'], 'txn' => mb_substr($txn, -14), 'amount' => $amount, 'currency' => $cur], 'Bank credit linked to a PNR by hand');
+        Logger::audit('bank_credit.link', 'bank_credit', (string) $id, ['state' => $suggested ? 'suggested' : (string) $c['state']],
+            ['state' => 'linked', 'pnr' => (string) $b['pnr'], 'txn' => mb_substr($txn, -14), 'amount' => $amount, 'currency' => $cur],
+            $suggested ? 'Gmail suggestion confirmed by a person (bank app checked)' : 'Bank credit linked to a PNR by hand');
         return ['ok' => true, 'msg' => (string) $b['pnr'] . ' confirmed — ticket sent.', 'bookingId' => $bid];
     }
 
-    /** A person sets a credit aside (not ours, a refund, a test). Never for a credit that paid a ticket. */
+    /**
+     * A person sets a credit aside (not ours, a refund, a test, a Gmail suggestion the
+     * bank app does not show). Never for a credit that paid a ticket.
+     */
     public static function ignore(int $id, int $adminId, string $note): void
     {
         $c = self::get($id);
         if ($c === null) {
             throw new RuntimeException('Credit not found.');
         }
-        if (in_array((string) $c['state'], ['matched', 'linked'], true)) {
+        if (!self::isSuggestion($c) && in_array((string) $c['state'], ['matched', 'linked'], true)) {
             throw new RuntimeException('This credit already paid a ticket — it cannot be ignored.');
         }
         $note = mb_substr(Security::clean($note, 200), 0, 200);
@@ -670,7 +749,8 @@ final class PayCredits
     /**
      * The newest credits for the admin page.
      *
-     * @param array<string,mixed> $f source, state ('open' = new + unmatched), limit
+     * @param array<string,mixed> $f source, state ('open' = new + unmatched + suggestions,
+     *                            'suggested' = suggestions only), limit
      * @return list<array<string,mixed>>
      */
     public static function listRecent(array $f = []): array
@@ -685,8 +765,11 @@ final class PayCredits
             $p['s'] = (string) $f['source'];
         }
         $st = (string) ($f['state'] ?? '');
+        $sug = "(c.state = 'matched' AND c.acted_at IS NULL AND c.booking_id IS NOT NULL)";   // isSuggestion()
         if ($st === 'open') {
-            $w[] = "c.state IN ('new','unmatched')";
+            $w[] = "(c.state IN ('new','unmatched') OR $sug)";
+        } elseif ($st === 'suggested') {
+            $w[] = $sug;
         } elseif (in_array($st, ['new', 'matched', 'unmatched', 'linked', 'ignored', 'test'], true)) {
             $w[] = 'c.state = :st';
             $p['st'] = $st;
@@ -703,17 +786,66 @@ final class PayCredits
         );
     }
 
-    /** @return array<string,int> state => count for one source */
+    /** @return array<string,int> state => count for one source ('suggested' counted apart from 'matched') */
     public static function counts(string $source): array
     {
         if (!self::ready()) {
             return [];
         }
         $out = [];
-        foreach (Database::fetchAll('SELECT state, COUNT(*) AS n FROM bank_credits WHERE source = :s GROUP BY state', ['s' => $source]) as $r) {
-            $out[(string) $r['state']] = (int) $r['n'];
+        foreach (Database::fetchAll("SELECT CASE WHEN state = 'matched' AND acted_at IS NULL AND booking_id IS NOT NULL THEN 'suggested' ELSE state END AS st, COUNT(*) AS n
+                                       FROM bank_credits WHERE source = :s GROUP BY st", ['s' => $source]) as $r) {
+            $out[(string) $r['st']] = (int) $r['n'];
         }
         return $out;
+    }
+
+    /**
+     * What the Payment Management page shows beside a Gmail SUGGESTION: the booking,
+     * its lead passenger, what is due (INR + the NPR the customer had to send) next to
+     * what the bank alert says arrived, and the checks re-read now (DKIM, our account,
+     * allowed sender) - a ✗ means the Confirm button is not offered.
+     *
+     * @param array<string,mixed> $c a bank_credits row
+     * @return array{pnr:string, status:string, name:string, due_inr:float, due_npr:float, credited:float, currency:string,
+     *               amount_ok:bool, checks:list<array{0:string,1:bool}>, can_confirm:bool}|null null = not a suggestion / no booking
+     */
+    public static function suggestionView(array $c): ?array
+    {
+        if (!self::isSuggestion($c)) {
+            return null;
+        }
+        $b = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) $c['booking_id']]);
+        if ($b === null) {
+            return null;
+        }
+        $name = '';
+        $more = 0;
+        try {
+            $names = Database::fetchAll('SELECT DISTINCT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id LIMIT 20', ['b' => (int) $b['id']]);
+            $name  = trim((string) ($names[0]['full_name'] ?? ''));
+            $more  = max(0, count($names) - 1);
+        } catch (Throwable $e) {
+            // no passenger table on a bare database
+        }
+        $cur  = (string) $c['currency'];
+        $paid = round((float) $c['amount'], 2);
+        $due  = self::dueInr($b);
+        $npr  = $cur === 'NPR' ? self::expectedNpr($b, $due) : 0.0;
+        $want = $cur === 'NPR' ? $npr : $due;
+        $amountOk = $due > 0 && $want > 0 && abs($paid - round($want, 2)) <= 0.004;
+        $hint = self::accountHint();
+        $checks = [
+            ['DKIM', (int) $c['dkim_ok'] === 1],
+            ['A/C …' . ($hint !== '' ? substr($hint, -4) : '?'), $hint !== '' && self::accountMatches(trim((string) ($c['credit_account'] ?? '')), $hint)],
+            ['Sender', self::senderAllowed((string) ($c['sender'] ?? ''))],
+        ];
+        $allOk = !in_array(false, array_column($checks, 1), true);
+        return [
+            'pnr' => (string) $b['pnr'], 'status' => (string) $b['status'], 'name' => $name . ($more > 0 ? ' +' . $more : ''),
+            'due_inr' => $due, 'due_npr' => $npr, 'credited' => $paid, 'currency' => $cur, 'amount_ok' => $amountOk,
+            'checks' => $checks, 'can_confirm' => $allOk && $amountOk && (string) $b['status'] === 'pending' && (int) ($b['is_cod'] ?? 0) !== 1,
+        ];
     }
 
     /* =================================================================
@@ -744,17 +876,42 @@ final class PayCredits
         }
     }
 
-    /** The chalani tick (best effort: the ticket is already confirmed). */
-    private static function tick(int $bookingId, string $label, float $due, string $txn, array $admin): void
+    /** The chalani tick (best effort: the ticket is already confirmed). $label ≤ 40 characters (OpsHub::markPaid). */
+    private static function tick(int $bookingId, string $label, float $due, string $txn, array $admin, string $extra = ''): void
     {
         try {
             if (!class_exists('OpsHub')) {
                 require_once __DIR__ . '/opshub.php';
             }
-            OpsHub::markPaid($bookingId, $label, $due, 'UTR ' . mb_substr($txn, 0, 60), $admin);
+            OpsHub::markPaid($bookingId, $label, $due, mb_substr('UTR ' . mb_substr($txn, 0, 60) . ($extra !== '' ? ' · ' . $extra : ''), 0, 160), $admin);
         } catch (Throwable $e) {
             Logger::warning('PayCredits: chalani tick failed', ['booking' => $bookingId, 'err' => $e->getMessage()], 'payment');
         }
+    }
+
+    /**
+     * A Gmail credit that passed every auto check while auto-PAID is off: kept as a
+     * SUGGESTION (state 'matched', booking_id, acted_at NULL - isSuggestion()) with
+     * a bell asking a person to check the bank app and press Confirm. The booking is
+     * left exactly as it was (pending, no proof recorded).
+     *
+     * @param array<string,mixed> $b the one matching booking
+     * @return array{ok:bool, state:string, why:string, bookingId:?int}
+     */
+    private static function suggest(int $id, array $b, float $amount, string $cur, float $expected): array
+    {
+        $bid = (int) $b['id'];
+        $pnr = (string) $b['pnr'];
+        $amt = number_format($amount, 2);
+        Database::update('bank_credits', [
+            'state' => 'matched', 'booking_id' => $bid, 'pnr' => $pnr, 'acted_by' => null, 'acted_at' => null,
+            'note' => mb_substr(self::SUGGEST_NOTE . $pnr . ' ' . $cur . ' ' . $amt, 0, 255),
+        ], 'id = :i', ['i' => $id]);
+        self::alert('बैंक इमेल: रू ' . $amt . ' आयो · PNR ' . $pnr . ' — Payment Management मा Confirm थिच्नुहोस्',
+            'Gmail credit #' . $id . ': ' . $cur . ' ' . $amt . ' for ' . $pnr . ' (due ' . $cur . ' ' . number_format($expected, 2) . '). DKIM, sender, our account, PNR and amount all match, but Gmail auto-PAID is off: बैंक app मा पैसा आएको हेरेर Confirm थिच्नुहोस्।',
+            $bid, 'np');
+        Logger::info('bank credit suggested', ['id' => $id, 'pnr' => $pnr, 'amount' => $amount], 'payment');
+        return ['ok' => false, 'state' => 'matched', 'why' => 'suggested', 'bookingId' => $bid];
     }
 
     /** @return array{ok:bool, state:string, why:string, bookingId:?int} */

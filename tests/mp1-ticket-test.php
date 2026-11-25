@@ -12,6 +12,8 @@
  *   COD   r7 INR pay-at-boarding, due (review)                 -> the live pay.php link + ticket key, never the static Nepal image
  *   PEND  r7 INR online booking pending (review)               -> the live pay.php link, never the static Nepal image
  *   DISC  r2, ₹200 desk discount (review)                      -> "SAVED ₹200 (9.1%) · काउन्टर छुट" strip; normal fare (nf1) wins the slot
+ *   GEO   r2 INR due + booked_lat / lng / place (cp1)          -> "Booked at: ..." row, the clean PNG 21 px taller
+ *   NPR again with the eSewa id but no QR image                -> the ID card (due + id + PNR in remarks), no QR frame, no ring
  * Settings go into Settings' in-memory cache only (reflection); the shared DB's settings
  * rows are never written. A throw-away Nepal QR image is written to uploads/payqr/ and removed.
  *
@@ -302,6 +304,118 @@ try {
     $flagNp = DocArt::flagWidth('NP', 132);
     [$r, $g, $b] = $px($pngs['r7-due'][0], 1080 - 64 - $flagNp + intdiv($flagNp * 12, 100), 36 + intdiv(256 - 36 - 132, 2) + 66);
     check('r7: Nepal flag in the header (crimson)', $r > 170 && $g < 80 && $b < 100, "rgb($r,$g,$b)");
+
+    /* dark (text) pixels in rows [$y1..$y2], x in [$x1..$x2]: [count, leftmost x, rightmost x] */
+    $ink = static function (string $file, int $x1, int $x2, int $y1, int $y2): array {
+        $im = imagecreatefrompng($file);
+        $n = 0; $lo = PHP_INT_MAX; $hi = -1;
+        for ($y = max(0, $y1); $y <= min(imagesy($im) - 1, $y2); $y++) {
+            for ($x = max(0, $x1); $x <= min(imagesx($im) - 1, $x2); $x++) {
+                $c = imagecolorat($im, $x, $y);
+                if ((($c >> 16) & 0xFF) < 170 && (($c >> 8) & 0xFF) < 180 && ($c & 0xFF) < 200) { $n++; $lo = min($lo, $x); $hi = max($hi, $x); }
+            }
+        }
+        imagedestroy($im);
+        return [$n, $lo, $hi];
+    };
+
+    echo "\n== cp1 \"Booked at\" line on the clean PNG ==\n";
+    if (!class_exists('BookGeo')) { require_once INCLUDE_PATH . '/bookgeo.php'; }
+    if (!BookGeo::hasColumns()) {
+        echo "  SKIP  bookings.booked_lat / booked_place missing (cp1 migration not applied)\n";
+    } else {
+        /* the INR ticket again (r2, 1 passenger, money due), now with the phone's GPS fix on the row */
+        $GEO = $seed('A', $r2, $s2, 'Surat', 'Rupaidiha', ['L9'], ['booked_lat' => 23.109162, 'booked_lng' => 72.677421,
+            'booked_acc' => 35, 'booked_place' => 'Nana Chiloda, Ahmedabad']);
+        $bA   = $load($GEO);
+        $geoL = Ticket::bookedAtLine($bA);
+        check('geo: the cp1 helper string is non-empty (where the ticket was cut)', $geoL !== ''
+            && $geoL === 'Booked at: Nana Chiloda, Ahmedabad (23.10916, 72.67742)', $geoL);
+        check('geo: the same booking without a fix has no line', Ticket::bookedAtLine($bI) === '');
+        $pA = Ticket::pngPath($GEO, true);
+        [$wA, $hA] = $dims($pA);
+        if ($out !== '') { @copy($pA, $out . '/mp1-geo.png'); }
+        check('geo: the clean PNG grows by exactly one 21 px row', $wA === 1080 && $hA === $pngs['inr-due'][1] + 21, $hA . ' vs ' . $pngs['inr-due'][1] . ' + 21');
+        /* the row sits where the old layout puts it: after the two statutory rows, its baseline
+           33 px above the white card's bottom (H - 40), centred, nothing under it */
+        $gBase = $hA - 40 - 33;
+        [$gn, $glo, $ghi] = $ink($pA, 80, 1000, $gBase - 12, $gBase + 3);
+        check('geo: the "Booked at" row is drawn under the statutory rows', $gn > 60, "$gn dark px");
+        check('geo: ...centred on the card', $ghi > $glo && abs(intdiv($glo + $ghi, 2) - 540) <= 8, "x $glo..$ghi");
+        [$gu] = $ink($pA, 40, 1040, $gBase + 6, $hA - 44);
+        check('geo: ...and nothing below it overlaps the card edge', $gu === 0, "$gu dark px");
+        [$sn] = $ink($pA, 80, 1000, $gBase - 21 - 12, $gBase - 21 + 3);
+        check('geo: the statutory row above it is still there', $sn > 60, "$sn dark px");
+        [$nn] = $ink($pngs['inr-due'][0], 80, 1000, $gBase - 12, $gBase + 3);
+        check('geo: without a fix that row does not exist (the INR ticket is plain card there)', $nn === 0, "$nn dark px");
+    }
+
+    echo "\n== NPR due, eSewa id but no Nepal QR image: no empty QR frame ==\n";
+    $esewaWas = Settings::getString('esewa_id', '');
+    $setMem(['nepal_esewa_qr' => ['', 'string']]);   // the id stays, the image goes
+    if (Ticket::esewaQrFile() !== '') {
+        echo "  SKIP  a fixed eSewa QR file is on the server (esewa-qr.*), the id-only case cannot happen here\n";
+    } else {
+        $qNi = Ticket::paymentQr($bN);
+        check('NPR id only: paymentQr = Nepal mode, no image, the id, no QR payload', $qNi['mode'] === 'npr' && $qNi['esewaImg'] === ''
+            && $qNi['esewa'] === '9866201375' && $qNi['qr'] === '', $qNi['mode'] . ' / ' . $qNi['esewa']);
+        /* the pay card (right half): its top found by scanning down near its right edge for the orange
+           head; then (a) the row just under the head, where a QR's corner frame starts, and (b) the two
+           columns 131 px either side of the card's centre, where the stamp's ring runs, carry no strong
+           orange. Both probes are proven on the image card (frame) and the stamp fallback (ring). */
+        $cxR = 64 + intdiv(1080 - 128 - 20, 2) + 20;
+        $mx  = intdiv($cxR + 1080 - 64, 2);
+        /* the deep orange of a frame / ring (212,87,12) - not the red DUE bar (206,62,52), not pale orange */
+        $isOrg = static fn(int $c): bool => (($c >> 16) & 0xFF) > 170 && (($c >> 8) & 0xFF) > 72
+            && (($c >> 16) & 0xFF) - (($c >> 8) & 0xFF) > 70 && (($c >> 16) & 0xFF) - ($c & 0xFF) > 130;
+        $cardProbe = static function (string $file) use ($isOrg, $cxR, $mx): array {
+            $im = imagecreatefrompng($file);
+            $top = 0;
+            for ($y = 900; $y < imagesy($im) - 400; $y++) {
+                if ($isOrg(imagecolorat($im, 1080 - 64 - 30, $y))) { $top = $y; break; }
+            }
+            $frame = 0; $ring = 0;
+            if ($top > 0) {
+                for ($y = $top + 56; $y <= $top + 63; $y++) {
+                    for ($x = $cxR + 12; $x <= 1080 - 64 - 12; $x++) { $frame += $isOrg(imagecolorat($im, $x, $y)) ? 1 : 0; }
+                }
+                for ($y = $top + 60; $y <= $top + 350; $y++) {
+                    foreach ([$mx - 131, $mx + 131] as $x) { $ring += $isOrg(imagecolorat($im, $x, $y)) ? 1 : 0; }
+                }
+            }
+            imagedestroy($im);
+            return [$top, $frame, $ring];
+        };
+        /* probe check first, on the npr-due render still on disk (same file the id-only render replaces) */
+        [$iTop, $iFrame] = $cardProbe($pngs['npr-due'][0]);
+        check('probe check: the image card (npr-due) does show its corner frame there', $iTop > 900 && $iFrame > 20, "$iFrame orange px");
+        $pNi = Ticket::pngPath($NPR, true);
+        [$wNi, $hNi] = $dims($pNi);
+        if ($out !== '') { @copy($pNi, $out . '/mp1-npr-id-only.png'); }
+        check('NPR id only: the clean PNG renders, same canvas as with the image', $wNi === 1080 && $hNi === $pngs['npr-due'][1], $hNi . ' vs ' . $pngs['npr-due'][1]);
+        check('NPR id only: the renderer picks the ID card (due + eSewa / Fonepay ID + PNR in remarks)', Ticket::v2PayCard($bN) === 'id', Ticket::v2PayCard($bN));
+        [$cTop, $cFrame, $cRing] = $cardProbe($pNi);
+        check('NPR id only: the pay card found', $cTop > 900, (string) $cTop);
+        check('NPR id only: no QR corner frame under the card head', $cFrame === 0, "$cFrame orange px");
+        check('NPR id only: no stamp ring either', $cRing === 0, "$cRing orange px");
+        [$dn] = $ink($pNi, $cxR + 24, 1080 - 64 - 24, $cTop + 194 + 10, $cTop + 252 - 10);
+        check('NPR id only: the eSewa / Fonepay ID line is printed in the card', $dn > 150, "$dn dark px");
+        [$pn] = $ink($pNi, $cxR + 24, 1080 - 64 - 24, $cTop + 270, $cTop + 330);
+        check('NPR id only: the remarks / PNR lines are printed under it', $pn > 150, "$pn dark px");
+        $setMem(['nepal_esewa_qr' => ['uploads/payqr/' . $qrName, 'string']]);
+        check('NPR with the image: the renderer keeps the image card', Ticket::v2PayCard($bN) === 'img', Ticket::v2PayCard($bN));
+        check('INR due: the UPI QR card; paid cash: the stamp', Ticket::v2PayCard($bI) === 'qr' && Ticket::v2PayCard($bC) === 'stamp');
+        /* neither: no image, no Nepal id and no company eSewa id (companyFor()'s payEsewa falls back to esewa_id) */
+        $setMem(['nepal_esewa_qr' => ['', 'string'], 'nepal_esewa_id' => ['', 'string'], 'esewa_id' => ['', 'string']]);
+        $qNn = Ticket::paymentQr($bN);
+        check('NPR with neither image nor id: the old fallback (the stamp with the due in words)', Ticket::v2PayCard($bN) === 'stamp'
+            && $qNn['mode'] === 'npr' && $qNn['esewa'] === '' && $qNn['esewaImg'] === '', Ticket::v2PayCard($bN) . ' / ' . $qNn['mode']);
+        $pNn = Ticket::pngPath($NPR, true);
+        if ($out !== '') { @copy($pNn, $out . '/mp1-npr-no-id.png'); }
+        [$sTop, , $sRing] = $cardProbe($pNn);
+        check('probe check: that fallback stamp does show its ring there', $sTop > 900 && $sRing > 10, "$sRing orange px");
+    }
+    $setMem(['nepal_esewa_qr' => ['uploads/payqr/' . $qrName, 'string'], 'nepal_esewa_id' => ['9866201375', 'string'], 'esewa_id' => [$esewaWas, 'string']]);
 
     echo "\n== PDF (clean) ==\n";
     $tC = $plain((string) file_get_contents(Ticket::pdfPath($CASH, true)));

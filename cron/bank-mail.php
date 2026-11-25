@@ -5,8 +5,11 @@
  * Recommended: every 2 minutes (crontab line in deploy/VPS-SETUP.md, section 7).
  *
  * Exits at once while bankmail_on is off (still writes its heartbeat). The mailbox is opened
- * read-only; each credit goes to PayCredits (auto-confirm only when every money rule holds,
- * otherwise 'unmatched' + an admin bell). See includes/bankmail.php.
+ * read-only; each credit goes to PayCredits: while pay_bankmail_autoconfirm_on is off (the
+ * default) a credit that passes every money rule is only a SUGGESTION ('matched', the booking
+ * stays pending, a bell: a person checks the bank app and presses Confirm on Payment
+ * Management); with it on, such a credit auto-confirms; anything else is 'unmatched' + an
+ * admin bell. See includes/bankmail.php.
  */
 declare(strict_types=1);
 require __DIR__ . '/_cron.php';
@@ -24,6 +27,7 @@ cron_done([
     'seen'       => $r['seen'],
     'credits'    => $r['credits'],
     'confirmed'  => $r['confirmed'],
+    'suggested'  => $r['suggested'] ?? 0,
     'unmatched'  => $r['unmatched'],
     'duplicates' => $r['duplicates'],
     'last_uid'   => $r['last_uid'],

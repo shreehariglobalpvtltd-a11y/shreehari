@@ -18,7 +18,24 @@
  *      staff_credentials_lock_on = 0 gives login-requests back to staff.manage
  *   D2 the sign-in mobile (admins.phone): a manager editing an agent on
  *      agents.php / agent-360.php / the AgentPro office form of a live member
- *      never moves it (the ticket number still saves); a super-admin does
+ *      never moves it, nor display_phone (the box is shown disabled; a number
+ *      posted anyway is refused, the rest saves); a super-admin does; the
+ *      AgentPro office form never moves a live member's login email either (the
+ *      form goes back to it, one audit per try, api save says why)
+ *   D3 agreements.php: creds / sendcreds 403 for a manager (no forms) - they change
+ *      an EXISTING login; CREATING one stays with the office: "Create login"
+ *      (mklogin) and go-live / approve with mklogin make the login + first password
+ *      for a manager too; a password typed on approve for a login that already
+ *      exists is skipped (audited); super-admin works; lock off = old rule
+ *   D4 staff_credentials_lock_on / chalani_export_perm_on: a manager cannot flip
+ *      them on settings.php Save, Easy Settings nor the S Hari AI 'setting' op;
+ *      a super-admin can (AiOps::SUPER_ONLY_SETTINGS, the one list)
+ *   D4b settings.php Save: role_permissions_override, admin_2fa_ids and every
+ *      other row of the 'security' sgroup are refused for a manager (rows
+ *      unchanged, a note names them, shown read-only); a super-admin writes them
+ *   D5 staff-applications.php: pwset / pwclear / the sign-in mobile on 'edit' are
+ *      a super-admin's (403 / refused + audited, the rest of the edit saves);
+ *      approving with a password (onboarding) stays with the office
  *   E  remember days: code default 90, capped by login_remember_max_days (90)
  *
  *  shari_test only. Every account, profile, file and row this suite makes is
@@ -50,12 +67,13 @@ if (($argv[1] ?? '') === '--child') {
     $cfg    = json_decode((string) base64_decode((string) ($argv[2] ?? '')), true) ?: [];
     $what   = (string) ($cfg['what'] ?? 'page');
     $script = (string) ($cfg['script'] ?? 'home.php');
+    $dir    = (string) ($cfg['dir'] ?? 'admin') === 'api' ? 'api' : 'admin';   // api = a JSON endpoint (api/agentpro.php)
     $post   = (array) ($cfg['post'] ?? []);
     $_SERVER['HTTP_HOST']      = 'localhost';
     $_SERVER['REMOTE_ADDR']    = '203.0.113.71';
     $_SERVER['REQUEST_METHOD'] = $post === [] ? 'GET' : 'POST';
-    $_SERVER['SCRIPT_NAME']    = '/admin/' . $script;
-    $_SERVER['REQUEST_URI']    = '/admin/' . $script;
+    $_SERVER['SCRIPT_NAME']    = '/' . $dir . '/' . $script;
+    $_SERVER['REQUEST_URI']    = '/' . $dir . '/' . $script;
     $_GET  = (array) ($cfg['get'] ?? []);
     $_POST = [];
     if (!defined('SHG_APP')) { define('SHG_APP', true); }
@@ -99,7 +117,7 @@ if (($argv[1] ?? '') === '--child') {
         if (str_contains($msg, 'SHG_APP') && str_contains($msg, 'already defined')) { return true; }
         return is_callable($prev) ? (bool) $prev($sev, $msg, $f, $l) : false;
     });
-    require dirname(__DIR__) . '/admin/' . $script;
+    require dirname(__DIR__) . '/' . $dir . '/' . $script;
     exit(0);
 }
 
@@ -141,7 +159,11 @@ if (!defined('DB_NAME') || DB_NAME !== 'shari_test') { echo "  SKIP  not shari_t
 $PFX = 'mp1lg_';
 $PHOTO_FILE = 'agents/zzmp1lg-photo-test.jpg';
 $cleanup = static function () use ($PFX, $PHOTO_FILE): void {
-    foreach (Database::fetchAll("SELECT id FROM admins WHERE username LIKE '{$PFX}%'") as $r) {
+    try { Database::delete('agent_applications', "ref LIKE 'MPLG%'", []); } catch (Throwable $e) {}   // D3 rows
+    try { Database::delete('staff_applications', "id_number LIKE 'MPLG-STF-%'", []); } catch (Throwable $e) {}   // D5 rows
+    // D3: the logins a manager now makes from an application (username = the test mobile)
+    foreach (Database::fetchAll("SELECT id FROM admins WHERE username LIKE '{$PFX}%'
+                                 OR (role = 'agent' AND full_name LIKE 'Mp Agr Person%' AND username IN ('9000000202', 'agent_9000000202', '9000000203', 'agent_9000000203'))") as $r) {
         $id = (int) $r['id'];
         try { AgentWallet::setAgentCode($id, null); } catch (Throwable $e) {}
         try { Database::delete('kv_store', "kscope = 'nav_use' AND kkey = :k", ['k' => 'a' . $id]); } catch (Throwable $e) {}
@@ -173,7 +195,8 @@ $aSup   = $mk('sup', 'support', 'Mp Support');
 
 /* ===================================================================== */
 echo "-- A. StaffAvatar\n";
-foreach (['includes/staffavatar.php', 'admin/_guard.php', 'admin/login.php', 'admin/staff.php', 'admin/sessions.php', 'admin/login-requests.php', 'admin/agent.php', 'admin/agents.php', 'admin/agent-360.php', 'includes/agentpro.php'] as $f) {
+foreach (['includes/staffavatar.php', 'admin/_guard.php', 'admin/login.php', 'admin/staff.php', 'admin/sessions.php', 'admin/login-requests.php', 'admin/agent.php', 'admin/agents.php', 'admin/agent-360.php', 'includes/agentpro.php', 'admin/agreements.php', 'admin/easy-settings.php', 'payment/icici_booking.php',
+          'admin/settings.php', 'includes/aiops.php', 'api/agentpro.php', 'admin/staff-applications.php'] as $f) {
     $o = run('-l ' . escapeshellarg($ROOT . '/' . $f));
     check("$f lints", str_contains($o, 'No syntax errors'), trim(substr($o, 0, 160)));
 }
@@ -355,17 +378,28 @@ $denied  = static fn(int $id, string $act): bool => Database::exists(
     "SELECT 1 FROM audit_logs WHERE action = 'staff.credentials_denied' AND entity_id = :e AND new_value LIKE :a", ['e' => (string) $id, 'a' => '%' . $act . '%']);
 $aPh = $mk('agph', 'agent', 'Mp Phone Agent');
 Database::update('admins', ['phone' => '9000000101'], 'id = :i', ['i' => $aPh]);
-$edit = static fn(string $phone): array => ['action' => 'edit', 'id' => $aPh, 'full_name' => 'Mp Phone Agent', 'phone' => $phone, 'agent_kind' => 'person'];
-$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php', 'post' => $edit('9000000102')]);
-check('manager: agents.php edit with a new mobile -> login mobile kept', $loginPh($aPh) === '9000000101', $loginPh($aPh));
-check('...the new number is the ticket number (display_phone)', $dispPh($aPh) === '9000000102', $dispPh($aPh));
-check('...the page says so and the rest saved', str_contains($o, 'Agent updated.') && str_contains($o, 'Login mobile not changed'));
+Database::insert('admin_profiles', ['admin_id' => $aPh, 'display_phone' => '9000000199']);   // a ticket number of its own
+$nameOf = static fn(int $id): string => (string) Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => $id], '');
+$edit = static fn(string $phone, string $name = 'Mp Phone Agent'): array => ['action' => 'edit', 'id' => $aPh, 'full_name' => $name, 'phone' => $phone, 'agent_kind' => 'person'];
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php', 'post' => $edit('9000000102', 'Mp Phone Agent B')]);
+check('manager: agents.php edit with a new mobile posted -> admins.phone unchanged', $loginPh($aPh) === '9000000101', $loginPh($aPh));
+check('...and display_phone unchanged too (the box is not a ticket number)', $dispPh($aPh) === '9000000199', $dispPh($aPh));
+check('...the other fields saved, the mobile refused with the note', $nameOf($aPh) === 'Mp Phone Agent B' && str_contains($o, 'Agent updated.')
+    && str_contains($o, 'मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile') && !str_contains($o, 'saved as the number shown on tickets'));
 check('...the refusal is audited', $denied($aPh, 'agents.edit.phone'));
+$noPhone = $edit('', 'Mp Phone Agent C');
+unset($noPhone['phone']);   // the disabled box posts nothing
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php', 'post' => $noPhone]);
+check('manager: agents.php edit with no mobile posted (disabled box) saves the rest', $nameOf($aPh) === 'Mp Phone Agent C' && $loginPh($aPh) === '9000000101' && $dispPh($aPh) === '9000000199'
+    && str_contains($o, 'Agent updated.') && !str_contains($o, 'Enter a valid mobile number'), $nameOf($aPh));
 $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agents.php']);
-check('manager: the register form shows the ticket number box + who changes the login one', str_contains($o, 'Mobile (on tickets)') && str_contains($o, 'value="9000000102"') && str_contains($o, 'Login mobile: super-admin only'));
+check('manager: the register form shows admins.phone read-only (disabled, not posted) + the note', str_contains($o, '<input value="9000000101" disabled')
+    && str_contains($o, 'मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile') && !str_contains($o, 'Mobile (on tickets)'));
 $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agent-360.php', 'get' => ['agent' => $aPh], 'post' => ['action' => 'edit_basic', 'agent_id' => $aPh, 'tab' => 'report', 'full_name' => 'Mp Phone Agent', 'phone' => '9000000104']]);
-check('manager: agent-360 edit_basic with a new mobile -> login mobile kept', $loginPh($aPh) === '9000000101' && $dispPh($aPh) === '9000000104', $loginPh($aPh) . ' / ' . $dispPh($aPh));
+check('manager: agent-360 edit_basic with a new mobile posted -> admins.phone + display_phone unchanged, name saved', $loginPh($aPh) === '9000000101' && $dispPh($aPh) === '9000000199' && $nameOf($aPh) === 'Mp Phone Agent', $loginPh($aPh) . ' / ' . $dispPh($aPh));
 check('...audited', $denied($aPh, 'agent360.edit_basic.phone'));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agent-360.php', 'get' => ['agent' => $aPh, 'tab' => 'report']]);
+check('manager: agent-360 Edit details shows the mobile disabled + the note', str_contains($o, 'value="9000000101" disabled') && str_contains($o, 'Only a super-admin can change the login mobile') && !str_contains($o, 'Mobile (on tickets)'));
 $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agents.php', 'post' => $edit('9000000103')]);
 check('super-admin: agents.php edit moves the login mobile', $loginPh($aPh) === '9000000103' && $dispPh($aPh) === '9000000103', $loginPh($aPh));
 $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agent-360.php', 'get' => ['agent' => $aPh], 'post' => ['action' => 'edit_basic', 'agent_id' => $aPh, 'tab' => 'report', 'full_name' => 'Mp Phone Agent', 'phone' => '9000000105']]);
@@ -392,9 +426,369 @@ if (AgentPro::available() && AgentPro::appHas('office_filled_by')) {
     $err = '';
     try { AgentPro::officeVerify($key, $aSa, 'came to the office', '9000000107', 'IN'); } catch (Throwable $e) { $err = $e->getMessage(); }
     check('super-admin: AgentPro office form moves the live member\'s login mobile', $err === '' && $loginPh($aPh) === '9000000107', $err . ' / ' . $loginPh($aPh));
+
+    // the login email of a live member (saveDraft office mode -> syncApproved)
+    $mailOf = static fn(int $id): string => (string) Database::scalar('SELECT email FROM admins WHERE id = :i', ['i' => $id], '');
+    $mail0  = 'mp1lg-' . bin2hex(random_bytes(3)) . '@example.test';
+    $mail1  = 'mp1lg-' . bin2hex(random_bytes(3)) . '@example.test';
+    $mail2  = 'mp1lg-' . bin2hex(random_bytes(3)) . '@example.test';
+    Database::update('admins', ['email' => $mail0], 'id = :i', ['i' => $aPh]);
+    $formMail = static fn(): string => (string) Database::scalar('SELECT email FROM ap_applications WHERE draft_key = :k', ['k' => $key], '');
+    $nDen0    = (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'staff.credentials_denied' AND entity_id = :e AND new_value LIKE '%agentpro.sync_email%'", ['e' => (string) $aPh], 0);
+    $nDenied  = static fn(): int => (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'staff.credentials_denied' AND entity_id = :e AND new_value LIKE '%agentpro.sync_email%'", ['e' => (string) $aPh], 0) - $nDen0;   // this run's lines
+    $asAdmin($aMgr);
+    AgentPro::takeNotice();
+    $err = '';
+    try { AgentPro::saveDraft($key, ['email' => $mail1, 'city' => 'Mp Nepalgunj'], true); } catch (Throwable $e) { $err = $e->getMessage(); }
+    check('manager: AgentPro office form, live member, new email -> admins.email unchanged, the rest synced', $err === '' && $mailOf($aPh) === $mail0
+        && (string) Database::scalar('SELECT counter_name FROM admin_profiles WHERE admin_id = :i', ['i' => $aPh], '') === 'Mp Nepalgunj', $err . ' / ' . $mailOf($aPh));
+    check('...the form goes back to the live login email (form = admins.email) and the refusal is audited once', $formMail() === $mail0 && $nDenied() === 1, $formMail() . ' / ' . $nDenied());
+    check('...the save says why (AgentPro::takeNotice, read once)', AgentPro::takeNotice() === 'लगइन इमेल सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login email' && AgentPro::takeNotice() === '');
+    try { AgentPro::saveDraft($key, ['email' => $mail0, 'city' => 'Mp Nepalgunj B'], true); } catch (Throwable $e) { $err = $e->getMessage(); }
+    check('...a later save of the same (now reverted) form is no new attempt: no audit, no notice, the rest saves', $nDenied() === 1 && AgentPro::takeNotice() === ''
+        && (string) Database::scalar('SELECT counter_name FROM admin_profiles WHERE admin_id = :i', ['i' => $aPh], '') === 'Mp Nepalgunj B', (string) $nDenied());
+    // the office form's own endpoint (api/agentpro.php?a=save, office mode): ok + the visible message, the rest saved
+    $o = child(['what' => 'page', 'dir' => 'api', 'script' => 'agentpro.php', 'admin' => $aMgr, 'get' => ['a' => 'save'],
+        'post' => ['key' => $key, 'office' => '1', 'email' => $mail1, 'city' => 'Mp Nepalgunj C']]);
+    $js = ($p0 = strpos($o, '{"ok"')) !== false ? json_decode(trim(substr($o, $p0, (int) strpos($o, '<!--STATUS') - $p0)), true) : null;
+    check('api save (manager, new login email): ok, message "Only a super-admin can change the login email", the rest saved', is_array($js) && ($js['ok'] ?? false) === true
+        && (string) ($js['message'] ?? '') === 'लगइन इमेल सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login email'
+        && (string) ($js['data']['draft']['email'] ?? '') === $mail0 && $mailOf($aPh) === $mail0 && $formMail() === $mail0
+        && (string) Database::scalar('SELECT counter_name FROM admin_profiles WHERE admin_id = :i', ['i' => $aPh], '') === 'Mp Nepalgunj C', substr($o, 0, 300));
+    check('...one more audit line for that one more try', $nDenied() === 2, (string) $nDenied());
+    $o = child(['what' => 'page', 'dir' => 'api', 'script' => 'agentpro.php', 'admin' => $aMgr, 'get' => ['a' => 'save'],
+        'post' => ['key' => $key, 'office' => '1', 'city' => 'Mp Nepalgunj D']]);
+    $js = ($p0 = strpos($o, '{"ok"')) !== false ? json_decode(trim(substr($o, $p0, (int) strpos($o, '<!--STATUS') - $p0)), true) : null;
+    check('api save with no email change: ok, no message', is_array($js) && ($js['ok'] ?? false) === true && !isset($js['message']) && $nDenied() === 2, substr($o, 0, 300));
+    $asAdmin($aSa);
+    $err = '';
+    try { AgentPro::saveDraft($key, ['email' => $mail2], true); } catch (Throwable $e) { $err = $e->getMessage(); }
+    check('super-admin: AgentPro office form moves the live member\'s login email', $err === '' && $mailOf($aPh) === $mail2 && $formMail() === $mail2 && AgentPro::takeNotice() === '', $err . ' / ' . $mailOf($aPh));
     $_SESSION = $saved;
 } else {
     check('ap_applications (af1) present for the AgentPro office-form check', false, 'run database/upgrade-2026-10-30-agentpro-af1.sql');
+}
+
+/* review fix: admin/agreements.php - a linked login's username / email / password (creds, sendcreds)
+   are the super-admin's too; making a NEW login (mklogin, go-live / approve) stays with the office. */
+echo "\n-- D3. Agreements page: sign-in details of a linked login\n";
+require_once INCLUDE_PATH . '/agentapplications.php';
+if (!AgentApplications::available()) {
+    check('agent_applications present for the agreements checks', false, 'run the agreements migration');
+} else {
+    $appRow = static function (string $st, ?int $adminId, string $phone): int {
+        return (int) Database::insert('agent_applications', ['ref' => 'MPLG' . strtoupper(bin2hex(random_bytes(4))), 'type' => 'ind', 'name' => 'Mp Agr Person',
+            'phone' => $phone, 'status' => $st, 'kyc_status' => 'verified', 'admin_id' => $adminId]);
+    };
+    $userOf = static fn(int $id): string => (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $id], '');
+    $aAgr = $mk('agr', 'agent', 'Mp Agr Person');
+    Database::update('admins', ['phone' => '9000000201'], 'id = :i', ['i' => $aAgr]);
+    $app1 = $appRow('approved', $aAgr, '9000000201');
+    $hA   = $hashOf($aAgr);
+    $agrGet = ['tab' => 'apps', 'id' => (string) $app1];
+    $creds  = static fn(string $u, string $pw): array => ['action' => 'creds', 'id' => $app1, 'username' => $u, 'login_email' => '', 'new_password' => $pw];
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => $agrGet, 'post' => $creds($PFX . 'agr2', 'MgrSet#Pass2026')]);
+    check('manager: agreements creds -> 403, username + password unchanged', status($o) === 403 && $userOf($aAgr) === $PFX . 'agr' && $hashOf($aAgr) === $hA, 'status ' . status($o) . ' ' . $userOf($aAgr));
+    check('...says why and is audited', str_contains($o, 'Only a super-admin can change the username, email or password') && $denied($aAgr, 'agreements.creds'));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => $agrGet, 'post' => ['action' => 'sendcreds', 'id' => $app1]]);
+    check('manager: agreements sendcreds -> 403, no new password, audited', status($o) === 403 && $hashOf($aAgr) === $hA && $denied($aAgr, 'agreements.sendcreds'), 'status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => $agrGet]);
+    check('manager: the Login account panel has no creds / sendcreds forms and says who changes them', str_contains($o, 'id="login"')
+        && !str_contains($o, 'name="action" value="creds"') && !str_contains($o, 'name="action" value="sendcreds"') && str_contains($o, 'Only a super-admin changes the username, email or password'));
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agreements.php', 'get' => $agrGet]);
+    check('super-admin: the creds + sendcreds forms are there', str_contains($o, 'name="action" value="creds"') && str_contains($o, 'name="action" value="sendcreds"'));
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agreements.php', 'get' => $agrGet, 'post' => $creds($PFX . 'agr2', '')]);
+    check('super-admin: agreements creds changes the username', $userOf($aAgr) === $PFX . 'agr2', $userOf($aAgr) . ' ' . substr(strip_tags($o), 0, 160));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => $agrGet, 'post' => $creds($PFX . 'agr3', ''), 'mem' => ['staff_credentials_lock_on' => ['0', 'bool']]]);
+    check('staff_credentials_lock_on = 0: a manager changes it again (old rule)', $userOf($aAgr) === $PFX . 'agr3', $userOf($aAgr) . ' status ' . status($o));
+
+    /* the release rule: CREATING a brand-new login is onboarding - the office's, as before: "Create login"
+       (mklogin) and go-live / approve with mklogin make the login + its first password for a manager too */
+    $loginOf = static fn(string $p10): ?array => Database::fetch("SELECT id, username, password_hash FROM admins WHERE role = 'agent' AND phone LIKE :p ORDER BY id DESC LIMIT 1", ['p' => '%' . $p10]);
+    $appOf   = static fn(int $id): array => Database::fetch('SELECT status, admin_id, ref FROM agent_applications WHERE id = :i', ['i' => $id]) ?? [];
+    $app2 = $appRow('reviewing', null, '9000000202');
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => ['tab' => 'apps', 'id' => (string) $app2]]);
+    check('manager: a new application shows the password-on-approve box + the go-live "create the login" tick, no super-admin note',
+        str_contains($o, 'id="agrPw"') && str_contains($o, 'name="mklogin" value="1"') && !str_contains($o, 'Login is created by a super-admin'));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => ['tab' => 'apps', 'id' => (string) $app2],
+        'post' => ['action' => 'golive', 'id' => $app2, 'mklogin' => '1', 'new_password' => 'MgrSet#Pass2026']]);
+    $row2 = $appOf($app2);
+    $lg2  = $loginOf('9000000202');
+    check('manager: go-live with mklogin -> approved AND the login made with the typed first password (onboarding)', ($row2['status'] ?? '') === 'approved'
+        && !empty($row2['admin_id']) && $lg2 !== null && (int) $lg2['id'] === (int) $row2['admin_id'] && password_verify('MgrSet#Pass2026', (string) $lg2['password_hash']),
+        json_encode($row2) . ' status ' . status($o) . ' ' . substr(strip_tags($o), 0, 160));
+    check('...nothing refused on the way', !Database::exists("SELECT 1 FROM audit_logs WHERE action = 'staff.credentials_denied' AND (entity_id = :e OR entity_id = :a)",
+        ['e' => (string) ($row2['ref'] ?? '-'), 'a' => (string) (int) ($row2['admin_id'] ?? 0)]));
+    // the standalone "Create login" (action=mklogin) on an approved application with no account
+    $app3 = $appRow('approved', null, '9000000203');
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agreements.php', 'get' => ['tab' => 'apps', 'id' => (string) $app3]]);
+    check('super-admin: the "Create login" button is there', str_contains($o, 'name="action" value="mklogin"') && str_contains($o, 'Create login (sell tickets)'));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => ['tab' => 'apps', 'id' => (string) $app3]]);
+    check('manager: the "Create login" button is back too (no "Login is created by a super-admin" note)', str_contains($o, 'name="action" value="mklogin"')
+        && str_contains($o, 'Create login (sell tickets)') && !str_contains($o, 'Login is created by a super-admin'));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => ['tab' => 'apps', 'id' => (string) $app3], 'post' => ['action' => 'mklogin', 'id' => $app3]]);
+    $row3 = $appOf($app3);
+    $lg3  = $loginOf('9000000203');
+    check('manager: agreements mklogin POST makes the login (no 403)', status($o) !== 403 && !empty($row3['admin_id']) && $lg3 !== null && (int) $lg3['id'] === (int) $row3['admin_id'],
+        'status ' . status($o) . ' ' . json_encode($row3));
+    // ...but a password typed on approve for a login that ALREADY exists changes that login: the super-admin's
+    $hA2 = $hashOf($aAgr);
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'agreements.php', 'get' => $agrGet, 'post' => ['action' => 'golive', 'id' => $app1, 'mklogin' => '1', 'new_password' => 'MgrSet#Pass2027']]);
+    check('manager: go-live with a password on an application that already has a login -> password unchanged, audited (agreements.approve_password)',
+        $hashOf($aAgr) === $hA2 && $denied($aAgr, 'agreements.approve_password'), 'status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'agreements.php', 'get' => $agrGet, 'post' => ['action' => 'golive', 'id' => $app1, 'mklogin' => '1', 'new_password' => 'SaSet#Pass2027']]);
+    check('super-admin: the same go-live sets that password', password_verify('SaSet#Pass2027', $hashOf($aAgr)), 'status ' . status($o));
+}
+
+// the lock's own switch on Easy Settings: a manager (settings.manage) may not undo the lock placed on managers
+$lockRow = Database::fetch("SELECT * FROM settings WHERE skey = 'staff_credentials_lock_on'");
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'easy-settings.php', 'post' => ['act' => 'nset', 'key' => 'staff_credentials_lock_on']]);
+$lockNow = Database::fetch("SELECT * FROM settings WHERE skey = 'staff_credentials_lock_on'");
+check('manager: Easy Settings refuses staff_credentials_lock_on (super-admin only), nothing written', $lockNow == $lockRow && str_contains($o, 'Only a super-admin can change this switch'), substr(strip_tags($o), 0, 120));
+if ($lockNow != $lockRow) {   // never leave a changed lock behind on the shared box
+    Database::delete('settings', "skey = 'staff_credentials_lock_on'", []);
+    if (is_array($lockRow)) { Database::insert('settings', $lockRow); }
+}
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'easy-settings.php']);
+$sixOk = true;
+foreach (['staff_credentials_lock_on', 'chalani_export_perm_on', 'login_mode_cards_on', 'staff_avatar_on', 'chalani_money_strip_on', 'icici_strict_fields_on'] as $sk) {
+    if (!str_contains($o, 'data-esn="' . $sk . '"')) { $sixOk = false; check("Easy Settings lists $sk", false); }
+}
+check('Easy Settings lists the six mp1 switches (owner can roll each back)', $sixOk);
+
+/* review fix: the two permission switches (a lock on the managers themselves) are the super-admin's
+   from every door - settings.php Save, Easy Settings nset, the S Hari AI 'setting' op (cmd / yes).
+   A row is needed for those doors to see the key at all: each gets a temporary row 'true' (read as
+   ON = the code default, so nothing behaves differently meanwhile); a super-admin's write turns it
+   into '1' (still ON) - visible, harmless. The rows as they were are put back at the end. */
+echo "\n-- D4. The permission switches are the super-admin's\n";
+require_once INCLUDE_PATH . '/aiops.php';
+$SU_KEYS = ['staff_credentials_lock_on', 'chalani_export_perm_on'];
+check('one list: AiOps::SUPER_ONLY_SETTINGS = the two lock switches + the role matrix + the 2FA list', AiOps::SUPER_ONLY_SETTINGS === array_merge($SU_KEYS, ['role_permissions_override', 'admin_2fa_ids'])
+    && AiOps::superOnlySetting('staff_credentials_lock_on') && AiOps::superOnlySetting('chalani_export_perm_on') && AiOps::superOnlySetting('role_permissions_override')
+    && AiOps::superOnlySetting('admin_2fa_ids') && !AiOps::superOnlySetting('staff_avatar_on'));
+$esSrc = (string) file_get_contents($ROOT . '/admin/easy-settings.php') . (string) file_get_contents($ROOT . '/admin/settings.php');
+check('settings.php + easy-settings.php read that list (AiOps::superOnlySetting)', substr_count($esSrc, 'AiOps::superOnlySetting(') >= 3);
+$suKeep = [];
+foreach ($SU_KEYS as $sk) { $suKeep[$sk] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $sk]); }
+$suRestore = static function () use ($suKeep): void {
+    foreach ($suKeep as $sk => $row) {
+        try {
+            Database::delete('settings', 'skey = :k', ['k' => $sk]);
+            if (is_array($row)) { Database::insert('settings', $row); }
+        } catch (Throwable $e) { echo "  !! could not restore $sk: " . $e->getMessage() . "\n"; }
+    }
+    Settings::flush();
+};
+register_shutdown_function($suRestore);
+$suSet = static function (string $v) use ($SU_KEYS): void {
+    foreach ($SU_KEYS as $sk) {
+        Database::run('INSERT INTO settings (skey, svalue, stype, sgroup, is_public) VALUES (:k, :v, \'bool\', \'security\', 0)
+                       ON DUPLICATE KEY UPDATE svalue = VALUES(svalue), stype = VALUES(stype)', ['k' => $sk, 'v' => $v]);
+    }
+    Settings::flush();
+};
+$suVal = static fn(string $sk): string => (string) Database::scalar('SELECT svalue FROM settings WHERE skey = :k', ['k' => $sk], '');
+$suAll = static fn(string $v): bool => $suVal('staff_credentials_lock_on') === $v && $suVal('chalani_export_perm_on') === $v;
+$suSet('true');
+check('the temporary rows read as ON (the code default)', Settings::getBool('staff_credentials_lock_on', false) && Settings::getBool('chalani_export_perm_on', false));
+
+// settings.php - the generic Save
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php']);
+preg_match('/name="_boolkeys" value="([^"]*)"/', $o, $bm);
+$bkList = explode(',', html_entity_decode((string) ($bm[1] ?? '')));
+check('manager: settings.php shows the two switches read-only (disabled + note) and leaves them out of _boolkeys',
+    preg_match('/name="s\[staff_credentials_lock_on\]" value="1"\s+(checked\s+)?disabled\s+data-saved/', $o) === 1 && preg_match('/name="s\[chalani_export_perm_on\]" value="1"\s+(checked\s+)?disabled\s+data-saved/', $o) === 1
+    && str_contains($o, 'Only a super-admin can change this switch.') && !in_array('staff_credentials_lock_on', $bkList, true) && !in_array('chalani_export_perm_on', $bkList, true) && count($bkList) > 2,
+    count($bkList) . ' boolkeys');
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php', 'post' => ['_boolkeys' => implode(',', $SU_KEYS)]]);
+check('manager: settings.php Save with both unticked (_boolkeys) -> both still ON, the rest "saved", a note says why', $suAll('true')
+    && str_contains($o, 'Settings saved.') && str_contains($o, 'Only a super-admin can change staff_credentials_lock_on, chalani_export_perm_on'), $suVal('staff_credentials_lock_on') . '/' . $suVal('chalani_export_perm_on'));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php', 'post' => ['s' => ['staff_credentials_lock_on' => '0', 'chalani_export_perm_on' => 'off']]]);
+check('manager: settings.php Save with s[...] = 0 -> both still ON, note', $suAll('true') && str_contains($o, 'Only a super-admin can change staff_credentials_lock_on, chalani_export_perm_on'));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php', 'post' => ['s' => ['staff_credentials_lock_on' => '1'], '_boolkeys' => 'staff_credentials_lock_on']]);
+check('manager: posting the value it already has -> no note (nothing would change)', $suAll('true') && str_contains($o, 'Settings saved.') && !str_contains($o, 'Only a super-admin can change staff_credentials_lock_on'));
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'settings.php']);
+check('super-admin: settings.php switches editable, in _boolkeys', preg_match('/name="s\[staff_credentials_lock_on\]" value="1"\s+(checked\s+)?data-saved/', $o) === 1
+    && preg_match('/name="_boolkeys" value="[^"]*staff_credentials_lock_on/', $o) === 1);
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'settings.php', 'post' => ['s' => ['staff_credentials_lock_on' => '1', 'chalani_export_perm_on' => '1'], '_boolkeys' => implode(',', $SU_KEYS)]]);
+check('super-admin: settings.php Save writes them (stored "1", no note)', $suAll('1') && str_contains($o, 'Settings saved.') && !str_contains($o, 'Only a super-admin can change'), $suVal('staff_credentials_lock_on'));
+$suSet('true');
+
+// the S Hari AI 'setting' op (easy-settings cmd / yes, the in-page bubble) - AiOps in this process
+$suSaved = $_SESSION ?? [];
+$asSess = static function (int $id): array {
+    $a = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $id]);
+    $_SESSION[ADMIN_SESSION_KEY] = ['id' => (int) $a['id'], 'username' => (string) $a['username'], 'full_name' => (string) $a['full_name'],
+        'role' => (string) $a['role'], 'permissions' => jsonColumn($a['permissions'] ?? null), 'last_seen' => time()];
+    return $_SESSION[ADMIN_SESSION_KEY];
+};
+$mgrS = $asSess($aMgr);
+check('manager can manage settings (so only the lock rule stops it)', Auth::canManageSettings() && !Auth::isSuperadmin());
+check('manager: AiOps::settingEditable / settingRow refuse both lock switches', !AiOps::settingEditable('staff_credentials_lock_on') && !AiOps::settingEditable('chalani_export_perm_on')
+    && AiOps::settingRow('staff_credentials_lock_on') === null && AiOps::settingRow('chalani_export_perm_on') === null && AiOps::settingEditable('staff_avatar_on'));
+check('manager: AiOps::allowed refuses a setting op on them, allows another setting', !AiOps::allowed(['type' => 'setting', 'key' => 'staff_credentials_lock_on'])
+    && !AiOps::allowed(['type' => 'setting', 'key' => 'chalani_export_perm_on']) && AiOps::allowed(['type' => 'setting', 'key' => 'staff_avatar_on']));
+$pr = AiOps::propose('staff_credentials_lock_on off', true, false);
+$prBad = array_filter((array) $pr['ops'], static fn(array $a): bool => AiOps::superOnlySetting((string) ($a['key'] ?? '')));
+check('manager: the cmd words "staff_credentials_lock_on off" propose nothing for it', $prBad === [] && !isset($pr['switches']['staff_credentials_lock_on']), json_encode($pr['ops']));
+$done = AiOps::apply([['type' => 'setting', 'key' => 'staff_credentials_lock_on', 'value' => '0'], ['type' => 'setting', 'key' => 'chalani_export_perm_on', 'value' => '0']], $mgrS);
+check('manager: an AI-shaped "yes" (AiOps::apply setting = 0) writes nothing', $suAll('true') && !str_contains(implode(' ', $done), '⚙️'), implode(' | ', $done));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'easy-settings.php']);
+check('manager: Easy Settings shows both switches disabled and leaves them out of the setting finder', preg_match('/data-esn="staff_credentials_lock_on">(?:(?!data-esn=).)*?class="esn-t" disabled>/s', $o) === 1
+    && preg_match('/data-esn="chalani_export_perm_on">(?:(?!data-esn=).)*?class="esn-t" disabled>/s', $o) === 1 && !str_contains($o, '"k":"staff_credentials_lock_on"') && !str_contains($o, '"k":"chalani_export_perm_on"'));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'easy-settings.php', 'post' => ['act' => 'nset', 'key' => 'chalani_export_perm_on']]);
+check('manager: Easy Settings nset chalani_export_perm_on refused (super-admin only)', $suAll('true') && str_contains($o, 'Only a super-admin can change this switch'));
+$saS = $asSess($aSa);
+check('super-admin: settingEditable + allowed for both', AiOps::settingEditable('staff_credentials_lock_on') && AiOps::settingEditable('chalani_export_perm_on')
+    && AiOps::allowed(['type' => 'setting', 'key' => 'staff_credentials_lock_on']));
+$done = AiOps::apply([['type' => 'setting', 'key' => 'staff_credentials_lock_on', 'value' => '1'], ['type' => 'setting', 'key' => 'chalani_export_perm_on', 'value' => '1']], $saS);
+check('super-admin: AiOps::apply setting writes them (stored "1")', $suAll('1') && substr_count(implode(' ', $done), '⚙️') === 2, implode(' | ', $done));
+$_SESSION = $suSaved;
+$suRestore();
+check('the lock rows are back as they were', array_map(static fn(string $sk): ?array => Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $sk]), array_combine($SU_KEYS, $SU_KEYS)) == $suKeep);
+
+/* review fix: a settings.manage manager's plain Save could rewrite the 'security' rows - the role matrix
+   (role_permissions_override), who has 2FA (admin_2fa_ids), PIN lock, device limits - and with them
+   undo the credential lock. Refused for anyone but a super-admin (rows unchanged, a note names them,
+   shown read-only); a super-admin's Save writes them. Every row is put back exactly (svalue +
+   updated_at) - unless another suite changed it meanwhile, which is then said and left alone. The
+   super-admin writes only no-op values (a role that does not exist, an admin id that does not exist). */
+echo "\n-- D4b. Security rows on settings.php Save\n";
+$SEC = ['role_permissions_override' => ['json', '[]'], 'admin_2fa_ids' => ['json', '[]'], 'pin_lock_idle_min' => ['int', '0']];
+$secKeep = []; $secMade = []; $secMine = [];
+foreach ($SEC as $sk => [$st, $sv]) {
+    $row = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $sk]);
+    if ($row === null) {   // a fresh box: a temporary row (the code default), removed at the end
+        Database::insert('settings', ['skey' => $sk, 'svalue' => $sv, 'stype' => $st, 'sgroup' => 'security', 'is_public' => 0]);
+        $row = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $sk]);
+        $secMade[$sk] = true;
+    }
+    $secKeep[$sk] = $row;
+}
+$secVal  = static fn(string $sk): string => (string) Database::scalar('SELECT svalue FROM settings WHERE skey = :k', ['k' => $sk], '');
+$secSame = static function () use ($secKeep, $secVal): bool {
+    foreach ($secKeep as $sk => $row) {
+        if ($secVal($sk) !== (string) $row['svalue']) { return false; }
+    }
+    return true;
+};
+$secRestore = static function () use (&$secKeep, &$secMade, &$secMine): void {
+    foreach ($secKeep as $sk => $row) {
+        try {
+            if (!empty($secMade[$sk])) { Database::delete('settings', 'skey = :k', ['k' => $sk]); continue; }
+            $now = (string) Database::scalar('SELECT svalue FROM settings WHERE skey = :k', ['k' => $sk], '');
+            if ($now !== (string) $row['svalue'] && in_array($now, $secMine[$sk] ?? [], true)) {
+                Database::run('UPDATE settings SET svalue = :v, updated_at = :u WHERE skey = :k', ['v' => $row['svalue'], 'u' => $row['updated_at'], 'k' => $sk]);
+            } elseif ($now !== (string) $row['svalue']) {
+                echo "  !! $sk was changed by someone else meanwhile - left as it is\n";
+            }
+        } catch (Throwable $e) { echo "  !! could not restore $sk: " . $e->getMessage() . "\n"; }
+    }
+    $secMade = []; $secMine = [];
+    Settings::flush();
+};
+register_shutdown_function($secRestore);
+$secBool = (string) Database::scalar("SELECT skey FROM settings WHERE sgroup = 'security' AND stype = 'bool' ORDER BY skey LIMIT 1", [], '');
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php']);
+preg_match('/name="_boolkeys" value="([^"]*)"/', $o, $bm);
+$bkMgr = explode(',', html_entity_decode((string) ($bm[1] ?? '')));
+check('manager: settings.php shows the security rows read-only (disabled = not posted + note); a security switch is not in _boolkeys',
+    preg_match('/<textarea name="s\[role_permissions_override\]"[^>]*\sdisabled>/', $o) === 1 && preg_match('/<textarea name="s\[admin_2fa_ids\]"[^>]*\sdisabled>/', $o) === 1
+    && preg_match('/name="s\[pin_lock_idle_min\]"[^>]*\sdisabled>/', $o) === 1 && str_contains($o, 'Only a super-admin can change this setting.')
+    && ($secBool === '' || !in_array($secBool, $bkMgr, true)) && count($bkMgr) > 2, $secBool . ' / ' . count($bkMgr) . ' boolkeys');
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'settings.php']);
+preg_match('/name="_boolkeys" value="([^"]*)"/', $o, $bm);
+$bkSa = explode(',', html_entity_decode((string) ($bm[1] ?? '')));
+check('super-admin: the security rows are editable, the security switch is in _boolkeys', str_contains($o, 'name="s[role_permissions_override]"')
+    && preg_match('/<textarea name="s\[role_permissions_override\]"[^>]*\sdisabled>/', $o) === 0 && preg_match('/name="s\[pin_lock_idle_min\]"[^>]*\sdisabled>/', $o) === 0
+    && ($secBool === '' || in_array($secBool, $bkSa, true)) && !str_contains($o, 'Only a super-admin can change this setting.'));
+$orig2fa = (string) $secKeep['admin_2fa_ids']['svalue'];
+$secTry  = ['role_permissions_override' => '{"manager":{"staff.credentials":true,"settings.manage":true}}',
+            'admin_2fa_ids'             => trim($orig2fa) === '[]' || trim($orig2fa) === '' ? '[999999992]' : '[]',   // everybody's 2FA off
+            'pin_lock_idle_min'         => (string) ((int) $secKeep['pin_lock_idle_min']['svalue'] + 7)];
+foreach ($secTry as $sk => $v) { $secMine[$sk][] = $v; }   // put back even if a bug wrote them
+$nDen = static fn(): int => (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'settings.super_only_denied' AND new_value LIKE '%role_permissions_override%' AND new_value LIKE '%admin_2fa_ids%'", [], 0);
+$nDen0 = $nDen();
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php', 'post' => ['s' => $secTry]]);
+check('manager: settings.php Save with s[role_permissions_override] + s[admin_2fa_ids] (+ a security int) -> the rows unchanged', $secSame(),
+    $secVal('role_permissions_override') . ' / ' . $secVal('admin_2fa_ids') . ' / ' . $secVal('pin_lock_idle_min'));
+check('...the rest "saved", the note names the three keys, audited once', str_contains($o, 'Settings saved.')
+    && str_contains($o, 'Only a super-admin can change role_permissions_override, admin_2fa_ids, pin_lock_idle_min — left as it was.') && $nDen() === $nDen0 + 1,
+    substr(strip_tags((string) preg_replace('/.*?(Settings saved[^<]*).*/s', '$1', $o)), 0, 240));
+$o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'settings.php', 'post' => ['s' => array_map(static fn(array $r): string => (string) $r['svalue'], $secKeep)]]);
+check('manager: posting the values the rows already have -> saved, no note, rows unchanged', str_contains($o, 'Settings saved.') && !str_contains($o, '— left as it was.') && $secSame());
+$saTry = ['role_permissions_override' => '{"mp1lg_norole":{"dashboard.view":false}}',
+          'admin_2fa_ids'             => (string) json_encode(array_values(array_merge(array_map('intval', (array) (json_decode($orig2fa, true) ?: [])), [999999991])))];
+foreach ($saTry as $sk => $v) { $secMine[$sk][] = $v; }
+$o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'settings.php', 'post' => ['s' => $saTry]]);
+check('super-admin: settings.php Save writes role_permissions_override + admin_2fa_ids, no note', $secVal('role_permissions_override') === $saTry['role_permissions_override']
+    && $secVal('admin_2fa_ids') === $saTry['admin_2fa_ids'] && str_contains($o, 'Settings saved.') && !str_contains($o, '— left as it was.'),
+    $secVal('role_permissions_override') . ' / ' . $secVal('admin_2fa_ids'));
+$secWasMade = $secMade;
+$secRestore();
+$secNow = []; $secWant = [];
+foreach ($secKeep as $sk => $row) {
+    $secNow[$sk]  = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $sk]);
+    $secWant[$sk] = !empty($secWasMade[$sk]) ? null : $row;   // a temporary row is gone again
+}
+check('the security rows are back as they were (svalue + updated_at)', $secNow == $secWant, 'see the !! line above');
+
+/* review fix: admin/staff-applications.php - an EXISTING person's portal password (pwset / pwclear) and the
+   sign-in mobile (edit: phone / phone_country; /team/ = mobile + password) are the super-admin's; the
+   rest of an edit still saves; approving with a first password (onboarding) stays with the office. */
+echo "\n-- D5. Staff applications: an existing person's sign-in\n";
+require_once INCLUDE_PATH . '/staffapplications.php';
+require_once INCLUDE_PATH . '/teamportal.php';
+if (!StaffApps::available() || !TeamPortal::ready()) {
+    check('staff_applications + the team-portal columns present for the staff checks', false, 'run database/upgrade-2026-10-22-staff-applications.sql');
+} else {
+    $stfRow = static function (string $st, string $phone, string $n, ?string $pw): int {
+        return (int) Database::insert('staff_applications', ['full_name' => 'Mp Stf Person', 'phone' => $phone, 'phone_country' => 'IN', 'phone_verified' => 1,
+            'role_applied' => 'driver', 'id_type' => 'citizenship', 'id_number' => 'MPLG-STF-' . $n, 'status' => $st,
+            'password_hash' => $pw !== null ? Security::hashPassword($pw) : null, 'show_on_website' => 0]);
+    };
+    $stf       = static fn(int $id): array => Database::fetch('SELECT * FROM staff_applications WHERE id = :i', ['i' => $id]) ?? [];
+    $stfDenied = static fn(int $id, string $act): int => (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'staff.credentials_denied' AND entity_id = :e AND new_value LIKE :a",
+        ['e' => StaffApps::refFor($id), 'a' => '%' . $act . '%'], 0);
+    $s1   = $stfRow('approved', '9000000301', '1', 'Stf#Pass2026');
+    $sGet = ['id' => (string) $s1];
+    $sh0  = (string) ($stf($s1)['password_hash'] ?? '');
+    $sEdit = static fn(array $more): array => ['action' => 'edit', 'id' => $s1] + $more;
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet]);
+    check('manager: the staff record draws; no set / clear password forms, the note instead', str_contains($o, 'id="login"') && !str_contains($o, 'value="pwset"')
+        && !str_contains($o, 'value="pwclear"') && str_contains($o, 'Only a super-admin can set or clear the portal password'), substr(strip_tags($o), 0, 200));
+    check('manager: Edit details shows the sign-in mobile + its country disabled (not posted) + the note', preg_match('/name="phone" maxlength="\d+" value="9000000301" inputmode="numeric" disabled>/', $o) === 1
+        && str_contains($o, '<select class="inp" name="phone_country" disabled>') && str_contains($o, 'Only a super-admin can change the login mobile'));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => ['action' => 'pwset', 'id' => $s1, 'new_password' => 'MgrStf#Pass2026']]);
+    check('manager: pwset -> 403, password unchanged, says why, audited', status($o) === 403 && (string) $stf($s1)['password_hash'] === $sh0
+        && str_contains($o, 'Only a super-admin can set or clear the portal password. Nothing was changed.') && $stfDenied($s1, 'staff_apps.pwset') === 1, 'status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => ['action' => 'pwclear', 'id' => $s1]]);
+    check('manager: pwclear -> 403, password kept, audited', status($o) === 403 && (string) $stf($s1)['password_hash'] === $sh0 && $stfDenied($s1, 'staff_apps.pwclear') === 1, 'status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => $sEdit(['full_name' => 'Mp Stf Person B', 'phone' => '9000000302', 'phone_country' => 'NP'])]);
+    $r1 = $stf($s1);
+    check('manager: edit with a new mobile + country -> both unchanged (still proven), the name saved, audited', (string) $r1['phone'] === '9000000301' && (string) $r1['phone_country'] === 'IN'
+        && (int) $r1['phone_verified'] === 1 && (string) $r1['full_name'] === 'Mp Stf Person B' && $stfDenied($s1, 'staff_apps.edit.phone') === 1,
+        json_encode([$r1['phone'] ?? null, $r1['phone_country'] ?? null, $r1['full_name'] ?? null]) . ' status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => $sEdit(['full_name' => 'Mp Stf Person C'])]);
+    check('manager: edit with no mobile posted (the disabled box) saves the rest, no new refusal', (string) $stf($s1)['full_name'] === 'Mp Stf Person C' && $stfDenied($s1, 'staff_apps.edit.phone') === 1);
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet + ['done' => 'editnoph']]);
+    check('...the page after a refused mobile says so (done=editnoph)', str_contains($o, 'Details saved. मोबाइल नम्बर सुपर-एडमिनले मात्र बदल्न मिल्छ · Only a super-admin can change the login mobile — left as it was.'));
+    $s2 = $stfRow('pending', '9000000303', '2', null);
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => ['id' => (string) $s2]]);
+    check('manager: onboarding stays - a pending application still offers Approve with a first password', str_contains($o, 'name="do" value="approve"') && str_contains($o, 'name="new_password"'));
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'staff-applications.php', 'get' => $sGet]);
+    check('super-admin: set / clear password forms there, the mobile box editable', str_contains($o, 'value="pwset"') && str_contains($o, 'value="pwclear"')
+        && preg_match('/name="phone" maxlength="\d+" value="9000000301" inputmode="numeric">/', $o) === 1 && !str_contains($o, 'Only a super-admin can set or clear the portal password'));
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => ['action' => 'pwset', 'id' => $s1, 'new_password' => 'SaStf#Pass2026']]);
+    check('super-admin: pwset sets the portal password', password_verify('SaStf#Pass2026', (string) $stf($s1)['password_hash']), 'status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => $sEdit(['full_name' => 'Mp Stf Person C', 'phone' => '9000000304'])]);
+    check('super-admin: edit moves the sign-in mobile (marked not proven)', (string) $stf($s1)['phone'] === '9000000304' && (int) $stf($s1)['phone_verified'] === 0, (string) $stf($s1)['phone']);
+    $o = child(['what' => 'page', 'admin' => $aSa, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => ['action' => 'pwclear', 'id' => $s1]]);
+    check('super-admin: pwclear clears it', ($stf($s1)['password_hash'] ?? null) === null, 'status ' . status($o));
+    $o = child(['what' => 'page', 'admin' => $aMgr, 'script' => 'staff-applications.php', 'get' => $sGet, 'post' => ['action' => 'pwset', 'id' => $s1, 'new_password' => 'MgrStf#Pass2026'],
+        'mem' => ['staff_credentials_lock_on' => ['0', 'bool']]]);
+    check('staff_credentials_lock_on = 0: a manager sets it again (old rule)', password_verify('MgrStf#Pass2026', (string) $stf($s1)['password_hash']), 'status ' . status($o));
 }
 
 /* ===================================================================== */
@@ -416,6 +810,20 @@ check('cap raised to 730: 365 days', AdminSessions::rememberWindow($agentRow) ==
 memSetting('login_remember_max_days', '5000', 'int');
 memSetting('login_remember_days', '5000', 'int');
 check('never more than 730 days', AdminSessions::rememberWindow($agentRow) === 730 * 86400);
+
+/* ---- payment ids / bank keys are a super-admin's (owner plan 8: Payment Management = Admin only) ---- */
+require_once INCLUDE_PATH . '/aiops.php';
+$superKeys = ['bankapi_webhook_secret', 'bankapi_on', 'bankapi_mode', 'bankmail_app_password', 'bankmail_on', 'pay_bankmail_autoconfirm_on',
+              'upi_id', 'esewa_id', 'nepal_esewa_id', 'nepal_esewa_qr', 'india_upi_vpa', 'icici_strict_fields_on', 'role_permissions_override', 'admin_2fa_ids'];
+$notSuper = array_values(array_filter($superKeys, static fn(string $k): bool => !AiOps::superOnlySetting($k)));
+check('payment ids, bank keys and the Gmail auto switch are super-admin-only settings', $notSuper === [], json_encode($notSuper));
+check('  ordinary keys stay a settings manager\'s (company_phone, seller_day_report_on)',
+    !AiOps::superOnlySetting('company_phone') && !AiOps::superOnlySetting('seller_day_report_on'));
+$srcCo = (string) file_get_contents(dirname(__DIR__) . '/admin/company.php');
+$srcOs = (string) file_get_contents(dirname(__DIR__) . '/admin/owner-setup.php');
+check('  company.php and owner-setup.php refuse them for a non-super-admin (and owner-setup the Nepal QR upload)',
+    str_contains($srcCo, 'AiOps::superOnlySetting($key)') && str_contains($srcOs, 'AiOps::superOnlySetting($k)')
+    && str_contains($srcOs, "=== 'esewa_qr' && !Auth::isSuperadmin()"));
 
 echo "\n  $PASS passed, $FAIL failed\n";
 exit($FAIL === 0 ? 0 : 1);

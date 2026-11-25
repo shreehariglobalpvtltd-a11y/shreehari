@@ -6,7 +6,10 @@
  *   🇳🇵 नेपाली अनलाइन — the Nepal eSewa / bank QR (the same picture the ticket prints, upload
  *        logic = owner-setup.php's), eSewa id + name, the Gmail box that receives the Global IME
  *        Bank credit alerts (BankMail), Save & Enable, Test connection, last poll, credits table
- *        with 1-click "Link to PNR" and Ignore.
+ *        with 1-click "Link to PNR" and Ignore. Gmail auto-PAID (pay_bankmail_autoconfirm_on) is
+ *        OFF by default and shown here read-only (no toggle): a credit that passes every check is
+ *        a SUGGESTION - PNR, passenger, due vs credited, DKIM / account / sender chips and a big
+ *        "✅ Confirm" (PayCredits::link via the queue gate) after the person checked the bank app.
  *   🇮🇳 इन्डियन अनलाइन — UPI id / name (the company's existing upi_id / upi_name), the bank API
  *        (merchant id, key, secret, webhook secret, sandbox / live, signature header / format,
  *        field map), the webhook address to give the bank, Save & Enable, Test, last webhook,
@@ -117,8 +120,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'nepal_esewa_id' => ['text', 80], 'nepal_esewa_name' => ['text', 120],
                 'bankmail_host' => ['text', 120], 'bankmail_user' => ['text', 190], 'bankmail_app_password' => ['secret', 80],
                 'bankmail_from' => ['text', 500], 'bankmail_dkim_domain' => ['text', 120], 'bankmail_account_hint' => ['text', 6],
-                'pay_bankmail_autoconfirm_on' => ['bool', 0],
             ]);
+            /* Gmail auto-PAID is never switched from this page (owner-safety: suggestions only until the real
+               Global IME alert template is locked). The row is only created, OFF, so Settings can show it later. */
+            if (Settings::get('pay_bankmail_autoconfirm_on', null) === null) {
+                Settings::set('pay_bankmail_autoconfirm_on', '0', 'bool', 'payments');
+                Settings::flush();
+                $changed[] = 'pay_bankmail_autoconfirm_on=0 (default)';
+            }
             $want = (string) ($_POST['enable'] ?? '');
             if ($want === '1' || $want === '0') {
                 $cfg = BankMail::config();
@@ -254,6 +263,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $r = BankApi::testConnection();
         Logger::audit('payment_center.test', 'settings', 'bankapi', null, ['ok' => $r['ok']], 'Bank API test');
         $flash[] = [$r['ok'] ? 'ok' : 'bad', ($r['ok'] ? '✔ ' : '✖ ') . $r['msg'] . ' — ' . implode(' · ', array_map(static fn(array $c): string => ($c[1] ? '✔ ' : '✖ ') . $c[0] . ($c[2] !== '' ? ' (' . $c[2] . ')' : ''), $r['checks']))];
+    } elseif ($act === 'confirm') {
+        /* a Gmail SUGGESTION: the person checked the bank app; the same gate as Link to PNR
+           (PayCredits::link -> approveReviewed via 'queue': PaymentRisk + the person stay in the loop) */
+        $tab = 'np';
+        $id = (int) ($_POST['id'] ?? 0);
+        $c  = PayCredits::get($id);
+        try {
+            if (!PayCredits::isSuggestion($c) || (string) ($c['source'] ?? '') !== 'gmail') {
+                throw new RuntimeException('यो अब सुझाव होइन · this credit is no longer a suggestion (already confirmed or changed) — पेज फेरि खोल्नुहोस्।');
+            }
+            if (empty($_POST['bank_checked'])) {
+                throw new RuntimeException('पहिले बैंक app मा पैसा आएको हेर्नुहोस् र टिक लगाउनुहोस् · tick "I saw it in the bank app" first.');
+            }
+            $pnr = (string) Database::scalar('SELECT pnr FROM bookings WHERE id = :i', ['i' => (int) $c['booking_id']], '');
+            if ($pnr === '') {
+                throw new RuntimeException('Booking not found.');
+            }
+            $r = PayCredits::link($id, $pnr, $me, true, 'bank app checked');
+            $flash[] = [$r['ok'] ? 'ok' : 'bad', ($r['ok'] ? '✅ ' : '') . $r['msg']];
+        } catch (Throwable $ex) {
+            $flash[] = ['bad', $ex->getMessage()];
+        }
     } elseif ($act === 'link' || $act === 'ignore') {
         $id = (int) ($_POST['id'] ?? 0);
         $c  = PayCredits::get($id);
@@ -296,7 +327,9 @@ $credits = static function (string $src) use ($e, $stateTxt): void {
     }
     echo '<div class="pc-list">';
     foreach ($rows as $r) {
-        [$lbl, $col] = $stateTxt[(string) $r['state']] ?? [(string) $r['state'], '#667085'];
+        $sv = PayCredits::isSuggestion($r) ? PayCredits::suggestionView($r) : null;
+        [$lbl, $col] = $sv !== null ? ['💡 सुझाव · Suggested — Confirm चाहिन्छ', '#185bed']
+            : ($stateTxt[(string) $r['state']] ?? [(string) $r['state'], '#667085']);
         $open = in_array((string) $r['state'], ['new', 'unmatched'], true);
         echo '<div class="pc-cr">';
         echo '<div class="pc-cr-top"><b>' . $e($r['currency'] . ' ' . number_format((float) $r['amount'], 2)) . '</b>'
@@ -310,6 +343,40 @@ $credits = static function (string $src) use ($e, $stateTxt): void {
            . '</div>';
         if (!empty($r['note'])) {
             echo '<div class="pc-cr-note">' . $e($r['note']) . ($r['acted_name'] ? ' — ' . $e($r['acted_name']) : '') . '</div>';
+        }
+        if ($sv !== null) {
+            /* a Gmail SUGGESTION: everything matched, auto-PAID is off - the booking is still pending */
+            $chip = static fn(string $t, bool $ok): string => '<span class="pc-chip ' . ($ok ? 'ok' : 'no') . '">' . ($ok ? '✓ ' : '✗ ') . $e($t) . '</span>';
+            $due  = $sv['currency'] === 'NPR' ? 'NPR ' . number_format($sv['due_npr'], 2) : inr($sv['due_inr']);
+            echo '<div class="pc-sug">'
+               . '<div class="pc-sug-grid">'
+               . '<div><small>PNR</small><b><a href="booking-view.php?pnr=' . rawurlencode($sv['pnr']) . '">' . $e($sv['pnr']) . '</a></b>'
+                   . ($sv['status'] !== 'pending' ? '<small class="pc-no">' . $e($sv['status']) . '</small>' : '') . '</div>'
+               . '<div><small>यात्री · Passenger</small><b>' . $e($sv['name'] !== '' ? $sv['name'] : '—') . '</b></div>'
+               . '<div><small>तिर्नुपर्ने · Due</small><b>' . $e($due) . '</b>'
+                   . ($sv['currency'] === 'NPR' ? '<small>' . $e(inr($sv['due_inr'])) . '</small>' : '') . '</div>'
+               . '<div><small>बैंकमा आयो · Credited</small><b>' . $e($sv['currency'] . ' ' . number_format($sv['credited'], 2)) . '</b></div>'
+               . '</div>'
+               . '<div class="pc-chips">';
+            foreach ($sv['checks'] as [$ct, $cok]) {
+                echo $chip($ct, $cok);
+            }
+            echo $chip('रकम मिल्यो · amount', $sv['amount_ok']) . '</div>';
+            if ($sv['can_confirm']) {
+                echo '<form method="post" class="pc-confirm">' . Security::csrfField()
+                   . '<input type="hidden" name="act" value="confirm"><input type="hidden" name="tab" value="np"><input type="hidden" name="id" value="' . (int) $r['id'] . '">'
+                   . '<label class="pc-chk"><input type="checkbox" name="bank_checked" value="1" required> बैंक app मा यो पैसा आएको देखें · I saw this money in the bank app</label>'
+                   . '<button class="btn btn-orange pc-big" type="submit">✅ Confirm · पुष्टि गर्नुहोस्</button></form>';
+            } else {
+                echo '<p class="pc-warn" style="margin:6px 0 0">⚠️ अब केही मिलेन (✗ माथि हेर्नुहोस्) — बैंक statement जाँचेर मात्र Link गर्नुहोस् · something no longer matches.</p>'
+                   . '<form method="post" class="pc-inline" style="margin-top:6px">' . Security::csrfField() . '<input type="hidden" name="act" value="link"><input type="hidden" name="id" value="' . (int) $r['id'] . '">'
+                   . '<input name="pnr" required maxlength="40" value="' . $e($sv['pnr']) . '" autocapitalize="characters">'
+                   . '<label class="pc-chk"><input type="checkbox" name="bank_checked" value="1" required> बैंकमा पैसा आएको जाँचें · I checked the bank</label>'
+                   . '<button class="btn btn-orange" type="submit">🔗 Link to PNR</button></form>';
+            }
+            echo '<form method="post" class="pc-inline" style="margin-top:6px">' . Security::csrfField() . '<input type="hidden" name="act" value="ignore"><input type="hidden" name="id" value="' . (int) $r['id'] . '">'
+               . '<input name="note" maxlength="120" placeholder="बैंक app मा छैन? किन · not in the bank app? why"><button class="btn" type="submit">Ignore</button></form>'
+               . '</div>';
         }
         if ($open) {
             echo '<div class="pc-cr-act">'
@@ -350,6 +417,15 @@ admin_header('पेमेन्ट म्यानेजमेन्ट · Paym
 .pc-cr-act{display:grid;gap:6px;margin-top:8px}
 .pc-inline{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pc-inline input[type=text],.pc-inline input:not([type]){flex:1 1 160px;min-width:0;padding:8px 10px;border:1px solid var(--line,#e0e8f2);border-radius:9px;min-height:42px;font:inherit}
 .pc-chk{font-size:12px;display:flex;gap:6px;align-items:center}
+.pc-sug{margin-top:8px;padding:10px;border:1px solid #b9cdfb;border-radius:12px;background:var(--hover,#f3f7ff)}
+.pc-sug-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.pc-sug-grid div{min-width:0}.pc-sug-grid small{display:block;font-size:11.5px;color:var(--muted,#637491)}.pc-sug-grid b{display:block;font-size:15px;overflow-wrap:anywhere}
+.pc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pc-chip{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid}.pc-chip.ok{color:#0a7c2f;border-color:#0a7c2f}.pc-chip.no{color:#b3261e;border-color:#b3261e}
+.pc-confirm{display:grid;gap:8px;margin-top:10px}
+.pc-big{min-height:52px;font-size:17px;font-weight:800;width:100%}
+.pc-auto{grid-column:1/-1;border:1px dashed var(--line,#e0e8f2);border-radius:10px;padding:8px 10px;font-size:13px;color:inherit}
+.pc-auto p{margin:4px 0 0;font-size:12.5px;color:var(--muted,#637491)}
 .pc-url{display:block;width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--line,#e0e8f2);border-radius:8px;font-size:13px}
 .pc-tbl{width:100%;border-collapse:collapse;font-size:13px}.pc-tbl th,.pc-tbl td{padding:6px 6px;border-bottom:1px solid var(--line,#e0e8f2);text-align:right;white-space:nowrap}
 .pc-tbl th:first-child,.pc-tbl td:first-child{text-align:left;white-space:normal}
@@ -365,7 +441,15 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
   <?php foreach ($flash as [$t, $m]): ?><div class="pc-flash <?= $e($t) ?>"><?= $e($m) ?></div><?php endforeach; ?>
   <?php if (!$ready && $tab !== 'cash'): ?><div class="pc-warn">⚠️ Migration <b>upgrade-2026-11-25-mp1-pay-credits.sql</b> बाँकी — Gmail / bank API अहिले बन्द रहन्छ · runs quietly off until it is applied.</div><?php endif; ?>
 
-<?php if ($tab === 'np'): $qrNow = Ticket::esewaQrFile(); $mailOn = BankMail::on(); ?>
+<?php if ($tab === 'np'): $qrNow = Ticket::esewaQrFile(); $mailOn = BankMail::on(); $autoOn = PayCredits::gmailAutoOn(); ?>
+  <div class="pc-card pc-note" role="note">
+    <h2>💡 Gmail बाट आएको पैसा · Gmail credits</h2>
+    <?php if ($autoOn): ?>
+    <p class="hint" style="margin:0">Gmail Auto-PAID <b class="pc-ok">चालु · ON</b> छ: सबै जाँच मिलेको credit आफैं PAID हुन्छ; नमिलेको तल "व्यक्ति चाहिन्छ" मा आउँछ।</p>
+    <?php else: ?>
+    <p class="hint" style="margin:0">Gmail बाट आएको पैसा अहिले सुझावको रूपमा आउँछ; बैंक app मा हेरेर Confirm थिच्नुहोस्। Global IME को साँचो alert email को नमुना मिलाएपछि Auto-PAID खोल्न सकिन्छ। <span class="pc-no">(Auto-PAID: बन्द · OFF)</span></p>
+    <?php endif; ?>
+  </div>
   <form method="post" enctype="multipart/form-data" class="pc-card">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_qr"><input type="hidden" name="tab" value="np">
     <h2>🇳🇵 नेपाली QR · Nepal eSewa / Fonepay / bank QR</h2>
@@ -381,7 +465,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_save"><input type="hidden" name="tab" value="np">
     <h2>📧 Gmail बाट बैंक alert · Global IME credit alerts</h2>
-    <p class="hint">बैंकको credit alert मात्र आउने छुट्टै Gmail राख्नुहोस्। Google Account → Security → 2-Step → <b>App passwords</b> बाट १६ अक्षरको password। Mailbox मा केही बदलिँदैन (read-only)। Alert मा <b>हाम्रै खाता</b> (अन्तिम अंक), PNR र रकम ठ्याक्कै मिलेमा मात्र टिकट आफैं PAID हुन्छ; नत्र तल "व्यक्ति चाहिन्छ" मा आउँछ।</p>
+    <p class="hint">बैंकको credit alert मात्र आउने छुट्टै Gmail राख्नुहोस्। Google Account → Security → 2-Step → <b>App passwords</b> बाट १६ अक्षरको password। Mailbox मा केही बदलिँदैन (read-only)। Alert मा <b>हाम्रै खाता</b> (अन्तिम अंक), PNR र रकम ठ्याक्कै मिलेमा तल <b>💡 सुझाव</b> आउँछ (Auto-PAID चालु भए मात्र आफैं PAID); नत्र "व्यक्ति चाहिन्छ" मा आउँछ।</p>
     <div class="pc-f">
       <label>eSewa / bank ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa / खाता नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
@@ -391,7 +475,12 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
       <label>DKIM domain (बैंकको)<input name="bankmail_dkim_domain" value="<?= $e($val('bankmail_dkim_domain')) ?>" placeholder="gibl.com.np"></label>
       <label>हाम्रो Global IME खाताको अन्तिम ४–६ अंक · our account's last 4–6 digits<input name="bankmail_account_hint" value="<?= $e($val('bankmail_account_hint')) ?>" inputmode="numeric" maxlength="8" pattern="[0-9 ]{4,8}" placeholder="9012"></label>
       <label>IMAP host<input name="bankmail_host" value="<?= $e($val('bankmail_host', 'imap.gmail.com')) ?>"></label>
-      <label style="display:flex;gap:8px;align-items:center;color:inherit"><input type="checkbox" name="pay_bankmail_autoconfirm_on" value="1" style="width:auto;min-height:0" <?= Settings::getBool('pay_bankmail_autoconfirm_on', true) ? 'checked' : '' ?>> मिलेमा आफैं PAID · auto-confirm a full match</label>
+      <div class="pc-auto" id="pc-auto-state">
+        <b>Gmail Auto-PAID</b> <span class="<?= $autoOn ? 'pc-ok' : 'pc-no' ?>"><?= $autoOn ? '● चालु · ON' : '○ बन्द · OFF' ?></span> <small class="muted">(पढ्न मात्र · read-only · <code>pay_bankmail_autoconfirm_on</code>)</small>
+        <p><?= $autoOn
+            ? 'सबै जाँच मिलेको Gmail credit आफैं PAID हुन्छ। बन्द गर्न: Settings → Payments → pay_bankmail_autoconfirm_on।'
+            : 'बन्द: सबै मिलेको credit 💡 सुझाव मात्र हुन्छ, टिकट PAID हुँदैन — बैंक app मा हेरेर तल Confirm थिच्नुहोस्। यहाँबाट खोलिँदैन; साँचो Global IME alert को नमुना मिलाएपछि मात्र Settings → Payments मा खोल्नुहोस्।' ?></p>
+      </div>
     </div>
     <div class="pc-btns">
       <button class="btn" type="submit">सेभ · Save</button>
@@ -409,7 +498,7 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
 
   <div class="pc-card">
     <h2>🏦 Credits (Gmail)</h2>
-    <p class="hint">"Link to PNR": रकम ठ्याक्कै मिल्नुपर्छ; Payment risk जाँच पनि हुन्छ। Ignore: हाम्रो होइन / refund।</p>
+    <p class="hint"><b>💡 सुझाव</b>: बैंक app मा पैसा आएको हेरेर "✅ Confirm" थिच्नुहोस् (Payment risk जाँच पनि हुन्छ)। "Link to PNR": रकम ठ्याक्कै मिल्नुपर्छ। Ignore: हाम्रो होइन / refund / बैंक app मा छैन।</p>
     <?php $credits('gmail'); ?>
   </div>
 

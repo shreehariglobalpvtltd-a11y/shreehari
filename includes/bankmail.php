@@ -11,20 +11,43 @@
  *
  *  Each new message from an allowed sender is parsed (parse() is pure and
  *  unit-tested with fixture e-mails): From, Message-ID, Date, the TOPMOST
- *  Authentication-Results (added by Gmail itself: dkim=pass with header.d
- *  = bankmail_dkim_domain), the text (quoted-printable / base64, HTML made
- *  text), then a generic credit-alert reader: amount (NPR / NRs / Rs / रु,
- *  commas, Devanagari digits), transaction / reference id, remarks /
- *  narration and any PNR in it, and the CREDITED ACCOUNT (masked to its last
- *  digits; never read from the remarks the payer types). Only credit
- *  (deposit / credited) alerts are kept; a debit is ignored.
- *  bankmail_amount_regex / bankmail_txn_regex / bankmail_account_regex
- *  (capture group 1) let the owner fix the reading for the bank's real
- *  wording without a code change.
+ *  Authentication-Results (added by Gmail itself), read unit by unit with
+ *  comments / quoted strings cut out: a "dkim=pass" unit with header.d (or
+ *  header.i) = bankmail_dkim_domain, any dmarc unit = pass for it, and the
+ *  From: domain aligned with the signer; the text (quoted-printable / base64,
+ *  HTML made text), then a credit-alert reader that REFUSES AMBIGUITY - we do
+ *  not know the bank's exact wording, and the remarks the payer types can sit
+ *  anywhere in it (next line, next table row, any label), so nothing tries to
+ *  find "the bank's" figure. Every money figure in the WHOLE alert (subject +
+ *  body, remarks included: NPR / NRs / Rs / रु / रू / INR / ₹ on either side,
+ *  an Amount / Amt / रकम label, "credited with 10.00", a bare 10.00; Devanagari
+ *  digits) is collected; only a line that BEGINS with a balance label is left
+ *  out. Exactly ONE distinct value = the amount, anything else = 0 (a person
+ *  checks). The same for the transaction / reference id and the PNR: exactly
+ *  one distinct one, else none. An alert with both credit and debit words is
+ *  kept for a person (never dropped, never auto); a debit alone is ignored.
+ *  bankmail_amount_regex must AGREE with that one figure; bankmail_txn_regex
+ *  adds candidates; bankmail_account_regex reads the credited account (masked
+ *  to its last digits, from bankText(): never from the remarks).
+ *
+ *  The Authentication-Results reader FAILS CLOSED: a topmost header with a double
+ *  quote, a backslash, nested or unbalanced parentheses, or any non-ASCII /
+ *  control character is not read at all (dkim_ok false, dkim_why 'auth header
+ *  not simple') - Gmail's own header never needs any of them.
+ *
+ *  Lines (for the balance-label rule) are split ONLY on \n, after \r\n / \r
+ *  became \n and U+2028 / U+2029 / U+0085 / VT / FF became a space, so a
+ *  separator the payer types can never start a fake "Bal" line. NBSP and every
+ *  other Unicode space become a plain space (text/plain and HTML alike).
  *
  *  A credit goes to PayCredits::record() + tryAutoConfirm() - which, not
  *  this file, decides whether money may confirm a ticket (it needs the
- *  credited account to end with bankmail_account_hint).
+ *  credited account to end with bankmail_account_hint, an amount and a txn
+ *  id) - or, when the alert is ambiguous, to PayCredits::hold(). While
+ *  pay_bankmail_autoconfirm_on is off (the DEFAULT, owner-safety 25 Nov 2026:
+ *  the real Global IME template is not locked yet) a credit that passes every
+ *  check is only a SUGGESTION ('matched', booking still pending) that a person
+ *  confirms on Payment Management after checking the bank app.
  *
  *  One odd message never stops the reader: each message is handled on its
  *  own; one that fails is logged, raises an admin bell and is stepped over
@@ -35,7 +58,7 @@
  *  bankmail_app_password (secret), bankmail_from (allowed senders: addresses
  *  or @domains, comma list), bankmail_dkim_domain, bankmail_account_hint
  *  (last 4-6 digits of our Global IME account), bankmail_authserv
- *  (mx.google.com), pay_bankmail_autoconfirm_on (on), bankmail_last_uid,
+ *  (mx.google.com), pay_bankmail_autoconfirm_on (OFF = suggestions only), bankmail_last_uid,
  *  bankmail_uidvalidity, bankmail_last_poll (JSON, for the admin page).
  * =====================================================================
  */
@@ -271,8 +294,9 @@ final class BankMail
 
     /**
      * @param array<string,string>|null $opts dkim_domain, authserv, amount_regex, txn_regex, account_regex (null = from Settings)
-     * @return array<string,mixed> from, message_id, date, subject, dkim_ok, dkim_domains, text,
-     *         is_credit, is_debit, amount, currency, txn_id, remarks, pnrs, pnr, account, why
+     * @return array<string,mixed> from, message_id, date, subject, dkim_ok, dkim_domains, dkim_why, text,
+     *         is_credit, is_debit, mixed, amount, amounts, currency, txn_id, txns, remarks, pnrs, pnr,
+     *         account, hold ('' or why a person must check it), why
      */
     public static function parse(string $raw, ?array $opts = null): array
     {
@@ -307,48 +331,70 @@ final class BankMail
         $subject = mb_scrub(self::decodeHeader($h1('subject')), 'UTF-8');   // raw 8-bit header bytes
 
         /* DKIM: ONLY the topmost Authentication-Results, and only when it was written by
-           the receiving server (authserv-id) - a header the sender typed lower down counts for nothing */
-        $dkimDomains = [];
-        $auth = $h1('authentication-results');
-        $authserv = strtolower(trim((string) ($opts['authserv'] ?? '')));
-        $servOk = $auth !== '' && ($authserv === '' || strtolower(trim((string) strtok($auth, ';'))) === $authserv);
-        if ($servOk && preg_match_all('/\bdkim\s*=\s*pass\b([^;]*)/i', $auth, $dm, PREG_SET_ORDER) > 0) {
-            foreach ($dm as $x) {
-                if (preg_match('/header\.(?:d|i)\s*=\s*@?([A-Za-z0-9.\-]+)/i', $x[1], $dd) === 1) {
-                    $dkimDomains[] = strtolower($dd[1]);
-                }
-            }
-        }
+           the receiving server (authserv-id) - a header the sender typed lower down counts for nothing.
+           It is read as resinfo units (authResults): an spf comment or an smtp.mailfrom the sender
+           chose ("dkim=pass+header.d=bank@evil") is never a DKIM result. A dmarc unit in the same
+           header must pass for the bank domain, and the From: address must sit with the signer. */
         $want = strtolower(trim((string) ($opts['dkim_domain'] ?? '')));
-        $dkimOk = false;
-        if ($want !== '') {
-            foreach ($dkimDomains as $d) {
-                if ($d === $want || str_ends_with($d, '.' . $want)) {
-                    $dkimOk = true;
-                }
-            }
-        }
+        $authRes = self::authResults($h1('authentication-results'), (string) ($opts['authserv'] ?? ''));
+        $dkimDomains = $authRes['dkim'];
+        $dkimOk = $want !== '' && self::dkimAligned($authRes, $from, $want);
 
         $text = self::bodyText($headers, $body);
-        $all  = self::normDigits(trim($subject . "\n" . $text));
+        $all  = self::normDigits(trim(self::normSpaces($subject . "\n" . $text)));
 
-        $isDebit  = preg_match('/\b(debited|withdrawn|withdrawal|debit\s+alert)\b|डेबिट|झिकिएको/iu', $all) === 1;
-        $isCredit = !$isDebit && preg_match('/\b(credited|deposited|deposit|credit\s+alert|received)\b|क्रेडिट|जम्मा/iu', $all) === 1;
+        /* AMBIGUITY-REFUSING: we do not know the bank's exact wording, and the remarks the PAYER
+           types can sit anywhere (after "Remarks:", on the next line, in another table row, after
+           any label), so nothing here tries to find "the bank's" figure. Every money figure and
+           every txn / reference id in the WHOLE alert is collected; only exactly ONE distinct value
+           is used. A second one - whoever wrote it - means a person checks. The payer can only ADD
+           text, and added text can only make the alert ambiguous, never steer what is read. */
+        $scan = self::scanText($all);   // balance lines blanked
+        $creditW = preg_match(self::CREDIT_WORDS, $scan) === 1;
+        $debitW  = preg_match(self::DEBIT_WORDS, $scan) === 1;
+        $mixed    = $creditW && $debitW;   // kept for a person: never dropped, never auto
+        $isDebit  = $debitW && !$creditW;
+        $isCredit = $creditW;
 
-        $amount = self::amountIn($all, (string) ($opts['amount_regex'] ?? ''));
-        $txn    = self::txnIn($all, (string) ($opts['txn_regex'] ?? ''));
+        $amountRe = (string) ($opts['amount_regex'] ?? '');
+        $amounts  = self::figures($all);
+        $amount   = self::amountIn($all, $amountRe);
+        $txns     = self::txnCandidates($all, (string) ($opts['txn_regex'] ?? ''));
+        $txn      = count($txns) === 1 ? $txns[0] : '';
         $remarks = '';
         if (preg_match('/(?:remarks?|narration|description|purpose|particulars|message)\s*[:\-]\s*([^\n]{1,200}?)(?=\s+(?:txn|transaction|trans\.|ref(?:erence)?\b|balance|avail|date|amount|thank)|\n|$)/iu', $all, $rm) === 1) {
             $remarks = trim($rm[1], " \t.,;");
         }
-        $pnrs = PayCredits::pnrsIn($remarks);
-        if ($pnrs === []) {
-            $pnrs = PayCredits::pnrsIn($all);
+        $ref = $remarks !== '' ? $remarks : $subject;
+        /* the PNR: exactly one distinct one in the whole alert (SHG-2026-0842 = SHG-2026-00842) */
+        $pnrs = [];
+        foreach (PayCredits::pnrsIn($all) as $x) {
+            $pnrs[PayCredits::pnrCandidates($x)[0] ?? $x] ??= $x;
+        }
+        $pnrs = array_values($pnrs);
+        if (count($pnrs) > 1) {
+            /* the ledger reads the PNR from ref_text too: it must see them all, never just one */
+            $ref = 'PNRs ' . implode(', ', array_slice($pnrs, 0, 5)) . ' · ' . $ref;
         }
         $account = self::accountIn($all, (string) ($opts['account_regex'] ?? ''));
+
+        $hold = '';
+        $one  = count($amounts) === 1 ? $amounts[0] : 0.0;
+        if ($mixed) {
+            $hold = 'The alert has both credit and debit words — check the bank statement';
+        } elseif (count($amounts) > 1) {
+            $hold = 'Different amounts in one alert (NPR ' . implode(', NPR ', array_map(static fn(float $v): string => number_format($v, 2), array_slice($amounts, 0, 4)))
+                . ') — the payer may have typed one; check the bank statement';
+        } elseif ($amount <= 0 && $one > 0 && $one < PayCredits::MAX_AMOUNT && trim($amountRe) !== '') {
+            $hold = 'bankmail_amount_regex does not agree with the amount in the alert (NPR ' . number_format($one, 2) . ') — check the bank statement';
+        } elseif (count($txns) > 1) {
+            $hold = 'Different transaction / reference ids in one alert (' . implode(', ', array_slice($txns, 0, 4)) . ') — check the bank statement';
+        }
         $why = '';
         if ($isDebit) {
             $why = 'debit alert';
+        } elseif ($mixed) {
+            $why = 'credit and debit words';
         } elseif (!$isCredit) {
             $why = 'not a credit alert';
         }
@@ -359,16 +405,21 @@ final class BankMail
             'subject'      => mb_substr($subject, 0, 200),
             'dkim_ok'      => $dkimOk,
             'dkim_domains' => $dkimDomains,
+            'dkim_why'     => (string) ($authRes['note'] ?? ''),
             'text'         => $text,
             'is_credit'    => $isCredit,
             'is_debit'     => $isDebit,
+            'mixed'        => $mixed,
             'amount'       => $amount,
+            'amounts'      => $amounts,
             'currency'     => 'NPR',
             'txn_id'       => $txn,
-            'remarks'      => mb_substr($remarks !== '' ? $remarks : $subject, 0, 255),
+            'txns'         => $txns,
+            'remarks'      => mb_substr($ref, 0, 255),
             'pnrs'         => $pnrs,
             'pnr'          => count($pnrs) === 1 ? $pnrs[0] : '',
             'account'      => $account,
+            'hold'         => $hold,
             'why'          => $why,
         ];
     }
@@ -415,6 +466,233 @@ final class BankMail
             return strtolower($m[1]);
         }
         return '';
+    }
+
+    /**
+     * One Authentication-Results value (the TOPMOST one) read as RFC 8601 resinfo units.
+     * Comments "( … )" (nested) and quoted strings are cut out first, then the value is split
+     * on ';'. The first unit must be the receiving server's authserv-id (optionally a version
+     * number after it). A unit counts as DKIM only when it BEGINS with method "dkim" and result
+     * "pass"; its domain comes from that unit's own header.d (else the domain after '@' in its
+     * header.i), and a header.i outside its header.d, or a property written twice, drops the unit.
+     *
+     * FAIL-CLOSED first (authSimple): a value with a double quote, a backslash, nested or
+     * unbalanced parentheses, or any non-ASCII / control character is not read at all -
+     * serv_ok false, note 'auth header not simple' - so no quoting / comment trick (a ')'
+     * inside a quoted local part, an unclosed '(' hiding dmarc=fail) can ever be parsed
+     * into a pass. Gmail writes none of these in its own header.
+     *
+     * @return array{serv_ok:bool, dkim:list<string>, dmarc:list<array{result:string, from:string}>, note:string}
+     *         dkim = the signing domain of every dkim=pass unit; dmarc = every dmarc unit, whatever it says;
+     *         note = why the header was not read ('' = it was)
+     */
+    public static function authResults(string $value, string $authserv = ''): array
+    {
+        $out = ['serv_ok' => false, 'dkim' => [], 'dmarc' => [], 'note' => ''];
+        if (trim($value) === '') {
+            return $out;
+        }
+        if (!self::authSimple($value)) {
+            $out['note'] = 'auth header not simple';
+            return $out;
+        }
+        $units = array_map('trim', explode(';', self::stripCfws($value)));
+        $authserv = strtolower(trim($authserv));
+        $servId = strtolower((string) preg_replace('/\s+[0-9]+$/', '', $units[0]));   // authserv-id [version]
+        if ($authserv !== '' && $servId !== $authserv) {
+            return $out;
+        }
+        $out['serv_ok'] = true;
+        foreach (array_slice($units, 1) as $u) {
+            $isDmarc = preg_match('/^dmarc(?![A-Za-z0-9_\-])/i', $u) === 1;
+            if (preg_match('/^([A-Za-z0-9_\-]+)\s*(?:\/\s*[0-9]+\s*)?=\s*([A-Za-z0-9_\-]+)(?=\s|$)(.*)$/s', $u, $um) !== 1) {
+                if ($isDmarc) {
+                    $out['dmarc'][] = ['result' => 'unreadable', 'from' => ''];
+                }
+                continue;
+            }
+            $method = strtolower($um[1]);
+            $result = strtolower($um[2]);
+            $props  = self::authProps($um[3]);
+            if ($method === 'dmarc') {
+                $out['dmarc'][] = $props === null ? ['result' => 'unreadable', 'from' => '']
+                    : ['result' => $result, 'from' => self::cleanDomain($props['header.from'] ?? '')];
+                continue;
+            }
+            if ($method !== 'dkim' || $result !== 'pass' || $props === null) {
+                continue;
+            }
+            $d = '';
+            if (array_key_exists('header.d', $props)) {
+                $d = self::cleanDomain($props['header.d']);
+                if ($d === '') {
+                    continue;   // a header.d that is not a plain domain: not trusted
+                }
+            }
+            $i = '';
+            if (array_key_exists('header.i', $props)) {
+                $iv = $props['header.i'];
+                $at = strrpos($iv, '@');
+                $i = self::cleanDomain($at === false ? $iv : substr($iv, $at + 1));
+                if ($i === '' || ($d !== '' && !self::under($i, $d))) {
+                    continue;   // RFC 6376: the i= domain is the d= domain or below it
+                }
+            }
+            $dom = $d !== '' ? $d : $i;
+            if ($dom !== '') {
+                $out['dkim'][] = $dom;
+            }
+        }
+        $out['dkim'] = array_values(array_unique($out['dkim']));
+        return $out;
+    }
+
+    /**
+     * Did the bank's own domain sign this message, for this From:?
+     *   - a dkim=pass unit whose domain is $want or below it;
+     *   - every dmarc unit in the same header says pass with header.from = the From: domain,
+     *     $want or below it (no dmarc unit at all: the dkim unit decides);
+     *   - the From: domain is $want or below it, and it and the signing domain are the same
+     *     or one is a subdomain of the other (alerts.bank.np signed by bank.np, or the reverse).
+     *
+     * @param array{serv_ok:bool, dkim:list<string>, dmarc:list<array{result:string, from:string}>} $auth
+     */
+    public static function dkimAligned(array $auth, string $from, string $want): bool
+    {
+        $want = strtolower(trim($want));
+        if ($want === '' || empty($auth['serv_ok'])) {
+            return false;
+        }
+        $signed = array_values(array_filter($auth['dkim'], static fn(string $d): bool => self::under($d, $want)));
+        if ($signed === []) {
+            return false;
+        }
+        $at = strrpos($from, '@');
+        $fromDom = $at === false ? '' : self::cleanDomain(substr($from, $at + 1));
+        if ($fromDom === '' || !self::under($fromDom, $want)) {
+            return false;
+        }
+        foreach ($auth['dmarc'] as $dm) {
+            if ($dm['result'] !== 'pass' || $dm['from'] === '' || !self::under($dm['from'], $want) || $dm['from'] !== $fromDom) {
+                return false;
+            }
+        }
+        foreach ($signed as $d) {
+            if (self::under($fromDom, $d) || self::under($d, $fromDom)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The Authentication-Results value is plain enough to read: printable ASCII only (no
+     * control character, not even a tab - folding is already a space), no double quote,
+     * no backslash, and parentheses that open and close one level deep, never nested,
+     * never a ')' before its '(' and none left open.
+     */
+    public static function authSimple(string $v): bool
+    {
+        if ($v === '' || preg_match('/[^\x20-\x7E]/', $v) === 1 || strpbrk($v, "\"\\") !== false) {
+            return false;
+        }
+        $depth = 0;
+        $n = strlen($v);
+        for ($k = 0; $k < $n; $k++) {
+            if ($v[$k] === '(') {
+                if (++$depth > 1) {
+                    return false;   // nested
+                }
+            } elseif ($v[$k] === ')') {
+                if (--$depth < 0) {
+                    return false;   // a ')' with no '('
+                }
+            }
+        }
+        return $depth === 0;   // an unclosed '('
+    }
+
+    /**
+     * An Authentication-Results value without its comments and quoted strings: a comment
+     * (nesting, with \-escapes) becomes a space, a quoted string becomes "" - so nothing inside
+     * either (a ';', a "dkim=pass") can ever look like a unit or a property. An unclosed
+     * comment or quote drops the rest of the value.
+     */
+    public static function stripCfws(string $v): string
+    {
+        $out = '';
+        $depth = 0;
+        $inQuote = false;
+        $n = strlen($v);
+        for ($k = 0; $k < $n; $k++) {
+            $c = $v[$k];
+            if ($inQuote) {
+                if ($c === '\\') {
+                    $k++;
+                } elseif ($c === '"') {
+                    $inQuote = false;
+                    $out .= '""';
+                }
+                continue;
+            }
+            if ($depth > 0) {
+                if ($c === '\\') {
+                    $k++;
+                } elseif ($c === '(') {
+                    $depth++;
+                } elseif ($c === ')') {
+                    $depth--;
+                    if ($depth === 0) {
+                        $out .= ' ';
+                    }
+                }
+                continue;
+            }
+            if ($c === '"') {
+                $inQuote = true;
+            } elseif ($c === '(') {
+                $depth = 1;
+            } elseif ($c === ')') {
+                $out .= ' ';   // a stray ')'
+            } else {
+                $out .= $c;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The ptype.property=value pairs of one resinfo unit (after its method=result), keys lower-case.
+     * null = a property written twice (the unit is not trusted).
+     *
+     * @return array<string,string>|null
+     */
+    private static function authProps(string $rest): ?array
+    {
+        $props = [];
+        if (preg_match_all('/(?:^|\s)([A-Za-z0-9_\-]+)\s*\.\s*([A-Za-z0-9_\-]+)\s*=\s*(\S*)/', $rest, $pm, PREG_SET_ORDER) > 0) {
+            foreach ($pm as $x) {
+                $k = strtolower($x[1] . '.' . $x[2]);
+                if (array_key_exists($k, $props)) {
+                    return null;
+                }
+                $props[$k] = $x[3];
+            }
+        }
+        return $props;
+    }
+
+    /** A plain host name, lower-case ('' = not one). */
+    private static function cleanDomain(string $s): string
+    {
+        $s = strtolower(rtrim(trim($s), '.'));
+        return preg_match('/^(?=.{3,253}$)[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?)+$/', $s) === 1 ? $s : '';
+    }
+
+    /** $host is $parent or a subdomain of it. */
+    private static function under(string $host, string $parent): bool
+    {
+        return $host !== '' && $parent !== '' && ($host === $parent || str_ends_with($host, '.' . $parent));
     }
 
     /**
@@ -496,7 +774,22 @@ final class BankMail
         if (!mb_check_encoding($body, 'UTF-8')) {
             $body = mb_convert_encoding($body, 'UTF-8', 'ISO-8859-1');
         }
-        return $isHtml ? self::htmlToText($body) : $body;
+        /* NBSP and the other Unicode spaces are a plain space in text/plain too ("NPR\u{00A0}10"
+           must read as NPR 10, or the bank's own figure would be invisible beside the payer's) */
+        return $isHtml ? self::htmlToText($body) : self::normSpaces($body);
+    }
+
+    /**
+     * Every Unicode space (NBSP U+00A0, U+2000-U+200A, U+202F, U+205F, U+3000, U+1680 - \p{Zs})
+     * and the line / paragraph separators U+2028 / U+2029, NEL U+0085, VT and FF become a plain
+     * space. \n and \r are kept (scanText makes \r\n / \r one \n). Invalid UTF-8 is scrubbed first,
+     * so the /u pattern can never fail and drop the text.
+     */
+    public static function normSpaces(string $s): string
+    {
+        $s = mb_scrub($s, 'UTF-8');
+        $r = preg_replace('/[\p{Zs}\x{2028}\x{2029}\x{0085}\x{000B}\x{000C}]/u', ' ', $s);
+        return is_string($r) ? $r : $s;
     }
 
     /**
@@ -532,11 +825,18 @@ final class BankMail
 
     public static function htmlToText(string $html): string
     {
-        $t = (string) preg_replace('#<(script|style|head)\b[^>]*>.*?</\1>#is', ' ', $html);
-        $t = (string) preg_replace('#<br\s*/?>|</(p|div|tr|li|h[1-6]|table)>#i', "\n", $t);
+        /* a line break in the HTML SOURCE is only white space (as a browser shows it): lines come
+           from <br> and the block ends alone, so a newline inside a cell can never start a line */
+        $t = (string) preg_replace('/\r\n|\r|\n/', ' ', $html);
+        $t = (string) preg_replace('#<(script|style|head)\b[^>]*>.*?</\1>#is', ' ', $t);
+        /* tag breaks become a private-use marker FIRST; entities are decoded after, and any line
+           separator an entity (&#10; &#13; &#8232;) carries becomes a space - only real tags make lines */
+        $t = (string) preg_replace('#<br\s*/?>|</(p|div|tr|li|h[1-6]|table)>#i', "\u{E000}", $t);
         $t = (string) preg_replace('#</t[dh]>#i', ' ', $t);
         $t = html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $t = str_replace("\u{00A0}", ' ', $t);
+        $t = str_replace(["\r\n", "\r", "\n", "\u{2028}", "\u{2029}", "\u{0085}", "\v", "\f"], ' ', $t);
+        $t = str_replace("\u{E000}", "\n", $t);
+        $t = self::normSpaces($t);
         $t = (string) preg_replace('/[ \t]+/', ' ', $t);
         $t = (string) preg_replace("/\n\s*\n+/", "\n", $t);
         return trim($t);
@@ -554,71 +854,168 @@ final class BankMail
     }
 
     /**
-     * The credited amount (0 = none found). A figure that is not a positive
-     * amount below PayCredits::MAX_AMOUNT (NPR 1 crore) is 0 - unreadable, never
-     * "the next number" - so 'NPR 99999999999999' cannot break the insert.
+     * The text with what the PAYER typed cut out, for the CREDITED ACCOUNT only
+     * (accountIn): from a remarks / narration / narrative / purpose / particulars
+     * label, a "description:" / "message:" label, or "description" / "message"
+     * opening a line (an HTML table row), to the end of that line. The amount, the
+     * transaction id and the PNR are NOT read this way any more (figures(),
+     * txnCandidates(): the whole text, exactly one distinct value).
+     */
+    public static function bankText(string $t): string
+    {
+        return (string) preg_replace('/(?:\b(?:remarks?|narration|narrative|purpose|particulars)\b\s*[:\-]?|\b(?:description|message)\s*[:\-]|^[ \t]*(?:description|message)\b)[^\n]*/imu', ' ', $t);
+    }
+
+    /** A currency: NPR / NRs / Rs / INR as a whole word (Rs. too), रु / रू (रुपैयाँ too), ₹. */
+    private const CUR = '(?:(?<![A-Za-z])(?:NPRs?|NRs|Rs|INR)(?![A-Za-z])|रु|रू|₹)';
+    /** A figure right after a currency / label: digits, commas, at most two decimals. */
+    private const NUM = '([0-9][0-9,]*(?:\.[0-9]{1,2})?)(?![0-9])';
+    /** A figure standing on its own (currency AFTER it, a credit word before it): not the tail of a
+        word, an id, a masked account or a date; at most 7 digits before a comma (a longer run of
+        digits is an account / phone / txn number, not money). */
+    private const NUM_ALONE = '(?<![0-9A-Za-z.,*#•\/\-])([0-9]{1,7}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?)(?![0-9])';
+    /** A line that BEGINS (trimmed) with a balance label - the only figures never counted. */
+    private const BAL_LINE = '/^(?:(?:avl|avail|available|current|closing|ledger)[ \t]*\.?[ \t]*)?bal(?:ance)?(?![A-Za-z])|^(?:मौज्दात|ब्यालेन्स)/iu';
+    private const CREDIT_WORDS = '/(?<![A-Za-z])(?:credited|deposited|deposit|credit[ \t]+alert|received)(?![A-Za-z])|क्रेडिट|जम्मा/iu';
+    private const DEBIT_WORDS  = '/(?<![A-Za-z])(?:debited|withdrawn|withdrawal|debit[ \t]+alert)(?![A-Za-z])|डेबिट|झिकिएको/iu';
+
+    /**
+     * The text one trimmed line per line, every line that BEGINS with a balance
+     * label (Balance, Bal, Avl Bal, Available Balance, Avail. Bal, मौज्दात,
+     * ब्यालेन्स; after HTML-to-text) replaced by a lone \x1F, so nothing - no
+     * figure, no credit / debit word - is read from it and no pattern runs across
+     * it. A "bal" anywhere else in a line (a payer can type one) changes nothing.
+     *
+     * Lines are split ONLY on \n: \r\n and \r become \n first, and U+2028 / U+2029 /
+     * U+0085 / VT / FF (and every Unicode space) become a plain space, so a separator the
+     * payer types can never start a fake "Bal" line that blanks the bank's own figure.
+     */
+    public static function scanText(string $t): string
+    {
+        /* \r\n is a line end; a LONE \r is only a space (a payer-typed CR never starts a fake line) */
+        $t = str_replace("\r", ' ', str_replace("\r\n", "\n", mb_scrub($t, 'UTF-8')));
+        $t = self::normSpaces($t);
+        $out = [];
+        foreach (explode("\n", $t) as $line) {
+            $line = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', (string) $line);
+            if ($line !== '') {
+                $out[] = preg_match(self::BAL_LINE, $line) === 1 ? "\x1F" : $line;
+            }
+        }
+        return implode("\n", $out);
+    }
+
+    /**
+     * EVERY distinct money figure in the text (subject + body, the remarks the payer
+     * typed included), rounded to 2 dp, in the order first seen; 0 never counts:
+     *   - a number next to a currency on either side (NPR 10.00, Rs.10, रु १०, 10.00 NPR, ₹10);
+     *   - a number after an amount label, with or without currency (Amount: 10.00,
+     *     Amount (NPR) 10, Amt 10, रकम: 10, the value on the next line too);
+     *   - a number right after "credited" / "deposited" (with / by / for / of);
+     *   - any bare 10.00 (two decimals: a table cell under a "Credit" column).
+     * Only a line that BEGINS with a balance label is left out (scanText). More
+     * figures can only make the alert ambiguous (amount 0) - never pick one.
+     *
+     * @return list<float>
+     */
+    public static function figures(string $t): array
+    {
+        $scan = self::scanText(self::normDigits($t));
+        $c = self::CUR;
+        $n = self::NUM;
+        $a = self::NUM_ALONE;
+        $out = [];
+        foreach ([
+            '/' . $c . '[ \t.:]{0,3}' . $n . '/iu',
+            '/' . $a . '[ \t.:]{0,3}' . $c . '/iu',
+            '/(?:(?<![A-Za-z])(?:amount|amt)(?![A-Za-z])\.?|रकम)[ \t]*(?:\([ \t]*' . $c . '[ \t.]*\)[ \t]*)?(?:(?:in|of)[ \t]+)?(?:' . $c . '[ \t.:]{0,3})?[:\-]?[ \t]*(?:\n[ \t]*)?(?:' . $c . '[ \t.:]{0,3})?' . $n . '/iu',
+            '/(?<![A-Za-z])(?:credited|deposited)(?![A-Za-z])[ \t]+(?:(?:with|by|for|of)[ \t]+)?(?:(?:an?[ \t]+)?amount[ \t]+(?:of[ \t]+)?)?' . $a . '/iu',
+            '/(?<![0-9A-Za-z.,*#•\/\-])([0-9]{1,7}(?:,[0-9]{2,3})*\.[0-9]{2})(?![0-9]|\.[0-9])/u',
+        ] as $re) {
+            if (preg_match_all($re, $scan, $mm, PREG_SET_ORDER) > 0) {
+                foreach ($mm as $x) {
+                    $v = self::num($x[1]);
+                    if ($v > 0) {
+                        $out[number_format($v, 2, '.', '')] ??= $v;
+                    }
+                }
+            }
+        }
+        return array_values($out);
+    }
+
+    /**
+     * The credited amount: the ONE distinct figure in the whole text (figures()),
+     * 0 when there is none or more than one (a person checks), and 0 for a figure
+     * that is not a positive amount below PayCredits::MAX_AMOUNT (NPR 1 crore), so
+     * 'NPR 99999999999999' can never break the insert. bankmail_amount_regex, when
+     * set, must AGREE: every group-1 match equal to that figure (no match, another
+     * value or a broken pattern = 0) - it can confirm the figure, never choose one.
      */
     public static function amountIn(string $t, string $override = ''): float
     {
-        $v = self::amountRaw($t, $override);
-        return ($v > 0 && $v < PayCredits::MAX_AMOUNT) ? $v : 0.0;
-    }
-
-    private static function amountRaw(string $t, string $override): float
-    {
+        $vals = self::figures($t);
+        if (count($vals) !== 1) {
+            return 0.0;
+        }
+        $v = $vals[0];
+        if (!($v > 0 && $v < PayCredits::MAX_AMOUNT)) {
+            return 0.0;
+        }
         if (trim($override) !== '') {
-            $r = @preg_match($override, $t, $m);
-            if ($r === 1 && isset($m[1]) && preg_match('/^[0-9][0-9,]*(\.[0-9]{1,2})?$/', trim($m[1])) === 1) {
-                return self::num(trim($m[1]));
+            $r = @preg_match_all($override, self::normDigits($t), $mm, PREG_SET_ORDER);
+            if ($r === false || $r === 0) {
+                return 0.0;
             }
-            if ($r !== false) {
-                return 0.0;   // the owner's rule decides; no guessing past it
-            }
-        }
-        $cur = '(?:NPR|NRs\.?|Rs\.?|रु\.?|रू\.?)';
-        $n   = '([0-9][0-9,]*(?:\.[0-9]{1,2})?)';
-        foreach ([
-            '/(?:credited|deposited)\s+(?:with|by|for|of)?\s*(?:an?\s+amount\s+of\s+)?' . $cur . '\s*' . $n . '/iu',
-            '/' . $cur . '\s*' . $n . '\s*(?:has\s+been|is|was|have\s+been)?\s*(?:credited|deposited)/iu',
-            '/(?:credit(?:ed)?\s+)?(?:amount|amt)\s*(?:of)?\s*[:\-]?\s*' . $cur . '?\s*' . $n . '/iu',
-        ] as $re) {
-            if (preg_match($re, $t, $m) === 1 && self::num($m[1]) > 0) {
-                return self::num($m[1]);
-            }
-        }
-        if (preg_match_all('/' . $cur . '\s*' . $n . '/iu', $t, $mm, PREG_OFFSET_CAPTURE | PREG_SET_ORDER) > 0) {
-            foreach ($mm as $x) {
-                $before = strtolower(substr($t, max(0, $x[0][1] - 30), min(30, $x[0][1])));
-                if (!str_contains($before, 'bal') && self::num($x[1][0]) > 0) {
-                    return self::num($x[1][0]);
+            foreach ($mm as $m) {
+                $g = trim((string) ($m[1] ?? ''));
+                if (preg_match('/^[0-9][0-9,]*(\.[0-9]{1,2})?$/', $g) !== 1 || abs(self::num($g) - $v) > 0.004) {
+                    return 0.0;
                 }
             }
         }
-        return 0.0;
+        return $v;
     }
 
-    /** The bank's transaction / reference id ('' = none). Never a PNR. */
-    public static function txnIn(string $t, string $override = ''): string
+    /**
+     * EVERY distinct transaction / reference id in the whole text (the remarks
+     * included): after a txn / transaction / trans. / ref / reference / trace / utr /
+     * rrn / ट्रान्जेक्सन / कारोबार / सन्दर्भ label (id / no. / number after it), plus every
+     * group-1 match of bankmail_txn_regex. A candidate needs a digit and 6+
+     * characters and is never a PNR (SHG…). Compared without case; first spelling kept.
+     *
+     * @return list<string>
+     */
+    public static function txnCandidates(string $t, string $override = ''): array
     {
         $ok = static fn(string $v): bool => preg_match('/\d/', $v) === 1 && stripos($v, 'SHG') !== 0 && strlen($v) >= 6;
-        if (trim($override) !== '') {
-            $r = @preg_match($override, $t, $m);
-            if ($r === 1 && isset($m[1]) && $ok(trim($m[1]))) {
-                return mb_substr(trim($m[1]), 0, 80);
-            }
-            if ($r !== false) {
-                return '';
-            }
-        }
-        if (preg_match_all('/(?<![a-z])(?:txn|transaction|trans\.|ref(?:erence)?|trace|utr|rrn)(?![a-z])\s*(?:id|no\.?|number|num|#)?\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{5,40})/iu', $t, $mm, PREG_SET_ORDER) > 0) {
+        $t = self::normDigits($t);
+        $found = [];
+        if (preg_match_all('/(?:(?<![A-Za-z])(?:txn|transaction|trans\.|ref(?:erence)?|trace|utr|rrn)(?![A-Za-z])|ट्रान्जेक्सन|कारोबार|सन्दर्भ)[\s.]*'
+                . '(?:(?:id|no|number|num|nr|#|नं|नम्बर|आईडी)(?![A-Za-z])\.?[ \t]*){0,2}\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{5,40})/iu', $t, $mm, PREG_SET_ORDER) > 0) {
             foreach ($mm as $x) {
-                $v = rtrim($x[1], '-/');
-                if ($ok($v)) {
-                    return mb_substr($v, 0, 80);
-                }
+                $found[] = rtrim($x[1], '-/');
             }
         }
-        return '';
+        if (trim($override) !== '' && @preg_match_all($override, $t, $om, PREG_SET_ORDER) > 0) {
+            foreach ($om as $x) {
+                $found[] = trim((string) ($x[1] ?? ''));
+            }
+        }
+        $out = [];
+        foreach ($found as $v) {
+            if ($ok($v)) {
+                $out[strtoupper($v)] ??= mb_substr($v, 0, 80);
+            }
+        }
+        return array_values($out);
+    }
+
+    /** The transaction / reference id: the ONE distinct candidate (txnCandidates()), else '' (never auto-confirms). */
+    public static function txnIn(string $t, string $override = ''): string
+    {
+        $c = self::txnCandidates($t, $override);
+        return count($c) === 1 ? $c[0] : '';
     }
 
     /**
@@ -627,12 +1024,12 @@ final class BankMail
      * different accounts (e.g. "from A/C … to A/C …") - neither ever matches
      * our account, so such a credit waits for a person.
      *
-     * The remarks / narration line is cut out first: the PAYER types it, so an
-     * "A/C XXXX9012" written there must never count.
+     * The remarks / narration line is cut out first (bankText): the PAYER types
+     * it, so an "A/C XXXX9012" written there must never count.
      */
     public static function accountIn(string $t, string $override = ''): string
     {
-        $t = (string) preg_replace('/(?:\b(?:remarks?|narration|narrative|purpose|particulars)\b\s*[:\-]?|\b(?:description|message)\s*[:\-])[^\n]*/iu', ' ', $t);
+        $t = self::bankText($t);
         if (trim($override) !== '') {
             $r = @preg_match($override, $t, $m);
             if ($r === 1 && isset($m[1])) {
@@ -730,7 +1127,7 @@ final class BankMail
     public static function poll(int $max = 50, ?BankMailImap $imap = null, ?callable $each = null): array
     {
         $res = ['ok' => true, 'msg' => '', 'seen' => 0, 'credits' => 0, 'new' => 0, 'duplicates' => 0, 'debits' => 0,
-                'other' => 0, 'confirmed' => 0, 'unmatched' => 0, 'failed' => 0, 'last_uid' => Settings::getInt('bankmail_last_uid', 0)];
+                'other' => 0, 'confirmed' => 0, 'suggested' => 0, 'unmatched' => 0, 'failed' => 0, 'last_uid' => Settings::getInt('bankmail_last_uid', 0)];
         if (!self::on()) {
             return ['ok' => true, 'msg' => 'off'] + $res;
         }
@@ -786,7 +1183,8 @@ final class BankMail
                 Settings::set('bankmail_last_uid', (string) $last, 'int', 'payments');
             }
             $res['last_uid'] = $last;
-            $res['msg'] = $res['seen'] . ' read · ' . $res['credits'] . ' credits · ' . $res['confirmed'] . ' confirmed · ' . $res['unmatched'] . ' need a person'
+            $res['msg'] = $res['seen'] . ' read · ' . $res['credits'] . ' credits · ' . $res['confirmed'] . ' confirmed · '
+                . ($res['suggested'] > 0 ? $res['suggested'] . ' suggested (press Confirm) · ' : '') . $res['unmatched'] . ' need a person'
                 . ($res['failed'] > 0 ? ' · ' . $res['failed'] . ' could not be read' : '');
         } catch (Throwable $e) {
             $res['ok']  = false;
@@ -807,7 +1205,7 @@ final class BankMail
     public static function handle(string $raw, array &$res): void
     {
         $p = self::parse($raw);
-        if ($p['is_debit']) {
+        if ($p['is_debit']) {   // debit words only (credit AND debit words = is_credit + mixed: kept)
             $res['debits']++;
             return;
         }
@@ -838,9 +1236,18 @@ final class BankMail
             return;
         }
         $res['new']++;
-        $r = PayCredits::tryAutoConfirm($id);
+        /* an ambiguous alert (two amounts, two txn ids, credit AND debit words) - or one whose
+           Authentication-Results could not be read safely - is kept for a person with the reason:
+           it never goes near tryAutoConfirm() */
+        $hold = $p['hold'];
+        if ($hold === '' && !$p['dkim_ok'] && (string) ($p['dkim_why'] ?? '') !== '') {
+            $hold = 'No DKIM pass: ' . $p['dkim_why'] . ' (quotes, backslash, nested / unbalanced brackets or odd characters) — could be a forged e-mail; check the bank statement';
+        }
+        $r = $hold !== '' ? PayCredits::hold($id, $hold) : PayCredits::tryAutoConfirm($id);
         if ($r['ok']) {
             $res['confirmed']++;
+        } elseif ($r['why'] === 'suggested') {
+            $res['suggested']++;   // every check passed, Gmail auto-PAID is off: a person presses Confirm
         } elseif ($r['state'] === 'unmatched') {
             $res['unmatched']++;
         }
