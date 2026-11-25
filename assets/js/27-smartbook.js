@@ -2184,6 +2184,9 @@
       + (t.png ? '<a href="' + esc(t.png) + '" download="SHG-Ticket-' + esc(r.pnr) + '.png">⬇️ ' + esc(tr('dlPng')) + '</a>' : '')
       + (t.pdf ? '<a href="' + esc(t.pdf) + '" download>' + esc(tr('dlPdf')) + '</a>' : '')
       + (t.print && STAFF ? '<a href="' + esc(t.print) + '" target="_blank" rel="noopener">' + esc(tr('print')) + '</a>' : '')
+      /* mp1 tk (25 Nov 2026): a customer gets Print right away too - the same ticket PDF
+         opened in the browser's own viewer (?print=1, the keyed public link), print from there. */
+      + (!STAFF && t.print ? '<a href="' + esc(t.print) + '" target="_blank" rel="noopener">🖨 ' + esc(tr('print')) + '</a>' : '')
       + '<button type="button" data-tk="copy">' + esc(tr('copy')) + '</button>'
       + '<a href="#/trip/' + encodeURIComponent(r.pnr) + '">' + esc(tr('track')) + '</a>'
       + '</div><button type="button" class="sb-tk-new" data-tk="new">＋ ' + esc(tr('newB')) + '</button></div>';

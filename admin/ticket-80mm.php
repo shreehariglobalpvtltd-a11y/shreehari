@@ -54,6 +54,14 @@ $qr = QrCode::dataUri(Ticket::qrPayload($b, $seats), 4, 2);
 $co80   = Ticket::companyOf($b);
 $seat80 = implode(' · ', array_map(static fn(string $s): string => Seats::displayLabel($s, $coach, $mode), $seats));
 $amt80  = static fn(float $a): string => Ticket::isNprSale($b) ? Ticket::money($b, $a, false) : inr($a);
+/* 25 Nov 2026 (mp1 tk): the PAID stamp words of the PNG / PDF ("PAID · नगद प्राप्त भयो / Cash
+   received" for cash; never a pay QR here) and "Booked by" on the clean ticket. */
+$st80 = null;
+try {
+    $st80 = Ticket::cashNoPayQrOn() || Ticket::cleanV2On() ? Ticket::stampFor((int) $b['id']) : null;
+} catch (Throwable $e) {
+    $st80 = null;
+}
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title><?= $e($pnr) ?> · 80 mm</title>
 <style>
@@ -107,7 +115,12 @@ table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}td
 <table><tr><td>Total</td><td class="big"><?= $e($amt80((float) $b['total_amount'])) ?></td></tr>
 <?php if (Ticket::isNprSale($b)): ?><tr><td class="sm">भारु · INR</td><td class="sm"><?= $e(inr((float) $b['total_amount'])) ?></td></tr><?php endif; ?></table>
 <?php if (($tn80 = Ticket::ticketNote($b)) !== ''): ?><div class="box">Note / टिप्पणी: <?= $e($tn80) ?></div><?php endif; ?>
+<?php if ($st80 !== null && Ticket::cashNoPayQrOn()): ?>
+<div class="box"><?= $e($st80['stamp']['text']) ?></div>
+<?php else: ?>
 <div class="box"><?= $paid ? 'PAID' : ((int) $b['is_cod'] === 1 ? 'CASH — PAY AT BOARDING' : 'PAYMENT PENDING') ?></div>
+<?php endif; ?>
+<?php if ($st80 !== null && Ticket::cleanV2On() && $st80['bookedBy'] !== ''): ?><div class="sm">टिकट काट्ने · Booked by: <b><?= $e($st80['bookedBy']) ?></b></div><?php endif; ?>
 <div class="sm"><?= $e(Fare::refundPolicyLine('en')) ?></div>
 <hr>
 <div class="c sm">Carry a photo ID · Rupaidiha ⇄ Jamunaha border<br>Printed <?= $e(date('j M Y H:i')) ?> · <?= $e((string) ($admin['username'] ?? '')) ?></div>

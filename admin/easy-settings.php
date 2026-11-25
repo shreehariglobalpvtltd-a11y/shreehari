@@ -111,6 +111,10 @@ $ES_NEW = [
         'ticket_maps_qr'     => ['🗺 नक्सा QR · Map QRs on the ticket', 'bool', 'Office / hub map QRs at the foot of the ticket.', ['def' => true]],
         'nepal_office_map'   => ['📍 नेपाल कार्यालय नक्सा · Nepal office map', 'map', 'A Google Maps link or "lat, lng". Blank = a search for Hotel Darbar, Pushpalal Chowk, Nepalgunj.', ['def' => '']],
         'india_hub_map'      => ['📍 भारत hub नक्सा · India hub map', 'map', 'A Google Maps link or "lat, lng". Blank = the S Hari Parking stop\'s own pin.', ['def' => '']],
+        // 25 Nov 2026 (mp1 tk): the clean ticket + the cash / country pay-QR rule
+        'ticket_clean_v2_on'       => ['🎫 सफा टिकट · Clean ticket layout', 'bool', 'One big flag by direction, big From -> To, pickup QR + phone, PAID stamp, Booked by. Off = the old layout.', ['def' => true]],
+        'ticket_cash_no_payqr'     => ['💵 भुक्तानी भएपछि QR छैन · No pay QR once paid', 'bool', 'A fully paid ticket (cash or online) shows only PAID (cash: नगद प्राप्त भयो / Cash received), never a pay QR.', ['def' => true]],
+        'ticket_pay_qr_by_country' => ['🇳🇵 देश अनुसार QR · Pay QR by country', 'bool', 'While money is due: Nepal side / Nepal sale = Nepal eSewa QR (रू), India = UPI (₹). Needs the Nepal QR on Owner setup.', ['def' => true]],
     ],
     '🇳🇵 Nepal / Desk' => [
         'sales_close_clock'          => ['⏰ बुकिङ बन्द हुने समय · Sales closing clock (JSON)', 'json', 'Per route code: {"r7":{"all":"17:00","tz":"Asia/Kathmandu"}}; keys all / online / agent / counter / staff / whatsapp / ai. {} = off (no clock). Office (superadmin, manager) is never blocked.', ['def' => '{"r7":{"all":"17:00","tz":"Asia/Kathmandu"},"r2":{"online":"19:00","tz":"Asia/Kolkata"}}']],
