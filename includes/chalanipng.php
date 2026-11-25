@@ -431,6 +431,10 @@ final class ChalaniPng
             foreach (['fx_currency', 'fx_rate', 'fx_total'] as $fc) {
                 $xCols .= CounterDesk::hasColumn('bookings', $fc) ? ', b.' . $fc : ', NULL AS ' . $fc;
             }
+            /* 25 Nov 2026 (cp1): where the ticket was cut (BookGeo) - the chalani page shows it */
+            foreach (['booked_lat', 'booked_lng', 'booked_place'] as $gc) {
+                $xCols .= CounterDesk::hasColumn('bookings', $gc) ? ', b.' . $gc : ', NULL AS ' . $gc;
+            }
             $rows = Database::fetchAll(
                 "SELECT bp.id AS pax_id, bp.seat_no, bp.full_name, bp.age, bp.gender, bp.boarded_at,
                         bp.id_type, bp.id_number, bp.special_need,

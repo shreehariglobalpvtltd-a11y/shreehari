@@ -362,6 +362,12 @@ final class Settings
             $out[$k] = self::getBool($k, false);
         }
 
+        /* 25 Nov 2026 (cp1, customer portal): the customer-only 4-part home, the 3-second boot scene + its
+           sound, the booking GPS (BookGeo) and PayWatch - all default ON, each one switch to roll back. */
+        foreach (['home_customer_only_on', 'app_boot_scene_on', 'app_boot_sound_on', 'booking_geo_on', 'pay_watch_on'] as $k) {
+            $out[$k] = self::getBool($k, true);
+        }
+
         // A dialable business number, never the Cloud API phone ID or token.
         // Chat must go to the configured sender so the booking bot receives it;
         // admin_whatsapp is a notification recipient and may be a different desk.

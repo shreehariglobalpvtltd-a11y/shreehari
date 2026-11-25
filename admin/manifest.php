@@ -1070,7 +1070,9 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <td class="c n"><?= $e($neDigits((string) ($i + 1))) ?></td>
       <td class="c"><b><?= $r ? $e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) : '' ?></b></td>
       <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?><?php if ($rInf > 0): ?> <b class="inf">+ शिशु <?= $e($neDigits((string) $rInf)) ?></b><?php endif; ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
-      <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?></td>
+      <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?><?php
+        /* 25 Nov 2026 (cp1): where the ticket was cut - the booking phone's GPS (BookGeo) */
+        if ($r && !empty($r['booked_lat'])): require_once INCLUDE_PATH . '/bookgeo.php'; ?><br><a class="geo" href="<?= $e(BookGeo::mapUrl($r)) ?>" target="_blank" rel="noopener" title="<?= $e(BookGeo::line($r)) ?>">&#128205; <?= $e((string) ($r['booked_place'] ?: 'GPS')) ?></a><?php endif; ?></td>
       <td><?php if ($r): $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—'; ?><i class="pno"><?= $e($neDigits((string) ($placeList[$pk]['no'] ?? ''))) ?></i> <?= $e($pk) ?><?php endif; ?></td>
       <td><?= $r ? $e($stopShort((string) $r['drop_stop'])) : '' ?></td>
       <td class="r"><?= $m ? $e(number_format($m['ticket'])) : '' ?></td>

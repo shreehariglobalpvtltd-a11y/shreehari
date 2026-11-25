@@ -1,0 +1,21 @@
+<?php
+define('SHG_APP', true);
+require __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/bookgeo.php';
+require_once __DIR__ . '/../includes/ticket.php';
+$ok = 0; $bad = 0;
+$chk = function ($name, $cond) use (&$ok, &$bad) { if ($cond) { $ok++; } else { $bad++; echo "FAIL $name\n"; } };
+$_SERVER['HTTP_X_SHG_GEO'] = '23.109162,72.677421,35';
+$_SERVER['HTTP_X_SHG_GEO_PLACE'] = rawurlencode('Nana Chiloda, Ahmedabad, IN<script>');
+$s = BookGeo::stamp();
+$chk('lat', ($s['booked_lat'] ?? null) === 23.109162);
+$chk('acc', ($s['booked_acc'] ?? null) === 35);
+$chk('place clean', isset($s['booked_place']) && strpos($s['booked_place'], '<') === false && strpos($s['booked_place'], 'Nana Chiloda') === 0);
+$_SERVER['HTTP_X_SHG_GEO'] = '123,72';           $chk('bad lat', BookGeo::stamp() === []);
+$_SERVER['HTTP_X_SHG_GEO'] = "1;DROP TABLE";     $chk('junk', BookGeo::stamp() === []);
+$_SERVER['HTTP_X_SHG_GEO'] = '0,0';              $chk('zero', BookGeo::stamp() === []);
+unset($_SERVER['HTTP_X_SHG_GEO']);               $chk('none', BookGeo::stamp() === []);
+$chk('line', BookGeo::line(['booked_lat' => '23.109162', 'booked_lng' => '72.677421', 'booked_place' => 'Chiloda']) === 'Chiloda (23.10916, 72.67742)');
+$chk('ticket line', Ticket::bookedAtLine(['booked_lat' => '28.07', 'booked_lng' => '81.63', 'booked_place' => 'Nepalgunj, NP']) === 'Booked at: Nepalgunj, NP (28.07000, 81.63000)');
+$chk('no fix', Ticket::bookedAtLine([]) === '');
+echo "ok=$ok bad=$bad\n";

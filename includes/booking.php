@@ -26,6 +26,7 @@ require_once __DIR__ . '/agentwallet.php';
 // 2026): the one place that re-mints the QR, redraws the PNG, voids a
 // cancelled ticket, audits and tells the passenger - after the commit.
 require_once __DIR__ . '/ticketsync.php';
+require_once __DIR__ . '/bookgeo.php';   // 25 Nov 2026 cp1: where the ticket was cut
 
 final class BookingService
 {
@@ -857,7 +858,7 @@ final class BookingService
                 $pricing['total'] = round((float) $pricing['total'] + $extraAmt, 2);
             }
 
-            $bookingId = Database::insert('bookings', $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
+            $bookingId = Database::insert('bookings', BookGeo::stamp() + $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',
@@ -1336,7 +1337,7 @@ final class BookingService
             );
 
             $pnr = nextTicketNo((string) $route['route_code']);
-            $bid = Database::insert('bookings', self::deskStamp($adminId ?: null, (float) $total) + [
+            $bid = Database::insert('bookings', BookGeo::stamp() + self::deskStamp($adminId ?: null, (float) $total) + [
                 'pnr'           => $pnr,
                 'trip_type'     => 'oneway',
                 'booking_mode'  => $bookingMode,

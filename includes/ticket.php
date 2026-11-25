@@ -1119,6 +1119,16 @@ final class Ticket
      *
      * @return array{0:string,1:string}
      */
+    /** 25 Nov 2026 (cp1): "Booked at: Nana Chiloda, Ahmedabad (23.10916, 72.67742)" - '' without a GPS fix. */
+    public static function bookedAtLine(array $booking): string
+    {
+        if (!class_exists('BookGeo')) {
+            require_once __DIR__ . '/bookgeo.php';
+        }
+        $l = BookGeo::line($booking);
+        return $l === '' ? '' : 'Booked at: ' . self::latin($l);
+    }
+
     public static function statutoryParts(array $booking, array $ticket, array $co): array
     {
         $ts = !empty($ticket['issued_at']) ? (int) strtotime((string) $ticket['issued_at']) : 0;
@@ -3191,6 +3201,14 @@ final class Ticket
             $n4 = $clampTo(12, $n4, $W - 120);
             self::gdText($im, 12, (int) (($W - self::gdWidth(12, $n4)) / 2), 1654 + $si * 21 + $grow + $qrExt, $mut, $n4, false);
         }
+        /* 25 Nov 2026 (cp1, owner: "customer location ticket ma nai aos"): where the ticket was
+           cut - the booking phone's GPS (BookGeo), a third small row in the room above the
+           blessing line. Nothing when the phone gave no location. */
+        $geoLine = self::bookedAtLine($booking);
+        if ($geoLine !== '') {
+            $geoLine = $clampTo(12, $geoLine, $W - 120);
+            self::gdText($im, 12, (int) (($W - self::gdWidth(12, $geoLine)) / 2), 1654 + 2 * 21 + $grow + $qrExt, $mut, $geoLine, false);
+        }
 
         /* शुभ यात्रा — the blessing line (9 Oct 2026, setting
            doc_blessing_line), gold-deep between two foil rules. */
@@ -4695,6 +4713,10 @@ final class Ticket
             while ($stSz > 3.5 && $pdf->textWidth($statPdf, $stSz, 'F1') > $W - 80) { $stSz -= 0.25; }
         }
         $pdf->text($stX, $footY + 90, $statPdf, $stSz, 'F1', self::MUTE);
+        $geoPdf = self::bookedAtLine($booking);   // 25 Nov 2026 cp1: where the ticket was cut
+        if ($geoPdf !== '') {
+            $pdf->text($stX, $footY + 97, $geoPdf, 5.0, 'F1', self::MUTE);
+        }
 
         /* Heritage card (9 Oct 2026, owner: Sagarmatha, Gautam Buddha, the
            Nepal flag on the ticket) — the free right half of the footer, so it

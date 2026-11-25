@@ -275,7 +275,7 @@ html,body{margin:0;background:#F4F6FB}
        :is()/:has(), so older Android WebViews keep the rule. It replaces the old hide-list in #homeHub's inline style.
        Inline (not a stylesheet) so the fold ships with this always-fresh HTML. The h1 and the brochure stay in the HTML. -->
   <style id="homeFold">
-    html body #view-home:not(.home-full) > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#homeRoles):not(#homeVideo):not(#homeMoreBar):not(#hero3d):not(#hyperBus){display:none !important}
+    html:not(.cp1) body #view-home:not(.home-full) > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#homeRoles):not(#homeVideo):not(#homeMoreBar):not(#hero3d):not(#hyperBus){display:none !important}
     /* 6 Nov 2026 (master upgrade §7: "the two moving-bus animations close to the ticket booking section"):
        #hero3d (the white coach band) sits right ABOVE the booking card, #hyperBus (the rolling coach) right BELOW it. */
     /* the order: booking (-1 .. 4, unchanged), agents 5, video 6, the button 7; behind the button the front group
@@ -331,6 +331,82 @@ html,body{margin:0;background:#F4F6FB}
     #homeMoreToggle .hm-tx b{font-size:16px}
     #homeMoreToggle.open .hm-more,#homeMoreToggle:not(.open) .hm-less{display:none}
     @media (prefers-reduced-motion:reduce){#homeMoreToggle .hm-ic::after{transition:none}}
+  </style>
+  <!-- 25 Nov 2026 (cp1, owner's customer-portal plan: "shreehariglobal.in customer-only"):
+       html.cp1 (set in the injected head script from SHG_BOOT.settings.home_customer_only_on,
+       default ON; switch it off in Admin -> Settings to get the old home back) shows the home in
+       FOUR parts only: 1 the booking card, 2 offices + fares (#cpOffices), 3 live bus (#homeLive),
+       4 the verified agents' names (#cpAgents). Everything else on the home stays in the HTML but
+       is not shown (no "+ More"). Staff doors (sign-in, forms, business, tours, theme buttons) are
+       hidden from the customer page - they stay on S Hari Manage (.network) and keep their URLs. -->
+  <style id="cp1Home">
+    html.cp1 body #view-home > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#cpOffices):not(#homeLive):not(#cpAgents):not(#hero3d):not(#hyperBus){display:none !important}
+    html.cp1 body #view-home > #cpOffices{order:5 !important}
+    html.cp1 body #view-home > #homeLive{order:6 !important}
+    html.cp1 body #view-home > #cpAgents{order:7 !important}
+    html:not(.cp1) #cpOffices,html:not(.cp1) #cpAgents,html:not(.cp1) #cpTrackForm,html:not(.cp1) .bn-item[data-bn="office"]{display:none !important}
+    html.cp1 #homeLive .hx-live-soon,html.cp1 #homeLive .hx-live-art{display:none !important}
+    /* staff / partner doors off the customer page */
+    html.cp1 .theme-btn,html.cp1 .palette-wrap,html.cp1 .mm-display,html.cp1 #navUserBtn,html.cp1 #mmUserBtn,
+    html.cp1 a[href^="/agreements/apply"],html.cp1 a[href^="/admin/login.php"],html.cp1 a[href^="/business"],html.cp1 a[href^="/tours"]{display:none !important}
+    /* the phone tab bar: Ticket · Office · Live bus · My ticket */
+    html.cp1 .bottom-nav .bn-item[data-bn="home"],html.cp1 .bottom-nav .bn-item[data-bn="nav"]{display:none !important}
+    html.cp1 .bottom-nav .bn-item[data-bn="book"]{order:1}
+    html.cp1 .bottom-nav .bn-item[data-bn="office"]{order:2}
+    html.cp1 .bottom-nav .bn-item[data-bn="track"]{order:3}
+    html.cp1 .bottom-nav .bn-item[data-bn="trips"]{order:4}
+    html.cp1 .bottom-nav .bn-item{flex:1 1 25%}
+    .cp-sec{scroll-margin-top:76px;margin-top:18px}
+    .cp-box{position:relative;overflow:hidden;border-radius:24px;padding:18px 14px 14px;background:var(--surface,#fff);border:1px solid var(--line,#e4e9f1);box-shadow:0 16px 34px -26px rgba(13,27,62,.55)}
+    .cp-box::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:linear-gradient(90deg,#0a2a8f,#1f4fe0 55%,#f07a1e)}
+    .cp-eb{display:inline-flex;align-items:center;gap:6px;margin:2px 0 6px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0)}
+    .cp-h{margin:0 0 4px;font-size:clamp(20px,4.6vw,26px);line-height:1.22;color:var(--fg,#0d1b3e)}
+    .cp-sub{margin:0 0 12px;font-size:13.5px;line-height:1.5;color:var(--muted,#5b6b8c)}
+    .cp-fares{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 14px}
+    .cp-fare{padding:10px 8px;border-radius:16px;text-align:center;background:color-mix(in srgb,#f07a1e 9%,var(--surface,#fff));border:1px solid color-mix(in srgb,#f07a1e 30%,transparent)}
+    .cp-fare b{display:block;font-size:clamp(14px,3.9vw,19px);line-height:1.25;color:#c25e00}
+    .cp-fare small{display:block;margin-top:2px;font-size:11.5px;font-weight:700;color:var(--muted,#5b6b8c);line-height:1.3}
+    .cp-offs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin:0;padding:0;list-style:none}
+    .cp-off{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:18px;background:color-mix(in srgb,#0a2a8f 4%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1)}
+    .cp-off h3{display:flex;align-items:center;gap:8px;margin:0;font-size:16.5px;color:var(--fg,#0d1b3e)}
+    .cp-off h3 i{font-style:normal;font-size:18px}
+    .cp-off h3 small{margin-left:auto;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;color:#11703f;background:rgba(17,112,63,.1)}
+    .cp-off p{margin:0;font-size:13px;line-height:1.45;color:var(--muted,#5b6b8c)}
+    .cp-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+    .cp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 14px;border-radius:999px;font-size:14px;font-weight:800;text-decoration:none;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0);border:0;cursor:pointer}
+    .cp-btn.o{background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c)}
+    .cp-btn.g{background:#128c4a}
+    .cp-btn.l{color:#0a2a8f;background:transparent;border:1.5px solid rgba(10,42,143,.35)}
+    .cp-btn:active{transform:scale(.97)}
+    .cp-more{margin-top:12px;text-align:center}
+    .cp-ag{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin:0;padding:0;list-style:none}
+    .cp-ag li{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 10px;border-radius:16px;background:color-mix(in srgb,#0a2a8f 4%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1)}
+    .cp-ag .av{flex:0 0 40px;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:900;color:#fff;background:linear-gradient(135deg,#0a2a8f,#f07a1e);overflow:hidden}
+    .cp-ag .av img{width:100%;height:100%;object-fit:cover}
+    .cp-ag .tx{min-width:0;flex:1}
+    .cp-ag .tx b{display:block;font-size:14.5px;line-height:1.25;color:var(--fg,#0d1b3e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cp-ag .tx small{display:block;font-size:12px;color:var(--muted,#5b6b8c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cp-ag .ok{color:#11703f;font-weight:900}
+    .cp-ag a.call{flex:0 0 auto;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;text-decoration:none;font-size:18px;background:rgba(18,140,74,.12)}
+    #cpTrackForm{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+    #cpTrackForm input{flex:1 1 180px;min-height:46px;padding:0 14px;border-radius:14px;border:1.5px solid var(--line,#cfd8e6);font-size:16px;background:var(--surface,#fff);color:var(--fg,#0d1b3e);text-transform:uppercase}
+    #cpTrackForm small{flex:1 1 100%;font-size:12px;color:var(--muted,#5b6b8c)}
+    :root[data-theme="dark"] .cp-off h3,:root[data-theme="dark"] .cp-ag .tx b,:root[data-theme="dark"] .cp-h{color:#eef3ff}
+    :root[data-theme="dark"] .cp-btn.l{color:#bcd0ff;border-color:rgba(188,208,255,.4)}
+    /* payment status strip for an online ticket that waits for the money (cp1 PayWatch) */
+    #cpPay{position:fixed;left:10px;right:10px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:18px;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0);box-shadow:0 18px 36px -16px rgba(10,42,143,.9);font-size:14px;font-weight:700;animation:cpUp .35s ease both}
+    #cpPay.ok{background:linear-gradient(135deg,#0d7a43,#18a35c)}
+    #cpPay .sp{flex:0 0 22px;width:22px;height:22px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;animation:cpSpin 1s linear infinite}
+    #cpPay.ok .sp{border:0;animation:none;font-size:20px;line-height:22px;text-align:center}
+    #cpPay.ok .sp::before{content:"\2705"}
+    #cpPay .tx{flex:1;min-width:0;line-height:1.35}
+    #cpPay .tx small{display:block;font-weight:600;opacity:.88}
+    #cpPay button{min-height:40px;padding:0 12px;border-radius:999px;border:0;font-weight:900;color:#0a2a8f;background:#fff;cursor:pointer}
+    #cpPay .x{background:transparent;color:#fff;font-size:18px;padding:0 6px}
+    @media (min-width:900px){#cpPay{left:auto;right:20px;bottom:20px;max-width:420px}}
+    @keyframes cpUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+    @keyframes cpSpin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion:reduce){#cpPay,#cpPay .sp{animation:none}}
   </style>
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
@@ -438,13 +514,16 @@ html,body{margin:0;background:#F4F6FB}
 
 </head>
 <body>
-<!-- 22 Oct 2026 (owner: "suru ma S Hari ko logo, open huda fast animate"): the
-     installed app (home-screen icon) opens on the logo for a moment - once per
-     session, never on the website in a browser tab (no wait added to search /
-     Google visits). Gone at window load, after 0.65 s at the least, 1.2 s at most. -->
-<div id="appSplash" aria-hidden="true" hidden><div class="as-in"><span class="as-logo"><img src="/assets/img/logo-mark-tm.webp?v=20261120j" width="439" height="228" alt="" fetchpriority="high" decoding="async" data-logo-clone></span><b>S HARI GLOBAL<sup>™</sup></b><small>India ⇄ Nepal · AC Sleeper</small></div></div>
+<!-- 22 Oct 2026 (owner: "suru ma S Hari ko logo, open huda fast animate"): the installed app opens on the logo.
+     25 Nov 2026 (cp1, owner's plan "3 second boot scene"): the BOOT SCENE - 0-1.5 s the logo is drawn by a
+     pen and fills in, 1.5-2.6 s the Nepal and India flags draw themselves beside the name, a short chime
+     (only where the phone lets a page play sound: the installed app; never forced), 2.6-3.0 s it fades
+     into the booking home. Who sees it: the installed app once per session; the website only on the
+     very first visit of a phone (never for an ad click, a counter sale, a crawler). One tap skips it.
+     Reduced motion: the logo only, 0.6 s. Switch app_boot_scene_on (off = the old 0.65-1.2 s logo). -->
+<div id="appSplash" aria-hidden="true" hidden><div class="as-in"><span class="as-logo"><img src="/assets/img/logo-mark-tm.webp?v=20261120j" width="439" height="228" alt="" fetchpriority="high" decoding="async" data-logo-clone><i class="as-pen" aria-hidden="true"></i></span><b>S HARI GLOBAL<sup>™</sup></b><span class="as-flags" aria-hidden="true"><svg class="as-np" viewBox="0 0 100 122" width="44" height="54"><path class="as-st" pathLength="1" d="M4 4 L86 58 L34 58 L92 118 L4 118 Z" fill="#DC143C" stroke="#003893" stroke-width="6" stroke-linejoin="round"/><g class="as-fl"><path d="M14 44 a12 12 0 0 0 24 0 a12 9 0 0 1 -24 0 Z" fill="#fff"/><circle cx="26" cy="40" r="4" fill="#fff"/><circle cx="26" cy="95" r="9" fill="#fff"/><path d="M26 80 L28 88 L36 85 L31 92 L39 96 L31 99 L35 106 L27 103 L26 111 L24 103 L16 106 L21 99 L13 96 L21 92 L16 85 L24 88 Z" fill="#fff"/></g></svg><svg class="as-in-f" viewBox="0 0 150 100" width="66" height="44"><rect class="as-st" pathLength="1" x="3" y="3" width="144" height="94" rx="6" fill="#fff" stroke="#0a2a8f" stroke-width="4"/><g class="as-fl"><path d="M7 7 H143 V36 H7 Z" fill="#FF9933"/><path d="M7 64 H143 V93 H7 Z" fill="#138808"/><circle cx="75" cy="50" r="11" fill="none" stroke="#000080" stroke-width="2.4"/><circle cx="75" cy="50" r="2.4" fill="#000080"/><path d="M75 39V61M64 50H86M67.2 42.2L82.8 57.8M82.8 42.2L67.2 57.8M70.8 39.8L79.2 60.2M79.2 39.8L70.8 60.2M64.8 45.8L85.2 54.2M85.2 45.8L64.8 54.2" stroke="#000080" stroke-width="1.2"/></g></svg></span><small>India ⇄ Nepal · AC Sleeper</small></div></div>
 <style>
-#appSplash{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 35%,#FFFFFF 0%,#EEF3FB 70%);transition:opacity .25s ease}
+#appSplash{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 35%,#FFFFFF 0%,#EEF3FB 70%);transition:opacity .4s ease}
 #appSplash.as-out{opacity:0;pointer-events:none}
 #appSplash .as-in{text-align:center;font-family:Poppins,system-ui,sans-serif;color:#13244A}
 #appSplash .as-logo{position:relative;display:block;width:min(58vw,230px);margin:0 auto 10px;overflow:hidden;border-radius:18px;animation:asPop .42s cubic-bezier(.34,1.56,.64,1) both}
@@ -453,26 +532,86 @@ html,body{margin:0;background:#F4F6FB}
 #appSplash b{display:block;font-size:20px;letter-spacing:1px;animation:asUp .3s .12s ease-out both}
 #appSplash b sup{font-size:.5em;color:#F07A2E}
 #appSplash small{display:block;margin-top:3px;font-size:12.5px;color:#4A5B7E;animation:asUp .3s .2s ease-out both}
+#appSplash .as-pen,#appSplash .as-flags{display:none}
+/* the 3-second scene */
+#appSplash.as3 .as-logo{animation:none;overflow:visible}
+#appSplash.as3 .as-logo img{clip-path:inset(0 100% 0 0);filter:grayscale(1) contrast(1.4) brightness(1.1);animation:asDraw 1.25s .1s cubic-bezier(.55,.1,.35,1) forwards,asFill .45s 1.2s ease-out forwards}
+#appSplash.as3 .as-logo::after{animation:asShine .6s 1.45s ease-out both}
+#appSplash.as3 .as-pen{display:block;position:absolute;left:0;bottom:6%;width:14px;height:14px;margin-left:-7px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:linear-gradient(135deg,#ff8a2b,#d4570c);box-shadow:0 0 0 3px rgba(240,122,30,.25),0 6px 12px -4px rgba(212,87,12,.9);animation:asPen 1.25s .1s cubic-bezier(.55,.1,.35,1) forwards,asPenOut .2s 1.35s ease-in forwards}
+#appSplash.as3 b{animation:asUp .35s 1.2s ease-out both}
+#appSplash.as3 .as-flags{display:flex;justify-content:center;align-items:flex-end;gap:16px;margin:10px 0 2px}
+#appSplash.as3 .as-st{stroke-dasharray:1;stroke-dashoffset:1;fill-opacity:0;animation:asStroke .6s 1.5s ease-out forwards,asFillO .35s 2.05s ease-out forwards}
+#appSplash.as3 .as-in-f .as-st{animation-delay:1.65s,2.15s}
+#appSplash.as3 .as-fl{opacity:0;animation:asFillO .35s 2.15s ease-out forwards}
+#appSplash.as3 .as-in-f .as-fl{animation-delay:2.25s}
+#appSplash.as3 .as-flags svg{animation:asWave 1.6s 2.3s ease-in-out infinite alternate;transform-origin:0 100%}
+#appSplash.as3 small{animation:asUp .3s 2.1s ease-out both}
 @keyframes asPop{0%{opacity:0;transform:scale(.6) rotate(-4deg)}70%{opacity:1;transform:scale(1.04)}100%{opacity:1;transform:none}}
 @keyframes asShine{to{transform:translateX(120%)}}
 @keyframes asUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){#appSplash *,#appSplash .as-logo::after{animation:none!important}}
+@keyframes asDraw{to{clip-path:inset(0 0 0 0)}}
+@keyframes asFill{to{filter:none}}
+@keyframes asPen{from{left:0}to{left:100%}}
+@keyframes asPenOut{to{opacity:0;transform:rotate(-45deg) scale(.4)}}
+@keyframes asStroke{to{stroke-dashoffset:0}}
+@keyframes asFillO{to{fill-opacity:1;opacity:1}}
+@keyframes asWave{from{transform:skewY(0)}to{transform:skewY(-3deg)}}
+@media (prefers-reduced-motion:reduce){#appSplash *,#appSplash .as-logo::after{animation:none!important}#appSplash.as3 .as-logo img{clip-path:none;filter:none}#appSplash.as3 .as-st{stroke-dashoffset:0;fill-opacity:1}#appSplash.as3 .as-fl{opacity:1}#appSplash .as-pen{display:none!important}}
 </style>
 <script>
 (function () {
   var s = document.getElementById('appSplash'); if (!s) return;
-  var app = false, seen = false;
-  try { app = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) {}
+  var app = false, seen = false, first = false, st = {};
+  try { st = (window.SHG_BOOT && window.SHG_BOOT.settings) || {}; } catch (e) {}
+  var off = function (k) { return st[k] === false || st[k] === 0 || st[k] === '0'; };
+  var scene = !off('app_boot_scene_on');
+  try { app = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true || /[?&]twa=1/.test(location.search) || document.referrer.indexOf('android-app://') === 0; } catch (e) {}
   try { seen = sessionStorage.getItem('shg:splash') === '1'; sessionStorage.setItem('shg:splash', '1'); } catch (e) {}
-  if (!app || seen) { s.parentNode.removeChild(s); return; }
-  s.hidden = false;
-  var t0 = Date.now(), done = false;
-  function out() {
-    if (done) return; done = true;
-    setTimeout(function () { s.className = 'as-out'; setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 300); }, Math.max(0, 650 - (Date.now() - t0)));
+  if (scene && !app) {
+    var bot = /bot|crawl|spider|slurp|lighthouse|headless|pagespeed/i.test(navigator.userAgent || '') || navigator.webdriver;
+    var skip = bot || /[?&](counter=1|gclid|gbraid|wbraid|gad_source|fbclid)/.test(location.search) || (location.hash && location.hash.length > 2);
+    try { first = !skip && !localStorage.getItem('shg:boot1'); localStorage.setItem('shg:boot1', '1'); } catch (e) { first = false; }
   }
-  window.addEventListener('load', out);
-  setTimeout(out, 1200);
+  if ((!app || seen) && !first) { s.parentNode.removeChild(s); return; }
+  var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  var full = scene && !reduce;
+  if (full) s.className = 'as3';
+  s.hidden = false;
+  var t0 = Date.now(), done = false, minMs = full ? 2600 : 650, maxMs = full ? 3000 : 1200, loaded = false;
+  function out(now) {
+    if (done) return; done = true;
+    setTimeout(function () { s.className += ' as-out'; setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 420); }, now ? 0 : Math.max(0, minMs - (Date.now() - t0)));
+  }
+  s.addEventListener('click', function () { out(true); });
+  window.addEventListener('load', function () { loaded = true; out(); });
+  setTimeout(function () { out(); }, maxMs);
+  /* the boot sound: a soft whoosh + two-note chime, made here (no file). Only plays where the page may
+     already play sound (an installed app usually may; a browser tab usually may not) - never forced. */
+  if (full && !off('app_boot_sound_on')) {
+    try {
+      var C = window.AudioContext || window.webkitAudioContext;
+      if (C) {
+        var c = new C();
+        var play = function () {
+          if (c.state !== 'running') { try { c.close(); } catch (e) {} return; }
+          var n = c.currentTime;
+          var len = Math.floor(c.sampleRate * .7), buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+          for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+          var ns = c.createBufferSource(), bp = c.createBiquadFilter(), ng = c.createGain();
+          ns.buffer = buf; bp.type = 'bandpass'; bp.Q.value = .8; bp.frequency.setValueAtTime(400, n); bp.frequency.exponentialRampToValueAtTime(2400, n + .6);
+          ng.gain.setValueAtTime(.0001, n); ng.gain.exponentialRampToValueAtTime(.12, n + .25); ng.gain.exponentialRampToValueAtTime(.0001, n + .7);
+          ns.connect(bp); bp.connect(ng); ng.connect(c.destination); ns.start(n); ns.stop(n + .72);
+          [[659.25, 1.45], [987.77, 1.62], [1318.5, 1.8]].forEach(function (x) {
+            var o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = x[0];
+            g.gain.setValueAtTime(.0001, n + x[1]); g.gain.exponentialRampToValueAtTime(.14, n + x[1] + .02); g.gain.exponentialRampToValueAtTime(.0001, n + x[1] + .9);
+            o.connect(g); g.connect(c.destination); o.start(n + x[1]); o.stop(n + x[1] + .95);
+          });
+          setTimeout(function () { try { c.close(); } catch (e) {} }, 3200);
+        };
+        if (c.state === 'running') play(); else if (c.resume) c.resume().then(play, function () {});
+      }
+    } catch (e) {}
+  }
 })();
 </script>
 
@@ -1573,6 +1712,29 @@ s.addEventListener('click',function(e){e.preventDefault();
        wording track.php uses). Row 2 is the fleet GPS unit + CCTV view, marked coming
        soon until it exists. The phone-with-map artwork (track-journey, alpha) is an
        illustration. Styles: hd.css (.hx-live-*); order 10 (showcase.css). -->
+  <!-- 25 Nov 2026 (cp1, part 2 of the customer home): offices, phone, address and the main fares.
+       Filled from window.FACTS (SiteFacts: Admin -> Counters / Company details / Fares) by the
+       cp1 script at the end of <body>; the full page stays at /offices. -->
+  <section class="container cp-sec" id="cpOffices" aria-labelledby="cpOffTitle">
+    <div class="cp-box">
+      <p class="cp-eb">🏢 <span data-cp="offEb">कार्यालय · Offices</span></p>
+      <h2 class="cp-h" id="cpOffTitle" data-cp="offH">हाम्रो कार्यालय, सम्पर्क र भाडा</h2>
+      <p class="cp-sub" data-cp="offSub">भारत र नेपालका कार्यालय - एक ट्यापमा कल वा नक्सा।</p>
+      <div class="cp-fares" id="cpFares"></div>
+      <ul class="cp-offs" id="cpOffList"></ul>
+      <p class="cp-more"><a class="cp-btn l" href="/offices" data-cp="offAll">सबै कार्यालय र पार्किङ नक्सा →</a></p>
+    </div>
+  </section>
+  <!-- 25 Nov 2026 (cp1, part 4): the company's verified agents - name, area, phone. No form, no login. -->
+  <section class="container cp-sec" id="cpAgents" aria-labelledby="cpAgTitle">
+    <div class="cp-box">
+      <p class="cp-eb">✅ <span data-cp="agEb">आधिकारिक एजेन्ट · Verified agents</span></p>
+      <h2 class="cp-h" id="cpAgTitle" data-cp="agH">कम्पनीबाट प्रमाणित एजेन्ट</h2>
+      <p class="cp-sub" data-cp="agSub">यी व्यक्तिबाट मात्र टिकट लिनुहोस्। शंका लागे कार्यालयमा फोन गर्नुहोस्।</p>
+      <ul class="cp-ag" id="cpAgList"><li><span class="tx"><small data-cp="agLoad">लोड हुँदैछ…</small></span></li></ul>
+      <p class="cp-more" id="cpAgMoreP" hidden><button type="button" class="cp-btn l" id="cpAgMore" data-cp="agMore">सबै एजेन्ट देखाउनुहोस्</button></p>
+    </div>
+  </section>
   <section class="container hx hx-livebus" id="homeLive" aria-labelledby="hxLiveTitle">
     <div class="hx-shell">
       <div class="hx-live-grid">
@@ -1594,6 +1756,12 @@ s.addEventListener('click',function(e){e.preventDefault();
               <span class="hx-live-badge" data-i18n="hxLiveSoonBadge">Coming soon · छिट्टै</span>
             </li>
           </ul>
+          <!-- 25 Nov 2026 (cp1): ticket number -> My Tickets opens it and its live bus (#/my?pnr=) -->
+          <form id="cpTrackForm" autocomplete="off">
+            <input type="text" id="cpTrackPnr" inputmode="text" maxlength="40" placeholder="PNR / टिकट नम्बर" aria-label="PNR / Ticket number" required>
+            <button type="submit" class="cp-btn o" data-cp="trkGo">बस हेर्नुहोस्</button>
+            <small data-cp="trkNote">टिकटको PNR हाल्नुहोस् - बस कहाँ छ, अर्को बिसौनी र पुग्ने समय देखिन्छ।</small>
+          </form>
         </div>
         <!-- decorative (alt="", aria-hidden): the caption is for sighted visitors only;
              the 480 px export, shown at 220 px -->
@@ -3795,6 +3963,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 <nav class="bottom-nav bn5" aria-label="Mobile navigation">
   <button type="button" class="bn-item on" data-bn="home" aria-current="page"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-home"/></svg></span><span class="bl" data-i18n="bnHome">Home</span></button>
   <button type="button" class="bn-item bn-primary" data-bn="book"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-bus"/></svg></span><span class="bl" data-i18n="bnBook">Book</span></button>
+  <button type="button" class="bn-item" data-bn="office"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-building"/></svg></span><span class="bl" data-cp="office">Office</span></button>
   <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-ticket"/></svg></span><span class="bl" data-i18n="bnTickets">My Tickets</span></button>
   <button type="button" class="bn-item" data-bn="nav"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-map"/></svg></span><span class="bl" data-i18n="bnMaps">Maps</span></button>
   <button type="button" class="bn-item" data-bn="track"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-radar"/></svg></span><span class="bl" data-i18n="bnTrack">Track</span></button>
@@ -3969,6 +4138,264 @@ s.addEventListener('click',function(e){e.preventDefault();
      DOM interactive 9.3s. It now loads at the moment a QR is actually drawn. -->
 
 
+<!-- 25 Nov 2026 (cp1, customer portal): one inline script for the customer home -
+     offices + fares, verified agents, the PNR box of the live bus, the 4-tab bar,
+     the booking GPS (BookGeo) and PayWatch (an online ticket confirms on screen by itself
+     the moment the office / the payment mail reader confirms it). Inline so it ships with this
+     always-fresh HTML (no asset stamp). Every part fails quietly: never a broken page. -->
+<script>
+(function () {
+  'use strict';
+  var D = document, H = D.documentElement;
+  var CP = H.classList.contains('cp1');
+  function lang() { var l = (H.getAttribute('lang') || 'ne').slice(0, 2); return l === 'en' || l === 'hi' ? l : 'ne'; }
+  var T = {
+    ne: { offEb: 'कार्यालय · Offices', offH: 'हाम्रो कार्यालय, सम्पर्क र भाडा', offSub: 'भारत र नेपालका कार्यालय - एक ट्यापमा कल वा नक्सा।', offAll: 'सबै कार्यालय र पार्किङ नक्सा →',
+          agEb: 'आधिकारिक एजेन्ट · Verified agents', agH: 'कम्पनीबाट प्रमाणित एजेन्ट', agSub: 'यी व्यक्तिबाट मात्र टिकट लिनुहोस्। शंका लागे कार्यालयमा फोन गर्नुहोस्।', agLoad: 'लोड हुँदैछ…', agMore: 'सबै एजेन्ट देखाउनुहोस्', agNone: 'एजेन्ट लिस्ट छिट्टै। अहिले कार्यालयमा फोन गर्नुहोस्।',
+          trkGo: 'बस हेर्नुहोस्', trkNote: 'टिकटको PNR हाल्नुहोस् - बस कहाँ छ, अर्को बिसौनी र पुग्ने समय देखिन्छ।',
+          call: 'कल', map: 'नक्सा', wa: 'WhatsApp', head: 'मुख्य कार्यालय', soon: 'छिट्टै', ok: 'प्रमाणित',
+          fGo: 'गुजरात → नेपाल', fBack: 'नेपाल → गुजरात', fPriv: 'प्राइभेट केबिन', office: 'अफिस',
+          geoAsk: 'टिकट काटेको स्थान र नजिकको बोर्डिङ पोइन्ट देखाउन लोकेशन अनुमति दिनुहोस्।',
+          payWait: 'भुक्तानी जाँच हुँदैछ…', payWaitSub: 'पैसा आएपछि टिकट आफैँ CONFIRMED हुन्छ।', payOk: 'भुक्तानी पुष्टि भयो!', payOkSub: 'टिकट CONFIRMED - टिकट हेर्नुहोस्।', open: 'टिकट हेर्नुहोस्' },
+    hi: { offEb: 'ऑफ़िस · Offices', offH: 'हमारे ऑफ़िस, संपर्क और किराया', offSub: 'भारत और नेपाल के ऑफ़िस - एक टैप में कॉल या नक्शा।', offAll: 'सभी ऑफ़िस और पार्किंग नक्शा →',
+          agEb: 'आधिकारिक एजेंट · Verified agents', agH: 'कंपनी से प्रमाणित एजेंट', agSub: 'टिकट सिर्फ़ इन्हीं से लें। शक हो तो ऑफ़िस को फ़ोन करें।', agLoad: 'लोड हो रहा है…', agMore: 'सभी एजेंट दिखाएँ', agNone: 'एजेंट सूची जल्द। अभी ऑफ़िस को फ़ोन करें।',
+          trkGo: 'बस देखें', trkNote: 'टिकट का PNR डालें - बस कहाँ है, अगला स्टॉप और पहुँचने का समय दिखेगा।',
+          call: 'कॉल', map: 'नक्शा', wa: 'WhatsApp', head: 'मुख्य ऑफ़िस', soon: 'जल्द', ok: 'प्रमाणित',
+          fGo: 'गुजरात → नेपाल', fBack: 'नेपाल → गुजरात', fPriv: 'प्राइवेट केबिन', office: 'ऑफ़िस',
+          geoAsk: 'टिकट बुक करने की जगह और पास का बोर्डिंग पॉइंट दिखाने के लिए लोकेशन की अनुमति दें।',
+          payWait: 'भुगतान जाँच हो रहा है…', payWaitSub: 'पैसा आते ही टिकट अपने-आप CONFIRMED होगा।', payOk: 'भुगतान पक्का हुआ!', payOkSub: 'टिकट CONFIRMED - टिकट देखें।', open: 'टिकट देखें' },
+    en: { offEb: 'Offices', offH: 'Our offices, contacts and fares', offSub: 'Offices in India and Nepal - call or open the map in one tap.', offAll: 'All offices and parking maps →',
+          agEb: 'Verified agents', agH: 'Agents verified by the company', agSub: 'Buy tickets only from these people. In doubt, call the office.', agLoad: 'Loading…', agMore: 'Show all agents', agNone: 'Agent list coming soon. Call the office for now.',
+          trkGo: 'Show my bus', trkNote: 'Type the ticket PNR - see where the bus is, the next stop and the arrival time.',
+          call: 'Call', map: 'Map', wa: 'WhatsApp', head: 'Head office', soon: 'Soon', ok: 'Verified',
+          fGo: 'Gujarat → Nepal', fBack: 'Nepal → Gujarat', fPriv: 'Private cabin', office: 'Office',
+          geoAsk: 'Allow location to record where the ticket was booked and show the nearest boarding point.',
+          payWait: 'Checking your payment…', payWaitSub: 'The ticket confirms by itself when the money arrives.', payOk: 'Payment confirmed!', payOkSub: 'Ticket CONFIRMED - open your ticket.', open: 'Open ticket' }
+  };
+  function t(k) { var x = T[lang()] || T.ne; return x[k] || T.en[k] || ''; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function inr(n) { n = Number(n) || 0; try { return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }); } catch (e) { return '₹' + Math.round(n); } }
+  function words() { var n = D.querySelectorAll('[data-cp]'); for (var i = 0; i < n.length; i++) { var v = t(n[i].getAttribute('data-cp')); if (v) n[i].textContent = v; } }
+
+  /* ---- 2. offices + fares ---- */
+  function fares(F) {
+    var box = D.getElementById('cpFares'); if (!box || !F || !F.fares) return;
+    var r = F.fares.range || {}, p = F.fares['private'] || {}, out = [];
+    function span(x) { if (!x) return ''; return x.min === x.max ? inr(x.min) : inr(x.min) + '–\u200B' + inr(x.max); }
+    if (r.go) out.push('<div class="cp-fare"><b>' + esc(span(r.go)) + '</b><small>' + esc(t('fGo')) + '</small></div>');
+    if (r.back) out.push('<div class="cp-fare"><b>' + esc(span(r.back)) + '</b><small>' + esc(t('fBack')) + '</small></div>');
+    var lo = Number(p.single) || 0, hi = Number(p['double']) || 0;
+    if (lo || hi) out.push('<div class="cp-fare"><b>' + esc(lo && hi && lo !== hi ? inr(Math.min(lo, hi)) + '–\u200B' + inr(Math.max(lo, hi)) : inr(lo || hi)) + '</b><small>' + esc(t('fPriv')) + '</small></div>');
+    box.innerHTML = out.join('');
+    box.hidden = !out.length;
+  }
+  function offices(F) {
+    var ul = D.getElementById('cpOffList'); if (!ul || !F || !Array.isArray(F.offices)) return;
+    var L = lang(), rows = F.offices.slice().sort(function (a, b) { return (a.kind === 'head' ? 0 : 1) - (b.kind === 'head' ? 0 : 1); });
+    ul.innerHTML = rows.map(function (o) {
+      var nm = (L === 'ne' && o.nameNe) ? o.nameNe : (L === 'hi' && o.nameHi) ? o.nameHi : (o.city || o.name || '');
+      var flag = o.country === 'NP' ? '🇳🇵' : '🇮🇳';
+      var addr = (L !== 'en' && o.addressNe) ? o.addressNe : (o.address || '');
+      var tel = String(o.tel || '').replace(/\D/g, ''), wa = String(o.wa || '').replace(/\D/g, '');
+      var badge = o.kind === 'head' ? '<small>' + esc(t('head')) + '</small>' : (o.status === 'coming_soon' ? '<small>' + esc(t('soon')) + '</small>' : '');
+      return '<li class="cp-off"><h3><i aria-hidden="true">' + flag + '</i>' + esc(nm) + badge + '</h3>'
+        + (addr ? '<p>' + esc(addr) + '</p>' : '')
+        + (o.phone ? '<p><b>' + esc(o.phone) + '</b>' + (o.contact ? ' · ' + esc(o.contact) : '') + '</p>' : '')
+        + '<div class="cp-acts">'
+        + (tel ? '<a class="cp-btn" href="tel:+' + esc(tel) + '">📞 ' + esc(t('call')) + '</a>' : '')
+        + (o.mapUrl ? '<a class="cp-btn l" href="' + esc(o.mapUrl) + '" target="_blank" rel="noopener">📍 ' + esc(t('map')) + '</a>' : '')
+        + (wa ? '<a class="cp-btn g" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">💬 ' + esc(t('wa')) + '</a>' : '')
+        + '</div></li>';
+    }).join('');
+  }
+
+  /* ---- 4. verified agents (names + area + phone only) ---- */
+  var agents = [], agAll = false;
+  function drawAgents() {
+    var ul = D.getElementById('cpAgList'), mp = D.getElementById('cpAgMoreP'); if (!ul) return;
+    if (!agents.length) { ul.innerHTML = '<li><span class="tx"><small>' + esc(t('agNone')) + '</small></span></li>'; if (mp) mp.hidden = true; return; }
+    var list = agAll ? agents : agents.slice(0, 8);
+    ul.innerHTML = list.map(function (a) {
+      var nm = String(a.name || ''), ini = nm.trim().charAt(0).toUpperCase() || 'S';
+      var full = a.phone && String(a.phone).indexOf('•') < 0, dial = full ? String(a.tel || a.phone).replace(/[^\d+]/g, '') : '';
+      if (dial && dial.charAt(0) !== '+') dial = (dial.length === 10 ? (/^9[78]/.test(dial) ? '+977' : '+91') : '+') + dial;
+      var ph = a.photo && /^\/api\//.test(String(a.photo)) ? '<img src="' + esc(a.photo) + '" alt="" loading="lazy" width="40" height="40">' : esc(ini);
+      return '<li><span class="av" aria-hidden="true">' + ph + '</span><span class="tx"><b>' + esc(nm) + (a.verified ? ' <span class="ok" title="' + esc(t('ok')) + '">✔</span>' : '') + '</b>'
+        + '<small>' + esc([a.area, a.phone].filter(Boolean).join(' · ')) + '</small></span>'
+        + (dial ? '<a class="call" href="tel:' + esc(dial) + '" aria-label="' + esc(t('call') + ' ' + nm) + '">📞</a>' : '') + '</li>';
+    }).join('');
+    if (mp) mp.hidden = agAll || agents.length <= 8;
+  }
+  function loadAgents() {
+    fetch('/api/agent-directory.php', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { agents = (j && j.ok && Array.isArray(j.items)) ? j.items.filter(function (a) { return a && a.kind !== 'partner' && a.name; }) : []; drawAgents(); })
+      .catch(function () { agents = []; drawAgents(); });
+  }
+
+  /* ---- 3. live bus: PNR -> My Tickets opens it with its tracker ---- */
+  function wireTrack() {
+    var f = D.getElementById('cpTrackForm'); if (!f) return;
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var v = String((D.getElementById('cpTrackPnr') || {}).value || '').trim().toUpperCase().replace(/\s+/g, '');
+      if (v) location.hash = '#/my?pnr=' + encodeURIComponent(v);
+    });
+  }
+
+  /* ---- the tab bar: Office scrolls to part 2 (the other tabs are 05-router.js) ---- */
+  D.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('.bn-item[data-bn="office"]') : null; if (!b) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    function go() { var el = D.getElementById('cpOffices'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (location.hash && location.hash !== '#/' && location.hash !== '#') { location.hash = '#/'; setTimeout(go, 120); } else go();
+    try { if (typeof shgLightTab === 'function') setTimeout(function () { shgLightTab('office'); }, 90); } catch (x) {}
+  }, true);
+
+  /* ---- BookGeo: where the ticket was cut (asked when booking starts, never on load) ---- */
+  var GEO_KEY = 'shg:geo', geoBusy = false;
+  function geoGet() { try { var g = JSON.parse(sessionStorage.getItem(GEO_KEY) || 'null'); return g && g.at && Date.now() - g.at < 2 * 3600e3 ? g : null; } catch (e) { return null; } }
+  function geoPlace(g) {
+    var u = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=en&lat=' + g.lat + '&lon=' + g.lng;
+    fetch(u, { headers: { Accept: 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
+      var a = (j && j.address) || {}, p = [a.suburb || a.village || a.town || a.neighbourhood || a.hamlet || '', a.city || a.county || a.state_district || '', a.country_code ? String(a.country_code).toUpperCase() : ''];
+      var seen = {}, out = p.filter(function (x) { if (!x || seen[x]) return false; seen[x] = 1; return true; }).join(', ');
+      if (out) { g.place = out.slice(0, 110); try { sessionStorage.setItem(GEO_KEY, JSON.stringify(g)); } catch (e) {} }
+    }).catch(function () {});
+  }
+  function geoNote() {
+    try { if (localStorage.getItem('shg:geoNote') === '1') return; localStorage.setItem('shg:geoNote', '1'); } catch (e) {}
+    try { if (typeof toast === 'function') toast('📍 ' + t('geoAsk')); } catch (e) {}
+  }
+  function geoAsk() {
+    if (geoBusy || geoGet() || !navigator.geolocation) return;
+    try { if ((window.SHG_BOOT && SHG_BOOT.settings && (SHG_BOOT.settings.booking_geo_on === false || SHG_BOOT.settings.booking_geo_on === 0 || SHG_BOOT.settings.booking_geo_on === '0'))) return; } catch (e) {}
+    geoBusy = true;
+    function ask() {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        geoBusy = false;
+        var g = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), acc: Math.min(999999, Math.round(p.coords.accuracy || 0)), place: '', at: Date.now() };
+        try { sessionStorage.setItem(GEO_KEY, JSON.stringify(g)); } catch (e) {}
+        geoPlace(g);
+      }, function () { geoBusy = false; }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 600000 });
+    }
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'geolocation' }).then(function (s) {
+          if (s.state === 'denied') { geoBusy = false; return; }
+          if (s.state === 'prompt') geoNote();
+          ask();
+        }, function () { geoNote(); ask(); });
+        return;
+      }
+    } catch (e) {}
+    geoNote(); ask();
+  }
+  function geoStart(e) {
+    var el = e.target; if (!el || !el.closest) return;
+    if (el.closest('#smartBook, #sbDesk, #quick-ticket, #search-anchor, #view-checkout, #view-seats')) geoAsk();
+  }
+  D.addEventListener('focusin', geoStart, true);
+  D.addEventListener('pointerdown', geoStart, true);
+  /* the booking POST carries the fix as two headers (includes/bookgeo.php) */
+  if (window.fetch && !window.fetch.__cpGeo) {
+    var nf = window.fetch;
+    var wf = function (input, init) {
+      try {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        var m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        var g = m === 'POST' && /\/api\/(book|smartbook)\.php/.test(url) ? geoGet() : null;
+        if (g) {
+          init = init || {};
+          var h = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
+          h.set('X-SHG-Geo', g.lat + ',' + g.lng + (g.acc ? ',' + g.acc : ''));
+          if (g.place) h.set('X-SHG-Geo-Place', encodeURIComponent(g.place));
+          init.headers = h;
+        }
+      } catch (e) {}
+      return nf.call(this, input, init);
+    };
+    wf.__cpGeo = true;
+    window.fetch = wf;
+  }
+
+  /* ---- PayWatch: an online ticket waiting for its money flips to CONFIRMED on screen ---- */
+  var watch = { pnr: '', key: '', t: null, n: 0, el: null };
+  function payBar(state, pnr) {
+    var el = watch.el || D.getElementById('cpPay');
+    if (!state) { if (el) el.parentNode.removeChild(el); watch.el = null; return; }
+    if (!el) { el = D.createElement('div'); el.id = 'cpPay'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); D.body.appendChild(el); watch.el = el; }
+    el.className = state === 'ok' ? 'ok' : '';
+    el.innerHTML = '<span class="sp" aria-hidden="true"></span><span class="tx">' + esc(state === 'ok' ? t('payOk') : t('payWait')) + '<small>' + esc(pnr + ' · ' + (state === 'ok' ? t('payOkSub') : t('payWaitSub'))) + '</small></span>'
+      + (state === 'ok' ? '<button type="button" data-cp-open>' + esc(t('open')) + '</button>' : '') + '<button type="button" class="x" data-cp-x aria-label="Close">×</button>';
+  }
+  D.addEventListener('click', function (e) {
+    var x = e.target && e.target.closest;
+    if (!x) return;
+    if (e.target.closest('[data-cp-x]')) { stopWatch(); payBar(null); }
+    else if (e.target.closest('[data-cp-open]')) { var p = watch.pnr; stopWatch(); payBar(null); location.hash = '#/my?pnr=' + encodeURIComponent(p); setTimeout(function () { location.reload(); }, 60); }
+  });
+  function chime() {
+    try { if (navigator.vibrate) navigator.vibrate([60, 40, 120]); } catch (e) {}
+    try {
+      var C = window.AudioContext || window.webkitAudioContext; if (!C) return; var c = new C(); if (c.state !== 'running') { c.close(); return; }
+      [[880, 0], [1320, .14]].forEach(function (n) { var o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = n[0]; g.gain.setValueAtTime(0, c.currentTime + n[1]); g.gain.linearRampToValueAtTime(.18, c.currentTime + n[1] + .02); g.gain.exponentialRampToValueAtTime(.001, c.currentTime + n[1] + .5); o.connect(g); g.connect(c.destination); o.start(c.currentTime + n[1]); o.stop(c.currentTime + n[1] + .55); });
+      setTimeout(function () { try { c.close(); } catch (e) {} }, 1200);
+    } catch (e) {}
+  }
+  function stopWatch() { clearTimeout(watch.t); watch.t = null; watch.pnr = ''; }
+  function poll() {
+    if (!watch.pnr) return;
+    if (D.visibilityState === 'hidden') { watch.t = setTimeout(poll, 5000); return; }
+    if (++watch.n > 200) { stopWatch(); return; }   // ~35 min, then the normal My Tickets refresh carries on
+    var p = watch.pnr;
+    fetch('/api/ticket-live.php?pnr=' + encodeURIComponent(p) + (watch.key ? '&k=' + encodeURIComponent(watch.key) : ''), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (res) {
+        if (watch.pnr !== p) return;
+        if (res.s === 401 || res.s === 403 || res.s === 404) { stopWatch(); payBar(null); return; }
+        var d = res.j && res.j.data;
+        if (d && d.status === 'confirmed') {
+          stopWatch(); watch.pnr = p; payBar('ok', p); chime();
+          try { var B = window.DB && DB.bookings; if (B) B.forEach(function (b) { if (b && b.id === p) b.status = 'confirmed'; }); } catch (e) {}
+          return;
+        }
+        if (d && d.status && d.status !== 'pending') { stopWatch(); payBar(null); return; }
+        watch.t = setTimeout(poll, 10000);
+      })
+      .catch(function () { watch.t = setTimeout(poll, 15000); });
+  }
+  function scanPending() {
+    if (watch.pnr) return;
+    var list = []; try { list = (window.DB && Array.isArray(DB.bookings)) ? DB.bookings : []; } catch (e) {}
+    var now = Date.now(), b = null;
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i]; if (!x || x.status !== 'pending' || String(x.payment || '').toLowerCase() === 'cod') continue;
+      var at = x.createdAt ? Date.parse(x.createdAt) : now; if (isFinite(at) && now - at > 6 * 3600e3) continue;
+      b = x; break;
+    }
+    if (!b) return;
+    watch.pnr = String(b.id); watch.key = String(b.dlKey || ''); watch.n = 0;
+    payBar('wait', watch.pnr);
+    watch.t = setTimeout(poll, 4000);
+  }
+  if (!(window.SHG_BOOT && SHG_BOOT.settings && (SHG_BOOT.settings.pay_watch_on === false || SHG_BOOT.settings.pay_watch_on === 0 || SHG_BOOT.settings.pay_watch_on === '0'))) {
+    window.addEventListener('hashchange', function () { setTimeout(scanPending, 800); });
+    setTimeout(function () { scanPending(); setInterval(scanPending, 20000); }, 3000);
+  }
+
+  function boot() {
+    var F = window.FACTS || (window.SHG_BOOT && SHG_BOOT.facts) || null;
+    words(); wireTrack();
+    if (!CP) return;
+    fares(F); offices(F); loadAgents();
+    var more = D.getElementById('cpAgMore'); if (more) more.addEventListener('click', function () { agAll = true; drawAgents(); });
+  }
+  if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
+  /* the language buttons re-draw the words */
+  D.addEventListener('click', function (e) { if (e.target && e.target.closest && e.target.closest('.lang-btn,[data-lang]')) setTimeout(function () { words(); if (CP) { var F = window.FACTS || (window.SHG_BOOT && SHG_BOOT.facts); fares(F); offices(F); drawAgents(); } }, 150); });
+})();
+</script>
 </body>
 </html>
 <!-- v4.0 TEST CHECKLIST (verified 2026-08-13 on local dev)
