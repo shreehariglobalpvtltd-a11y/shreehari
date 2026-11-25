@@ -69,7 +69,7 @@ function admin_pro_css(): string
     return <<<'CSS'
 /* ---- professional operations look (admin/_pro.php) ---- */
 .pc{display:grid;gap:16px;max-width:1240px}
-.wrap>h1:has(+.pc>.pc-head:first-child),.wrap>h1:has(+.pc>.flash+.pc-head){display:none}
+.wrap>h1:has(~.pc>.pc-head:first-child),.wrap>h1:has(~.pc>.flash+.pc-head){display:none}
 .pc-ic{width:16px;height:16px}
 .pc-head{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between;padding:0 0 4px;border-bottom:1px solid var(--line)}
 .pc-head h2{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}

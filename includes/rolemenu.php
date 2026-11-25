@@ -200,7 +200,8 @@ final class RoleMenu
             'accountant' => ['home', 'money', 'reports', 'tickets'],
             'support'    => ['home', 'tickets', 'people', 'settings'],
             'counter'    => ['book', 'tickets', 'buses', 'money', 'home'],
-            'agent'      => ['book', 'tickets', 'money', 'buses', 'people', 'home'],
+            // reports = the agent's own ticket statement, which is also where a commission is withdrawn (one tap, as before fx1)
+            'agent'      => ['book', 'tickets', 'money', 'buses', 'people', 'reports', 'home'],
         ];
     }
 
@@ -247,7 +248,15 @@ final class RoleMenu
     /** A page that is drawn by another file keeps its menu row: quick-ticket.php redirects to smartbook.php. */
     public static function canon(string $href): string
     {
-        return ['smartbook.php' => 'quick-ticket.php'][$href] ?? $href;
+        return [
+            'smartbook.php' => 'quick-ticket.php',
+            // pages opened from inside a menu page: they light the same hub and show its tabs (same permission as the parent)
+            'booking-view.php' => 'bookings.php',
+            'customer-view.php' => 'customers.php', 'customer-directory.php' => 'customers.php', 'customer-duplicates.php' => 'customers.php',
+            'customer-ledger.php' => 'customers.php', 'customer-lists.php' => 'customers.php',
+            'team-member.php' => 'team.php', 'team-design.php' => 'team.php',
+            'payslip.php' => 'payroll.php',
+        ][$href] ?? $href;
     }
 
     /** May this page carry the tab strip / the phone bottom bar? */

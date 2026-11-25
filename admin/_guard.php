@@ -295,7 +295,16 @@ function admin_hub_menu(?array $items = null, bool $fresh = false): array
         } catch (Throwable $e) {
             $npDesk = false;
         }
-        $built = RoleMenu::build($items ?? admin_nav(), (string) ($me['role'] ?? ''), ['np_desk' => $npDesk]);
+        $items ??= admin_nav();
+        if ((string) ($me['role'] ?? '') === 'viewer') {
+            /* requireAdmin() sends a view-only login back to the dashboard from every admin/ page outside
+               Auth::VIEWER_PAGES - so a row, a tab or a search hit to such a page would only bounce. Root-relative
+               links (/me/) are not behind that gate. */
+            $items = array_values(array_filter($items, static fn(array $i): bool =>
+                str_starts_with((string) $i['href'], '/') || in_array((string) $i['href'], Auth::VIEWER_PAGES, true)));
+        }
+        $built = RoleMenu::build($items, (string) ($me['role'] ?? ''), ['np_desk' => $npDesk]);
+        $built['np_desk'] = $npDesk;
     }
     return $built;
 }
@@ -305,6 +314,49 @@ function admin_hub_label(array $item): string
 {
     [$ne, $en] = RoleMenu::pageLabel($item, 'admin_plain');
     return $ne !== '' && $ne !== $en ? $ne . ' · ' . $en : $en;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — where the page being drawn sits in the hub menu: its hub and its tab, or null.
+ * ONE answer for the sidebar, the tab strip and the phone bar, so the three always agree:
+ *   1. the page itself, or the menu page it belongs to (RoleMenu::canon - booking-view.php -> bookings.php);
+ *   2. else the menu row the page names by hand ($active of admin_header): the exact file first, a part of
+ *      the name only after that ("agent" must not light agents.php when agent.php is in the menu).
+ * admin_header() asks first (with $active, $fresh); the tab strip and the bar read the remembered answer.
+ *
+ * @return array{hub:array<string,mixed>, tab:string}|null
+ */
+function admin_hub_at(?string $active = null, bool $fresh = false): ?array
+{
+    static $known = false, $at = null;
+    if ($known && !$fresh) {
+        return $at;
+    }
+    $built = admin_hub_menu();
+    $at = RoleMenu::locate($built, RoleMenu::canon(admin_current_href()));
+    $active = (string) $active;
+    if ($at === null && $active !== '') {
+        $exact = null;
+        $part  = null;
+        foreach ($built['pages'] as $p) {
+            $href = (string) $p['href'];
+            if (str_starts_with($href, '/')) {
+                continue;
+            }
+            if ($href === $active || $href === $active . '.php') {
+                $exact = $href;
+                break;
+            }
+            if ($part === null && str_contains($href, $active)) {
+                $part = $href;
+            }
+        }
+        if (($exact ?? $part) !== null) {
+            $at = RoleMenu::locate($built, (string) ($exact ?? $part));
+        }
+    }
+    $known = true;
+    return $at;
 }
 
 /**
@@ -318,34 +370,52 @@ function admin_hub_label(array $item): string
 function admin_hub_side(array $items, string $active): void
 {
     $built = admin_hub_menu($items);
-    $here  = RoleMenu::canon(admin_current_href());
-    $at    = RoleMenu::locate($built, $here);
-    if ($at === null && $active !== '') {                 // a page that names its menu row by hand
-        foreach ($built['pages'] as $p) {
-            if (!str_starts_with((string) $p['href'], '/') && str_contains((string) $p['href'], $active)) {
-                $at = RoleMenu::locate($built, (string) $p['href']);
-                break;
-            }
-        }
-    }
+    $at    = admin_hub_at($active, true);
     $onKey = $at['hub']['key'] ?? '';
 
     // the menu search: every page this person may open, hidden ones too
     $find = [];
     foreach ($built['pages'] as $p) {
         $label = admin_hub_label($p);
-        $find[] = ['u' => RoleMenu::url((string) $p['href']), 'l' => $label,
-            'g' => (string) $p['hub_label'] . ((string) $p['tab_label'] !== '' ? ' › ' . (string) $p['tab_label'] : ''),
-            'k' => mb_strtolower($label . ' ' . admin_plain((string) $p['label']) . ' ' . $p['hub_label'] . ' ' . $p['tab_label'] . ' ' . $p['href'], 'UTF-8')];
+        $entry = ['u' => RoleMenu::url((string) $p['href']), 'l' => $label,
+            'g' => (string) $p['hub_label'] . ((string) $p['tab_label'] !== '' ? ' › ' . (string) $p['tab_label'] : '')];
+        $old = admin_plain((string) $p['label']);   // the page's older menu name, so people still find it by the word they know
+        if ($old !== '' && !str_contains(mb_strtolower($label, 'UTF-8'), mb_strtolower($old, 'UTF-8'))) {
+            $entry['a'] = $old;
+        }
+        $find[] = $entry;
     }
     echo '<div class="hm-find"><input type="search" id="hmFind" placeholder="कुन काम? · What do you want to do?" autocomplete="off" aria-label="Find a page">'
        . '<div class="hm-find-out" id="hmFindOut" hidden></div></div>';
 
-    $row = static function (array $hub, bool $on): void {
+    /* A hub's other pages are normally one tap away in the tab strip. Two cases have no strip: the page being
+       drawn keeps its whole screen (SmartBook, Nepal counter, Home, Scan), or the row opens a page outside the
+       staff chrome (/me/). There the hub's other pages are listed under the row instead - else Bulk tickets or
+       an agent's own dashboard would have no click path at all. */
+    $noTabs = RoleMenu::fullScreen(admin_current_href());
+    $office = !empty($built['np_desk']) || Auth::isSuperadmin() || Auth::can('reports.view');   // the Nepal counter home is the office's and the Nepal desk's
+    $row = static function (array $hub, bool $on) use ($noTabs, $office): void {
         $badge = $hub['key'] === 'money' ? '<span class="navbadge" id="navBadgePayments" style="display:none"></span>' : '';
         echo '<a class="hm-row' . ($on ? ' on' : '') . ($hub['key'] === 'book' ? ' hot' : '') . '" href="' . Security::e(RoleMenu::url((string) $hub['href'])) . '">'
            . '<span><svg class="a-ic"><use href="#a-' . Security::e((string) $hub['icon']) . '"/></svg></span>'
            . '<b class="sl"><i class="hm-ne">' . Security::e((string) $hub['ne']) . '</i><i class="hm-en">' . Security::e((string) $hub['en']) . '</i></b>' . $badge . '</a>';
+        $bare = str_starts_with((string) $hub['href'], '/');
+        if ((int) $hub['count'] > 1 && ($bare || ($on && $noTabs))) {
+            $kids = '';
+            foreach ($hub['tabs'] as $tab) {
+                foreach ($tab['items'] as $it) {
+                    $href = (string) $it['href'];
+                    if ($href === (string) $hub['href'] || ($href === 'nepal-counter.php' && !$office) || (!$bare && str_starts_with($href, '/'))) {
+                        continue;
+                    }
+                    $kids .= '<a class="hm-kid" href="' . Security::e(RoleMenu::url($href)) . '"><span><svg class="a-ic"><use href="#a-' . Security::e((string) $it['icon']) . '"/></svg></span>'
+                           . '<b class="sl">' . Security::e(admin_hub_label($it)) . '</b></a>';
+                }
+            }
+            if ($kids !== '') {
+                echo '<div class="hm-kids">' . $kids . '</div>';
+            }
+        }
     };
     foreach ($built['main'] as $hub) {
         $row($hub, $hub['key'] === $onKey);
@@ -376,7 +446,9 @@ function admin_hub_find_js(): string
 {
     return <<<'JS'
 (function(){
-  var inp=document.getElementById('hmFind'),out=document.getElementById('hmFindOut'),all=window.SHG_MENU_FIND||[];
+  var inp=document.getElementById('hmFind'),out=document.getElementById('hmFindOut'),all=window.SHG_MENU_FIND||[],byKey=false;
+  // the search key is built here, not sent: name + old name + hub + link, lower case
+  all.forEach(function(p){p.k=(p.l+' '+(p.a||'')+' '+p.g+' '+p.u).toLowerCase();});
   if(!inp||!out)return;
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function draw(){
@@ -390,12 +462,15 @@ function admin_hub_find_js(): string
   inp.addEventListener('input',draw);
   inp.addEventListener('keydown',function(e){
     if(e.key==='Enter'){var a=out.querySelector('a');if(a){e.preventDefault();location.href=a.getAttribute('href');}}
-    if(e.key==='Escape'){inp.value='';draw();inp.blur();}
+    if(e.key==='Escape'){inp.value='';draw();inp.blur();if(byKey){document.body.classList.remove('nav-open');byKey=false;}}
   });
   document.addEventListener('keydown',function(e){
     var t=e.target,typing=t&&(/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.isContentEditable);
     if((e.key==='k'&&(e.ctrlKey||e.metaKey))||(e.key==='/'&&!typing&&!e.ctrlKey&&!e.metaKey&&!e.altKey)){
-      e.preventDefault();document.body.classList.add('nav-open');inp.focus();inp.select();
+      e.preventDefault();
+      // the drawer exists only on a narrow screen; on a desk the menu is always there (nav-open would hide the AI button)
+      if(window.matchMedia&&matchMedia('(max-width:820px)').matches){document.body.classList.add('nav-open');byKey=true;}
+      inp.focus();inp.select();
     }
   });
 })();
@@ -417,8 +492,7 @@ function admin_hub_tabs(string $active): string
     if (RoleMenu::fullScreen($here)) {
         return '';
     }
-    $built = admin_hub_menu();
-    $at = RoleMenu::locate($built, $here);
+    $at = admin_hub_at($active);
     if ($at === null || (int) $at['hub']['count'] < 2) {
         return '';
     }
@@ -439,6 +513,9 @@ function admin_hub_tabs(string $active): string
                    . Security::e(admin_hub_label($p)) . '</a>';
         }
         $html .= '</nav>';
+    }
+    if ($html !== '') {   // a phone shows 3-4 tabs: bring the open one into view (scrollLeft, so the page itself never jumps)
+        $html .= '<script>document.querySelectorAll(".hm-tabs .on,.hm-sub .on").forEach(function(a){var n=a.parentNode;n.scrollLeft=Math.max(0,a.offsetLeft-n.offsetLeft-12);});</script>';
     }
     return $html;
 }
@@ -461,11 +538,11 @@ function admin_hub_bar(): string
     if (count($built['main']) < 2) {
         return '';
     }
-    $at = RoleMenu::locate($built, RoleMenu::canon(admin_current_href()));
+    $at = admin_hub_at();
     $onKey = $at['hub']['key'] ?? '';
     $html = '<nav class="hm-bar" aria-label="Main menu">';
     foreach (array_slice($built['main'], 0, 4) as $hub) {
-        $html .= '<a' . ($hub['key'] === $onKey ? ' class="on" aria-current="true"' : '') . ' href="' . Security::e(RoleMenu::url((string) $hub['href'])) . '">'
+        $html .= '<a' . ($hub['key'] === $onKey ? ' class="on" aria-current="true"' : '') . ' href="' . Security::e(RoleMenu::url((string) $hub['href'])) . '" aria-label="' . Security::e($hub['ne'] . ' · ' . $hub['en']) . '">'
                . '<svg class="a-ic"><use href="#a-' . Security::e((string) $hub['icon']) . '"/></svg><b>' . Security::e((string) $hub['ne']) . '</b></a>';
     }
     $html .= '<button type="button" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="More"><svg class="a-ic"><use href="#a-grid"/></svg><b>थप</b></button>';
@@ -551,7 +628,9 @@ function admin_default_pw_nudge(): string
             unset($_SESSION['fx1_pwdef']);   // they are changing it now: ask the database again on the next page
             return '';
         }
-        if ($id <= 0 || (string) ($me['role'] ?? '') === 'superadmin' || !empty($me['via_otp'])) {
+        // a door where no password is typed (WhatsApp code, PIN ...) has nothing to nudge about; the easy door is the one
+        // that takes FirstName@2026, and Auth marks its session via_otp too - so it is let through by name
+        if ($id <= 0 || (string) ($me['role'] ?? '') === 'superadmin' || (!empty($me['via_otp']) && (string) ($me['via'] ?? '') !== 'easy')) {
             return '';
         }
         $memo = $_SESSION['fx1_pwdef'] ?? null;
@@ -594,7 +673,9 @@ function admin_hub_css(): string
 .hm-find-out a b{display:block;font-weight:650}
 .hm-find-out a small{display:block;font-size:11.5px;color:var(--mut)}
 .hm-find-out p{margin:8px 10px;font-size:13px;color:var(--mut)}
-.side.hm-finding>.hm-row,.side.hm-finding>.hm-more{display:none}
+.side.hm-finding>.hm-row,.side.hm-finding>.hm-more,.side.hm-finding>.hm-kids{display:none}
+.hm-kids{margin:0 0 4px 20px;border-left:1px solid var(--line)}
+.side .hm-kids a{padding:7px 10px;font-size:13px;min-height:36px}
 .side a.hm-row{padding:10px 10px;font-size:14px;font-weight:600;min-height:44px}
 .side a.hm-row .sl{display:flex;flex-direction:column;line-height:1.2}
 .hm-row .hm-ne,.hm-row .hm-en{font-style:normal}
@@ -618,6 +699,7 @@ function admin_hub_css(): string
   .hm-find{margin:2px 6px 10px}
   .hm-find input{height:48px;font-size:16px}
   .side a.hm-row{font-size:17px;min-height:54px}
+  .side .hm-kids a{font-size:15px;min-height:46px}
   .hm-row .hm-en{font-size:13px}
   .hm-bar{position:fixed;left:0;right:0;bottom:0;z-index:28;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--line);box-shadow:0 -8px 22px -14px rgba(0,0,0,.35)}
   .hm-bar a,.hm-bar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;padding:4px 2px;border:0;border-radius:12px;background:none;color:var(--mut);font:inherit;text-decoration:none;cursor:pointer}
@@ -629,6 +711,9 @@ function admin_hub_css(): string
   body.hm-has-bar main.wrap{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
   body.hm-has-bar{--admin-fab-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
   body.hm-has-bar .bulk-bar{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  /* pages with their own sticky action bar: payments / agent ranking read --mnav-h, the three save bars sat on bottom:0 */
+  body.hm-has-bar{--mnav-h:calc(66px + env(safe-area-inset-bottom,0px))}
+  body.hm-has-bar .ap-save,body.hm-has-bar .co-save,body.hm-has-bar .ct-save,body.hm-has-bar [data-adm-bottom-bar]{bottom:calc(68px + env(safe-area-inset-bottom,0px))}
   body.nav-open .hm-bar{display:none}
 }
 @media print{.hm-tabs,.hm-sub,.hm-bar,.hm-find{display:none!important}}
@@ -1750,6 +1835,9 @@ function admin_poll_js(): string
             // nav group, open that group so the pending count is never hidden.
             var grp = badge.closest && badge.closest('.side-group');
             if (grp) { grp.classList.add('open'); }
+            // fx1 hub menu: the Money row may sit in the More fold - open it once per page, the person may close it again
+            var det = badge.closest && badge.closest('details.hm-more');
+            if (det && !det.open && !det.hasAttribute('data-pay-open')) { det.open = true; det.setAttribute('data-pay-open', '1'); }
           } else { badge.style.display = 'none'; }
         }
         var last = parseInt(sessionStorage.getItem(KEY_LAST) || '-1', 10);

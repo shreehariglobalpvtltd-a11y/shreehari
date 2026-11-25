@@ -46,7 +46,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
     $again   = (string) ($_POST['confirm_password'] ?? '');
 
     $row = Database::fetch(
-        'SELECT id, username, password_hash FROM admins WHERE id = :id LIMIT 1',
+        'SELECT * FROM admins WHERE id = :id LIMIT 1',   // fx1: full row - EasyLogin needs full_name, role, pw_is_default
         ['id' => (int) $admin['id']]
     );
 
@@ -65,9 +65,34 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
        mobile — a stronger proof than the temporary password being replaced. */
     $otpForced = $forced && !empty($_SESSION[ADMIN_SESSION_KEY]['via_otp']);
 
+    /* 26 Nov 2026 (fx1): an account still on the office's starter password (FirstName@2026, pw_is_default = 1)
+       signs in with it at the easy door whatever password_hash holds - so "current password" here must accept
+       exactly what that door accepts (EasyLogin::adminPasswordOk), or the person can never set their own.
+       And the new password may not be that same starter word again. */
+    $fx1CurrentOk = static function (array $r, string $pw): bool {
+        if (Security::verifyPassword($pw, (string) $r['password_hash'])) {
+            return true;
+        }
+        try {
+            require_once INCLUDE_PATH . '/easylogin.php';
+            return EasyLogin::on() && EasyLogin::adminPasswordOk($r, $pw);
+        } catch (Throwable $e) {
+            return false;
+        }
+    };
+    $fx1IsStarter = static function (array $r, string $pw): bool {
+        try {
+            require_once INCLUDE_PATH . '/easylogin.php';
+            $def = EasyLogin::defaultFor((string) ($r['full_name'] ?? ''));
+            return $def !== '' && mb_strtolower($pw) === mb_strtolower($def);
+        } catch (Throwable $e) {
+            return false;
+        }
+    };
+
     if ($row === null) {
         $flash = ['bad', 'Your account could not be loaded. Please sign in again.'];
-    } elseif (!$otpForced && !Security::verifyPassword($current, (string) $row['password_hash'])) {
+    } elseif (!$otpForced && !$fx1CurrentOk($row, $current)) {
         $flash = ['bad', 'Your current password is not correct.'];
         Logger::audit('admin.changepw.fail', 'admin', (string) $row['username'],
             null, null, 'wrong current password');
@@ -75,7 +100,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
         $flash = ['bad', 'The new password must be at least 8 characters.'];
     } elseif ($next !== $again) {
         $flash = ['bad', 'The two new passwords do not match.'];
-    } elseif (Security::verifyPassword($next, (string) $row['password_hash'])) {
+    } elseif (Security::verifyPassword($next, (string) $row['password_hash']) || $fx1IsStarter($row, $next)) {
         /* A forced change that re-sets the same temporary password would
            defeat the whole point of forcing it. */
         $flash = ['bad', 'Please choose a password different from your current one.'];

@@ -223,6 +223,13 @@ try {
             $n1 = $page('bookings.php', 'My Tickets', 'bookings');
             check('someone on the starter password sees the nudge with a link to change it', str_contains($n1, 'id="hmPwNudge"') && str_contains($n1, 'href="/admin/change-password.php"'));
             check('... but never on the selling screen', !str_contains($page('smartbook.php', 'SmartBook', 'smartbook'), 'id="hmPwNudge"'));
+            // the easy door (the one that takes FirstName@2026) opens its session with via_otp = true, via = 'easy' (Auth::openAdminWithoutPassword)
+            $_SESSION[ADMIN_SESSION_KEY]['via_otp'] = true; $_SESSION[ADMIN_SESSION_KEY]['via'] = 'easy'; unset($_SESSION['fx1_pwdef']);
+            check('a session opened at the easy door is nudged too', str_contains($page('bookings.php', 'My Tickets', 'bookings'), 'id="hmPwNudge"'));
+            $_SESSION[ADMIN_SESSION_KEY]['via'] = 'otp'; unset($_SESSION['fx1_pwdef']);
+            check('a WhatsApp-code session (no password typed) is not', !str_contains($page('bookings.php', 'My Tickets', 'bookings'), 'id="hmPwNudge"'));
+            $asAdmin($nid, 'counter', 'fx1_nudge_t'); unset($_SESSION['fx1_pwdef']);
+            $page('bookings.php', 'My Tickets', 'bookings');   // asks the database once and remembers the answer
             Database::update('admins', ['pw_is_default' => 0], 'id = :i', ['i' => $nid]);
             check('the answer is remembered for a few minutes (no query per page)', str_contains($page('bookings.php', 'My Tickets', 'bookings'), 'id="hmPwNudge"'));
             unset($_SESSION['fx1_pwdef']);
@@ -245,6 +252,55 @@ try {
             Settings::flush();
         }
     }
+
+    echo "\n  Review fixes (26 Nov, after the adversarial review of the live menu)\n";
+    $asAdmin(1, 'superadmin', 'fx1_superadmin');
+    $sbPage = $page('smartbook.php', 'SmartBook', 'smartbook');
+    check('a full-screen page lists its hub\'s other pages under the lit row (Bulk tickets has a click path from SmartBook)',
+        str_contains($sbPage, 'class="hm-kids"') && (bool) preg_match('~class="hm-kid" href="/admin/bulk-tickets\.php"~', $sbPage));
+    check('... and only there: a page with a tab strip draws no such list for its own hub', !str_contains($page('bookings.php', 'Tickets', 'bookings'), 'class="hm-kid" href="/admin/ticket-requests.php"'));
+    $asAdmin(999400, 'agent', 'fx1_agent');
+    $agSb = $page('smartbook.php', 'SmartBook', 'smartbook');
+    check('an India agent on SmartBook is not offered the Nepal counter home', !str_contains($agSb, 'class="hm-kid" href="/admin/nepal-counter.php"'));
+    check('an agent\'s People row (/me/, outside the staff chrome) carries the agent dashboard under it', (bool) preg_match('~class="hm-kid" href="/admin/agent\.php"~', $agSb));
+    $agRows = array_column(RoleMenu::build(admin_nav(), 'agent')['main'], 'href', 'key');
+    check('agent: Reports is a main row again and opens the ticket statement / withdraw page', ($agRows['reports'] ?? '') === 'ticket-statement.php' && count($agRows) <= 7, json_encode($agRows));
+
+    $asAdmin(1, 'superadmin', 'fx1_superadmin');
+    $bv = $page('booking-view.php', 'Ticket', 'bookings');
+    check('a page opened from inside a menu page lights the same hub in the sidebar, the tab strip AND the phone bar',
+        (bool) preg_match('/class="hm-row on"[^>]*href="\/admin\/bookings\.php"/', $bv) && str_contains($bv, 'class="hm-tabs"')
+        && (bool) preg_match('~<nav class="hm-bar".*?<a class="on" aria-current="true" href="/admin/bookings\.php" aria-label="[^"]+">~s', $bv));
+    check('... without marking a menu page as the current one', !str_contains(explode('class="hm-sub"', $bv . 'class="hm-sub"')[1], 'aria-current="page"'));
+    $_SERVER['SCRIPT_NAME'] = '/admin/agent-receipt.php';
+    admin_hub_menu(null, true);
+    $atAgent = admin_hub_at('agent', true);
+    check('a page that names its row by hand: the exact file wins over a look-alike ("agent" is agent.php, not agents.php / agent-quick.php)',
+        $atAgent !== null && in_array('agent.php', array_column($atAgent['hub']['tabs'][$atAgent['tab']]['items'], 'href'), true) && $atAgent['hub']['key'] === 'people');
+
+    $asAdmin(999401, 'viewer', 'fx1_viewer');
+    $vItems = admin_nav();
+    admin_hub_menu(null, true);
+    $vBuilt = admin_hub_menu();
+    $vAll = array_column($vBuilt['pages'], 'href');
+    $vBad = array_values(array_filter($vAll, static fn(string $h): bool => !str_starts_with($h, '/') && !in_array($h, Auth::VIEWER_PAGES, true)));
+    check('a view-only login is offered only pages its gate lets it open (' . count($vAll) . ' of ' . count($vItems) . ')', $vBad === [] && count($vAll) >= 1, implode(', ', $vBad));
+    foreach (array_merge($vBuilt['main'], $vBuilt['more']) as $vh) {
+        check("viewer: the {$vh['key']} row opens a page that does not bounce", str_starts_with((string) $vh['href'], '/') || in_array((string) $vh['href'], Auth::VIEWER_PAGES, true), (string) $vh['href']);
+    }
+
+    $asAdmin(1, 'superadmin', 'fx1_superadmin');
+    $rv = $page('payments.php', 'Verify Payments', 'payments');
+    check('the menu search sends each page once: no ready-made search key in the page', !str_contains($rv, '"k":"') && str_contains($rv, "all.forEach(function(p){p.k="));
+    check('... and an older page name is still findable ("Verify Payments (UPI/eSewa)")', str_contains($rv, '"a":"Verify Payments (UPI/eSewa)"') || str_contains($rv, 'Verify Payments (UPI\/eSewa)'));
+    check('the "/" shortcut opens the drawer only where there is a drawer, and Esc closes what it opened',
+        str_contains($rv, "matchMedia('(max-width:820px)').matches){document.body.classList.add('nav-open');byKey=true;}") && str_contains($rv, "if(byKey){document.body.classList.remove('nav-open');byKey=false;}"));
+    check('the live poll opens the More fold when the Money row with the pending badge sits in it', str_contains($rv, "badge.closest('details.hm-more')"));
+    check('sticky action bars are lifted above the phone bar (payments / ranking via --mnav-h, the save bars by class)',
+        str_contains($rv, 'body.hm-has-bar{--mnav-h:calc(66px') && str_contains($rv, 'body.hm-has-bar .ap-save,body.hm-has-bar .co-save,body.hm-has-bar .ct-save'));
+    check('the open tab is brought into view on a narrow screen', str_contains($rv, 'n.scrollLeft=Math.max(0,a.offsetLeft-n.offsetLeft-12)'));
+    check('a page with its own .pc header keeps ONE title although the tab strip now sits between them',
+        str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/_pro.php'), '.wrap>h1:has(~.pc>.pc-head:first-child)'));
 
     echo "\n  The brand fonts\n";
     $fontKeep = Settings::get('admin_brand_font_on', null);

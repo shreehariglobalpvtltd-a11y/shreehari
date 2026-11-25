@@ -42,7 +42,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif (!$isSa) {
         $flash = ['bad', 'सुपर-एडमिनले मात्र बदल्न मिल्छ। · Only a super-admin may change the menu.'];
     } elseif ($act === 'save') {
-        $before = ['roles' => Settings::getString('rolemenu_roles', ''), 'hidden' => Settings::getString('rolemenu_hidden', implode(',', RoleMenu::hidden()))];
+        $swBefore = [];
+        foreach ($switches as $key => $_l) { $swBefore[$key] = Settings::getBool($key, true) ? 1 : 0; }
+        $before = ['roles' => Settings::getString('rolemenu_roles', ''), 'hidden' => Settings::getString('rolemenu_hidden', implode(',', RoleMenu::hidden())), 'switches' => $swBefore];
         $ticks  = is_array($_POST['h'] ?? null) ? $_POST['h'] : [];
         $over   = [];
         $cut    = [];
@@ -69,15 +71,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $hidden = array_values(array_intersect(array_map('strval', is_array($_POST['hide'] ?? null) ? array_keys($_POST['hide']) : []), $known));
         Settings::set('rolemenu_roles', $over === [] ? '' : (string) json_encode($over), 'string', 'admin');
         Settings::set('rolemenu_hidden', implode(',', $hidden), 'string', 'admin');
+        $swAfter = [];
         foreach ($switches as $key => $_l) {
-            Settings::set($key, isset($_POST['sw'][$key]) ? '1' : '0', 'bool', 'admin');
+            $swAfter[$key] = isset($_POST['sw'][$key]) ? 1 : 0;
+            Settings::set($key, (string) $swAfter[$key], 'bool', 'admin');
         }
-        Logger::audit('menu.setup', 'settings', 'rolemenu_roles', $before, ['roles' => $over, 'hidden' => $hidden], 'menu rows per role saved');
+        Logger::audit('menu.setup', 'settings', 'rolemenu_roles', $before, ['roles' => $over, 'hidden' => $hidden, 'switches' => $swAfter], 'menu rows per role saved');
         $flash = ['ok', 'सुरक्षित भयो। अर्को पेज खोल्दा नयाँ मेनु देखिन्छ। · Saved. The menu changes on the next page each person opens.'
             . ($cut !== [] ? ' (' . implode(', ', $cut) . ': बढीमा ७ वटा मात्र राखियो · kept the first 7.)' : '')];
     } elseif ($act === 'reset') {
+        $was = Settings::getString('rolemenu_roles', '');
         Settings::set('rolemenu_roles', '', 'string', 'admin');
-        Logger::audit('menu.setup', 'settings', 'rolemenu_roles', null, null, 'menu rows back to the defaults');
+        Logger::audit('menu.setup', 'settings', 'rolemenu_roles', ['roles' => $was], ['roles' => ''], 'menu rows back to the defaults');
         $flash = ['ok', 'सुरुको मेनुमा फर्काइयो। · Back to the default rows.'];
     }
 }
