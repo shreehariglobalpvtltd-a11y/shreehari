@@ -35,6 +35,24 @@ $peg    = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR
    (CounterDesk::publicOffices(), the /offices cards - Nepalgunj, Emli Bhupal …);
    an office with no number yet shows its name only, never a made-up one. */
 $counters = '';
+$npOfficePhone = '';   // the listed Nepalgunj office's number, for the onward line's fallback
+$npjOfficePhone = '';  // the NPJ row's own number
+$npOtherPhone   = '';  // first other listed Nepal office (only if NPJ has none)
+/* 25 Nov 2026 (owner: every counter is ONE company - "S Hari Global Pvt Ltd", in Nepal
+   "Shree Hari Global Pvt Ltd"): each office titled "<company> · <town>". Same keys as
+   the home office cards: office_brand_in / office_brand_np, switch office_brand_title_on. */
+$brandOn = Settings::getBool('office_brand_title_on', true);
+$brandIn = trim(Settings::getString('office_brand_in', ''));
+if ($brandIn === '') {
+    $brandIn = trim(Settings::getString('company_name', ''));
+}
+if ($brandIn === '') {
+    $brandIn = 'S Hari Global Pvt Ltd';
+}
+$brandNp = trim(Settings::getString('office_brand_np', ''));
+if ($brandNp === '') {
+    $brandNp = 'Shree Hari Global Pvt Ltd';
+}
 try {
     foreach (CounterDesk::publicOffices() as $o) {
         if (($o['status'] ?? 'open') !== 'open') {
@@ -43,13 +61,27 @@ try {
         $nm  = (string) $o['name'];
         $nNe = trim((string) ($o['nameNe'] ?? ''));
         $dig = preg_replace('/\D/', '', (string) ($o['tel'] ?? '')) ?? '';
-        $counters .= '<li>' . $e($nNe !== '' && $nNe !== $nm ? $nNe . ' · ' . $nm : $nm)
+        $isNp = (string) ($o['country'] ?? 'IN') === 'NP';
+        /* the onward line names the Nepalgunj office: its own row (code NPJ / town Nepalgunj)
+           wins; any other listed Nepal office (e.g. a later Surkhet counter) is the last resort. */
+        if ($isNp && (string) $o['phone'] !== '') {
+            $isNpj = strtoupper((string) ($o['code'] ?? '')) === 'NPJ'
+                || preg_match('/nepal\s*g[au]nj/i', $nm) === 1;
+            if ($isNpj && $npjOfficePhone === '') {
+                $npjOfficePhone = (string) $o['phone'];
+            } elseif (!$isNpj && $npOtherPhone === '') {
+                $npOtherPhone = (string) $o['phone'];
+            }
+        }
+        $town = $nNe !== '' && $nNe !== $nm ? $nNe . ' · ' . $nm : $nm;
+        $counters .= '<li>' . ($brandOn ? '<b>' . $e($isNp ? $brandNp : $brandIn) . '</b> · ' : '') . $e($town)
             . ((string) $o['phone'] !== '' ? ' ' . ($dig !== '' ? '<a href="tel:+' . $e($dig) . '">' . $e($o['phone']) . '</a>' : $e($o['phone'])) : '')
             . '</li>';
     }
 } catch (Throwable) {
     $counters = '';
 }
+$npOfficePhone = $npjOfficePhone !== '' ? $npjOfficePhone : $npOtherPhone;
 /* Fallback only: company_counters ("Town +91 NNNNN NNNNN · Town …") -> tap-to-call links. */
 if ($counters === '') {
     foreach (preg_split('/\s*·\s*/u', (string) $co['counters']) ?: [] as $part) {
@@ -126,7 +158,8 @@ $C = [
     'contactH' => 'Contact us', 'contactLead' => 'Not sure about a document or rule? Ask us before you travel.',
     'counters' => 'Counters', 'reviewed' => 'Last reviewed: 2 October 2026',
     'onwH' => 'Onward travel from Nepalgunj', 'onwLead' => 'Buses from Nepalgunj to other towns of Nepal, as our office knows them. Times change — confirm at the bus park.',
-    'onwTimes' => 'Times', 'onwOp' => 'Bus / operator', 'onwPhone' => 'Phone', 'onwAsk' => 'For buses beyond Nepalgunj (Surkhet, Dang, Butwal, Pokhara, Kathmandu, Dhangadhi), ask our Nepalgunj office:',
+    'onwTimes' => 'Times', 'onwOp' => 'Bus / operator', 'onwPhone' => 'Phone', 'onwAsk' => 'For buses beyond Nepalgunj, ask our Nepalgunj office:',
+    'onwNpj' => 'Our bus goes only as far as Nepalgunj (Pushpalal Chowk). We have no bus beyond Nepalgunj — if a Nepalgunj–Surkhet service starts, it will be announced right here. For your onward journey, ask our Nepalgunj office:',
 ],
 'hi' => [
     'title' => 'यात्रा जानकारी — भारत ⇄ नेपाल बॉर्डर (रूपईडीहा / नेपालगंज) | ' . $co['name'],
@@ -188,7 +221,8 @@ $C = [
     'contactH' => 'संपर्क करें', 'contactLead' => 'किसी दस्तावेज़ या नियम पर शक है? यात्रा से पहले हमसे पूछें।',
     'counters' => 'काउंटर', 'reviewed' => 'आख़िरी समीक्षा: 2 अक्टूबर 2026',
     'onwH' => 'नेपालगंज से आगे की यात्रा', 'onwLead' => 'नेपालगंज से नेपाल के दूसरे शहरों की बसें, जैसा हमारा ऑफ़िस जानता है। समय बदल सकता है — बस पार्क में पक्का करें।',
-    'onwTimes' => 'समय', 'onwOp' => 'बस / कंपनी', 'onwPhone' => 'फ़ोन', 'onwAsk' => 'नेपालगंज से आगे (सुर्खेत, दांग, बुटवल, पोखरा, काठमांडू, धनगढ़ी) की बस के लिए हमारे नेपालगंज ऑफ़िस से पूछें:',
+    'onwTimes' => 'समय', 'onwOp' => 'बस / कंपनी', 'onwPhone' => 'फ़ोन', 'onwAsk' => 'नेपालगंज से आगे की बस के लिए हमारे नेपालगंज ऑफ़िस से पूछें:',
+    'onwNpj' => 'हमारी बस सिर्फ़ नेपालगंज (पुष्पलाल चोक) तक जाती है। नेपालगंज से आगे हमारी बस नहीं है — नेपालगंज–सुर्खेत सेवा शुरू होने पर यहीं जानकारी दी जाएगी। आगे की यात्रा के लिए हमारे नेपालगंज ऑफ़िस से पूछें:',
 ],
 'ne' => [
     'title' => 'यात्रा जानकारी — भारत ⇄ नेपाल बोर्डर (रुपैडिहा / नेपालगञ्ज) | ' . $co['name'],
@@ -250,7 +284,8 @@ $C = [
     'contactH' => 'सम्पर्क गर्नुहोस्', 'contactLead' => 'कुनै कागजात वा नियमबारे शंका छ? यात्राअघि हामीलाई सोध्नुहोस्।',
     'counters' => 'काउन्टर', 'reviewed' => 'अन्तिम समीक्षा: २ अक्टोबर २०२६',
     'onwH' => 'नेपालगञ्जपछि आगेको यात्रा', 'onwLead' => 'नेपालगञ्जबाट नेपालका अरू सहरसम्मका बस, हाम्रो कार्यालयलाई थाहा भएअनुसार। समय फेरिन सक्छ — बसपार्कमा पक्का गर्नुहोस्।',
-    'onwTimes' => 'समय', 'onwOp' => 'बस / कम्पनी', 'onwPhone' => 'फोन', 'onwAsk' => 'नेपालगञ्जभन्दा आगे (सुर्खेत, दाङ, बुटवल, पोखरा, काठमाडौं, धनगढी) को बसका लागि हाम्रो नेपालगञ्ज कार्यालयलाई सोध्नुहोस्:',
+    'onwTimes' => 'समय', 'onwOp' => 'बस / कम्पनी', 'onwPhone' => 'फोन', 'onwAsk' => 'नेपालगञ्जभन्दा आगेको बसका लागि हाम्रो नेपालगञ्ज कार्यालयलाई सोध्नुहोस्:',
+    'onwNpj' => 'हाम्रो बस नेपालगञ्ज (पुष्पलाल चोक) सम्म मात्र जान्छ। नेपालगञ्जबाट अगाडि हाम्रो बस छैन — नेपालगञ्ज–सुर्खेत सेवा सुरु भए यहीँ जानकारी दिइनेछ। अगाडिको यात्राका लागि नेपालगञ्ज कार्यालयलाई सोध्नुहोस्:',
     'dev' => true,
 ],
 ];
@@ -321,9 +356,16 @@ if (TravelGuide::onwardOn()) {
     if ($rowsHtml !== '') {
         $onward = '<p>' . $tri('onwLead') . '</p><ul class="onw">' . $rowsHtml . '</ul>';
     } else {
+        /* 25 Nov 2026 (owner: "our bus is NPJ only"): no row filled -> say plainly the bus
+           ends at Nepalgunj, no town beyond is served; NPJ-Surkhet only "if it starts".
+           Switch travel_npj_only_on OFF = the short "ask the office" line. The number is the
+           saved Nepal office line, else the listed Nepalgunj office's (publicOffices). */
         $npPhone = TravelGuide::nepalOfficePhone();
+        if ($npPhone === '') {
+            $npPhone = $npOfficePhone;
+        }
         $npDial  = TravelGuide::dial($npPhone);
-        $onward  = '<p>' . $tri('onwAsk') . ($npPhone !== ''
+        $onward  = '<p>' . $tri(TravelGuide::npjOnlyOn() ? 'onwNpj' : 'onwAsk') . ($npPhone !== ''
             ? ' 📞 ' . ($npDial !== '' ? '<a href="tel:' . $e($npDial) . '">' . $e($npPhone) . '</a>' : $e($npPhone))
             : ' 📞 <a href="tel:' . $e($tel) . '">' . $e($phone) . '</a>') . '</p>';
     }

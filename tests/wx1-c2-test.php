@@ -84,7 +84,7 @@ function page(array $cfg): string {
 echo "\n=== wx1-c2: people + passenger extras ===\n\n";
 if (!defined('DB_NAME') || DB_NAME !== 'shari_test') { echo "  SKIP  not shari_test\n0 passed, 0 failed\n"; exit(0); }
 
-$TOUCH = ['onward_buses_json', 'travel_onward_on', 'luggage_free_kg', 'cabin_bag_kg', 'bus_facilities_json', 'home_staff_list_on', 'nepal_phone'];
+$TOUCH = ['onward_buses_json', 'travel_onward_on', 'travel_npj_only_on', 'luggage_free_kg', 'cabin_bag_kg', 'bus_facilities_json', 'home_staff_list_on', 'nepal_phone'];
 $saved = [];
 foreach ($TOUCH as $k) { $saved[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]); }
 $restore = static function () use ($saved): void {
@@ -101,7 +101,7 @@ $restore = static function () use ($saved): void {
 $auditFrom = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM audit_logs', [], 0);
 
 try {
-    foreach (['onward_buses_json', 'luggage_free_kg', 'cabin_bag_kg', 'bus_facilities_json', 'travel_onward_on', 'home_staff_list_on'] as $k) {
+    foreach (['onward_buses_json', 'luggage_free_kg', 'cabin_bag_kg', 'bus_facilities_json', 'travel_onward_on', 'travel_npj_only_on', 'home_staff_list_on'] as $k) {
         Database::query('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
     }
     Settings::flush();
@@ -121,7 +121,8 @@ try {
     check('dial: first of several numbers', TravelGuide::dial('+977 81-520000 / 9800000000') === '+97781520000');
     check('luggage 20 + 7 by default', TravelGuide::luggage() === ['free' => 20, 'cabin' => 7]);
     check('facilities: the owner\'s 4 by default', TravelGuide::facilities() === TravelGuide::FACILITIES && count(TravelGuide::FACILITIES) === 4);
-    check('six onward towns, names only', count(TravelGuide::TOWNS) === 6 && TravelGuide::TOWNS[0][0] === 'Surkhet' && TravelGuide::TOWNS[5][0] === 'Dhangadhi');
+    check('one onward town prefilled: Surkhet, name only (bus is NPJ only)', TravelGuide::TOWNS === [['Surkhet', 'सुर्खेत']]);
+    check('travel_npj_only_on defaults ON', TravelGuide::npjOnlyOn());
     Settings::set('luggage_free_kg', '500', 'int', 'booking'); Settings::flush();
     check('luggage out of range falls back to 20', TravelGuide::luggage()['free'] === 20);
 
@@ -143,6 +144,24 @@ try {
     Settings::set('nepal_phone', '+977 9800000001', 'string', 'company'); Settings::flush();
     $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
     check('travel-info: ask line carries the saved Nepal office number', str_contains($html, 'tel:+9779800000001'));
+    /* 25 Nov 2026 (owner: "our bus is NPJ only"): empty onward -> the NPJ-only sentence, the real office number, no other town */
+    $onw = preg_match('#<div class="card" id="onward">.*?</div>#s', $html, $mo) === 1 ? $mo[0] : '';
+    check('onward empty: NPJ-only sentence in en/hi/ne', str_contains($onw, 'Our bus goes only as far as Nepalgunj (Pushpalal Chowk)')
+        && str_contains($onw, 'हमारी बस सिर्फ़ नेपालगंज (पुष्पलाल चोक) तक जाती है') && str_contains($onw, 'हाम्रो बस नेपालगञ्ज (पुष्पलाल चोक) सम्म मात्र जान्छ')
+        && str_contains($onw, 'नेपालगञ्ज–सुर्खेत सेवा सुरु भए यहीँ जानकारी दिइनेछ'), substr($onw, 0, 300));
+    check('onward empty: carries the real Nepal office number', str_contains($onw, 'href="tel:+9779800000001"') && str_contains($onw, '+977 9800000001'));
+    $towns5 = ['Dang', 'Butwal', 'Pokhara', 'Kathmandu', 'Dhangadhi', 'दाङ', 'दांग', 'बुटवल', 'पोखरा', 'काठमाडौं', 'काठमांडू', 'धनगढी', 'धनगढ़ी'];
+    $hit = array_values(array_filter($towns5, static fn(string $t): bool => str_contains($html, $t)));
+    check('travel-info: none of Dang/Butwal/Pokhara/Kathmandu/Dhangadhi anywhere on the page', $hit === [], implode(',', $hit));
+    $tiS = (string) file_get_contents(dirname(__DIR__) . '/travel-info.php');
+    check('travel-info source: none of the five towns typed', array_filter($towns5, static fn(string $t): bool => str_contains($tiS, $t)) === []);
+    /* review: the onward line's last-resort number is the NPJ office's own row (code NPJ / town Nepalgunj), another Nepal office only if NPJ has none */
+    check('travel-info source: onward fallback prefers the NPJ office row', str_contains($tiS, "=== 'NPJ'")
+        && str_contains($tiS, '$npOfficePhone = $npjOfficePhone !== \'\' ? $npjOfficePhone : $npOtherPhone;'));
+    Settings::set('travel_npj_only_on', '0', 'bool', 'company'); Settings::flush();
+    $html2 = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
+    check('travel_npj_only_on off: short ask line, still no town list', str_contains($html2, 'For buses beyond Nepalgunj, ask our Nepalgunj office:') && !str_contains($html2, 'Pushpalal Chowk). We have no bus') && !str_contains($html2, 'Pokhara'));
+    Database::query("DELETE FROM settings WHERE skey = 'travel_npj_only_on'"); Settings::flush();
     Settings::set('onward_buses_json', [['to' => 'Pokhara', 'to_ne' => 'पोखरा', 'times' => 'TEST 05:30', 'operator' => 'TEST <b>Op</b>', 'phone' => '9800000002', 'note' => '']], 'json', 'company');
     Settings::flush();
     $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
@@ -171,7 +190,12 @@ try {
     if ($super > 0) {
         Settings::set('onward_buses_json', [], 'json', 'company'); Settings::flush();
         $out = page(['page' => 'admin/owner-setup.php', 'admin' => $super]);
-        check('owner-setup shows the onward form with the 6 towns', str_contains($out, 'id="onward"') && str_contains($out, 'value="Surkhet"') && str_contains($out, 'value="Dhangadhi"') && str_contains($out, 'name="act" value="onward"'));
+        check('owner-setup shows the onward form', str_contains($out, 'id="onward"') && str_contains($out, 'name="act" value="onward"'));
+        $form = preg_match('#<form method="post" class="os-card" id="onward">.*?</form>#s', $out, $mf) === 1 ? $mf[0] : '';
+        preg_match_all('#name="onw\[\d+\]\[to\]"[^>]*value="([^"]*)"#', $form, $mt);
+        $filled = array_values(array_filter($mt[1] ?? [], static fn(string $v): bool => $v !== ''));
+        check('owner-setup onward prefill: Surkhet only (+ 2 free rows)', $filled === ['Surkhet'] && count($mt[1] ?? []) === 3 && str_contains($form, 'value="सुर्खेत"'), json_encode($mt[1] ?? [], JSON_UNESCAPED_UNICODE));
+        check('owner-setup onward prefill: no Dang/Butwal/Pokhara/Kathmandu/Dhangadhi', preg_match('/Dang|Butwal|Pokhara|Kathmandu|Dhangadhi/', $form) !== 1);
         check('owner-setup shows the luggage form', str_contains($out, 'name="act" value="luggage"') && str_contains($out, 'name="luggage_free_kg"'));
         page(['page' => 'admin/owner-setup.php', 'admin' => $super, 'post' => ['act' => 'onward', 'onw' => [
             ['to' => 'Surkhet', 'to_ne' => 'सुर्खेत', 'times' => 'TEST 06:00', 'operator' => '', 'phone' => '', 'note' => ''],
@@ -180,6 +204,10 @@ try {
         Settings::flush();
         $rows = TravelGuide::onward();
         check('act=onward stores only the filled town', count($rows) === 1 && $rows[0]['to'] === 'Surkhet' && $rows[0]['times'] === 'TEST 06:00', json_encode($rows, JSON_UNESCAPED_UNICODE));
+        Settings::set('onward_buses_json', [['to' => 'Surkhet', 'to_ne' => 'सुर्खेत', 'times' => 'TEST 06:00', 'operator' => '', 'phone' => '', 'note' => ''], ['to' => 'TEST Town', 'to_ne' => '', 'times' => '', 'operator' => 'TEST Op', 'phone' => '', 'note' => '']], 'json', 'company'); Settings::flush();
+        $out2 = page(['page' => 'admin/owner-setup.php', 'admin' => $super]);
+        check('owner-setup keeps saved rows as saved (Surkhet times, an extra town)', str_contains($out2, 'value="TEST 06:00"') && str_contains($out2, 'value="TEST Town"') && str_contains($out2, 'value="TEST Op"') && substr_count($out2, 'value="Surkhet"') === 1);
+        Settings::set('onward_buses_json', $rows, 'json', 'company'); Settings::flush();
         page(['page' => 'admin/owner-setup.php', 'admin' => $super, 'no_csrf' => true, 'post' => ['act' => 'onward', 'onw' => [['to' => 'Dang', 'times' => 'X']]]]);
         Settings::flush();
         check('act=onward without CSRF writes nothing', (TravelGuide::onward()[0]['to'] ?? '') === 'Surkhet' && count(TravelGuide::onward()) === 1);
@@ -284,7 +312,43 @@ try {
         $allIn = $allIn && str_contains($ul, htmlspecialchars((string) $o['name'], ENT_QUOTES, 'UTF-8')) && ($o['tel'] === '' || str_contains($ul, 'tel:+' . $o['tel']));
     }
     check('travel-info: Counters = the listed offices with their numbers', $allIn && count($offs) > 0, substr($ul, 0, 300));
-    check('travel-info: an office with no number shows its name only', str_contains($ul, '<li>TEST Emli Office</li>'));
+    /* 25 Nov 2026 (owner: every counter is one company): "<company> · <town>" titles */
+    $bIn = trim(Settings::getString('office_brand_in', ''));
+    $bIn = $bIn !== '' ? $bIn : (trim(Settings::getString('company_name', '')) !== '' ? trim(Settings::getString('company_name', '')) : 'S Hari Global Pvt Ltd');
+    $bNp = trim(Settings::getString('office_brand_np', ''));
+    $bNp = $bNp !== '' ? $bNp : 'Shree Hari Global Pvt Ltd';
+    $bOn = Settings::getBool('office_brand_title_on', true);
+    $bTag = static fn(string $b): string => $bOn ? '<b>' . htmlspecialchars($b, ENT_QUOTES, 'UTF-8') . '</b> · ' : '';
+    check('travel-info: an office with no number shows its name only', str_contains($ul, '<li>' . $bTag($bIn) . 'TEST Emli Office</li>'), substr($ul, 0, 300));
+    $titlesOk = $ul !== '';
+    foreach ($offs as $o) {
+        if ($o['status'] !== 'open') { continue; }
+        $tw = $o['nameNe'] !== '' && $o['nameNe'] !== $o['name'] ? $o['nameNe'] . ' · ' . $o['name'] : $o['name'];
+        $titlesOk = $titlesOk && str_contains($ul, '<li>' . $bTag($o['country'] === 'NP' ? $bNp : $bIn) . htmlspecialchars($tw, ENT_QUOTES, 'UTF-8'));
+    }
+    check('travel-info: Counters titled "<company> · <town>" (India S Hari / Nepal Shree Hari)', $titlesOk, substr($ul, 0, 400));
+    if ($bOn && Settings::getString('office_brand_np', '') === '' && in_array('NP', array_column($offs, 'country'), true)) {
+        check('travel-info: Nepal office says Shree Hari Global Pvt Ltd by default', str_contains($ul, '<b>Shree Hari Global Pvt Ltd</b> · '));
+    }
+    $bSaved = [];
+    foreach (['office_brand_title_on', 'office_brand_in', 'office_brand_np'] as $bk) { $bSaved[$bk] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $bk]); }
+    $ulOf = static fn(string $h): string => preg_match('#<h4>(?:(?!</h4>).)*Counters(?:(?!</h4>).)*</h4><ul class="plain">(.*?)</ul>#s', $h, $mB) === 1 ? $mB[1] : '';
+    try {
+        Settings::set('office_brand_in', 'TEST IN Brand', 'string', 'company'); Settings::set('office_brand_np', 'TEST NP Brand', 'string', 'company');
+        Settings::set('office_brand_title_on', '1', 'bool', 'company'); Settings::flush();
+        $ulB = $ulOf(page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]));
+        check('office_brand_in / office_brand_np are read', str_contains($ulB, '<li><b>TEST IN Brand</b> · TEST Emli Office</li>')
+            && (!in_array('NP', array_column($offs, 'country'), true) || str_contains($ulB, '<b>TEST NP Brand</b> · ')), substr($ulB, 0, 300));
+        Settings::set('office_brand_title_on', '0', 'bool', 'company'); Settings::flush();
+        $ulB = $ulOf(page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]));
+        check('office_brand_title_on off: town names only, as before', str_contains($ulB, '<li>TEST Emli Office</li>') && !str_contains($ulB, 'Brand'));
+    } finally {
+        foreach ($bSaved as $bk => $row) {
+            Database::query('DELETE FROM settings WHERE skey = :k', ['k' => $bk]);
+            if ($row !== null) { unset($row['id']); $cols = array_keys($row); Database::query('INSERT INTO settings (' . implode(',', $cols) . ') VALUES (:' . implode(',:', $cols) . ')', $row); }
+        }
+        Settings::flush();
+    }
     check('travel-info: Counters no longer from the free-text line (no Baroda)', !str_contains($ul, 'Baroda'));
 
     $off = page(['path' => '/offices']);

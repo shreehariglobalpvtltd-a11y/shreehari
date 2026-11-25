@@ -16,21 +16,19 @@
  *   nepalBoarding() / boardingLine()  the boarding stops + times of the active
  *                  Nepal -> India routes, for the /travel-info "coming from Nepalgunj" line.
  *
- * Switches (all default ON, Admin -> Settings): travel_onward_on (the travel-info card).
+ * Switches (all default ON, Admin -> Settings): travel_onward_on (the travel-info card),
+ * travel_npj_only_on (empty card says "our bus goes only to Nepalgunj", 25 Nov 2026).
  */
 
 declare(strict_types=1);
 
 final class TravelGuide
 {
-    /** The towns the owner named - names only; times / operator / phone stay empty until the office fills them. */
+    /** The prefilled onward row on the owner form - name only; times / operator / phone stay
+     *  empty until the office fills them. 25 Nov 2026 (owner: "our bus is NPJ only;
+     *  NPJ-Surkhet may start"): Surkhet alone - no other town is prefilled as if served. */
     public const TOWNS = [
         ['Surkhet', 'सुर्खेत'],
-        ['Dang', 'दाङ'],
-        ['Butwal', 'बुटवल'],
-        ['Pokhara', 'पोखरा'],
-        ['Kathmandu', 'काठमाडौं'],
-        ['Dhangadhi', 'धनगढी'],
     ];
 
     public const FACILITIES = [
@@ -45,6 +43,12 @@ final class TravelGuide
     public static function onwardOn(): bool
     {
         return Settings::getBool('travel_onward_on', true);
+    }
+
+    /** No onward row filled: say "our bus ends at Nepalgunj" (ON) or only "ask the office" (OFF). */
+    public static function npjOnlyOn(): bool
+    {
+        return Settings::getBool('travel_npj_only_on', true);
     }
 
     /** @return list<array{to:string,to_ne:string,times:string,operator:string,phone:string,note:string}> */

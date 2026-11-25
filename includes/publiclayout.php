@@ -277,6 +277,9 @@ final class PublicLayout
                 'nameNe'  => trim((string) ($o['nameNe'] ?? $o['name_ne'] ?? '')),
                 'nameHi'  => trim((string) ($o['nameHi'] ?? $o['name_hi'] ?? '')),
                 'city'    => trim((string) ($o['city'] ?? $name)),
+                // 25 Nov 2026 (wx1): the card title (S Hari Global Pvt Ltd / Shree Hari Global Pvt Ltd), '' = old town title
+                'brand'   => array_key_exists('brand', $o) ? trim((string) $o['brand'])
+                    : (class_exists('SiteFacts', false) && method_exists('SiteFacts', 'officeBrand') ? SiteFacts::officeBrand($country) : ''),
                 'kind'    => in_array($o['kind'] ?? '', ['head', 'branch', 'partner', 'border'], true) ? (string) $o['kind'] : 'branch',
                 'status'  => ($o['status'] ?? 'open') === 'coming_soon' ? 'coming_soon' : 'open',
                 'country' => $country,

@@ -171,6 +171,7 @@ $boot['settings']['nepal_esewa_qr_url']       = (static function (): string {
    pickup map QR on the app's fallback PDF (ticket_maps_qr, like the server ticket), a Nepal
    -> India customer picks only the route's own pickups, the big family-share button. */
 $boot['settings']['ticket_cod_no_payqr']   = Settings::getBool('ticket_cod_no_payqr', true);
+$boot['settings']['customer_currency_choice_on'] = Settings::getBool('customer_currency_choice_on', true);   // wx4: the classic checkout's INR | NPR chips follow the switch
 $boot['settings']['ticket_maps_qr']        = Settings::getBool('ticket_maps_qr', true);
 $boot['settings']['nepal_pickup_two_only'] = Settings::getBool('nepal_pickup_two_only', true);
 $boot['settings']['family_share_btn_on']   = Settings::getBool('family_share_btn_on', true);

@@ -1095,7 +1095,10 @@ final class ContentPages
             }
             $cards .= '<article class="card off rv' . ($o['kind'] === 'head' ? ' head' : ($o['country'] === 'NP' ? ' np' : '')) . '" id="office-' . $e(strtolower($o['code'] !== '' ? $o['code'] : preg_replace('/\W+/', '-', $o['city']))) . '">'
                 . '<div class="off-top">' . PublicLayout::flag($o['country'], 24) . '<span class="badge">' . $e($kindLabel) . '</span>' . ($o['code'] !== '' ? '<span class="code">' . $e($o['code']) . '</span>' : '') . '</div>'
-                . '<h2 class="off-name">' . $e($nm) . '</h2>'
+                // 25 Nov 2026 (wx1): the company is the title, the town / branch the line under it
+                . (($o['brand'] ?? '') !== ''
+                    ? '<h2 class="off-name">' . $e($o['brand']) . '</h2><p class="off-town">' . $e($nm) . '</p>'
+                    : '<h2 class="off-name">' . $e($nm) . '</h2>')
                 . $inRow
                 . ($addr !== '' ? '<p class="off-addr">📍 ' . $e($addr) . '</p>' : '')
                 . ($o['hours'] !== '' ? '<p class="off-addr">🕘 ' . $e($w['hours']) . ': ' . $e($o['hours']) . '</p>' : '')
@@ -1844,6 +1847,7 @@ html.rv-on .tl-i .tl-dot{transform:scale(.3);transition:transform .5s cubic-bezi
 .badge{font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;background:var(--md-sc-high);color:var(--md-on-surface-variant)}
 .code{margin-left:auto;font:800 12px ui-monospace,monospace;color:var(--md-on-surface-variant)}
 .off-name{font-size:22px;margin:4px 0 0}
+.off-town{margin:0;font-size:16px;font-weight:800;color:var(--md-on-surface)}
 .off-addr{font-size:14px;color:var(--md-on-surface-variant)}
 .off .btns{margin-top:auto;padding-top:8px}
 .off .num{font-weight:700;opacity:.9}

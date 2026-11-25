@@ -473,6 +473,83 @@ function setPayMethod(m) {
   }
 }
 
+/* 25 Nov 2026 (wx1-a): the ₹ INR | रू NPR choice on the CLASSIC checkout, as SmartBook's
+   #sbCur. Customers only (a desk sale has its own desk currency), owner's switch
+   customer_currency_choice_on (SHG_BOOT.settings; fails CLOSED - a missing key = off, so
+   the chips never show NPR that api/book.php would then drop; index.php must boot the key).
+   NPR follows Nepal -> India (searchDir 'back' / a route from a Nepal town) or a Nepal
+   browser clock until a chip is tapped; the choice is kept per draft (Flow.coCur).
+   The server freezes NPR only for a customer with the switch on (api/book.php ->
+   BookingService::customerFxStamp); INR stays what the books run in. */
+function coCurOn() {
+  if (isCounterSale()) return false;
+  const s = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+  const v = s.customer_currency_choice_on;
+  return v === true || v === 1 || v === '1';
+}
+function coCurDefault(rOut) {
+  let tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+  if (/^Asia\/Katha?mandu$/.test(tz)) return 'NPR';
+  if (typeof searchDir !== 'undefined' && searchDir === 'back') return 'NPR';
+  const from = String((rOut && rOut.from) || '').toLowerCase();
+  const np = ((typeof CONFIG !== 'undefined' && CONFIG.mainPoints && CONFIG.mainPoints.nepal) || []).map(n => String(n).toLowerCase());
+  return from !== '' && (np.some(n => n && from.indexOf(n) === 0) || /nepalgunj|kohalpur|nepal/.test(from)) ? 'NPR' : 'INR';
+}
+/* the money the customer chose for this draft ('INR' when the chips are off) */
+function coCur() { return coCurOn() && Flow.coCur && Flow.coCur.id === Flow.draftId && Flow.coCur.cur === 'NPR' ? 'NPR' : 'INR'; }
+const coNpr = (n) => 'रू ' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+/* build (once) + paint the chips next to the payment methods; onPick re-runs the totals */
+function coCurChips(rOut, onPick) {
+  const tabs = $('.pm-tabs');
+  let box = $('#coCur');
+  if (!coCurOn()) { if (box) box.hidden = true; return; }
+  if (!Flow.coCur || Flow.coCur.id !== Flow.draftId) {
+    Flow.coCur = { id: Flow.draftId, cur: coCurDefault(rOut), touched: false };
+    // NPR makes eSewa the online default, INR makes UPI (only while an online method is on)
+    if (PAY_METHOD === 'upi' || PAY_METHOD === 'esewa') PAY_METHOD = Flow.coCur.cur === 'NPR' ? 'esewa' : 'upi';
+  }
+  if (!box && tabs && tabs.parentNode) {
+    box = document.createElement('div');
+    box.id = 'coCur'; box.className = 'co-cur';
+    box.setAttribute('role', 'radiogroup'); box.setAttribute('aria-label', 'तिर्ने मुद्रा · Pay in');
+    box.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 12px';
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:12.5px;font-weight:700;color:var(--muted)';
+    lbl.textContent = 'तिर्ने मुद्रा · Pay in';
+    box.appendChild(lbl);
+    [['INR', '₹ INR'], ['NPR', 'रू NPR']].forEach(([v, txt]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('data-cur', v); b.setAttribute('role', 'radio'); b.textContent = txt;
+      b.style.cssText = 'min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line,#d0d7e2);font:inherit;font-size:14px;font-weight:800;cursor:pointer;touch-action:manipulation';
+      box.appendChild(b);
+    });
+    tabs.parentNode.insertBefore(box, tabs);
+  }
+  if (!box) return;
+  box.hidden = false;
+  box.onclick = (e) => {
+    const b = e.target.closest('[data-cur]'); if (!b) return;
+    const cur = b.getAttribute('data-cur') === 'NPR' ? 'NPR' : 'INR';
+    Flow.coCur = { id: Flow.draftId, cur: cur, touched: true };
+    if (PAY_METHOD === 'upi' || PAY_METHOD === 'esewa') setPayMethod(cur === 'NPR' ? 'esewa' : 'upi');
+    coCurPaint();
+    if (typeof onPick === 'function') onPick();
+  };
+  coCurPaint();
+}
+function coCurPaint() {
+  const box = $('#coCur'); if (!box) return;
+  const cur = coCur();
+  box.querySelectorAll('[data-cur]').forEach(b => {
+    const on = b.getAttribute('data-cur') === cur;
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.style.background = on ? 'var(--nblue,#003893)' : 'transparent';
+    b.style.color = on ? '#fff' : 'inherit';
+    b.style.borderColor = on ? 'transparent' : 'var(--line,#d0d7e2)';
+  });
+}
+
 /* ================================================================
    V6 §"Smart customer features" — remembered travellers.
 
@@ -1221,8 +1298,10 @@ function renderCheckout() {
       : rows + '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
     const chk = $('#loyUseChk');
     if (chk) chk.onchange = () => { Flow.usePoints = chk.checked; updatePayment(); };
-    flipNumber($('#payAmount'), x.total, x.fareBad ? (() => '—') : inr, $('#bpAmt'));
-    $('#payAmountNpr').textContent = x.fareBad ? '' : nprEst(x.total);
+    // 25 Nov 2026 (wx1-a): the chosen money big, the other small (NPR at CONFIG.nprPerInr, the estimate the eSewa panel uses)
+    const coNp = coCur() === 'NPR';
+    flipNumber($('#payAmount'), coNp ? Math.round(x.total * CONFIG.nprPerInr) : x.total, x.fareBad ? (() => '—') : (coNp ? coNpr : inr), $('#bpAmt'));
+    $('#payAmountNpr').textContent = x.fareBad ? '' : (coNp ? '≈ ' + inr(x.total) : nprEst(x.total));
     const codEl = $('#codAmount'); if (codEl) codEl.textContent = x.fareBad ? '—' : inr(x.total);
     if (typeof updateCoSummary === 'function') updateCoSummary();
 
@@ -1260,6 +1339,7 @@ function renderCheckout() {
     }
   };
   Flow.checkoutTotals = checkoutTotals;   // submitBooking reads the same maths
+  coCurChips(rOut, updatePayment);         // 25 Nov 2026 (wx1-a): ₹ INR | रू NPR (before the first paint)
   updatePayment();
 
   /* 16 Nov 2026 (P4-5d): ask the server once per mobile + bus whether this booking is
@@ -1664,6 +1744,8 @@ async function submitBooking() {
       referralCode: refCode,
       paymentMethod: PAY_METHOD,
       isCod: isCod,
+      // 25 Nov 2026 (wx1-a): the money the customer chose (api/book.php -> payCurrency; the server freezes NPR)
+      cur: coCur(),
       // 5 Oct 2026: where this visitor came from (Google Ads / Facebook / a campaign link), if anywhere.
       ad: (window.ShgAds && window.ShgAds.forBooking) ? window.ShgAds.forBooking() : {}
     });
@@ -3043,10 +3125,10 @@ function renderStatus(id) {
     ${tkClean ? '' : '<div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ' + esc(tkMantraLine()) + ' <span aria-hidden="true">❖</span></div>'}
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261125y" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261125z" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261125y" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261125y" width="600" height="312" alt="" decoding="async">'}
+      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261125z" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261125z" width="600" height="312" alt="" decoding="async">'}
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

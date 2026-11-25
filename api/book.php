@@ -197,6 +197,14 @@ try {
        still decides whether the mobile qualifies; the flag only allows it. */
     $request['skipReturnDiscount'] = empty($input['returnSeen']);
 
+    /* 25 Nov 2026 (wx1-a): the classic checkout's ₹ INR | रू NPR chips post cur:'NPR'.
+       Same rule as SmartBook::payCurrency - a CUSTOMER only (never a desk sale) and the
+       owner's switch customer_currency_choice_on - then BookingService::customerFxStamp
+       freezes fx_currency/fx_rate/fx_total (it re-checks seller, switch and columns). */
+    $request['payCurrency'] = $seller === null
+        && strtoupper(trim(is_scalar($input['cur'] ?? null) ? (string) $input['cur'] : '')) === 'NPR'
+        && Settings::getBool('customer_currency_choice_on', true) ? 'NPR' : '';
+
     /* AG-4 (19 Nov 2026): an AGENT session sells on its own code only. A blank
        code becomes the agent's own; a different agent's code is refused (403)
        by BookingService::create - staff, counter and office keep choosing. */
