@@ -808,6 +808,21 @@ function admin_header(string $title, string $active = ''): void
     echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css() . (RoleMenu::on() ? admin_hub_css() : '')
        // fx1: the drawer's mode badge is a <span> inside a menu link - without this the 18px icon-slot rule above squeezed it to a dot
        . ($av !== null ? StaffAvatar::css() . ($av['phone'] ? StaffAvatar::phoneCss() : '') . '.side a.side-me-h .sa-mode,.side a.side-me-h:hover .sa-mode{width:auto;color:#fff}' : '') . '</style>';
+    /* 26 Nov 2026 (fx1): the brand's own fonts on every staff page - Noto Sans Devanagari for नेपाली / हिन्दी,
+       Poppins for Latin, and Noto's one-width digits so money columns line up (assets/css/fx1-fonts.css,
+       self-hosted WOFF2, font-display: swap; a file is fetched only when its script and weight are on the page).
+       Before this the panel used whatever the phone had, so Devanagari looked different on every device.
+       fx1-tokens.css only declares --fx-* variables. admin_brand_font_on = 0 gives the system font back. */
+    try {
+        if (Settings::getBool('admin_brand_font_on', true) && is_file(dirname(__DIR__) . '/assets/css/fx1-fonts.css') && is_file(dirname(__DIR__) . '/assets/css/fx1-tokens.css')) {
+            echo '<link rel="preload" href="/assets/fonts/fx1-latin-400.woff2" as="font" type="font/woff2" crossorigin>'
+               . '<link rel="stylesheet" href="' . Security::e(admin_asset_url('assets/css/fx1-fonts.css')) . '">'
+               . '<link rel="stylesheet" href="' . Security::e(admin_asset_url('assets/css/fx1-tokens.css')) . '">'
+               . '<style>body,button,input,select,textarea,optgroup{font-family:var(--fx-font-num)}.mono,code,pre,kbd{font-family:var(--fx-font-mono)}</style>';
+        }
+    } catch (Throwable $e) {
+        // fonts are decoration: never let them break a page
+    }
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'

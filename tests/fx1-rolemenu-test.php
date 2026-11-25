@@ -246,6 +246,25 @@ try {
         }
     }
 
+    echo "\n  The brand fonts\n";
+    $fontKeep = Settings::get('admin_brand_font_on', null);
+    Settings::set('admin_brand_font_on', '1', 'bool', 'admin');
+    $asAdmin(1, 'superadmin', 'fx1_superadmin');
+    $withFont = $page('bookings.php', 'Tickets Register', 'bookings');
+    check('the two font / token stylesheets are linked with a version stamp', (bool) preg_match('~<link rel="stylesheet" href="/assets/css/fx1-fonts\.css\?v=\d+">~', $withFont) && (bool) preg_match('~href="/assets/css/fx1-tokens\.css\?v=\d+"~', $withFont));
+    check('the preload names the font exactly as the CSS requests it (no ?v=, crossorigin) - else it downloads twice',
+        str_contains($withFont, '<link rel="preload" href="/assets/fonts/fx1-latin-400.woff2" as="font" type="font/woff2" crossorigin>')
+        && str_contains((string) file_get_contents(dirname(__DIR__) . '/assets/css/fx1-fonts.css'), 'url(../fonts/fx1-latin-400.woff2)'));
+    check('the override comes after the panel CSS, so it wins', strpos($withFont, 'font-family:var(--fx-font-num)') > strpos($withFont, "font-family:system-ui,-apple-system,'Segoe UI'"));
+    $missing = [];
+    foreach (['deva', 'latin'] as $fam) { foreach ([400, 500, 600, 700] as $w) { if (!is_file(dirname(__DIR__) . "/assets/fonts/fx1-$fam-$w.woff2")) { $missing[] = "$fam-$w"; } } }
+    check('all eight WOFF2 files are in the tree', $missing === [], implode(', ', $missing));
+    Settings::set('admin_brand_font_on', '0', 'bool', 'admin');
+    $noFont = $page('bookings.php', 'Tickets Register', 'bookings');
+    check('admin_brand_font_on = 0: no font files, the system font as before', !str_contains($noFont, 'fx1-fonts.css') && !str_contains($noFont, '--fx-font-num'));
+    if ($fontKeep === null) { Database::delete('settings', 'skey = :k', ['k' => 'admin_brand_font_on']); Settings::flush(); }
+    else { Settings::set('admin_brand_font_on', $fontKeep, 'bool', 'admin'); }
+
     echo "\n  The switch\n";
     Settings::set('admin_hub_menu_on', '0', 'bool', 'admin');
     $asAdmin(1, 'superadmin', 'fx1_superadmin');
