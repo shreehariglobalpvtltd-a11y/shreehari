@@ -12,8 +12,11 @@
  *
  *  1. ChalaniStrip: amount = cash + online + due + other, per row and whole bus;
  *     the strip totals equal the sum of the rows; cash / online equal
- *     departureMoney()'s columns (no second money rule); due = pay at boarding
- *     still due + online pending + marked-due rest; every row is Paid XOR Due.
+ *     departureMoney()'s columns less what the office marked due (no second
+ *     money rule); due = pay at boarding still due + online pending + the
+ *     office-marked-due row H (red badge, never green); every row is Paid XOR
+ *     Due; the Due box = the Due-badge rows, cash + online + other = the
+ *     Paid-badge rows; "other" (G) is shown, so the visible boxes add to Total.
  *  2. livePayload (the 30 s poll): strip = fromDm, D flips to PAID when its
  *     payment is verified, fp moves, key stays; a new passenger moves key.
  *  3. chalani.export defaults: superadmin, counter, manager, operations yes;
@@ -22,7 +25,9 @@
  *  4. Over HTTP (own php -S on a free port, this worktree): ?format=json needs
  *     a login, is scoped for an agent; PNG / PDF / share refused without
  *     chalani.export, allowed for counter; the screen carries the strip, the
- *     tel: link and the counter block (not for an agent).
+ *     tel: link and the counter block (not for an agent). Review 25 Nov:
+ *     download-chalan.php without a key, the Bus Chalan hub's chalani card and
+ *     its "Chalani page N" WhatsApp send also need chalani.export.
  *  5. A sample PNG page is rendered and copied to MP1_CH_OUT (default: the
  *     session scratchpad chalani/ folder) to look at.
  *
@@ -97,6 +102,10 @@ function http(string $who, string $url, array $opt = []): array {
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_COOKIEJAR => $jar, CURLOPT_COOKIEFILE => $jar, CURLOPT_TIMEOUT => 120]);
     if (isset($opt['form'])) { curl_setopt($ch, CURLOPT_POST, true); curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($opt['form'])); }
+    if (isset($opt['json'])) {
+        curl_setopt($ch, CURLOPT_POST, true); curl_setopt($ch, CURLOPT_POSTFIELDS, (string) json_encode($opt['json']));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'X-CSRF-Token: ' . (string) ($opt['csrf'] ?? '')]);
+    }
     $raw  = (string) curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $hlen = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -138,7 +147,7 @@ function startServer(string $root): array {
 
 echo "\n=== mp1 · release ch: uniform chalani (strip, live poll, chalani.export, counter money) ===\n\n";
 $keepSet = [];
-foreach (['whatsapp_notify_customer', 'whatsapp_notify_admin', 'allow_cod', 'email_enabled', 'chalani_export_perm_on', 'chalani_money_strip_on', 'chalani_live_poll_on', 'chalani_counter_totals_on', 'role_permissions_override'] as $k) {
+foreach (['whatsapp_notify_customer', 'whatsapp_notify_admin', 'allow_cod', 'email_enabled', 'chalani_export_perm_on', 'chalani_money_strip_on', 'chalani_live_poll_on', 'chalani_counter_totals_on', 'role_permissions_override', 'wa_admin_tools_enabled'] as $k) {
     $keepSet[$k] = Database::fetch('SELECT svalue, stype, sgroup FROM settings WHERE skey = :k', ['k' => $k]);
 }
 $restore = static function () use ($keepSet): void {
@@ -160,7 +169,7 @@ $sched = null; $schedMade = false; $proc = null; $sid = 0;
 $OUT = rtrim((string) (getenv('MP1_CH_OUT') ?: 'C:/Users/hp/AppData/Local/Temp/claude/8353c69271db1ac8/1bdafb45-beb9-4d8a-b106-49a39a100e11/scratchpad/chalani'), '/\\');
 try {
     if ($TD === '') { throw new RuntimeException('no free date 61-75 days out'); }
-    foreach (['whatsapp_notify_customer' => '0', 'whatsapp_notify_admin' => '0', 'allow_cod' => '1', 'email_enabled' => '0'] as $k => $v) {
+    foreach (['whatsapp_notify_customer' => '0', 'whatsapp_notify_admin' => '0', 'allow_cod' => '1', 'email_enabled' => '0', 'wa_admin_tools_enabled' => '1'] as $k => $v) {
         Settings::set($k, $v, 'bool', 'notify', false);
     }
     foreach (['chalani_export_perm_on', 'chalani_money_strip_on', 'chalani_live_poll_on', 'chalani_counter_totals_on'] as $k) {
@@ -243,8 +252,9 @@ try {
     check('strip totals = the sum of the rows', $diff === [], implode('; ', $diff));
     check('whole bus: amount = cash + online + due + other', abs($st['amount'] - ($st['cash'] + $st['online'] + $st['due'] + $st['other'])) < 0.01,
         json_encode(array_diff_key($st, ['rows' => 1])));
-    check('strip cash / online = departureMoney columns (no second rule)', abs($st['cash'] - $t['cash']) < 0.01 && abs($st['online'] - $t['online']) < 0.01,
-        json_encode([$st['cash'], $t['cash'], $st['online'], $t['online']]));
+    check('strip cash / online = departureMoney columns less the office-marked-due row (no second rule)',
+        abs($st['cash'] + $st['markedCash'] - $t['cash']) < 0.01 && abs($st['online'] + $st['markedOnline'] - $t['online']) < 0.01,
+        json_encode([$st['cash'], $st['markedCash'], $t['cash'], $st['online'], $st['markedOnline'], $t['online']]));
     check('strip amount = ticket value + extras', abs($st['amount'] - ($t['ticket'] + $t['extras'])) < 0.01, json_encode([$st['amount'], $t['ticket'], $t['extras']]));
     $farePer = $dm['farePer'];
     $amtOf = static function (array $b) use ($dm, $farePer): float {
@@ -255,11 +265,27 @@ try {
     $hRow = null;
     foreach ($dm['rows'] as $r) { if ((int) $r['booking_id'] === (int) $H['id']) { $hRow = $r; } }
     $hLine = $hRow !== null ? $st['rows'][(int) $hRow['pax_id']] : null;
-    check('H (cash verified, office Mark due): its fare stays in नगद only, never also in due', $hLine !== null && $hLine['mode'] === 'due'
-        && abs($hLine['cash'] - $hLine['amount']) < 0.01 && $hLine['due'] < 0.01, json_encode($hLine));
-    $expDue = $t['boardDue'] + $amtOf($D);
-    check('due = pay at boarding still due (A) + online pending (D)', abs($st['due'] - $expDue) < 0.01, json_encode([$st['due'], $expDue]));
-    check('dueN = A 2 + D 1 passengers', $st['dueN'] === 3, (string) $st['dueN']);
+    check('H (cash verified, office Mark due): counted once, in due (out of नगद), Due not Paid', $hLine !== null && $hLine['mode'] === 'due'
+        && $hLine['cash'] < 0.01 && abs($hLine['due'] - $hLine['amount']) < 0.01 && abs($hLine['markedCash'] - $hLine['amount']) < 0.01
+        && $hLine['amount'] > 0 && $hLine['paid'] === false, json_encode($hLine));
+    $hBd = $hLine !== null ? ChalaniStrip::badge($hLine['mode'], $hLine['paid'], $hLine['markedCash'] + $hLine['markedOnline'] > 0) : [];
+    check('H badge: red Due · Office marked due (never the green Paid)', ($hBd['cls'] ?? '') === 'due' && ($hBd['en'] ?? '') === 'Due · Office marked due'
+        && str_contains((string) ($hBd['ne'] ?? ''), 'बाँकी'), json_encode($hBd, JSON_UNESCAPED_UNICODE));
+    $hCol = null;
+    foreach ($dm['rows'] as $r) { if ((int) $r['booking_id'] === (int) $H['id']) { $hCol = $dm['money']($r); } }
+    check('H: the PNG column still holds its fare (DUE chip there), so strip and PNG agree it is due', $hCol !== null && $hCol['cash'] > 0
+        && ($dm['pmBook'][(int) $H['id']] ?? '') === 'due');
+    $expDue = $t['boardDue'] + $amtOf($D) + $amtOf($H);
+    check('due = pay at boarding still due (A) + online pending (D) + office-marked due (H)', abs($st['due'] - $expDue) < 0.01, json_encode([$st['due'], $expDue]));
+    check('dueN = A 2 + D 1 + H 1 passengers', $st['dueN'] === 4, (string) $st['dueN']);
+    $dueRows = 0.0; $paidRows = 0.0;
+    foreach ($st['rows'] as $line) { if ($line['paid']) { $paidRows += $line['amount']; } else { $dueRows += $line['amount']; } }
+    check('Due box = the rows with a Due badge', abs($dueRows - $st['due']) < 0.01, json_encode([$dueRows, $st['due']]));
+    check('cash + online + other = the rows with a Paid badge', abs($paidRows - ($st['cash'] + $st['online'] + $st['other'])) < 0.01,
+        json_encode([$paidRows, $st['cash'], $st['online'], $st['other']]));
+    check('other (G) is shown, so the VISIBLE boxes add up to the Total', ChalaniStrip::hasOther($st)
+        && abs(($st['cash'] + $st['online'] + $st['due'] + $st['other']) - $st['amount']) < 0.01 && isset(ChalaniStrip::labels()['other']));
+    check('no other: the fifth box stays hidden', !ChalaniStrip::hasOther(['other' => 0.0]));
     check('other = G (office tick, no verified payment)', abs($st['other'] - $amtOf($G)) < 0.01, json_encode([$st['other'], $amtOf($G)]));
     $fLine = null;
     foreach ($dm['rows'] as $r) { if ((int) $r['booking_id'] === (int) $F['id']) { $fLine = $st['rows'][(int) $r['pax_id']]; } }
@@ -280,6 +306,11 @@ try {
     $lp1 = ChalaniStrip::livePayload($dm, $pmStaff);
     check('live: strip = fromDm', abs($lp1['strip']['due'] - $st['due']) < 0.01 && $lp1['strip']['pax'] === 10 && count($lp1['rows']) === 10);
     check('live: one group per booking (8)', count($lp1['groups']) === 8, (string) count($lp1['groups']));
+    $hLive = null;
+    foreach ($lp1['rows'] as $r) { if ($r['b'] === (int) $H['id']) { $hLive = $r; } }
+    check('live: H polls as Due (red) · Office marked due', $hLive !== null && $hLive['pd'] === 'due' && str_contains($hLive['pdTxt'], 'Office marked due'), json_encode($hLive, JSON_UNESCAPED_UNICODE));
+    check('live: the other figure travels with the strip', !empty($lp1['strip']['hasOther']) && is_string($lp1['strip']['txt']['other'] ?? null)
+        && abs($lp1['strip']['other'] - $st['other']) < 0.01);
     $dPax = 0;
     foreach ($lp1['rows'] as $r) { if ($r['b'] === (int) $D['id']) { $dPax = $r['p']; check('live: D starts Due (red)', $r['pd'] === 'due'); } }
     Database::update('payments', ['status' => 'verified', 'verified_by' => $bossId, 'verified_at' => date('Y-m-d H:i:s')], 'booking_id = :b', ['b' => (int) $D['id']]);
@@ -349,6 +380,7 @@ try {
     check('share: one signed, expiring download-chalan link per page', $ok);
     $txt = ChalaniStrip::shareText(['from_city' => 'Surat', 'to_city' => 'Rupaidiha', 'dep_time' => '13:00:00', 'bus_number' => 'GJ05'], $TD, 'CH-X', $st, $links);
     check('share text: Nepali labels, Roman values, the links', str_contains($txt, 'जम्मा यात्री 10') && str_contains($txt, 'बाँकी ₹') && str_contains($txt, $links[2]));
+    check('share text: carries the other figure too', str_contains($txt, 'अन्य भुक्तानी ₹'));
 
     /* ---- 5. sample PNG (direct render, the manifest's own closures) ---- */
     $dmP = ChalaniPng::departureMoney($sid);
@@ -400,6 +432,9 @@ try {
                 check('screen: today\'s counter money for the office', str_contains($scr['body'], 'आजको काउन्टर हिसाब'));
                 check('screen: PDF / PNG / WhatsApp buttons', str_contains($scr['body'], 'format=chalanipdf') && str_contains($scr['body'], 'format=chalanipng') && str_contains($scr['body'], 'format=chalanishare'));
                 check('screen: booked-by name', str_contains($scr['body'], 'बुक गर्ने · by'));
+                check('screen: the fifth "Other paid" box shows (G), strip in 5 columns', str_contains($scr['body'], 'data-strip="other"')
+                    && preg_match('/<div class="s-other"(?! hidden)/', $scr['body']) === 1 && str_contains($scr['body'], 'mf-strip has-other'));
+                check('screen: H shows the red Office-marked-due badge', str_contains($scr['body'], 'Due · Office marked due'));
                 $png = http('boss', $q . '&format=chalanipng&page=1');
                 check('PNG page 1 (superadmin)', $png['code'] === 200 && str_starts_with($png['body'], "\x89PNG"), 'HTTP ' . $png['code']);
                 if ($png['code'] === 200 && (@is_dir($OUT) || @mkdir($OUT, 0775, true))) {
@@ -411,6 +446,18 @@ try {
                 if (str_starts_with($pdf['body'], '%PDF') && is_dir($OUT)) { file_put_contents($OUT . '/mp1-chalani.pdf', $pdf['body']); }
                 $sheet = http('boss', $q . '&format=chalani');
                 check('print sheet carries the strip', $sheet['code'] === 200 && str_contains($sheet['body'], 'ड्यू बाँकी'));
+                check('print sheet carries the other figure', str_contains($sheet['body'], 'अन्य भुक्तानी'));
+                $dl = http('boss', '/download-chalan.php?sid=' . $sid . '&doc=chalani&page=1');
+                check('download-chalan: superadmin opens a drawn chalani page without a key', $dl['code'] === 200 && str_starts_with($dl['body'], "\x89PNG"), 'HTTP ' . $dl['code']);
+                $hub = http('boss', '/admin/chalan.php?sid=' . $sid);
+                check('Bus Chalan hub: chalani card + "Chalani page" sends for chalani.export', $hub['code'] === 200
+                    && str_contains($hub['body'], 'value="chalani:1"') && str_contains($hub['body'], 'format=chalanipng') && !str_contains($hub['body'], 'chChalaniLocked'));
+                $bCsrf = preg_match('/<meta name="csrf" content="([^"]+)"/', $hub['body'], $mm) === 1 ? html_entity_decode($mm[1]) : '';
+                $wp = http('boss', '/admin/api/wa-send.php', ['json' => ['action' => 'preview', 'purpose' => 'chalan_send', 'sid' => $sid, 'doc' => 'chalani', 'page' => 1,
+                    'target' => 'custom', 'phone' => '9000025199', 'country' => 'IN'], 'csrf' => $bCsrf]);
+                $wj = json_decode($wp['body'], true);
+                check('WhatsApp chalan_send: superadmin may send a chalani page', is_array($wj) && !empty($wj['ok']) && str_contains((string) ($wj['text'] ?? ''), 'Chalani page 1'),
+                    substr($wp['body'], 0, 200));
                 $sh = http('boss', $q . '&format=chalanishare');
                 check('share: opens wa.me with the text + a signed link', $sh['code'] === 302 && preg_match('/^Location: https:\/\/wa\.me\/\?text=.*download-chalan\.php/mi', $sh['headers']) === 1);
             }
@@ -431,6 +478,24 @@ try {
                 check('support: json follows the page gate (bookings.view)', $j['code'] === 200 && str_contains($j['body'], '"strip"'));
                 $c = http('sup', $q);
                 check('support: no counter block, no export buttons', !str_contains($c['body'], 'आजको काउन्टर हिसाब') && !str_contains($c['body'], 'format=chalanishare'));
+                $dl = http('sup', '/download-chalan.php?sid=' . $sid . '&doc=chalani&page=1');
+                check('support (no grant): download-chalan chalani page without a key refused 403', $dl['code'] === 403, 'HTTP ' . $dl['code']);
+                $dlc = http('sup', '/download-chalan.php?sid=' . $sid . '&doc=challan');
+                check('support: the challan seat picture stays on bookings.view', $dlc['code'] === 200, 'HTTP ' . $dlc['code']);
+                $sl = ChalaniStrip::shareLinks($sid, 1, 2)[1];
+                $sg = http('anon2', '/download-chalan.php?' . (string) parse_url($sl, PHP_URL_QUERY));
+                check('a signed share link still opens the page (no login)', $sg['code'] === 200 && str_starts_with($sg['body'], "\x89PNG"), 'HTTP ' . $sg['code']);
+                $hub = http('sup', '/admin/chalan.php?sid=' . $sid);
+                check('Bus Chalan hub (support): no chalani preview / PDF / PNG / print, no "Chalani page" send', $hub['code'] === 200
+                    && !str_contains($hub['body'], 'format=chalanipng') && !str_contains($hub['body'], 'format=chalanipdf') && !str_contains($hub['body'], 'value="chalani:')
+                    && str_contains($hub['body'], 'chChalaniLocked') && str_contains($hub['body'], 'value="challan"'), 'HTTP ' . $hub['code']);
+                $sCsrf = preg_match('/<meta name="csrf" content="([^"]+)"/', $hub['body'], $mm) === 1 ? html_entity_decode($mm[1]) : '';
+                $wctx = ['action' => 'preview', 'purpose' => 'chalan_send', 'sid' => $sid, 'page' => 1, 'target' => 'custom', 'phone' => '9000025199', 'country' => 'IN'];
+                $wp = json_decode(http('sup', '/admin/api/wa-send.php', ['json' => $wctx + ['doc' => 'chalani'], 'csrf' => $sCsrf])['body'], true);
+                check('WhatsApp chalan_send (support): a chalani page is refused', is_array($wp) && empty($wp['ok']) && str_contains((string) ($wp['error'] ?? ''), 'chalani.export'),
+                    json_encode($wp, JSON_UNESCAPED_UNICODE));
+                $wc = json_decode(http('sup', '/admin/api/wa-send.php', ['json' => $wctx + ['doc' => 'challan'], 'csrf' => $sCsrf])['body'], true);
+                check('WhatsApp chalan_send (support): the challan seat picture still goes', is_array($wc) && !empty($wc['ok']), json_encode($wc, JSON_UNESCAPED_UNICODE));
             } else { skip('support HTTP checks', 'login flow did not sign in'); }
             if (login('agt', uname('agt'))) {
                 $j = http('agt', $q . '&format=json');

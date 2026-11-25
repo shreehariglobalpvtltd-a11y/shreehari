@@ -1101,7 +1101,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 <div class="band"><span><?= $flagSvg('IN') ?> गुजरात ⇄ रुपैडिहा <?= $flagSvg('NP', 15) ?> · यात्रु यात्रा अभिलेख</span><?php
   /* 25 Nov 2026 (release ch): the same Total | Cash | Online | Due strip as the screen, PDF and PNG */
   $shStrip = ChalaniStrip::on() ? ChalaniStrip::fromRows($rows, $money, $payMark) : null;
-  if ($shStrip !== null): ?><span class="chs"><b>जम्मा यात्री <?= $e($neDigits((string) $shStrip['passengers'])) ?> · <?= $e($curSym) ?> <?= $e(number_format($shStrip['amount'])) ?></b> | <b class="ok">नगद <?= $e($curSym) ?> <?= $e(number_format($shStrip['cash'])) ?></b> | <b class="ok">अनलाइन <?= $e($curSym) ?> <?= $e(number_format($shStrip['online'])) ?></b> | <b class="<?= $shStrip['due'] > 0 ? 'bad' : 'ok' ?>">ड्यू बाँकी <?= $e($curSym) ?> <?= $e(number_format($shStrip['due'])) ?></b></span><?php else: ?><span>सिट · नाम · भुक्तानी विवरण</span><?php endif; ?></div>
+  if ($shStrip !== null): ?><span class="chs"><b>जम्मा यात्री <?= $e($neDigits((string) $shStrip['passengers'])) ?> · <?= $e($curSym) ?> <?= $e(number_format($shStrip['amount'])) ?></b> | <b class="ok">नगद <?= $e($curSym) ?> <?= $e(number_format($shStrip['cash'])) ?></b> | <b class="ok">अनलाइन <?= $e($curSym) ?> <?= $e(number_format($shStrip['online'])) ?></b> | <b class="<?= $shStrip['due'] > 0 ? 'bad' : 'ok' ?>">ड्यू बाँकी <?= $e($curSym) ?> <?= $e(number_format($shStrip['due'])) ?></b><?php if (ChalaniStrip::hasOther($shStrip)): ?> | <b>अन्य भुक्तानी <?= $e($curSym) ?> <?= $e(number_format($shStrip['other'])) ?></b><?php endif; ?></span><?php else: ?><span>सिट · नाम · भुक्तानी विवरण</span><?php endif; ?></div>
 
 <table class="ps">
   <colgroup>
@@ -1256,7 +1256,8 @@ if ($chCounterView !== null) {
 }
 $chBadge = static function (array $r) use ($scrStrip): array {
     $l = $scrStrip['rows'][(int) ($r['pax_id'] ?? 0)] ?? null;
-    return $l === null ? ChalaniStrip::badge('due', false) : ChalaniStrip::badge((string) $l['mode'], (bool) $l['paid']);
+    return $l === null ? ChalaniStrip::badge('due', false)
+        : ChalaniStrip::badge((string) $l['mode'], (bool) $l['paid'], ((float) $l['markedCash'] + (float) $l['markedOnline']) > 0.0);
 };
 $chLink = static fn(array $extra): string => $base . '/admin/manifest.php?' . http_build_query(array_filter(array_merge(
     ['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'desk' => $deskF !== '' ? $deskF : null], $extra)));
@@ -1269,7 +1270,9 @@ $chPaxKey = (static function (array $rows): string {
 <style>
   /* 25 Nov 2026 (release ch): money strip, Paid / Due badge, today's counter money, live note */
   .mf-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0 0; }
-  @media (max-width:640px) { .mf-strip { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .mf-strip.has-other { grid-template-columns:repeat(5,minmax(0,1fr)); }   /* review: "अन्य भुक्तानी" only when not zero */
+  .mf-strip .s-other { border-left-color:#B08A2E; } .mf-strip .s-other[hidden] { display:none; }
+  @media (max-width:640px) { .mf-strip, .mf-strip.has-other { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   .mf-strip > div { border:1px solid var(--line,#dcdcdc); border-left:5px solid #0B3D91; border-radius:10px; padding:7px 10px; background:var(--card,#fff); min-width:0; }
   .mf-strip small { display:block; font-size:11.5px; font-weight:700; color:var(--mut,#555); }
   .mf-strip b { display:block; font-size:17px; font-weight:750; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
@@ -1546,12 +1549,15 @@ $chPaxKey = (static function (array $rows): string {
         <?= pc_badge('विशेष भुक्तानी · Extras ' . inr($xScreenPaid + $xScreenDue) . ' — भयो ' . inr($xScreenPaid) . ' · बाँकी ' . inr($xScreenDue), $xScreenDue > 0 ? 'warn' : 'ok') ?>
       <?php endif; ?>
     </div>
-    <?php if ($chStripOn): $chL = ChalaniStrip::labels(); ?>
-    <div class="mf-strip" id="mfStrip" aria-live="polite">
+    <?php if ($chStripOn): $chL = ChalaniStrip::labels(); $chOther = ChalaniStrip::hasOther($scrStrip); ?>
+    <div class="mf-strip<?= $chOther ? ' has-other' : '' ?>" id="mfStrip" aria-live="polite">
       <div class="s-pax"><small><?= Security::e($chL['pax']) ?></small><b data-strip="pax"><?= Security::e($scrStrip['passengers'] . ' · ' . ChalaniStrip::money($scrStrip['amount'], $chCur)) ?></b></div>
       <div class="s-cash"><small><?= Security::e($chL['cash']) ?></small><b data-strip="cash"><?= Security::e(ChalaniStrip::money($scrStrip['cash'], $chCur)) ?></b></div>
       <div class="s-online"><small><?= Security::e($chL['online']) ?></small><b data-strip="online"><?= Security::e(ChalaniStrip::money($scrStrip['online'], $chCur)) ?></b></div>
       <div class="s-due<?= $scrStrip['due'] > 0 ? '' : ' zero' ?>"><small><?= Security::e($chL['due']) ?></small><b data-strip="due"><?= Security::e(ChalaniStrip::money($scrStrip['due'], $chCur) . ($scrStrip['dueN'] > 0 ? ' · ' . $scrStrip['dueN'] . ' जना' : '')) ?></b></div>
+      <?php /* review 25 Nov 2026: settled but neither cash nor online (an office tick with no
+               verified payment) - its own figure, so the boxes always add up to the Total */ ?>
+      <div class="s-other"<?= $chOther ? '' : ' hidden' ?> title="कार्यालयले तिरेको भनेको, तर नगद / अनलाइन थाहा छैन · Paid per the office, way not known"><small><?= Security::e($chL['other']) ?></small><b data-strip="other"><?= Security::e(ChalaniStrip::money($scrStrip['other'], $chCur)) ?></b></div>
     </div>
     <?php endif; ?>
     <?php if ($chPoll): ?><div class="mf-live no-print" id="mfLive">⟳ हरेक ३० सेकेन्डमा आफैं अपडेट · Updates itself every 30 s<span data-live="at"></span></div><?php endif; ?>
@@ -1861,12 +1867,15 @@ $chPaxKey = (static function (array $rows): string {
       if (!d || !d.ok || d.fp === last) { return; }
       last = d.fp;
       var s = d.strip || {}, t = s.txt || {};
-      ['pax', 'cash', 'online', 'due'].forEach(function (k) {
+      ['pax', 'cash', 'online', 'due', 'other'].forEach(function (k) {
         var b = document.querySelector('#mfStrip [data-strip="' + k + '"]');
         if (b && typeof t[k] === 'string') { b.textContent = t[k]; }
       });
       var dueBox = document.querySelector('#mfStrip .s-due');
       if (dueBox) { dueBox.classList.toggle('zero', !(s.due > 0)); }
+      var otherBox = document.querySelector('#mfStrip .s-other'), stripEl = document.getElementById('mfStrip');
+      if (otherBox) { otherBox.hidden = !s.hasOther; }
+      if (stripEl) { stripEl.classList.toggle('has-other', !!s.hasOther); }
       (d.rows || []).forEach(function (r) {
         var tr = document.querySelector('tr[data-mf-pax="' + r.p + '"]');
         if (!tr) { return; }

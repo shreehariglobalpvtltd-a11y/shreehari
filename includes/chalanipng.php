@@ -49,7 +49,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 18;  // 18 = uniform chalani (release ch): Total | Cash | Online | Due strip under the route line, PAID / DUE row chips (25 Nov 2026)   // 17 = desk copy (NP-2): ?desk= filter, an NPR desk draws NPR (Rs beside the net), the desk in the number (19 Nov 2026)   // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 19;  // 19 = strip review: a fifth OTHER PAID chip when not zero, an office-marked-due row counted in DUE (25 Nov 2026)   // 18 = uniform chalani (release ch): Total | Cash | Online | Due strip under the route line, PAID / DUE row chips (25 Nov 2026)   // 17 = desk copy (NP-2): ?desk= filter, an NPR desk draws NPR (Rs beside the net), the desk in the number (19 Nov 2026)   // 16 = pay at boarding: ON BOARDING Rs X / PAID / AGENT / ONLINE PENDING marks per row + a two-column summary with "To collect on boarding" (16 Nov 2026)   // 15 = special (desk-extra) payments: row remark, infants, 2 summary lines (16 Nov 2026)   // 14 = single column drawn LEFT of the aisle (6 Nov 2026)   // 13 was:  // 13 = berth numbers: single side first (A1 A2 | A3..A6) (6 Nov 2026)   // 12 = place no. in BOARDING, women on a single sleeper in pink, place strip, seat-chart page (6 Nov 2026)   // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -1153,11 +1153,19 @@ final class ChalaniPng
                 $cl0 . ' ' . number_format($strip['online']),
                 $cl0 . ' ' . number_format($strip['due']) . ($strip['dueN'] > 0 ? '  ·  ' . $strip['dueN'] . ' PAX' : ''),
             ];
-            $chipW = (int) (($stripW - 3 * 12) / 4);
-            $sy1 = $y + 31; $sy2 = self::TABLE_Y - 7;
             $dueHot = $strip['due'] > 0;
             $tone = [[$navy, [255, 253, 246]], [$green, [236, 253, 243]], [$green, [236, 253, 243]],
                      [$dueHot ? $maroon : $green, $dueHot ? [254, 242, 242] : [236, 253, 243]]];
+            /* review 25 Nov 2026: settled money that is neither cash nor online (an office
+               tick with no verified payment) gets a fifth chip, so the chips add up to TOTAL */
+            if (ChalaniStrip::hasOther($strip)) {
+                $lab[]  = $devOk ? 'अन्य भुक्तानी · OTHER PAID' : 'OTHER PAID';
+                $val[]  = $cl0 . ' ' . number_format($strip['other']);
+                $tone[] = [$goldD, [255, 253, 246]];
+            }
+            $nChip = count($lab);
+            $chipW = (int) (($stripW - ($nChip - 1) * 12) / $nChip);
+            $sy1 = $y + 31; $sy2 = self::TABLE_Y - 7;
             foreach ($lab as $i => $lb) {
                 $bx = $M + $i * ($chipW + 12);
                 GoldSheet::card($im, $bx, $sy1, $bx + $chipW, $sy2, 10, $tone[$i][1], GoldSheet::GOLD, 4);

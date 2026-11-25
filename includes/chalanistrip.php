@@ -17,13 +17,22 @@
  *  row goes into exactly ONE bucket:
  *
  *     cash / online  what $money puts in नगद / अनलाइन (the chalani columns)
- *     due            mode boarding | due | pending: the rest of the row
+ *     due            mode boarding | due | pending: the whole row. A verified
+ *                    row the office "Mark due"-d (mode due) keeps its fare in
+ *                    the columns on the table (with a DUE chip), but the
+ *                    strip counts it as due, never as cash / online: the row
+ *                    badge says Due, so the Due box carries it (markedCash /
+ *                    markedOnline say how much came out of the columns)
  *     other          mode paid | agent | cash | online with nothing (or less)
  *                    in the two columns, e.g. an office tick with no
- *                    verified payment row: settled, but not cash / online
+ *                    verified payment row: settled, but not cash / online.
+ *                    Shown as its own "अन्य भुक्तानी · Other paid" figure
+ *                    wherever it is not zero, so the visible boxes always
+ *                    add up to the Total
  *
  *  so  amount = cash + online + due + other  for every row and for the
- *  whole bus (tests/mp1-chalani-test.php proves it).
+ *  whole bus, the Due box = the rows with a Due badge, and cash + online +
+ *  other = the rows with a Paid badge (tests/mp1-chalani-test.php proves it).
  *
  *  Also here, so the screen, the JSON poll and the tests read one place:
  *    - the chalani.export permission rule (PNG / PDF / share),
@@ -89,22 +98,32 @@ final class ChalaniStrip
      * One row's money in the four buckets.
      *
      * @param array{ticket:float|int,extra?:float|int,cash:float|int,online:float|int} $m  the chalani $money($r)
-     * @return array{amount:float,cash:float,online:float,due:float,other:float,paid:bool,mode:string}
+     * @return array{amount:float,cash:float,online:float,due:float,other:float,markedCash:float,markedOnline:float,paid:bool,mode:string}
      */
     public static function row(array $m, string $mode): array
     {
         $amount = (float) ($m['ticket'] ?? 0) + (float) ($m['extra'] ?? 0);
         $cash   = (float) ($m['cash'] ?? 0);
         $online = (float) ($m['online'] ?? 0);
-        $rest   = max(0.0, $amount - $cash - $online);
-        $due    = in_array($mode, self::DUE_MODES, true) ? $rest : 0.0;
-        $other  = $rest - $due;
         /* the columns can never hold more than the row is worth; if they ever
            did, the row amount follows the columns so the sum still closes */
         if ($cash + $online > $amount) {
             $amount = $cash + $online;
         }
+        /* review 25 Nov 2026: the office's "Mark due" on a verified cash / UPI row
+           (payMode 'due'). departureMoney() keeps the fare in its नगद / अनलाइन column
+           (the PNG draws a DUE chip there), but the row is owed: the strip moves it
+           to Due, so the badge, the Due box and the PNG chip all say the same. */
+        $markedCash = 0.0; $markedOnline = 0.0;
+        if ($mode === 'due' && $cash + $online > 0.0) {
+            $markedCash = $cash; $markedOnline = $online;
+            $cash = 0.0; $online = 0.0;
+        }
+        $rest   = max(0.0, $amount - $cash - $online);
+        $due    = in_array($mode, self::DUE_MODES, true) ? $rest : 0.0;
+        $other  = $rest - $due;
         return ['amount' => $amount, 'cash' => $cash, 'online' => $online, 'due' => $due, 'other' => $other,
+            'markedCash' => $markedCash, 'markedOnline' => $markedOnline,
             'paid' => $due <= 0.0, 'mode' => $mode];
     }
 
@@ -113,21 +132,29 @@ final class ChalaniStrip
      * already has ($fmt['money'], $fmt['payMark']).
      *
      * @param array<int,array<string,mixed>> $rows
-     * @return array{passengers:int,amount:float,cash:float,online:float,due:float,dueN:int,other:float,paidN:int,rows:array<int,array<string,mixed>>}
+     * @return array{passengers:int,amount:float,cash:float,online:float,due:float,dueN:int,other:float,markedCash:float,markedOnline:float,paidN:int,rows:array<int,array<string,mixed>>}
      */
     public static function fromRows(array $rows, callable $money, callable $payMark): array
     {
-        $s = ['passengers' => 0, 'amount' => 0.0, 'cash' => 0.0, 'online' => 0.0, 'due' => 0.0, 'dueN' => 0, 'other' => 0.0, 'paidN' => 0, 'rows' => []];
+        $sum = ['amount', 'cash', 'online', 'due', 'other', 'markedCash', 'markedOnline'];
+        $s = ['passengers' => 0, 'amount' => 0.0, 'cash' => 0.0, 'online' => 0.0, 'due' => 0.0, 'dueN' => 0, 'other' => 0.0,
+              'markedCash' => 0.0, 'markedOnline' => 0.0, 'paidN' => 0, 'rows' => []];
         foreach ($rows as $r) {
             $pm   = (array) $payMark($r);
             $line = self::row((array) $money($r), (string) ($pm['mode'] ?? 'due'));
             $s['passengers']++;
-            foreach (['amount', 'cash', 'online', 'due', 'other'] as $k) { $s[$k] += $line[$k]; }
+            foreach ($sum as $k) { $s[$k] += $line[$k]; }
             if ($line['paid']) { $s['paidN']++; } else { $s['dueN']++; }
             $s['rows'][(int) ($r['pax_id'] ?? 0)] = $line + ['bid' => (int) ($r['booking_id'] ?? 0)];
         }
-        foreach (['amount', 'cash', 'online', 'due', 'other'] as $k) { $s[$k] = round($s[$k], 2); }
+        foreach ($sum as $k) { $s[$k] = round($s[$k], 2); }
         return $s;
+    }
+
+    /** Is there settled money that is neither cash nor online (the "Other paid" figure)? */
+    public static function hasOther(array $strip): bool
+    {
+        return (float) ($strip['other'] ?? 0) >= 0.5;
     }
 
     /**
@@ -146,15 +173,17 @@ final class ChalaniStrip
 
     /**
      * The row badge: Paid green / Due red, with how (Cash / Online / ...).
+     * $marked: a verified payment the office marked due (row() markedCash / markedOnline).
      * @return array{cls:string,ne:string,en:string,ro:string}
      */
-    public static function badge(string $mode, bool $paid): array
+    public static function badge(string $mode, bool $paid, bool $marked = false): array
     {
         if (!$paid) {
-            return match ($mode) {
-                'boarding' => ['cls' => 'due', 'ne' => 'बाँकी · बसमा', 'en' => 'Due · On boarding', 'ro' => 'DUE'],
-                'pending'  => ['cls' => 'due', 'ne' => 'बाँकी · अनलाइन जाँचमा', 'en' => 'Due · Online checking', 'ro' => 'DUE'],
-                default    => ['cls' => 'due', 'ne' => 'बाँकी', 'en' => 'Due', 'ro' => 'DUE'],
+            return match (true) {
+                $mode === 'boarding' => ['cls' => 'due', 'ne' => 'बाँकी · बसमा', 'en' => 'Due · On boarding', 'ro' => 'DUE'],
+                $mode === 'pending'  => ['cls' => 'due', 'ne' => 'बाँकी · अनलाइन जाँचमा', 'en' => 'Due · Online checking', 'ro' => 'DUE'],
+                $marked              => ['cls' => 'due', 'ne' => 'बाँकी · कार्यालयले बाँकी राखेको', 'en' => 'Due · Office marked due', 'ro' => 'DUE'],
+                default              => ['cls' => 'due', 'ne' => 'बाँकी', 'en' => 'Due', 'ro' => 'DUE'],
             };
         }
         return match ($mode) {
@@ -165,10 +194,11 @@ final class ChalaniStrip
         };
     }
 
-    /** The strip's four labels, Nepali · English (rule: labels Nepali, values Roman). @return array<string,string> */
+    /** The strip's labels, Nepali · English (rule: labels Nepali, values Roman); 'other' only shows when not zero. @return array<string,string> */
     public static function labels(): array
     {
-        return ['pax' => 'जम्मा यात्री · Total', 'cash' => 'नगद · Cash', 'online' => 'अनलाइन · Online', 'due' => 'ड्यू बाँकी · Due'];
+        return ['pax' => 'जम्मा यात्री · Total', 'cash' => 'नगद · Cash', 'online' => 'अनलाइन · Online', 'due' => 'ड्यू बाँकी · Due',
+                'other' => 'अन्य भुक्तानी · Other paid'];
     }
 
     /** An amount the way the copy writes it: ₹ or रू. */
@@ -208,7 +238,7 @@ final class ChalaniStrip
             $mode = (string) $line['mode'];
             $pmk  = ['mode' => $mode, 'amt' => $mode === 'boarding' ? round((float) ($pmDue[$bid] ?? 0), 2) : 0.0,
                      'first' => (int) ($first[$bid] ?? -1) === $pid, 'claim' => (bool) ($claim[$bid] ?? false)];
-            $bd   = self::badge($mode, (bool) $line['paid']);
+            $bd   = self::badge($mode, (bool) $line['paid'], ((float) $line['markedCash'] + (float) $line['markedOnline']) > 0.0);
             $rows[] = ['p' => $pid, 'b' => $bid, 'st' => $st, 'lbl' => $lbl, 'cls' => $cls, 'pm' => $mode,
                        'pmTxt' => (string) $pmStaff($pmk, (bool) $pmk['first']), 'pd' => $bd['cls'], 'pdTxt' => $bd['ne'] . ' · ' . $bd['en']];
             if (!isset($groups[$bid])) {
@@ -223,11 +253,13 @@ final class ChalaniStrip
             'strip' => [
                 'pax' => (int) $strip['passengers'], 'amount' => $strip['amount'], 'cash' => $strip['cash'],
                 'online' => $strip['online'], 'due' => $strip['due'], 'dueN' => (int) $strip['dueN'], 'other' => $strip['other'],
+                'hasOther' => self::hasOther($strip),
                 'txt' => [
                     'pax'    => $strip['passengers'] . ' · ' . self::money($strip['amount'], $code),
                     'cash'   => self::money($strip['cash'], $code),
                     'online' => self::money($strip['online'], $code),
                     'due'    => self::money($strip['due'], $code) . ($strip['dueN'] > 0 ? ' · ' . $strip['dueN'] . ' जना' : ''),
+                    'other'  => self::money($strip['other'], $code),
                 ],
             ],
             'rows' => $rows, 'groups' => array_values($groups),
@@ -265,7 +297,8 @@ final class ChalaniStrip
            . (($trip['dep_time'] ?? '') !== '' ? ' · ' . substr((string) $trip['dep_time'], 0, 5) : '') . "\n"
            . 'बस · Bus: ' . (trim((string) ($trip['bus_number'] ?? '')) ?: '-') . "\n"
            . 'जम्मा यात्री ' . (int) $strip['passengers'] . ' · नगद ' . self::money((float) $strip['cash'], $currency)
-           . ' · अनलाइन ' . self::money((float) $strip['online'], $currency) . ' · बाँकी ' . self::money((float) $strip['due'], $currency) . "\n";
+           . ' · अनलाइन ' . self::money((float) $strip['online'], $currency) . ' · बाँकी ' . self::money((float) $strip['due'], $currency)
+           . (self::hasOther($strip) ? ' · अन्य भुक्तानी ' . self::money((float) $strip['other'], $currency) : '') . "\n";
         foreach ($links as $p => $u) {
             $t .= 'पेज ' . $p . ' · Page ' . $p . ': ' . $u . "\n";
         }
