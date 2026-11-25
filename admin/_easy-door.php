@@ -110,6 +110,10 @@ h1{font-size:17px;margin:4px 0 10px}
     <span>पासवर्ड बिर्सनुभयो? कार्यालयलाई रिसेट गर्न भन्नुहोस्।</span>
     <a href="/admin/login.php?classic=1">पुरानो तरिका</a>
   </div>
+  <p style="margin:12px 0 0;font-size:12.5px;display:flex;flex-wrap:wrap;gap:12px">
+    <a href="/downloads/S-Hari-Manage.apk" download style="color:#1F4FA3;font-weight:600">📱 S Hari Manage app</a>
+    <a href="/downloads/S-Hari-Driver.apk" download style="color:#1F4FA3;font-weight:600">🚌 S Hari Driver app (चालक)</a>
+  </p>
 </main>
 <script>
 (function () {
