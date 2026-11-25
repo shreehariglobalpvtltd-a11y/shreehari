@@ -62,7 +62,9 @@ final class CounterDesk
      * ticket, so changing only these never re-renders issued tickets.
      */
     public const PUBLIC_FIELDS = ['show_public', 'office_kind', 'public_status', 'name_ne', 'name_hi',
-                                  'address_ne', 'lat', 'lng', 'whatsapp', 'contact_person'];
+                                  'address_ne', 'lat', 'lng', 'whatsapp', 'contact_person',
+                                  // 25 Nov 2026 (wx1-c1): the office in-charge's own phone + photo
+                                  'incharge_phone', 'incharge_photo'];
 
     /** What a listed office is: head office, branch, partner (Nepal) or border point. */
     public const OFFICE_KINDS = ['head', 'branch', 'partner', 'border'];
@@ -552,6 +554,8 @@ final class CounterDesk
             'lng'            => static fn($v): ?float => self::cleanCoord($v, 180.0),
             'whatsapp'       => static fn($v): ?string => trim(Security::clean((string) $v, 40)) ?: null,
             'contact_person' => static fn($v): ?string => trim(Security::clean((string) $v, 80)) ?: null,
+            'incharge_phone' => static fn($v): ?string => trim(Security::clean((string) $v, 40)) ?: null,
+            'incharge_photo' => static fn($v): ?string => self::cleanPhotoPath((string) $v) ?: null,
         ];
         foreach ($pub as $col => $clean) {
             if (array_key_exists($col, $in) && self::hasColumn('counter_locations', $col)) {
@@ -786,7 +790,8 @@ final class CounterDesk
      *
      * @return list<array{code:string,name:string,nameNe:string,nameHi:string,label:string,city:string,
      *                    kind:string,status:string,country:string,phone:string,tel:string,wa:string,
-     *                    address:string,addressNe:string,hours:string,mapUrl:string,lat:?float,lng:?float,contact:string}>
+     *                    address:string,addressNe:string,hours:string,mapUrl:string,lat:?float,lng:?float,contact:string,
+     *                    inchargeName:string,inchargePhone:string,inchargeTel:string,inchargePhoto:string}>
      */
     public static function publicOffices(): array
     {
@@ -794,6 +799,9 @@ final class CounterDesk
             return self::$publicCache;
         }
         $hasFlag = self::hasTable() && self::hasColumn('counter_locations', 'show_public');
+        /* 25 Nov 2026 (wx1-c1, owner: every office card the same - in-charge, Call,
+           WhatsApp, Map). Switch home_office_incharge_on OFF = the list exactly as before. */
+        $v2      = Settings::getBool('home_office_incharge_on', true);
         $co      = Settings::company();
         $byTown  = self::countersByTown((string) ($co['counters'] ?? ''));
 
@@ -828,9 +836,18 @@ final class CounterDesk
             }
 
             $tel = self::dialDigits($phone, $country);
+            if ($tel === '' && $v2) {
+                $tel = self::firstDial($phone, $country);   // "+977 98… / 98…" → the first number
+            }
             $wa  = self::dialDigits(trim((string) ($d['whatsapp'] ?? '')), $country);
+            if ($wa === '' && $v2 && $country === 'NP') {
+                $wa = self::placeWhatsApp($city);           // the Nepal place's own WhatsApp (Admin -> Locations)
+            }
             if ($wa === '' && $kind === 'head') {
                 $wa = (string) $co['whatsapp'];
+            }
+            if ($wa === '' && $v2) {
+                $wa = $tel;                                 // no WhatsApp typed: the office phone itself
             }
 
             $address   = trim((string) ($d['address'] ?? ''));
@@ -844,12 +861,18 @@ final class CounterDesk
             $lat = isset($d['lat']) && $d['lat'] !== null && $d['lat'] !== '' ? (float) $d['lat'] : null;
             $lng = isset($d['lng']) && $d['lng'] !== null && $d['lng'] !== '' ? (float) $d['lng'] : null;
             $map = trim((string) ($d['map_url'] ?? ''));
+            if ($map === '' && $v2 && ($lat === null || $lng === null)) {
+                $map = self::placeMap($city);               // a real saved pin of the town's place first
+            }
             if ($map === '') {
                 $map = $lat !== null && $lng !== null
                     ? 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(sprintf('%.6f,%.6f', $lat, $lng))
                     : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(trim($city . ' ' . ($address !== '' ? $address : '')) . ' ' . ($country === 'NP' ? 'Nepal' : 'India'));
             }
             $status = (string) ($d['public_status'] ?? '') === 'coming_soon' ? 'coming_soon' : 'open';
+            // the office in-charge (कार्यालय प्रमुख): name = contact_person, own phone + photo (wx1-c1)
+            $inPhone = $v2 ? trim((string) ($d['incharge_phone'] ?? '')) : '';
+            $inPhoto = $v2 ? self::cleanPhotoPath((string) ($d['incharge_photo'] ?? '')) : '';
 
             $out[] = [
                 'code'      => $code,
@@ -871,6 +894,10 @@ final class CounterDesk
                 'lat'       => $lat,
                 'lng'       => $lng,
                 'contact'   => $contact,
+                'inchargeName'  => $v2 ? $contact : '',
+                'inchargePhone' => $status === 'open' ? $inPhone : '',
+                'inchargeTel'   => $status === 'open' && $inPhone !== '' ? self::firstDial($inPhone, $country) : '',
+                'inchargePhoto' => $inPhoto !== '' ? '/' . $inPhoto : '',
                 'sort'      => (int) $d['sort_order'],
             ];
         }
@@ -959,6 +986,77 @@ final class CounterDesk
             $d = ($country === 'NP' ? '977' : '91') . $d;
         }
         return preg_match('/^[1-9]\d{9,14}$/', $d) === 1 ? $d : '';
+    }
+
+    /**
+     * The first number that dials out of a typed line such as
+     * "+977 9866201375 / 9825788450" (a second bare number is never needed
+     * here - one Call button). '' when none of the parts is a real number.
+     */
+    public static function firstDial(string $phone, string $country = 'IN'): string
+    {
+        foreach (preg_split('#\s*(?:/|,|;|\bor\b|\x{00B7})\s*#u', $phone) ?: [] as $part) {
+            $d = self::dialDigits(trim((string) $part), $country);
+            if ($d !== '') {
+                return $d;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * An in-charge photo path as stored (uploads/locations/… re-encoded by
+     * ContentPages::saveUpload), or '' - never a URL, never "..".
+     */
+    public static function cleanPhotoPath(string $rel): string
+    {
+        $rel = ltrim(trim($rel), '/');
+        return $rel !== '' && !str_contains($rel, '..')
+            && preg_match('#^uploads/(?:locations|offices)/[A-Za-z0-9._-]+\.(?:webp|jpe?g|png)$#', $rel) === 1 ? $rel : '';
+    }
+
+    /** CompanyLocations (Admin -> Locations) loaded when the file is there. */
+    private static function places(): bool
+    {
+        if (!class_exists('CompanyLocations', false) && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/companylocations.php')) {
+            require_once INCLUDE_PATH . '/companylocations.php';
+        }
+        return class_exists('CompanyLocations', false);
+    }
+
+    /** The saved Google Maps link of the company place in this town ('' when none). */
+    private static function placeMap(string $town): string
+    {
+        try {
+            return self::places() ? CompanyLocations::mapForTown($town) : '';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /** The WhatsApp typed on a company place of this town, as wa.me digits ('' when none). */
+    private static function placeWhatsApp(string $town): string
+    {
+        $k = self::townKey($town);
+        if ($k === '') {
+            return '';
+        }
+        try {
+            if (!self::places()) {
+                return '';
+            }
+            foreach (CompanyLocations::all() as $p) {
+                if (self::townKey((string) $p['town']) === $k && trim((string) $p['whatsapp']) !== '') {
+                    $wa = self::firstDial((string) $p['whatsapp'], 'NP');
+                    if ($wa !== '') {
+                        return $wa;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            // never fail the office list on the places table
+        }
+        return '';
     }
 
     /** A latitude / longitude within ±$max, or null. */
@@ -1090,6 +1188,8 @@ final class CounterDesk
                 'lng'            => isset($r['lng']) && $r['lng'] !== null ? (float) $r['lng'] : null,
                 'whatsapp'       => (string) ($r['whatsapp'] ?? ''),
                 'contact_person' => (string) ($r['contact_person'] ?? ''),
+                'incharge_phone' => (string) ($r['incharge_phone'] ?? ''),
+                'incharge_photo' => (string) ($r['incharge_photo'] ?? ''),
             ];
         }
 
@@ -1141,6 +1241,8 @@ final class CounterDesk
                 'lng'            => null,
                 'whatsapp'       => '',
                 'contact_person' => '',
+                'incharge_phone' => '',
+                'incharge_photo' => '',
             ];
         }
 

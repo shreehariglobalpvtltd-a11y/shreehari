@@ -372,6 +372,23 @@ html,body{margin:0;background:#F4F6FB}
     .cp-off h3 i{font-style:normal;font-size:18px}
     .cp-off h3 small{margin-left:auto;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;color:#11703f;background:rgba(17,112,63,.1)}
     .cp-off p{margin:0;font-size:13px;line-height:1.45;color:var(--muted,#5b6b8c)}
+    /* 25 Nov 2026 (wx1-c1): the office in-charge row + the main pickup points with their map links */
+    .cp-in{display:flex;align-items:center;gap:10px;min-height:48px}
+    .cp-in .av{flex:0 0 44px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;overflow:hidden;font-weight:900;color:#fff;background:linear-gradient(135deg,#0a2a8f,#f07a1e)}
+    .cp-in .av img{width:100%;height:100%;object-fit:cover}
+    .cp-in .tx{min-width:0;flex:1}
+    .cp-in .tx b{display:block;font-size:14.5px;line-height:1.25;color:var(--fg,#0d1b3e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cp-in .tx small{display:block;font-size:12px;color:var(--muted,#5b6b8c)}
+    .cp-in .tx small a{color:inherit;font-weight:800}
+    .cp-pk{margin-top:14px}
+    .cp-pk h3{margin:0 0 8px;font-size:16px;color:var(--fg,#0d1b3e)}
+    .cp-picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin:0;padding:0;list-style:none}
+    .cp-picks li{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 8px 6px 12px;border-radius:16px;background:color-mix(in srgb,#f07a1e 6%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1)}
+    .cp-picks .tx{min-width:0;flex:1}
+    .cp-picks .tx b{display:block;font-size:14px;line-height:1.25;color:var(--fg,#0d1b3e);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cp-picks .tx small{display:block;font-size:12px;color:var(--muted,#5b6b8c)}
+    .cp-picks .cp-btn{padding:0 12px;font-size:13px}
+    :root[data-theme="dark"] .cp-in .tx b,:root[data-theme="dark"] .cp-pk h3,:root[data-theme="dark"] .cp-picks .tx b{color:#eef3ff}
     .cp-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
     .cp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 14px;border-radius:999px;font-size:14px;font-weight:800;text-decoration:none;color:#fff;background:linear-gradient(135deg,#0a2a8f,#1f4fe0);border:0;cursor:pointer}
     .cp-btn.o{background:linear-gradient(135deg,#ff8a2b,#f07a1e 60%,#d4570c)}
@@ -1722,6 +1739,11 @@ s.addEventListener('click',function(e){e.preventDefault();
       <p class="cp-sub" data-cp="offSub">भारत र नेपालका कार्यालय - एक ट्यापमा कल वा नक्सा।</p>
       <div class="cp-fares" id="cpFares"></div>
       <ul class="cp-offs" id="cpOffList"></ul>
+      <!-- 25 Nov 2026 (wx1-c1): main pickup points, each with its saved Google Maps pin (SiteFacts::pickupPlaces) -->
+      <div class="cp-pk" id="cpPicks" hidden>
+        <h3 id="cpPickH">मुख्य चढ्ने ठाउँ · Main pickup points</h3>
+        <ul class="cp-picks" id="cpPickList"></ul>
+      </div>
       <p class="cp-more"><a class="cp-btn l" href="/offices" data-cp="offAll">सबै कार्यालय र पार्किङ नक्सा →</a></p>
     </div>
   </section>
@@ -4189,6 +4211,16 @@ s.addEventListener('click',function(e){e.preventDefault();
     box.innerHTML = out.join('');
     box.hidden = !out.length;
   }
+  /* 25 Nov 2026 (wx1-c1): every office card the same - name + town, the in-charge (कार्यालय प्रमुख)
+     with a round photo, then Call · WhatsApp · Map in that order. Data: SiteFacts (Admin -> Counters);
+     switches home_office_incharge_on / home_pickup_maps_on live on the server side of the facts. */
+  var OW = {
+    ne: { inc: 'कार्यालय प्रमुख · In-charge', pickH: 'मुख्य चढ्ने ठाउँ · Main pickup points', mapB: 'नक्सा · Map', noNum: '☎️ नम्बर छिट्टै - मुख्य कार्यालयलाई सोध्नुहोस्।' },
+    hi: { inc: 'कार्यालय प्रमुख · In-charge', pickH: 'मुख्य बोर्डिंग स्थान · Main pickup points', mapB: 'नक्शा · Map', noNum: '☎️ नंबर जल्द - मुख्य ऑफ़िस से पूछें।' },
+    en: { inc: 'Office in-charge', pickH: 'Main pickup points', mapB: 'Map', noNum: '☎️ Number coming soon - ask the head office.' }
+  };
+  function ow(k) { var x = OW[lang()] || OW.ne; return x[k] || OW.ne[k] || ''; }
+  function samePhoto(u) { u = String(u || ''); return /^\/uploads\/[A-Za-z0-9\/_.-]+\.(webp|jpe?g|png)$/.test(u) && u.indexOf('..') < 0 ? u : ''; }
   function offices(F) {
     var ul = D.getElementById('cpOffList'); if (!ul || !F || !Array.isArray(F.offices)) return;
     var L = lang(), rows = F.offices.slice().sort(function (a, b) { return (a.kind === 'head' ? 0 : 1) - (b.kind === 'head' ? 0 : 1); });
@@ -4198,15 +4230,42 @@ s.addEventListener('click',function(e){e.preventDefault();
       var addr = (L !== 'en' && o.addressNe) ? o.addressNe : (o.address || '');
       var tel = String(o.tel || '').replace(/\D/g, ''), wa = String(o.wa || '').replace(/\D/g, '');
       var badge = o.kind === 'head' ? '<small>' + esc(t('head')) + '</small>' : (o.status === 'coming_soon' ? '<small>' + esc(t('soon')) + '</small>' : '');
+      var town = o.city && o.city !== nm ? o.city : '';
+      var inName = String(o.inchargeName || ''), inRow = '';
+      if (inName) {
+        var ph = samePhoto(o.inchargePhoto), inTel = String(o.inchargeTel || '').replace(/\D/g, '');
+        inRow = '<div class="cp-in"><span class="av" aria-hidden="true">' + (ph ? '<img src="' + esc(ph) + '" alt="" loading="lazy" width="44" height="44">' : esc(inName.trim().charAt(0).toUpperCase() || 'S')) + '</span>'
+          + '<span class="tx"><b>' + esc(inName) + '</b><small>' + esc(ow('inc'))
+          + (o.inchargePhone && inTel ? ' · <a href="tel:+' + esc(inTel) + '">' + esc(o.inchargePhone) + '</a>' : '') + '</small></span></div>';
+      }
+      var greet = 'नमस्ते ' + (o.nameNe || o.city || o.name || '') + ' कार्यालय, बस टिकटबारे सोध्न चाहन्छु।';
       return '<li class="cp-off"><h3><i aria-hidden="true">' + flag + '</i>' + esc(nm) + badge + '</h3>'
+        + (town ? '<p>' + esc(town) + '</p>' : '')
+        + inRow
         + (addr ? '<p>' + esc(addr) + '</p>' : '')
-        + (o.phone ? '<p><b>' + esc(o.phone) + '</b>' + (o.contact ? ' · ' + esc(o.contact) : '') + '</p>' : '')
+        + (o.phone ? '<p><b>' + esc(o.phone) + '</b>' + (!inName && o.contact ? ' · ' + esc(o.contact) : '') + '</p>' : (o.status !== 'coming_soon' ? '<p>' + esc(ow('noNum')) + '</p>' : ''))
         + '<div class="cp-acts">'
         + (tel ? '<a class="cp-btn" href="tel:+' + esc(tel) + '">📞 ' + esc(t('call')) + '</a>' : '')
+        + (wa ? '<a class="cp-btn g" href="https://wa.me/' + esc(wa) + '?text=' + esc(encodeURIComponent(greet)) + '" target="_blank" rel="noopener">💬 ' + esc(t('wa')) + '</a>' : '')
         + (o.mapUrl ? '<a class="cp-btn l" href="' + esc(o.mapUrl) + '" target="_blank" rel="noopener">📍 ' + esc(t('map')) + '</a>' : '')
-        + (wa ? '<a class="cp-btn g" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">💬 ' + esc(t('wa')) + '</a>' : '')
         + '</div></li>';
     }).join('');
+    pickups(F);
+  }
+  /* main pickup points: only places / stops with a real saved pin (SiteFacts::pickupPlaces) */
+  function pickups(F) {
+    var box = D.getElementById('cpPicks'), ul = D.getElementById('cpPickList'), h = D.getElementById('cpPickH'); if (!box || !ul) return;
+    var L = lang(), list = F && Array.isArray(F.places) ? F.places.filter(function (p) { return p && p.name && /^https:\/\//i.test(String(p.map || '')); }) : [];
+    if (h) h.textContent = ow('pickH');
+    ul.innerHTML = list.map(function (p) {
+      var nm = (L !== 'en' && p.nameNe) ? p.nameNe : p.name, town = String(p.town || '');
+      var tel = String(p.tel || '').replace(/\D/g, '');
+      if (town && String(nm).toLowerCase().indexOf(town.toLowerCase()) >= 0) town = '';
+      return '<li><span class="tx"><b>' + esc(nm) + '</b>' + (town ? '<small>' + esc(town) + '</small>' : '') + '</span>'
+        + (tel ? '<a class="cp-btn" href="tel:+' + esc(tel) + '" aria-label="' + esc(t('call') + ' ' + nm) + '">📞</a>' : '')
+        + '<a class="cp-btn l" href="' + esc(p.map) + '" target="_blank" rel="noopener">📍 ' + esc(ow('mapB')) + '</a></li>';
+    }).join('');
+    box.hidden = !list.length;
   }
 
   /* ---- 4. verified agents (names + area + phone only) ---- */
