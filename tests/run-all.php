@@ -112,6 +112,7 @@ const CORE_SUITES = [
     'gender-blank-test.php'        => 'shared berth: women-only / men-only, family on one ticket, blank gender refused',
     'npj-counter-test.php'         => 'Nepal desk sells Rupaidiha -> Gujarat only; Nepal office on every ticket; company locations',
     'location-maps-test.php'       => 'satellite + road pictures of our places (Nepalgunj office -> Rupaidiha), kept offline',
+    'wx1-c1-test.php'              => 'office cards: in-charge name/phone/photo, WhatsApp on every card, real map pin first; home pickup map links',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
     'agent-controls-test.php'      => 'agent limits hold under pressure',
     'agent-kind-test.php'          => 'org vs person agent numbering',

@@ -1036,14 +1036,32 @@ final class ContentPages
                 $btns .= '<a class="btn fill sm" href="' . $e($o['tel']) . '">📞 ' . $e($w['call']) . ' <span class="num">' . $e($o['phone']) . '</span></a>';
             }
             if ($o['wa'] !== '') {
-                $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($o['wa']) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
+                // 25 Nov 2026 (wx1-c1): every card opens the chat with a short greeting naming the office
+                $greet = Settings::getBool('home_office_incharge_on', true)
+                    ? '?text=' . rawurlencode('नमस्ते ' . (($o['nameNe'] ?? '') !== '' ? $o['nameNe'] : $o['name']) . ' कार्यालय, बस टिकटबारे सोध्न चाहन्छु।') : '';
+                $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($o['wa']) . $e($greet) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
             }
             if ($map !== '') {
                 $btns .= '<a class="btn out sm" href="' . $e($map) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
             }
+            // the office in-charge (कार्यालय प्रमुख): round photo (or the first letter), name, own phone
+            $inName = (string) ($o['inchargeName'] ?? '');
+            $inRow = '';
+            if ($inName !== '') {
+                $ini = mb_strtoupper(mb_substr($inName, 0, 1));
+                $av = ($o['inchargePhoto'] ?? '') !== ''
+                    ? '<img src="' . $e($o['inchargePhoto']) . '" alt="" width="44" height="44" loading="lazy" style="width:100%;height:100%;object-fit:cover">'
+                    : $e($ini);
+                $inRow = '<p class="off-addr off-in" style="display:flex;align-items:center;gap:10px">'
+                    . '<span aria-hidden="true" style="flex:0 0 44px;width:44px;height:44px;border-radius:50%;overflow:hidden;display:grid;place-items:center;font-weight:900;color:#fff;background:linear-gradient(135deg,#0a2a8f,#f07a1e)">' . $av . '</span>'
+                    . '<span><b>' . $e($inName) . '</b><br><small>कार्यालय प्रमुख · In-charge'
+                    . (($o['inchargePhone'] ?? '') !== '' && ($o['inchargeTel'] ?? '') !== '' ? ' · <a href="' . $e($o['inchargeTel']) . '">' . $e($o['inchargePhone']) . '</a>' : '')
+                    . '</small></span></p>';
+            }
             $cards .= '<article class="card off rv' . ($o['kind'] === 'head' ? ' head' : ($o['country'] === 'NP' ? ' np' : '')) . '" id="office-' . $e(strtolower($o['code'] !== '' ? $o['code'] : preg_replace('/\W+/', '-', $o['city']))) . '">'
                 . '<div class="off-top">' . PublicLayout::flag($o['country'], 24) . '<span class="badge">' . $e($kindLabel) . '</span>' . ($o['code'] !== '' ? '<span class="code">' . $e($o['code']) . '</span>' : '') . '</div>'
                 . '<h2 class="off-name">' . $e($nm) . '</h2>'
+                . $inRow
                 . ($addr !== '' ? '<p class="off-addr">📍 ' . $e($addr) . '</p>' : '')
                 . ($o['hours'] !== '' ? '<p class="off-addr">🕘 ' . $e($w['hours']) . ': ' . $e($o['hours']) . '</p>' : '')
                 . ($addr === '' && $o['hours'] === '' ? '<p class="off-addr">🎫 ' . $e($w['offSvc']) . '</p>' : '')

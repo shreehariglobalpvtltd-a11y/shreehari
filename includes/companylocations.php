@@ -147,6 +147,34 @@ final class CompanyLocations
         return '';
     }
 
+    /**
+     * For an office card (wx1-c1 review): the best place of this exact town that
+     * the office let the customer see (show_public) and that has $field ('map' /
+     * 'whatsapp') filled. Office first, then pickup, then parking; a border point
+     * or a hidden place is never used. null when none.
+     */
+    public static function publicPlaceForTown(string $town, string $field): ?array
+    {
+        $key = (string) preg_replace('/[^a-z]/', '', strtolower($town));
+        if ($key === '') {
+            return null;
+        }
+        $rank = ['office' => 0, 'pickup' => 1, 'parking' => 2];
+        $best = null;
+        foreach (self::all() as $p) {
+            if (!$p['show_public'] || !isset($rank[$p['kind']]) || trim((string) ($p[$field] ?? '')) === '') {
+                continue;
+            }
+            if ((string) preg_replace('/[^a-z]/', '', strtolower((string) $p['town'])) !== $key) {
+                continue;
+            }
+            if ($best === null || $rank[$p['kind']] < $rank[$best['kind']]) {
+                $best = $p;
+            }
+        }
+        return $best;
+    }
+
     /** @param array<string,mixed> $r */
     private static function shape(array $r): array
     {
