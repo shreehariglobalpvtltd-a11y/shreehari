@@ -218,7 +218,20 @@ try {
 
     $qA = Ticket::paymentQr($load((int) $a['id']));
     $qD = Ticket::paymentQr($load((int) $d['id']));
-    check('A: the ticket\'s pay QR is the live pay link with the ticket key', $qA['mode'] === 'due'
+    /* 25 Nov 2026 (wx1, owner): a pay-at-boarding ticket carries NO pay QR (ticket_cod_no_payqr,
+       default on); with the switch off it keeps the old live link + ticket key. */
+    check('A (wx1): pay-at-boarding -> no pay QR, mode cod, PAY ON BOARDING label', $qA['mode'] === 'cod' && $qA['qr'] === ''
+        && str_contains($qA['label'], 'PAY ON BOARDING'), $qA['mode'] . ' ' . $qA['qr']);
+    Settings::get('upi_id');
+    $wx1Ref = new ReflectionClass('Settings');
+    $wx1C = $wx1Ref->getProperty('cache'); $wx1C->setAccessible(true);
+    $wx1D = $wx1Ref->getProperty('decoded'); $wx1D->setAccessible(true);
+    $wx1Orig = $wx1C->getValue();
+    $wx1C->setValue(null, array_merge((array) $wx1Orig, ['ticket_cod_no_payqr' => ['value' => '0', 'type' => 'bool', 'public' => false]]));
+    $wx1D->setValue(null, []);
+    $qA = Ticket::paymentQr($load((int) $a['id']));
+    $wx1C->setValue(null, $wx1Orig); $wx1D->setValue(null, []);
+    check('A: ticket_cod_no_payqr off -> the pay QR is the live pay link with the ticket key', $qA['mode'] === 'due'
         && str_contains($qA['payload'], 'pay.php?pnr=' . rawurlencode((string) $a['pnr']) . '&k=' . Ticket::downloadToken((string) $a['pnr'])), $qA['payload']);
     check('D: an online booking\'s pay QR is unchanged (pay.php?pnr=, no key)', $qD['mode'] === 'due' && str_ends_with($qD['payload'], 'pay.php?pnr=' . rawurlencode((string) $d['pnr'])), $qD['payload']);
 

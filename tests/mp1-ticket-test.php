@@ -487,7 +487,7 @@ try {
     $pdfJs = (string) file_get_contents(ROOT_PATH . '/assets/js/11-pdf-ticket.js');
     check('client PDF: the Nepal QR image is drawn as it is, never re-encoded', str_contains($pdfJs, 'if (gpay.img)') && str_contains($pdfJs, '_imgLoad(gpay.url)'));
     $sw = (string) file_get_contents(ROOT_PATH . '/sw.js');
-    check('sw.js: VERSION shg-v297, ASSET_VER 20261125a', str_contains($sw, "var VERSION = 'shg-v297';") && str_contains($sw, "var ASSET_VER = '20261125a';"));
+    check('sw.js: VERSION shg-v298, ASSET_VER 20261125m (mp1 on wx1)', str_contains($sw, "var VERSION = 'shg-v298';") && str_contains($sw, "var ASSET_VER = '20261125m';"));
     $idx = (string) file_get_contents(ROOT_PATH . '/index.php');
     check('index.php hands the two switches to the app', str_contains($idx, "'ticket_cash_no_payqr'") && str_contains($idx, "'ticket_clean_v2_on'"));
 } catch (Throwable $e) {

@@ -34,6 +34,21 @@ $base    = '';
 $flash   = null;
 $canEdit = Auth::isSuperadmin();
 $ready   = CounterDesk::hasTable();
+/* The real in-charge photo limit: the 8 MB re-encode cap or PHP's own upload / post limit, whichever is smaller. */
+$photoLimitMb = (static function (): int {
+    $mb = 8;
+    foreach (['upload_max_filesize', 'post_max_size'] as $k) {
+        $v = trim((string) ini_get($k));
+        if ($v === '' || !preg_match('/^(\d+)\s*([kmg]?)/i', $v, $m)) {
+            continue;
+        }
+        $bytes = (int) $m[1] * ['' => 1, 'k' => 1024, 'm' => 1048576, 'g' => 1073741824][strtolower($m[2])];
+        if ($bytes > 0) {
+            $mb = min($mb, max(1, (int) floor($bytes / 1048576)));
+        }
+    }
+    return $mb;
+})();
 
 /* Which halves of the migration are in place. The page must render, and be
    honest about what it cannot show, on a database where the SQL has not
@@ -77,6 +92,33 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'whatsapp'       => $_POST['whatsapp'] ?? '',
                     'contact_person' => $_POST['contact_person'] ?? '',
                 ] : [];
+                /* 25 Nov 2026 (wx1-c1): the office in-charge's phone + photo. The photo key is
+                   sent only when it changes (a new upload, or "remove" ticked), so a plain save
+                   keeps the photo. Re-encoded by the same pipeline as Admin -> Locations. */
+                if ($site !== [] && CounterDesk::hasColumn('counter_locations', 'incharge_phone')) {
+                    $site['incharge_phone'] = $_POST['incharge_phone'] ?? '';
+                }
+                /* review: a bad photo never drops the rest of the desk save - the photo is
+                   skipped and the flash says why; a new file is removed if the save fails. */
+                $photoWarn = '';
+                $newPhoto  = '';
+                if ($site !== [] && CounterDesk::hasColumn('counter_locations', 'incharge_photo')) {
+                    $upPhoto = $_FILES['incharge_photo'] ?? null;
+                    $upErr   = is_array($upPhoto) ? (int) ($upPhoto['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
+                    if ($upErr === UPLOAD_ERR_INI_SIZE || $upErr === UPLOAD_ERR_FORM_SIZE) {
+                        $photoWarn = 'फोटो धेरै ठूलो भयो (server limit ' . $photoLimitMb . ' MB) · Photo too big (server limit ' . $photoLimitMb . ' MB) — the photo was not changed.';
+                    } elseif ($upErr !== UPLOAD_ERR_NO_FILE) {
+                        try {
+                            require_once INCLUDE_PATH . '/contentpages.php';
+                            $newPhoto = ContentPages::saveUpload($upPhoto, 'locations', 'incharge-' . strtolower((string) ($_POST['code'] ?? '')));
+                            $site['incharge_photo'] = $newPhoto;
+                        } catch (Throwable $photoErr) {
+                            $photoWarn = 'फोटो राख्न सकिएन · Photo not saved: ' . $photoErr->getMessage();
+                        }
+                    } elseif (!empty($_POST['incharge_photo_remove'])) {
+                        $site['incharge_photo'] = '';
+                    }
+                }
                 $code = CounterDesk::save($site + [
                     'entity'     => $_POST['entity'] ?? '',
                     'lang'       => $_POST['lang'] ?? '',
@@ -99,7 +141,9 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 // old -> new: a desk's rate and company decide money on every later sale
                 Logger::audit('counter.save', 'counter_location', $code, $before, CounterDesk::get($code),
                     'desk saved by admin #' . (int) $admin['id']);
-                $flash = ['ok', 'Desk ' . $code . ' saved.'];
+                $flash = $photoWarn !== ''
+                    ? ['bad', 'Desk ' . $code . ' saved. ' . $photoWarn]
+                    : ['ok', 'Desk ' . $code . ' saved.'];
             } elseif ($action === 'close') {
                 $code = mb_strtoupper(Security::clean((string) ($_POST['code'] ?? ''), 16));
                 CounterDesk::deactivate($code);
@@ -123,6 +167,9 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
             }
         } catch (Throwable $e) {
+            if (isset($newPhoto) && $newPhoto !== '' && str_starts_with($newPhoto, 'uploads/locations/')) {
+                @unlink(rtrim(defined('UPLOAD_PATH') ? UPLOAD_PATH : ROOT_PATH . '/uploads', '/\\') . '/locations/' . basename($newPhoto));
+            }
             $flash = ['bad', $e->getMessage()];
         }
     }
@@ -303,7 +350,7 @@ $e = static fn($v): string => Security::e((string) $v);
 <?php if ($canEdit && $ready): ?>
 <div class="ctr-form">
   <h3><?= $editing ? '✏️ Edit desk ' . $e($editing['code']) : '➕ Add a counter' ?></h3>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <?= Security::csrfField() ?>
     <input type="hidden" name="action" value="save">
     <div class="row">
@@ -400,15 +447,33 @@ $e = static fn($v): string => Security::e((string) $v);
     <div class="row">
       <label>Address in Nepali <input type="text" name="address_ne" maxlength="255" value="<?= $e($editing['address_ne'] ?? '') ?>"></label>
       <label>WhatsApp (if the office has one) <input type="text" name="whatsapp" maxlength="40" inputmode="tel" value="<?= $e($editing['whatsapp'] ?? '') ?>"></label>
-      <label>Contact person <input type="text" name="contact_person" maxlength="80" value="<?= $e($editing['contact_person'] ?? '') ?>"></label>
+      <label>कार्यालय प्रमुख (In-charge) नाम <input type="text" name="contact_person" maxlength="80" value="<?= $e($editing['contact_person'] ?? '') ?>"></label>
+      <?php if (CounterDesk::hasColumn('counter_locations', 'incharge_phone')): ?>
+      <label>प्रमुखको फोन · In-charge phone <input type="text" name="incharge_phone" maxlength="40" inputmode="tel" value="<?= $e($editing['incharge_phone'] ?? '') ?>"></label>
+      <?php endif; ?>
       <label>Map pin — latitude <input type="text" name="lat" maxlength="20" inputmode="decimal" placeholder="23.6008959" value="<?= $e($editing['lat'] ?? '') ?>"></label>
       <label>Map pin — longitude <input type="text" name="lng" maxlength="20" inputmode="decimal" placeholder="72.3807235" value="<?= $e($editing['lng'] ?? '') ?>"></label>
     </div>
+    <?php if (CounterDesk::hasColumn('counter_locations', 'incharge_photo')): ?>
+    <?php $inPhoto = CounterDesk::cleanPhotoPath((string) ($editing['incharge_photo'] ?? '')); ?>
+    <div class="row">
+      <label>प्रमुखको फोटो · In-charge photo (PNG / JPG / WebP, <?= (int) $photoLimitMb ?> MB)
+        <input type="file" name="incharge_photo" accept="image/png,image/jpeg,image/webp">
+      </label>
+      <?php if ($inPhoto !== ''): ?>
+      <span style="display:flex;align-items:center;gap:10px">
+        <img src="/<?= $e($inPhoto) ?>" alt="" width="56" height="56" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid #d6dbe6">
+        <label class="chk"><input type="checkbox" name="incharge_photo_remove" value="1"> फोटो हटाउने · Remove photo</label>
+      </span>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
     <p class="ctr-note" style="margin:0 0 10px">
       The home page, the search-engine card and the offices page list every desk ticked here, head office first.
       Its <b>phone</b> is the Phone box above; left blank, the town's number from Company details
       (company counters line) is used, so the website and the printed ticket always agree. These website boxes
-      never change an issued ticket.
+      never change an issued ticket. WhatsApp left blank = the office phone gets the WhatsApp button;
+      the in-charge name, phone and photo show on the office card (switch <code>home_office_incharge_on</code>).
     </p>
     <?php endif; ?>
     <div style="display:flex;gap:8px;justify-content:flex-end">

@@ -30,7 +30,7 @@ if ((string) $b['status'] !== 'confirmed') {
     exit('This booking is not confirmed yet — no ticket to print.');
 }
 $leg = Database::fetch(
-    "SELECT l.*, r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep, s.id AS sid
+    "SELECT l.*, r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep, s.id AS sid, s.route_id AS rid
        FROM booking_legs l JOIN schedules s ON s.id = l.schedule_id JOIN routes r ON r.id = s.route_id
       WHERE l.booking_id = :b ORDER BY l.id LIMIT 1",
     ['b' => (int) $b['id']]
@@ -62,6 +62,22 @@ try {
 } catch (Throwable $e) {
     $st80 = null;
 }
+/* 25 Nov 2026 (wx1): the pickup map QR - the SAME link the printed ticket carries
+   (Ticket::mapQrs 'board' row), under the verify QR; none when the stop has no pin. */
+$map80 = '';
+if ($leg !== null) {
+    try {
+        foreach (Ticket::mapQrs(['boarding_stop' => (string) $leg['boarding_stop'], 'route_id_for_stop' => (int) ($leg['rid'] ?? 0),
+            'from_city' => (string) $leg['from_city'], 'to_city' => (string) $leg['to_city']] + $b) as $mq80) {
+            if (($mq80['kind'] ?? '') === 'board' && (string) $mq80['payload'] !== '') {
+                $map80 = QrCode::dataUri((string) $mq80['payload'], 4, 2);
+                break;
+            }
+        }
+    } catch (Throwable $e80) {
+        $map80 = '';
+    }
+}
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title><?= $e($pnr) ?> · 80 mm</title>
 <style>
@@ -92,6 +108,7 @@ table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}td
 <hr>
 <div class="pnr"><?= $e($pnr) ?></div>
 <img class="qr" src="<?= $e($qr) ?>" alt="Verify QR">
+<?php if ($map80 !== ''): ?><img class="qr" src="<?= $e($map80) ?>" alt="Pickup map QR"><div class="c sm b">चढ्ने ठाउँ · PICKUP MAP</div><?php endif; ?>
 <?php if ($seat80 !== ''): ?><div class="seat"><small>सिट · SEAT<?= count($seats) > 1 ? 'S' : '' ?></small><b><?= $e($seat80) ?></b></div><?php endif; ?>
 <?php if ($leg !== null): ?>
 <table>

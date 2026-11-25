@@ -112,6 +112,7 @@ const CORE_SUITES = [
     'gender-blank-test.php'        => 'shared berth: women-only / men-only, family on one ticket, blank gender refused',
     'npj-counter-test.php'         => 'Nepal desk sells Rupaidiha -> Gujarat only; Nepal office on every ticket; company locations',
     'location-maps-test.php'       => 'satellite + road pictures of our places (Nepalgunj office -> Rupaidiha), kept offline',
+    'wx1-c1-test.php'              => 'office cards: in-charge name/phone/photo, WhatsApp on every card, real map pin first; home pickup map links',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
     'agent-controls-test.php'      => 'agent limits hold under pressure',
     'agent-kind-test.php'          => 'org vs person agent numbering',
@@ -241,7 +242,7 @@ const CORE_SUITES = [
     'u2-wa-flow-test.php'             => 'WhatsApp form: ON only once published in this WABA, re-ask keeps the typed mobile + UPI',
     'u2-fb-booking-test.php'          => 'Messenger guided booking only with fb_msgr_form_on + a WhatsApp-proven number, summary + yes first',
     'u2-wa-form-page-test.php'        => 'admin/wa-form.php renders the form status and the dropped-form note',
-    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; COD and pending tickets print the live link',
+    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; pending tickets print the live link, COD tickets no pay QR (wx1)',
     // 25 Nov 2026 (mp1 tk), registered with the clean ticket + cash / country pay-QR rule it guards.
     'mp1-ticket-test.php'             => 'clean ticket: paid (cash) = no pay QR + PAID stamp, Nepal QR by country while due, one flag by direction, v2 off = old layout',
     // 25 Nov 2026 (cp1), the "Booked at" GPS line the clean ticket now prints too.
@@ -275,6 +276,10 @@ const CORE_SUITES = [
     'mp1-dayreport-test.php'          => 'seller day = CounterBook (cash + cod, online, due, commission), Nepali bot reply, evening report once, free window only (25 Nov dy)',
     // 25 Nov 2026 (release ch): starts its own php -S on a free port for the HTTP part (skips it if it cannot)
     'mp1-chalani-test.php'            => 'uniform chalani: Total | Cash | Online | Due strip = sum of rows, no double counting, live JSON poll, chalani.export per role, counter money',
+    'wx1-a-test.php'                  => 'SmartBook: Nepal timezone opens Nepal -> India + swap, ₹ INR | रू NPR frozen on the sale, BS + AD date chips (25 Nov)',
+    'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
+    'wx1-c2-test.php'                 => 'all agents + partners, bus crew card (switch), onward buses never made up, 20 + 7 kg luggage everywhere, short WhatsApp booking, PNR + phone download (25 Nov)',
+    'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
 ];
 
 /**

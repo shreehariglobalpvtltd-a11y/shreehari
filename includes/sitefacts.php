@@ -327,6 +327,7 @@ final class SiteFacts
             'ceo'       => $ceo,
             'head'      => $head,
             'offices'   => $offices,
+            'places'    => self::pickupPlaces(),   // 25 Nov 2026 (wx1-c1): home "main pickup points" map links
             'expanding' => true,
             'nepal'     => $nepal,
             'support'   => $support,
@@ -386,6 +387,92 @@ final class SiteFacts
         }, $f['offices']));
         unset($f['nepal']['team']);     // the page already has it as SHG_BOOT.npTeam
         return $f;
+    }
+
+    /**
+     * The main pickup points with a REAL saved map pin (25 Nov 2026, wx1-c1,
+     * owner: "homepage ma main pickup point ko Google Maps link"). First the
+     * company places the office filled and switched on (Admin -> Locations,
+     * only those with a map link), then the active boarding stops of the
+     * runs to Nepal that carry a latitude/longitude (Admin -> Routes). One row
+     * per town; nothing typed here, nothing guessed: a stop with no pin is
+     * simply not listed. Switch home_pickup_maps_on OFF = an empty list.
+     *
+     * @return list<array{name:string,nameNe:string,kind:string,town:string,map:string,phone:string,tel:string,wa:string}>
+     */
+    public static function pickupPlaces(): array
+    {
+        try {
+            if (!Settings::getBool('home_pickup_maps_on', true)) {
+                return [];
+            }
+            $key  = static fn(string $s): string => (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($s));
+            // a town is its first word: "Mehsana Head Office - Silver Complex" and "Mehsana - SHG Head Office" are one place
+            $first = static fn(string $s): string => (string) ((preg_split('/[\s,\x{2014}\x{2013}-]+/u', trim($s)) ?: [''])[0]);
+            $out  = [];
+            $seen = [];
+            $dup  = static function (string $label, string $town) use (&$seen, $key): bool {
+                $t = $key($town);
+                $l = $key($label);
+                foreach ($seen as $s) {
+                    if (($t !== '' && $t === $s) || (mb_strlen($s) >= 4 && str_contains($l, $s))) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if (is_file(INCLUDE_PATH . '/companylocations.php')) {
+                require_once INCLUDE_PATH . '/companylocations.php';
+                foreach (CompanyLocations::forPublic() as $p) {
+                    $map = (string) $p['map'];
+                    if ($map === '' || !str_starts_with(strtolower($map), 'https://')) {
+                        continue;
+                    }
+                    $town = trim((string) $p['town']);
+                    if ($dup((string) $p['name'], $town)) {
+                        continue;
+                    }
+                    $country = (bool) preg_match('/nepal|banke|\+977/i', $p['town'] . ' ' . $p['address'] . ' ' . $p['phone']) ? 'NP' : 'IN';
+                    $tel = CounterDesk::firstDial((string) $p['phone'], $country);
+                    $wa  = CounterDesk::firstDial((string) $p['whatsapp'], $country);
+                    $out[] = ['name' => (string) $p['name'], 'nameNe' => (string) $p['nameNe'], 'kind' => (string) $p['kind'],
+                              'town' => $town, 'map' => $map, 'phone' => (string) $p['phone'], 'tel' => $tel, 'wa' => $wa];
+                    $seen[] = $key($first($town !== '' ? $town : (string) $p['name']));
+                }
+            }
+            require_once INCLUDE_PATH . '/boarding.php';
+            $routes = Database::fetchAll('SELECT id, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, id');
+            foreach ($routes as $r) {
+                if (Boarding::routeDirection($r) !== 'toNepal') {
+                    continue;
+                }
+                $stops = Database::fetchAll(
+                    "SELECT stop_name, latitude, longitude FROM route_stops
+                      WHERE route_id = :r AND stop_type = 'boarding' AND latitude IS NOT NULL AND longitude IS NOT NULL"
+                    . Boarding::activeSql() . ' ORDER BY sort_order, id',
+                    ['r' => (int) $r['id']]
+                );
+                foreach ($stops as $s) {
+                    $lat = (float) $s['latitude'];
+                    $lng = (float) $s['longitude'];
+                    if ($lat === 0.0 || $lng === 0.0 || abs($lat) > 90 || abs($lng) > 180) {
+                        continue;
+                    }
+                    $name = trim((string) $s['stop_name']);
+                    $town = $first(CounterDesk::townOf($name));
+                    if ($name === '' || $dup($name, $town)) {
+                        continue;
+                    }
+                    $out[] = ['name' => $name, 'nameNe' => '', 'kind' => 'pickup', 'town' => $town,
+                              'map' => 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(sprintf('%.6f,%.6f', $lat, $lng)),
+                              'phone' => '', 'tel' => '', 'wa' => ''];
+                    $seen[] = $key($town);
+                }
+            }
+            return array_slice($out, 0, 16);
+        } catch (Throwable $e) {
+            return [];   // never break the boot on the places
+        }
     }
 
     /** "₹2,200" — money as the site prints it. */

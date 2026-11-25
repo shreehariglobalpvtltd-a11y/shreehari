@@ -833,9 +833,24 @@ async function downloadTicketPDF(b) {
       doc.text('PAID', 254, qrY - 0.6, { align: 'center' });
     }
   }
+  /* 25 Nov 2026 (wx1): the pickup map QR - the place the passenger chose to board
+     (b.pickupMap = the printed ticket's own map link, from api/track.php). It takes
+     the next free card; the contacts block moves right and goes one column wide. */
+  var mapX = gpay ? 288 : 164;
+  var mapOn = !!b.pickupMap && !(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.ticket_maps_qr === false);
+  if (mapOn) {
+    qrCard(mapX, '', 'Open in Maps');
+    doc.setFontSize(7.6); doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+    _dt(doc, hasDev, mapX + 56, qrY + 116, 'चढ्ने ठाउँ · PICKUP MAP', 'CHADHNE THAU · PICKUP MAP', { align: 'center', maxWidth: 104 });
+    try {
+      var mapQr = await makeQR(String(b.pickupMap), 240);
+      if (mapQr) doc.addImage(mapQr, 'PNG', mapX + 11, qrY + 6, 90, 90);
+    } catch (e) {}
+  }
 
   /* Office contacts, next to the QRs — clean 4-line block */
-  var infoX = 292;
+  var infoX = (mapOn && gpay) ? 412 : 292;
+  var infoCols = infoX > 300 ? 1 : 2, infoRowH = infoCols === 1 ? 12 : 14;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
   doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   _dt(doc, hasDev, infoX, qrY + 10, 'सम्पर्क  ·  OFFICE CONTACTS', 'SAMPARK  ·  OFFICE CONTACTS');
@@ -843,15 +858,16 @@ async function downloadTicketPDF(b) {
   doc.setTextColor(INK[0], INK[1], INK[2]);
   var offices = ((window.SHG_BOOT && Array.isArray(SHG_BOOT.help)) ? SHG_BOOT.help : [])   /* one contact list, from the server (4 Oct 2026) */;
   offices.forEach(function (o, i) {
-    var ox = infoX + (i % 2) * ((W - 40 - infoX) / 2);
-    var oy = qrY + 28 + Math.floor(i / 2) * 14;
+    var ox = infoX + (i % infoCols) * ((W - 40 - infoX) / infoCols);
+    var oy = qrY + 28 + Math.floor(i / infoCols) * infoRowH;
     doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text(o[0] + ':', ox, oy);
     doc.setFont('helvetica', 'normal'); doc.text(o[1], ox + 58, oy);
   });
   doc.setFontSize(7.5); doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
   var addrLines = _coAddr() ? doc.splitTextToSize(pdfSafe('Head Office: ' + _coAddr()), W - 40 - infoX) : [];
-  if (addrLines.length) doc.text(addrLines, infoX, qrY + 66);
-  var infoY = qrY + 66 + Math.max(0, addrLines.length - 1) * 9;
+  var addrY = qrY + Math.max(66, 28 + Math.ceil(offices.length / infoCols) * infoRowH + 4);   // one column (wx1, 3 QR cards) runs longer
+  if (addrLines.length) doc.text(addrLines, infoX, addrY);
+  var infoY = addrY + Math.max(0, addrLines.length - 1) * 9;
 
   /* Agent — one clean line if applicable */
   if (b.agentCode) {

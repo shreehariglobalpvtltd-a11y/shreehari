@@ -119,6 +119,47 @@ final class BookingService
     }
 
     /**
+     * 25 Nov 2026 (wx1, owner: "payment ma NPR ki INR choose garna milos"): a CUSTOMER
+     * (no seller, so no desk code) who chose NPR on the SmartBook card gets the NPR total
+     * frozen on the sale at today's company rate (npr_per_inr) - the same three columns an
+     * NPR desk fills, so the ticket prints NPR as the main amount (Ticket::isNprSale).
+     * INR stays the currency the books run in. Nothing without the fx columns
+     * (upgrade-2026-10-04-counter-desks.sql) or with customer_currency_choice_on off.
+     *
+     * @param array<string, mixed> $request
+     * @param array<string, mixed>|null $seller
+     * @return array<string, mixed> merged into the bookings insert
+     */
+    private static function customerFxStamp(array $request, ?array $seller, float $totalInr): array
+    {
+        if ($seller !== null || strtoupper((string) ($request['payCurrency'] ?? '')) !== 'NPR'
+            || !Settings::getBool('customer_currency_choice_on', true) || !CounterDesk::frozenColumns()['bookings']) {
+            return [];
+        }
+        $rate = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+        $rate = $rate > 0 ? round($rate, 4) : 1.6;
+
+        return ['fx_currency' => 'NPR', 'fx_rate' => $rate, 'fx_total' => (float) round($totalInr * $rate)];
+    }
+
+    /**
+     * wx1 (25 Nov 2026): a booking's frozen local total follows a new INR total
+     * (a seat cancelled, a fare corrected) at the SAME frozen rate, so the ticket
+     * and pay.php never ask for the NPR of the old fare. [] when nothing is frozen.
+     * @param array<string,mixed> $row the bookings row (SELECT *)
+     * @return array<string,mixed> merged into the bookings update
+     */
+    public static function fxFollow(array $row, float $newTotalInr): array
+    {
+        $cur  = strtoupper((string) ($row['fx_currency'] ?? ''));
+        $rate = (float) ($row['fx_rate'] ?? 0);
+        if ($cur === '' || $cur === 'INR' || $rate <= 0 || !array_key_exists('fx_total', $row)) {
+            return [];
+        }
+        return ['fx_total' => (float) round($newTotalInr * $rate)];
+    }
+
+    /**
      * What the drawer physically received, when that is not rupees.
      * payments.amount stays the INR the ledger sums; local_amount is the NPR
      * the clerk counted, so a Nepalgunj day sheet balances in the money that
@@ -570,6 +611,15 @@ final class BookingService
         $boardingIsOther = (string) ($request['boarding'] ?? '') === self::BOARDING_OTHER;
         $dropIsOther     = (string) ($request['drop'] ?? '') === self::BOARDING_OTHER;
         $originTown      = Security::clean($request['originTown'] ?? '', 80);
+        /* 25 Nov 2026 (wx1, owner): from Nepal a CUSTOMER boards only at the route's
+           own pickups (Nepalgunj office, Rupaidiha border parking) - no free-text
+           "Other". Staff sales ($seller / a signed-in selling staff) keep it.
+           Switch nepal_pickup_two_only (default on). */
+        if ($boardingIsOther && $seller === null && !Auth::isSellingStaff()
+            && Settings::getBool('nepal_pickup_two_only', true)
+            && Boarding::isNepalTown((string) ($route['from_city'] ?? '')) && Boarding::routeDirection($route) === 'toIndia') {
+            throw new RuntimeException('नेपालबाट चढ्ने ठाउँ सूचीबाट मात्र छान्नुहोस्। / From Nepal, please choose a pickup from the list.');
+        }
         if ($boardingIsOther) {
             $boardingStop = self::manualStop($request['boardingOther'] ?? '', 'boarding');
         } else {
@@ -858,7 +908,8 @@ final class BookingService
                 $pricing['total'] = round((float) $pricing['total'] + $extraAmt, 2);
             }
 
-            $bookingId = Database::insert('bookings', BookGeo::stamp() + $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
+            $bookingId = Database::insert('bookings', BookGeo::stamp() + $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total'])
+                + self::customerFxStamp($request, $seller, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',
@@ -3252,7 +3303,7 @@ final class BookingService
             $existingRefund = (float) ($locked['refund_amount'] ?? 0);
             $newRefundTotal = round($existingRefund + $refund['amount'], 2);
 
-            Database::update('bookings', [
+            Database::update('bookings', self::fxFollow($locked, (float) $newTotal) + [
                 'total_amount'  => $newTotal,
                 'refund_amount' => $newRefundTotal,
                 'refund_status' => $newRefundTotal > 0 ? 'pending' : ($locked['refund_status'] ?? 'none'),

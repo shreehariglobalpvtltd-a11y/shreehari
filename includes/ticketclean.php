@@ -798,7 +798,8 @@ trait TicketClean
                 [$s2s, $s2] = self::v2Fit(17, 11, $stamp['en'], 176, 'SemiBold');
                 self::gdTextP($im, $s2s, $mx - intdiv(self::gdWidthP($s2s, $s2, 'SemiBold'), 2), $my + 62, $sColI, $s2, 'SemiBold');
             } else {
-                $amt = $payQ['mode'] === 'npr' ? 'रू ' . indianNumber(self::nprDue($booking, (float) $sum['due'])) : '₹' . indianNumber((float) $sum['due']);
+                $amt = $payQ['mode'] === 'cod' ? (string) $payQ['dueTxt']   // wx1 pay-at-boarding: no QR, the due in the sale's money
+                    : ($payQ['mode'] === 'npr' ? 'रू ' . indianNumber(self::nprDue($booking, (float) $sum['due'])) : '₹' . indianNumber((float) $sum['due']));
                 self::gdText($im, 20, $mx - intdiv(self::gdWidth(20, $stamp['ne']), 2), $my - 34, $sColI, $stamp['ne'], true);
                 $aSz = 40;
                 while ($aSz > 20 && self::gdWidth($aSz, $amt) > 196) { $aSz--; }

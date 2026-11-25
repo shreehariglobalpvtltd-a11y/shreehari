@@ -942,6 +942,18 @@ let SEAT_TOKEN = 0;
    implementation covers the customer and the desk. */
 const BOARD_OTHER = '__other__';
 
+/* wx1 (25 Nov 2026): a CUSTOMER on a Nepal-origin leg picks only the route's own
+   boarding rows (nepal_pickup_two_only, default on). Staff (SHG_BOOT.staff) keep
+   "Other" - the desk may write down any place. */
+function nepalPickupOnly(r, ctx) {
+  const s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+  if (s.nepal_pickup_two_only === false || s.nepal_pickup_two_only === 0 || s.nepal_pickup_two_only === '0') return false;
+  if (window.SHG_BOOT && window.SHG_BOOT.staff) return false;
+  if (typeof isNepalPoint !== 'function') return false;
+  const from = (r && r.from) || (ctx && ctx.from) || '';
+  const to = (r && r.to) || (ctx && ctx.to) || '';
+  return isNepalPoint(from) && !isNepalPoint(to);
+}
 /* Was Other chosen on this select for this very leg? Read BEFORE a refill.
    The select remembers which bus + date it was last built for (data-leg),
    so a fresh leg never inherits the previous leg's choice or text. */
@@ -1219,9 +1231,25 @@ function renderSeats(instant) {
      when the view is built fresh; a different bus / date never inherits it. */
   const prevLeg = Flow.legs[Flow.legIndex];
   const sameLeg = !!(prevLeg && prevLeg.routeId === r.id && prevLeg.date === ctx.date);
-  syncOtherStop(bSel, '#boardingOther', t('boardOther'), legKey, otherWas.b, sameLeg ? (prevLeg.boardingOther || '') : '');
+  /* 25 Nov 2026 (wx1, owner): a Nepal -> India leg shows ONLY the route's real
+     pickups (Nepalgunj office, Rupaidiha border parking) - no "Other" box, no
+     near-me button. Customers only; a staff desk keeps both. Switch
+     nepal_pickup_two_only (default on); the server refuses Other the same way. */
+  const npOnly = nepalPickupOnly(r, ctx);
+  if (npOnly) {
+    if (bSel) bSel.setAttribute('data-leg', legKey);
+    const bo = $('#boardingOther'); if (bo) { bo.value = ''; bo.classList.add('hide'); }
+    if (bSel) bSel.onchange = () => { if (typeof updateSeatSummary === 'function' && Flow.route) { try { updateSeatSummary(); } catch (e) {} } };
+  } else {
+    syncOtherStop(bSel, '#boardingOther', t('boardOther'), legKey, otherWas.b, sameLeg ? (prevLeg.boardingOther || '') : '');
+  }
   syncOtherStop(dSel, '#dropOther', t('dropOther'), legKey, otherWas.d, sameLeg ? (prevLeg.dropOther || '') : '');
-  nearMeWire(bSel);
+  if (npOnly) {
+    const nb = $('#bpNearMe'), nn = $('#bpNearMeNote');
+    if (nb) nb.classList.add('hide'); if (nn) nn.classList.add('hide');
+  } else {
+    nearMeWire(bSel);
+  }
 
   $('#seatMaxNote').textContent = tf('seatNote', { n: CONFIG.booking.maxSeats });
 

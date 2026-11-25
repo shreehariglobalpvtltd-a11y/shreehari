@@ -287,6 +287,14 @@ final class PublicLayout
                 'addressNe' => trim((string) ($o['addressNe'] ?? $o['address_ne'] ?? '')),
                 'hours'   => trim((string) ($o['hours'] ?? '')),
                 'mapUrl'  => trim((string) ($o['mapUrl'] ?? $o['map_url'] ?? '')),
+                // 25 Nov 2026 (wx1-c1): the office in-charge (कार्यालय प्रमुख); the photo only as a same-origin upload path
+                'inchargeName'  => trim((string) ($o['inchargeName'] ?? '')),
+                'inchargePhone' => trim((string) ($o['inchargePhone'] ?? '')),
+                // the digits CounterDesk already gave the country code (+977 for a Nepal office) win
+                'inchargeTel'   => ($inT = preg_replace('/\D/', '', (string) ($o['inchargeTel'] ?? ''))) !== '' ? 'tel:+' . $inT
+                    : (trim((string) ($o['inchargePhone'] ?? '')) !== '' ? self::telHref((string) $o['inchargePhone']) : ''),
+                'inchargePhoto' => preg_match('#^/uploads/[A-Za-z0-9/_.-]+\.(?:webp|jpe?g|png)$#', (string) ($o['inchargePhoto'] ?? '')) === 1
+                    && !str_contains((string) $o['inchargePhoto'], '..') ? (string) $o['inchargePhoto'] : '',
             ];
         }
         // Head office first, then the order given.

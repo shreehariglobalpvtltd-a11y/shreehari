@@ -1001,6 +1001,7 @@ function myBookingCard(b) {
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mywa="' + esc(b.id) + '">🟢 WhatsApp</button>' : ''}
       <button class="btn btn-orange btn-sm" type="button" data-myrebook="${esc(b.id)}">${t('btnRebook')}</button>
       ${canCancel(b) ? '<button class="btn btn-danger-ghost btn-sm" type="button" data-mycancel="' + esc(b.id) + '">' + t('btnCancel') + '</button>' : ''}
+      ${b.status === 'confirmed' && !tripCx && b.trackUrl && typeof famShareBtn === 'function' && typeof famShareOn === 'function' && famShareOn() ? famShareBtn(b.trackUrl) : ''}
     </div>
     ${(b.status === 'pending' || b.status === 'confirmed') && depTimestamp(b) > Date.now() && !tripCx ? distanceWidgetHTML(b) : ''}
   </div>`;

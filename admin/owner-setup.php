@@ -22,6 +22,7 @@ require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/driverauth.php';
 require_once INCLUDE_PATH . '/normalfare.php';
+require_once INCLUDE_PATH . '/travelguide.php';   // 25 Nov 2026 (wx1-c2): onward buses + luggage rule
 
 $admin = admin_boot('dashboard.view');
 $can   = Auth::canManageSettings();
@@ -111,6 +112,34 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ((string) ($_POST['act'] ?? '') === 'esewa_qr' && !Auth::isSuperadmin()) {
         /* 25 Nov 2026 (mp1): the Nepal payment QR is a super-admin's (Payment Management). */
         $flash[] = ['bad', 'नेपाली QR सुपर-एडमिनले मात्र राख्न/हटाउन मिल्छ · only a super-admin can change the Nepal QR'];
+    } elseif ((string) ($_POST['act'] ?? '') === 'onward') {
+        /* 25 Nov 2026 (wx1-c2): onward buses from Nepalgunj for /travel-info#onward. Only
+           what the office types is stored; a town with nothing filled is not shown. */
+        $rows = TravelGuide::clean(array_values((array) ($_POST['onw'] ?? [])));
+        Settings::set('onward_buses_json', $rows, 'json', 'company');
+        Settings::flush();
+        Logger::audit('settings.onward_buses', 'settings', 'owner-setup', null, ['rows' => count($rows)], 'Onward buses from Nepalgunj');
+        $flash[] = ['ok', 'आगेको बस सेभ भयो · onward buses saved (' . count($rows) . ')'];
+    } elseif ((string) ($_POST['act'] ?? '') === 'luggage') {
+        /* 25 Nov 2026 (wx1-c2): the free luggage rule + bus facilities on the customer home,
+           /travel-info and the WhatsApp bot's luggage answer. */
+        $free  = (int) ($_POST['luggage_free_kg'] ?? 0);
+        $cabin = (int) ($_POST['cabin_bag_kg'] ?? -1);
+        if ($free < 1 || $free > 100 || $cabin < 0 || $cabin > 50) {
+            $flash[] = ['bad', 'किलो मिलेन · luggage 1-100 kg, cabin bag 0-50 kg'];
+        } else {
+            $fac = [];
+            foreach (preg_split('/\R/u', (string) ($_POST['bus_facilities'] ?? '')) ?: [] as $line) {
+                $line = trim(Security::clean($line, 60));
+                if ($line !== '' && count($fac) < 12) { $fac[] = $line; }
+            }
+            Settings::set('luggage_free_kg', (string) $free, 'int', 'booking', true);
+            Settings::set('cabin_bag_kg', (string) $cabin, 'int', 'booking', true);
+            Settings::set('bus_facilities_json', $fac, 'json', 'booking', true);
+            Settings::flush();
+            Logger::audit('settings.luggage', 'settings', 'owner-setup', null, ['free' => $free, 'cabin' => $cabin, 'facilities' => $fac], 'Luggage rule + bus facilities');
+            $flash[] = ['ok', 'सामान नियम सेभ भयो · luggage rule saved (' . $free . ' + ' . $cabin . ' kg)'];
+        }
     } elseif ((string) ($_POST['act'] ?? '') === 'esewa_qr') {
         /* 21 Nov 2026 (owner: "NPJ branch ko chhuttai Nepali wala QR rakhdinus"): the
            Nepal counter's own eSewa / Fonepay QR image, printed on NPR tickets that
@@ -324,6 +353,45 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
       <?php endforeach; ?>
     </div>
     <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="nf_on" value="1" <?= NormalFare::on() ? 'checked' : '' ?>> देखाउने · Show on app, desk and ticket</label>
+    <p style="margin:12px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save</button></p>
+  </form>
+
+  <?php
+  /* 25 Nov 2026 (wx1-c2): the 6 towns as names only + 2 free rows; saved rows keep their values. */
+  $onwSaved = []; foreach (TravelGuide::onward() as $r) { $onwSaved[mb_strtolower($r['to'], 'UTF-8')] = $r; }
+  $onwRows = [];
+  foreach (TravelGuide::TOWNS as [$to, $toNe]) { $onwRows[] = $onwSaved[mb_strtolower($to, 'UTF-8')] ?? ['to' => $to, 'to_ne' => $toNe]; unset($onwSaved[mb_strtolower($to, 'UTF-8')]); }
+  foreach ($onwSaved as $r) { $onwRows[] = $r; }
+  $onwRows[] = []; $onwRows[] = [];
+  ?>
+  <form method="post" class="os-card" id="onward">
+    <?= Security::csrfField() ?><input type="hidden" name="act" value="onward">
+    <h2>🧭 नेपालगञ्जपछि आगेको बस · Onward buses from Nepalgunj</h2>
+    <p class="hint"><a href="/travel-info?lang=ne#onward" target="_blank" rel="noopener">/travel-info</a> मा देखिन्छ। <b>साँचो</b> समय, बस कम्पनी र फोन मात्र लेख्नुहोस् — खाली छोडेको सहर देखिँदैन; सबै खाली भए "नेपालगञ्ज कार्यालयलाई सोध्नुहोस्" र कार्यालयको फोन देखिन्छ।</p>
+    <?php foreach ($onwRows as $i => $r): ?>
+      <div class="os-f" style="padding:8px 0;border-bottom:1px dashed var(--line)">
+        <label>सहर · Town<input name="onw[<?= (int) $i ?>][to]" maxlength="40" value="<?= $e($r['to'] ?? '') ?>" placeholder="Town"></label>
+        <label>नेपालीमा · in Nepali<input name="onw[<?= (int) $i ?>][to_ne]" maxlength="40" value="<?= $e($r['to_ne'] ?? '') ?>"></label>
+        <label>समय · Times<input name="onw[<?= (int) $i ?>][times]" maxlength="120" value="<?= $e($r['times'] ?? '') ?>" placeholder="बिहान … / बेलुका …"></label>
+        <label>बस / कम्पनी · Operator<input name="onw[<?= (int) $i ?>][operator]" maxlength="80" value="<?= $e($r['operator'] ?? '') ?>"></label>
+        <label>फोन · Phone<input name="onw[<?= (int) $i ?>][phone]" maxlength="40" inputmode="tel" value="<?= $e($r['phone'] ?? '') ?>"></label>
+        <label>नोट · Note<input name="onw[<?= (int) $i ?>][note]" maxlength="160" value="<?= $e($r['note'] ?? '') ?>"></label>
+      </div>
+    <?php endforeach; ?>
+    <p style="margin:12px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save</button></p>
+  </form>
+
+  <?php $lugNow = TravelGuide::luggage(); ?>
+  <form method="post" class="os-card" id="luggage">
+    <?= Security::csrfField() ?><input type="hidden" name="act" value="luggage">
+    <h2>🧳 सामान र बसका सुविधा · Luggage &amp; bus facilities</h2>
+    <p class="hint">ग्राहकको होम पेज, /travel-info र WhatsApp bot को "कति सामान?" जवाफमा यही देखिन्छ। नियम तथा सर्त (Section G) सँग मिलाउनुहोस्।</p>
+    <div class="os-f">
+      <label>ठूलो झोला · Hold bag (kg)<input name="luggage_free_kg" type="number" min="1" max="100" value="<?= (int) $lugNow['free'] ?>"></label>
+      <label>ह्यान्ड झोला · Cabin bag (kg)<input name="cabin_bag_kg" type="number" min="0" max="50" value="<?= (int) $lugNow['cabin'] ?>"></label>
+    </div>
+    <label style="display:block;margin-top:10px;font-size:12px;color:var(--muted)">बसका सुविधा, एक लाइनमा एउटा · Bus facilities, one per line
+      <textarea name="bus_facilities" rows="5" style="display:block;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font:inherit"><?= $e(implode("\n", TravelGuide::facilities())) ?></textarea></label>
     <p style="margin:12px 0 0"><button class="btn btn-orange" type="submit" <?= $can ? '' : 'disabled' ?>>सेभ · Save</button></p>
   </form>
 

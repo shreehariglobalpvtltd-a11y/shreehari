@@ -365,6 +365,19 @@ final class Ticket
             if ($np === '') {
                 $np = self::NEPAL_OFFICE_MAP_DEFAULT;
             }
+            /* 25 Nov 2026 (wx1, owner: the QR = the place the passenger chose): on a
+               Nepal -> India trip sold on the India side, a passenger who boards at the
+               Nepalgunj office (or whose pickup pin IS the office) or at Rupaidiha border
+               parking gets only that pickup QR - no extra Nepal office row. Without a pin
+               on that pickup (no pickup QR) the office row stays, never an empty list.
+               Switch ticket_np_pickup_only (default on). */
+            if ($toIndia && !$npIssued && Settings::getBool('ticket_np_pickup_only', true)) {
+                $tk = Boarding::townKey(self::stopForPrint($label));   // "Rupaidiha Border Parking" -> rupaidihaborderparking
+                if ($board !== '' && (str_starts_with($tk, 'rupaidiha')
+                    || $board === $np || preg_match('/^nepalg[au]nj/', $tk) === 1)) {
+                    return $out;
+                }
+            }
             $npPhone = trim((string) (preg_split('#\s*/\s*#', Settings::getString('nepal_phone', ''))[0] ?? ''));
             $npReg   = trim(Settings::getString('nepal_reg', ''));
             $npPan   = trim(Settings::getString('nepal_pan', ''));
@@ -2970,7 +2983,7 @@ final class Ticket
         self::gdRounded($im, 550, 1270 + $grow, 1010, $pcB, 16, $white);
         DocArt::roundOutline($im, 550, 1270 + $grow, 1010, $pcB, 16, $royal, 2);
         DocArt::roundOutline($im, 556, 1276 + $grow, 1004, $pcB - 6, 12, $edge, 1);
-        $hOrg = $payQ['qr'] !== '' || $payQ['mode'] === 'npr';    // 19 Nov 2026: orange while money is due
+        $hOrg = $payQ['qr'] !== '' || $payQ['mode'] === 'npr' || $payQ['mode'] === 'cod';    // 19 Nov 2026: orange while money is due (25 Nov wx1: pay-at-boarding too)
         DocArt::gradBox($im, 556, 1276 + $grow, 1004, 1326 + $grow, 12,
             $hOrg ? self::P_ORG : DocArt::ROYAL, $hOrg ? self::P_ORG_D : DocArt::NAVY);
         imagefilledrectangle($im, 556, 1316 + $grow, 1004, 1326 + $grow, $hOrg ? $orange : $navy);
@@ -2998,7 +3011,7 @@ final class Ticket
            the office's own eSewa QR image when there is one, else the eSewa id
            and the NPR due in words. Same card, same canvas. */
         $mapQ    = self::mapQrs($booking);
-        $payOpen = $payQ['qr'] !== '' || $payQ['mode'] === 'npr';
+        $payOpen = $payQ['qr'] !== '' || $payQ['mode'] === 'npr' || $payQ['mode'] === 'cod';   // wx1: cod = no QR, the header says PAY ON BOARDING
         $hTxt = $payOpen ? $payQ['label'] : ($mapQ !== [] ? 'चढ्ने ठाउँ नक्सा  ·  PICKUP MAP' : 'भुक्तानी  ·  PAYMENT');
         $hMax = 420 - ($badgeW > 0 ? $badgeW + 12 : 0);
         $hSz = 22;
@@ -3083,10 +3096,11 @@ final class Ticket
             imagearc($im, $mx, $my, 190, 190, 0, 360, $sc);
             imagesetthickness($im, 1);
             if ($payOpen) {
-                $big = 'रू ' . indianNumber(self::nprDue($booking, (float) $settlement['due']));
+                $big = $payQ['mode'] === 'cod' ? (string) $payQ['dueTxt'] : 'रू ' . indianNumber(self::nprDue($booking, (float) $settlement['due']));
+                $sealTop = $payQ['mode'] === 'cod' ? 'बसमा तिर्ने' : 'तिर्न बाँकी';   // wx1: pay-at-boarding seal
                 $bSz = 34;
                 while ($bSz > 18 && self::gdWidth($bSz, $big) > 170) { $bSz--; }
-                self::gdText($im, 16, $mx - intdiv(self::gdWidth(16, 'तिर्न बाँकी'), 2), $my - 30, $sc, 'तिर्न बाँकी', true);
+                self::gdText($im, 16, $mx - intdiv(self::gdWidth(16, $sealTop), 2), $my - 30, $sc, $sealTop, true);
                 self::gdText($im, $bSz, $mx - intdiv(self::gdWidth($bSz, $big), 2), $my + 20, $sc, $big, true);
             } else {
                 imagesetthickness($im, 12);
@@ -3102,6 +3116,10 @@ final class Ticket
         } elseif ($settlement['due'] <= 0) {
             self::gdText($im, 18, 576, 1716 + $grow, $green, 'भुक्तानी स्वीकृत · Payment approved', true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'तिर्न बाँकी छैन · Nothing more to pay', 410), false);
+        } elseif ($payQ['mode'] === 'cod') {
+            /* 25 Nov 2026 (wx1): pay-at-boarding - no pay QR, the cash is paid on the bus. */
+            self::gdText($im, 18, 576, 1716 + $grow, $orange, $clampTo(18, 'बसमा तिर्ने · Pay on boarding', 410), true);
+            self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'बसमा नगद तिर्नुहोस् · Cash on the bus', 410), false);   // the amount is in the header + Due line
         } elseif ($payQ['mode'] === 'office') {
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, 'WhatsApp: +' . $payQ['wa'], 410), true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'कार्यालयले भुक्तानी विवरण पठाउनेछ', 410), false);
@@ -3427,12 +3445,19 @@ final class Ticket
         $payable = $due > 0 && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true);
         $out    += ['qr' => '', 'caption' => '', 'esewa' => '', 'esewaImg' => '', 'dueTxt' => self::money($booking, $due, false),
             'country' => self::payCountry($booking), 'paid' => $due <= 0];
+        /* 25 Nov 2026 (wx1, owner: "cash ma pay QR nachahinchha"): a pay-at-boarding
+           (COD) ticket carries NO payment QR - the crew takes the cash on the bus.
+           Only an online-pay ticket shows one. Switch ticket_cod_no_payqr (default on). */
+        if ($payable && (int) ($booking['is_cod'] ?? 0) === 1 && Settings::getBool('ticket_cod_no_payqr', true)) {
+            return $out + ['mode' => 'cod', 'payload' => $live,
+                'label' => 'बसमा तिर्ने · PAY ON BOARDING ' . self::money($booking, $due, false)];
+        }
         /* 25 Nov 2026 (mp1 tk, ticket_pay_qr_by_country): a trip from the Nepal side / a
            Nepal-issued sale that still owes money pays to the NEPAL QR too (eSewa / Fonepay,
            amount in रू), not UPI - only once the office has a Nepal QR image or eSewa id;
            with neither, the old UPI path below stays. Words only: the image has no amount.
            Review (money): only where a raw UPI code would be allowed (staticPayQrOk -
-           confirmed, not pay-at-boarding, no proof waiting); a COD / pending ticket keeps
+           confirmed, not pay-at-boarding, no proof waiting); a pending ticket keeps (COD returned above: no QR)
            the live pay.php link below, whose UTR box reaches the COD queue / proof clock. */
         $npCountry = false;
         if ($payable && self::frozenNpr($booking) <= 0 && $out['country'] === 'NP' && self::staticPayQrOk($booking)) {
@@ -4808,8 +4833,9 @@ final class Ticket
                 'en' => 'eSewa ' . $npDueTxt, 'rgb' => self::ORANGE, 'ecc' => QrCode::ECC_L];
             $nprWords = false;   // the slot's own caption carries the amount + id (a 4th slot leaves no room for the words)
         }
+        $codWords = $payPdf['mode'] === 'cod' && $sumP['due'] > 0;   // 25 Nov 2026 (wx1): pay-at-boarding, no pay QR - the due in words
         $pdfQrs   = array_slice($pdfQrs, 0, 4);
-        $compact  = count($pdfQrs) >= 4 || ($nprWords && count($pdfQrs) >= 3);
+        $compact  = count($pdfQrs) >= 4 || (($nprWords || $codWords) && count($pdfQrs) >= 3);
         $qStep    = $compact ? 66.0 : 88.0;   // slot pitch
         $qBox     = $compact ? 62.0 : 70.0;   // coloured frame
         $qImg     = $compact ? 54.0 : 62.0;   // the QR itself
@@ -4849,9 +4875,18 @@ final class Ticket
                 while ($npSz > 4.5 && $pdf->textWidth($npTx, $npSz, 'F2') > $npW) { $npSz -= 0.25; }
                 $pdf->text($npX, $footY + $npY, $npTx, $npSz, 'F2', self::ORANGE);
             }
+        } elseif ($codWords) {
+            /* pay-at-boarding: no QR, the amount the crew collects on the bus */
+            $npX = 284.0 + count($pdfQrs) * $qStep;
+            $npW = max(60.0, $W - 40 - $npX);
+            self::devText($pdf, $npX, $footY + 10, 'बसमा तिर्ने · ON BOARDING', 7, $F7, self::MUTE);
+            foreach ([[$money((float) $sumP['due']), 22.0, 10.0], ['PAY ON BOARDING', 38.0, 7.0], ['CASH ON THE BUS', 48.0, 7.0]] as [$npTx, $npY, $npSz]) {
+                while ($npSz > 4.5 && $pdf->textWidth($npTx, $npSz, 'F2') > $npW) { $npSz -= 0.25; }
+                $pdf->text($npX, $footY + $npY, $npTx, $npSz, 'F2', self::ORANGE);
+            }
         }
 
-        if (!$cleanPdf && DocArt::heritageOn() && count($pdfQrs) <= 1 && !($payPdf['qr'] === '' && $payPdf['mode'] === 'npr' && $sumP['due'] > 0)) {
+        if (!$cleanPdf && DocArt::heritageOn() && count($pdfQrs) <= 1 && !($payPdf['qr'] === '' && $payPdf['mode'] === 'npr' && $sumP['due'] > 0) && !$codWords) {
             $hw = 150.0; $hx = $W - 40 - $hw; $hy = $footY + 8;
             if (DocArt::pdfBand($pdf, $hx, $hy, $hw, 50, 0.5, 0.8)) {
                 $pdf->setLineWidth(1.0);

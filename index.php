@@ -167,6 +167,13 @@ $boot['settings']['nepal_esewa_qr_url']       = (static function (): string {
     }
     return '';
 })();
+/* 25 Nov 2026 (wx1): no pay QR on a pay-at-boarding ticket (Ticket::paymentQr 'cod'), the
+   pickup map QR on the app's fallback PDF (ticket_maps_qr, like the server ticket), a Nepal
+   -> India customer picks only the route's own pickups, the big family-share button. */
+$boot['settings']['ticket_cod_no_payqr']   = Settings::getBool('ticket_cod_no_payqr', true);
+$boot['settings']['ticket_maps_qr']        = Settings::getBool('ticket_maps_qr', true);
+$boot['settings']['nepal_pickup_two_only'] = Settings::getBool('nepal_pickup_two_only', true);
+$boot['settings']['family_share_btn_on']   = Settings::getBool('family_share_btn_on', true);
 
 /* Counter mode (3 Sep 2026): when a staff member who may sell is signed in,
    tell the app so it runs the SAME search -> seats -> checkout as a counter
