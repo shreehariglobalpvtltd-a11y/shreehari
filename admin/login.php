@@ -163,6 +163,26 @@ $devPanel = static function (array $hold, string $btnCls, string $altCls): strin
 };
 
 /* =====================================================================
+   25 Nov 2026 — THE EASY DOOR (owner: "login saroi jhau bhayo - only code ra admin le
+   rakheko password, no more extra"). Mode -> code or mobile -> password (FirstName@2026 by
+   default), nothing else: admin/_easy-door.php + includes/easylogin.php. It is the page a
+   plain /admin/login.php shows while login_easy_on (default ON); ?classic=1 / ?step= / a
+   held device step keep every older door exactly as it was.
+   ===================================================================== */
+require_once INCLUDE_PATH . '/easylogin.php';
+if (EasyLogin::on() && Auth::deviceHold() === null) {
+    $easyPost = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['door'] ?? '') === 'easy';
+    $easyGet  = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && array_intersect(array_keys($_GET), ['classic', 'step', 'other', 'code', 'forget', 'relock', 'portal_old']) === [];
+    if ($easyPost || $easyGet) {
+        if ($easyGet && ($me = Auth::admin()) !== null) {
+            Response::redirect($safeNext !== 'index.php' ? 'admin/' . $safeNext : ltrim(Auth::homeUrl($me), '/'));
+        }
+        require __DIR__ . '/_easy-door.php';
+        exit;
+    }
+}
+
+/* =====================================================================
    30 Oct 2026 — THE ONE DOOR. Owner: "login system dherai messy chha …
    number diyo bhane number + WhatsApp OTP, natra 'hi' pathaune; natra simple
    agent ID ra simple password. Login minimalistic, smooth, sabai ko lagi

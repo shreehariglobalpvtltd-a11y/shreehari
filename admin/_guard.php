@@ -96,11 +96,13 @@ function admin_nav(): array
         ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Staff Logins & Passwords', 'perm' => 'staff.manage',   'section' => $S1],
         ['href' => 'permissions.php',  'icon' => 'shield',     'label' => 'Roles & Permissions',    'perm' => 'staff.manage',     'section' => $S1],
         ['href' => 'sessions.php',     'icon' => 'shield',     'label' => 'Sessions & Login Security', 'perm' => 'staff.manage',  'section' => $S1],
+        ['href' => 'login-reset.php',  'icon' => 'shield',     'label' => '🔑 सजिलो लगइन · Easy login & reset', 'perm' => 'staff.manage', 'section' => $S1],   // 25 Nov 2026: easy door, FirstName@2026 reset
         ['href' => 'login-requests.php', 'icon' => 'shield',   'label' => '🆔 लगइन तयार · Login setup & PIN', 'perm' => 'staff.manage', 'section' => $S1],   // 15 Nov 2026: code-first login
         // 29 Oct 2026 audit: Staff Applications left the menu — one approval
         // queue (Team & Approvals), which links to it. The page is unchanged.
         ['href' => 'team-invite.php',  'icon' => 'mail',       'label' => 'Invites & Renewals',     'perm' => 'customers.view',   'section' => $S1],
         ['href' => 'drivers.php',      'icon' => 'user-solo',  'label' => 'Drivers & Bus Crew',     'perm' => 'drivers.view',     'section' => $S1],
+        ['href' => 'driver-app.php',   'icon' => 'user-solo',  'label' => '📲 चालक App · Driver app download', 'perm' => 'drivers.view', 'section' => $S1],   // 25 Nov 2026: native S Hari Driver APK
         // 29 Oct 2026 (management upgrade 3.5): the office's own to-do list - never for an agent login.
         ['href' => 'office-ops.php',   'icon' => 'clipboard',  'label' => 'Office Tasks & Daily Work', 'perm' => $agentView ? 'office.tasks' : 'bookings.view', 'section' => $S1],
         ['href' => 'company.php',      'icon' => 'building',   'label' => 'Pvt Ltd & Branches',     'perm' => 'dashboard.view',   'section' => $S1],

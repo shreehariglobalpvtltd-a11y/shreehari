@@ -1506,6 +1506,9 @@ final class Auth
         if ($adminId <= 0) {
             return;
         }
+        /* 25 Nov 2026 (easy login): a changed password ends the FirstName@2026 default for this account
+           (EasyLogin::resetAdmin sets it back on after calling this). */
+        try { require_once __DIR__ . '/easylogin.php'; EasyLogin::markChanged($adminId); } catch (Throwable $e) {}
         require_once __DIR__ . '/walogin.php';
         WaLogin::revokeAdmin($adminId, $by > 0 ? $by : null);
 
