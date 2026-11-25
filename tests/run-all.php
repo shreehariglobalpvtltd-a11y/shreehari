@@ -268,6 +268,7 @@ const CORE_SUITES = [
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
     'op5-hold-test.php'               => 'every unpaid hold frees itself in 15-30 min; COD / proof / confirmed never touched (25 Nov)',
     'op5-credit-test.php'             => 'agent credit limit + Stop selling: refused at the limit on every agent door, settlement unblocks, counter never (25 Nov)',
+    'op5-trip-expenses-test.php'      => 'trip costs: sum per trip, NPR -> INR, P&L = income - expenses, agent refused (25 Nov op5)',
 ];
 
 /**
