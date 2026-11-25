@@ -255,6 +255,12 @@ final class WaSend
             if ($t['name'] !== '') {
                 return ['name' => $t['name'], 'lang' => $t['lang']];
             }
+            /* 25 Nov 2026 (mp4): Meta has just refused the configured ticket template (132001) -
+               not sent again for a few hours; the ticket waits for a free window / the office link. */
+            $set = trim(Settings::getString('whatsapp_template_name', ''));
+            if ($set !== '' && WaTplMeta::refusedRecently($set)) {
+                return ['name' => '', 'lang' => trim(Settings::getString('whatsapp_template_lang', 'en')) ?: 'en'];
+            }
         } catch (Throwable $e) {
         }
         return [
@@ -351,6 +357,18 @@ final class WaSend
             return ['route' => 'wait', 'why' => 'template held: ' . $paid];
         }
         return ['route' => 'cloud_template', 'why' => 'outside the 24 h window - approved template ' . $tpl];
+    }
+
+    /** Did this row fail on a Meta-side code that will fail again (131070 / 131042 / 132001), after the last "Meta fixed"? */
+    public static function permanentFailure(string $error, string $at = ''): bool
+    {
+        try {
+            require_once __DIR__ . '/wahealth.php';
+            $ts = $at !== '' ? (int) strtotime($at) : PHP_INT_MAX;
+            return WaHealth::on() && in_array(WaHealth::codeIn($error), WaHealth::PERMANENT, true) && $ts > WaHealth::fixedAt();
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /** Is a refusal worth another try later? */
@@ -503,7 +521,7 @@ final class WaSend
         $now = self::stamp();
 
         if ($key !== null) {
-            $have = Database::fetch('SELECT id, state, wamid, error, attempts, purpose FROM wa_outbox WHERE dedupe = :d', ['d' => $key]);
+            $have = Database::fetch('SELECT id, state, wamid, error, attempts, purpose, updated_at FROM wa_outbox WHERE dedupe = :d', ['d' => $key]);
             if ($have !== null) {
                 $out = ['id' => (int) $have['id'], 'state' => (string) $have['state'], 'dupe' => true,
                         'wamid' => (string) ($have['wamid'] ?? ''), 'error' => (string) ($have['error'] ?? '')];
@@ -512,6 +530,11 @@ final class WaSend
                    again - the person may have written in the meantime. A
                    secret's text is scrubbed once it is done: never resent. */
                 if (in_array((string) $have['purpose'], self::SECRET, true)) {
+                    return $out;
+                }
+                /* 25 Nov 2026 (mp4): failed for good on a Meta-side code (131070 / 131042 / 132001) -
+                   the same message again fails the same way; it waits for "Meta ठीक भयो". */
+                if ($have['state'] === 'failed' && self::permanentFailure((string) ($have['error'] ?? ''), (string) ($have['updated_at'] ?? ''))) {
                     return $out;
                 }
                 if (($have['state'] === 'failed' && (int) $have['attempts'] < self::MAX_ATTEMPTS * 2) || $have['state'] === 'waiting') {
@@ -918,6 +941,16 @@ final class WaSend
         $row['media_url'] = self::freshMedia((string) ($row['media_url'] ?? ''));
         $to     = (string) $row['to_number'];
         $window = (int) $row['no_free'] !== 1 && trim((string) ($row['body'] ?? '')) !== '' && self::windowOpen($to);
+        /* 25 Nov 2026 (mp4): a number that just answered 131070 (another app owns the chat) gets
+           no free message for a while - the template, or the wait + wa.me link (includes/wahealth.php). */
+        if ($window) {
+            try {
+                require_once __DIR__ . '/wahealth.php';
+                $window = !WaHealth::threadBlocked($to);
+            } catch (Throwable $e) {
+                // as before
+            }
+        }
         $tpl    = self::rowTemplate($row);
         $paid   = '';
         if ($tpl['name'] !== '' && !$window) {
@@ -963,7 +996,7 @@ final class WaSend
                 $spec = WaRoute::ticketRescueSpec((string) $row['purpose'], (array) $tpl['vars'], (string) ($tpl['header'] ?? ''),
                     $row['booking_id'] !== null ? (int) $row['booking_id'] : 0);
                 if ($spec !== null) {
-                    $rs = ['name' => $spec['name'], 'lang' => 'en', 'vars' => $spec['vars'], 'header' => ''];
+                    $rs = ['name' => $spec['name'], 'lang' => WaTplMeta::langOf($spec['name']), 'vars' => $spec['vars'], 'header' => ''];
                     $r2 = self::graph($to, self::templatePayload($rs));
                     self::noteSend();
                     $ok2 = $r2['success'] && $r2['message_id'] !== '';

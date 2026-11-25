@@ -150,6 +150,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Settings::set('nepal_esewa_qr', '', 'string', 'company');
                 Settings::touchTicketIdentity();   // mp1 tk: the Nepal pay QR on due tickets changes - cached tickets redraw
                 Settings::flush();
+                require_once INCLUDE_PATH . '/payqr.php';
+                PayQr::legacyRemoved($oldQr);   // mp4: the QR library stops printing it as the Nepal default
                 Logger::audit('settings.esewa_qr', 'settings', 'owner-setup', ['file' => $oldQr], ['file' => ''], 'Nepal eSewa QR removed');
                 $flash[] = ['ok', 'eSewa QR हटाइयो · removed'];
             } else {
@@ -185,6 +187,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Settings::set('nepal_esewa_qr', 'uploads/payqr/' . $name, 'string', 'company');
                 Settings::touchTicketIdentity();   // mp1 tk: the Nepal pay QR on due tickets changes - cached tickets redraw
                 Settings::flush();
+                require_once INCLUDE_PATH . '/payqr.php';
+                PayQr::importLegacy((int) $admin['id'], true);   // mp4: the new picture becomes the Nepal default in the QR library too
                 Logger::audit('settings.esewa_qr', 'settings', 'owner-setup', ['file' => $oldQr], ['file' => 'uploads/payqr/' . $name], 'Nepal eSewa QR uploaded');
                 $flash[] = ['ok', 'eSewa QR सेभ भयो · saved — NPR टिकटमा देखिन्छ'];
             }
@@ -425,6 +429,20 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
       <label>eSewa ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
     </div>
+<?php
+    /* review fix: once the QR library's Nepal default has its own payee, that id (the picture's
+       own) is what tickets and the pay page print - say so here instead of a silent no-op. */
+    $libNpPayee = '';
+    try {
+        require_once INCLUDE_PATH . '/payqr.php';
+        $libNp = PayQr::defaultFor('NP');
+        $libNpPayee = $libNp !== null ? trim((string) ($libNp['payee'] ?? '')) : '';
+    } catch (Throwable $ex) {
+        $libNpPayee = '';
+    }
+    if ($libNpPayee !== ''): ?>
+    <p class="hint">ℹ️ टिकट र pay page मा <b>Payment QR library</b> को मुख्य नेपाल QR सँगको ID छापिन्छ: <code><?= $e($libNpPayee) ?></code> — बदल्न <a href="payment-center.php">Payment Management → QR कोडहरू</a> मा जानुहोस्। · Tickets print the QR library's Nepal default payee; edit it there.</p>
+<?php endif; ?>
 
     <h2 style="margin-top:16px">5 · 📱 Play Store App signing SHA-256</h2>
     <p class="hint">Play Console → app → Setup → App signing → "App signing key certificate" को SHA-256। भरेपछि Claude ले app link (assetlinks) मा थप्छ।</p>

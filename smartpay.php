@@ -188,7 +188,7 @@ a{color:var(--primary)}
     <?php if ($hasEsewa): ?>
     <div class="pane" id="p-esewa" <?= $hasUpi ? 'hidden' : '' ?>>
       <?php if ($qr['esewa']['qr'] !== ''): ?><img class="qr" src="<?= $e($qr['esewa']['qr']) ?>" alt="eSewa QR" width="260" height="260"><?php endif; ?>
-      <div class="row"><span>eSewa ID</span><code id="esewaId"><?= $e($qr['esewa']['id']) ?></code></div>
+      <div class="row"><span><?= $e((string) ($qr['esewa']['kind'] ?? 'eSewa')) ?> ID</span><code id="esewaId"><?= $e($qr['esewa']['id']) ?></code></div>
       <div class="row"><span data-t="payee">Payee</span><b><?= $e($qr['esewa']['name']) ?></b></div>
       <div class="row"><span data-t="amtNpr">Amount (NPR)</span><b>NPR <?= $e(number_format((float) $qr['esewa']['npr'])) ?></b></div>
       <p class="note" data-t="esewaNote">Send this amount from the eSewa app with your PNR in the remarks.</p>

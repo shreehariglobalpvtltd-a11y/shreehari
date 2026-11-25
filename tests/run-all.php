@@ -288,7 +288,9 @@ const CORE_SUITES = [
     'wx1-pick-test.php'               => 'SmartBook Nepal -> India pickup chips: Nepalgunj office | Rupaidiha parking from the route real rows',
     // 25 Nov 2026 (mp3-bot): the chatbot answers what was asked
     'mp3-bot-test.php'                => 'bot answers what was asked: directory (every place + CEO line), auto-replies silent, gated PNR (last 4 digits) + name search, desk chalani / halkhabar / person, honest fallback, read-only AI tools',
-    'wx6-test.php'                    => 'Nepal journey (office 4 pm, our auto, 6 pm bus, one service), 5 pm NPT warning, boot coach, ticket styles, nav glide',
+    // 25 Nov 2026 (mp4): QR library, Google client JSON, WhatsApp ticket path after the Meta diagnosis
+    'mp4-qr-meta-test.php'            => 'payment QR library (CRUD, default, desk override, old QR migrated), Google client_secret JSON, WhatsApp: free in window / template in its synced language / 132001 rescue / 131042 hold / 131070 number hold / parked tickets + one office alert, Meta health card',
+    'wx6-test.php'                    =>'Nepal journey (office 4 pm, our auto, 6 pm bus, one service), 5 pm NPT warning, boot coach, ticket styles, nav glide',
 ];
 
 /**

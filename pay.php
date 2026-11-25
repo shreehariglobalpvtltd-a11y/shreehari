@@ -246,6 +246,7 @@ $claimErr = '';
 $ownsNow  = false;   // this browser / key already proves the ticket is theirs: no mobile asked
 $esewa    = null;
 $upiQr    = '';
+$upiQrStatic = '';
 $key      = '';
 $isPost   = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 $shotOn   = Settings::getBool('pay_claim_screenshot_on', true);
@@ -442,6 +443,21 @@ if ($chooser && $claim === null && !$proofIn) {
     } catch (Throwable $ex) {
         $upiQr = '';   // the button and the UPI ID still work
     }
+    /* 25 Nov 2026 (mp4): only when the dynamic UPI QR (amount + PNR) cannot be drawn, the India
+       QR picture uploaded on Payment Management (its default, or this desk's own) stands in. */
+    $upiQrStatic = '';   // review fix: the static picture's own UPI id, printed under it
+    if ($upiQr === '') {
+        try {
+            require_once INCLUDE_PATH . '/payqr.php';
+            $inRow = PayQr::pick($booking, 'IN');
+            $upiQr = PayQr::dataUri($inRow);
+            if ($upiQr !== '' && $inRow !== null) {
+                $upiQrStatic = trim((string) ($inRow['payee'] ?? '')) !== '' ? trim((string) $inRow['payee']) : $upiId;
+            }
+        } catch (Throwable $ex) {
+            $upiQr = '';
+        }
+    }
     if ($esewaId !== '') {
         $npr = $frozenNpr
             ? round((float) $booking['fx_total'] * $due / (float) $booking['total_amount'])
@@ -449,14 +465,20 @@ if ($chooser && $claim === null && !$proofIn) {
         /* 25 Nov 2026 (mp1): one Nepal QR everywhere - the uploaded NPJ QR the ticket prints
            (Ticket::esewaQrFile), else the fixed esewa-qr files. */
         require_once INCLUDE_PATH . '/payadapter.php';
-        $esewaQr = ManualQrAdapter::esewaQrSrc();
+        $esewaQr = ManualQrAdapter::esewaQrSrc($booking);   // mp4: the issuing desk's own QR (includes/payqr.php), else the NP default
         /* review fix: the holder name belongs to the wallet shown. The Nepal company's own eSewa
            shows nepal_esewa_name (or no name); India's esewa_name only beside India's esewa_id. */
         $npOwnEsewa = ($co['saleEntity'] ?? 'IN') === 'NP' && trim(Settings::getString('nepal_esewa_id', '')) !== ''
             && $esewaId === trim(Settings::getString('nepal_esewa_id', ''));
+        /* review fix (money): the id printed beside the picture is the picture's own - the QR
+           library row's payee (the same row Ticket::paymentQr prints), with its wallet name. */
+        require_once INCLUDE_PATH . '/payqr.php';
+        $npQrRow   = PayQr::pick($booking, 'NP');
+        $npQrPayee = $npQrRow !== null ? trim((string) ($npQrRow['payee'] ?? '')) : '';
         $esewa = [
-            'id'   => $esewaId,
-            'name' => $npOwnEsewa ? trim((string) ($co['payEsewaName'] ?? '')) : trim(Settings::getString('esewa_name', '')),
+            'id'   => $npQrPayee !== '' ? $npQrPayee : $esewaId,
+            'name' => $npQrPayee !== '' ? '' : ($npOwnEsewa ? trim((string) ($co['payEsewaName'] ?? '')) : trim(Settings::getString('esewa_name', ''))),
+            'kind' => $npQrPayee !== '' ? PayQr::printLabel((string) ($npQrRow['kind'] ?? '')) : 'eSewa',
             'npr'  => $npr,
             'qr'   => $esewaQr,
         ];
@@ -602,9 +624,10 @@ $bizWa = Settings::officeWhatsApp();
        Nepal sale, after the UPI QR otherwise. Built once, printed in one of the two places. */
     $esewaHtml = '';
     if (is_array($esewa) && ($esewa['id'] ?? '') !== '') {
-        $esewaHtml = '    <div class="es">' . "\n" . '      <h2>🇳🇵 eSewa</h2>' . "\n"
-            . (($esewa['qr'] ?? '') !== '' ? '      <div class="qrbox"><img class="qr" src="' . $e($esewa['qr']) . '" alt="eSewa QR" width="300" height="300"></div>' . "\n" : '')
-            . '      <div class="row">eSewa ID: <code>' . $e($esewa['id']) . '</code>' . (($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '') . '</div>' . "\n"
+        $esKind = (string) ($esewa['kind'] ?? 'eSewa');
+        $esewaHtml = '    <div class="es">' . "\n" . '      <h2>🇳🇵 ' . $e($esKind) . '</h2>' . "\n"
+            . (($esewa['qr'] ?? '') !== '' ? '      <div class="qrbox"><img class="qr" src="' . $e($esewa['qr']) . '" alt="' . $e($esKind) . ' QR" width="300" height="300"></div>' . "\n" : '')
+            . '      <div class="row">' . $e($esKind) . ' ID: <code>' . $e($esewa['id']) . '</code>' . (($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '') . '</div>' . "\n"
             . '      <div class="row">रकम · Amount: <b class="npr">रू ' . $e(number_format((float) ($esewa['npr'] ?? 0))) . '</b> (₹' . $e(number_format($total, 2)) . ')</div>' . "\n"
             . '      <div class="note">eSewa एपबाट पठाउँदा remarks मा ' . $e($pnr) . ' लेख्नुहोस्। · Put ' . $e($pnr) . ' in the eSewa remarks.</div>' . "\n"
             . '    </div>' . "\n";
@@ -616,7 +639,11 @@ $bizWa = Settings::officeWhatsApp();
 <?php if ($upiQr !== ''): ?>
     <div class="qrbox">
       <img class="qr" src="<?= $e($upiQr) ?>" alt="UPI QR · ₹<?= $e(number_format($total, 2)) ?>" width="300" height="300">
+<?php if ($upiQrStatic !== ''): /* the uploaded static picture: no amount inside it, its own UPI id under it */ ?>
+      <div class="cap">UPI ID: <code><?= $e($upiQrStatic) ?></code> — ₹<?= $e(number_format($total, 2)) ?> आफैं भर्नुहोस्, remarks मा <?= $e($pnr) ?> · type ₹<?= $e(number_format($total, 2)) ?> yourself, put <?= $e($pnr) ?> in the remarks</div>
+<?php else: ?>
       <div class="cap">QR स्क्यान गर्नुहोस् — रकम र PNR भरिएर आउँछ · Scan with any UPI app — amount and PNR filled in</div>
+<?php endif; ?>
     </div>
 <?php endif; ?>
 <?php if (!$nepalSale) { echo $esewaHtml; } ?>

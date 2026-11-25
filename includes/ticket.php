@@ -3110,7 +3110,7 @@ final class Ticket
             }
         }
         if ($payQ['mode'] === 'npr' && $settlement['due'] > 0) {
-            $l1 = $payQ['esewa'] !== '' ? 'eSewa: ' . $payQ['esewa'] : ($payQ['wa'] !== '' ? 'WhatsApp: +' . $payQ['wa'] : 'UPI: ' . $upiVpa);
+            $l1 = $payQ['esewa'] !== '' ? ($payQ['esewaKind'] ?? 'eSewa') . ': ' . $payQ['esewa'] : ($payQ['wa'] !== '' ? 'WhatsApp: +' . $payQ['wa'] : 'UPI: ' . $upiVpa);
             self::gdText($im, 18, 576, 1716 + $grow, $ink, $clampTo(18, $l1, 410), true);
             self::gdText($im, 15, 576, 1742 + $grow, $mut, $clampTo(15, 'तिर्न बाँकी · रू ' . indianNumber(self::nprDue($booking, (float) $settlement['due'])) . '  (₹' . indianNumber((float) $settlement['due']) . ')', 410), false);
         } elseif ($settlement['due'] <= 0) {
@@ -3443,7 +3443,7 @@ final class Ticket
            office has put its own eSewa QR image on the server). The office still
            approves every payment by hand - a QR never confirms anything. */
         $payable = $due > 0 && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true);
-        $out    += ['qr' => '', 'caption' => '', 'esewa' => '', 'esewaImg' => '', 'dueTxt' => self::money($booking, $due, false),
+        $out    += ['qr' => '', 'caption' => '', 'esewa' => '', 'esewaKind' => 'eSewa', 'qrKind' => 'eSewa', 'esewaImg' => '', 'dueTxt' => self::money($booking, $due, false),
             'country' => self::payCountry($booking), 'paid' => $due <= 0];
         /* 25 Nov 2026 (wx1, owner: "cash ma pay QR nachahinchha"): a pay-at-boarding
            (COD) ticket carries NO payment QR - the crew takes the cash on the bus.
@@ -3460,8 +3460,12 @@ final class Ticket
            confirmed, not pay-at-boarding, no proof waiting); a pending ticket keeps (COD returned above: no QR)
            the live pay.php link below, whose UTR box reaches the COD queue / proof clock. */
         $npCountry = false;
+        /* 25 Nov 2026 (mp4 QR library, includes/payqr.php): the issuing desk's own Nepal QR, else the
+           NP default - its payee (id / number) is the line printed with it. */
+        $qrRow = $payable ? self::payQrRow($booking) : null;
+        $qrPayee = $qrRow !== null ? trim((string) ($qrRow['payee'] ?? '')) : '';
         if ($payable && self::frozenNpr($booking) <= 0 && $out['country'] === 'NP' && self::staticPayQrOk($booking)) {
-            $npCountry = self::esewaQrFile() !== '' || trim(Settings::getString('nepal_esewa_id', '')) !== '';
+            $npCountry = self::esewaQrFile($booking) !== '' || trim(Settings::getString('nepal_esewa_id', '')) !== '' || $qrPayee !== '';
         }
         if ($payable && (self::frozenNpr($booking) > 0 || $npCountry)) {
             $co    = self::companyOf($booking);
@@ -3469,11 +3473,21 @@ final class Ticket
             if ($npCountry) {
                 $esewa = trim(Settings::getString('nepal_esewa_id', '')) !== '' ? trim(Settings::getString('nepal_esewa_id', '')) : $esewa;
             }
-            $img   = self::esewaQrFile();   // 21 Nov 2026: the uploaded QR prints even before an eSewa id is typed
+            /* review fix (money): the word printed before the id is the wallet the id belongs to -
+               "Khalti: 98…", "Global IME: …" - never "eSewa" for another wallet's number. */
+            $idKind = 'eSewa';
+            if ($qrPayee !== '') {
+                $esewa  = $qrPayee;   // the id that belongs to the QR picture printed beside it
+                $idKind = PayQr::printLabel((string) ($qrRow['kind'] ?? ''));
+            }
+            $img   = self::esewaQrFile($booking);   // 21 Nov 2026: the uploaded QR prints even before an eSewa id is typed
             $nprTx = 'रू ' . indianNumber(self::nprDue($booking, $due));
-            $out['esewa']    = $esewa;
-            $out['esewaImg'] = $img;
-            $out['caption']  = 'भुक्तानी · ' . ($esewa !== '' ? 'eSewa ' : '') . $nprTx;
+            $qrKind = $qrRow !== null ? PayQr::printLabel((string) ($qrRow['kind'] ?? '')) : ($esewa !== '' ? 'eSewa' : '');
+            $out['esewa']     = $esewa;
+            $out['esewaKind'] = $idKind;
+            $out['qrKind']    = $qrKind;
+            $out['esewaImg']  = $img;
+            $out['caption']   = 'भुक्तानी · ' . ($qrKind !== '' ? $qrKind . ' ' : '') . $nprTx;
             if ($esewa === '' && $vpa === '') {
                 $out['wa'] = Settings::officeWhatsApp();
             }
@@ -3556,9 +3570,33 @@ final class Ticket
         }
     }
 
-    /** The office's own eSewa QR image on the server (the files PayAdapter shows), or ''. */
-    public static function esewaQrFile(): string
+    /** The Nepal QR library row for this ticket (its desk's, else the NP default), or null. */
+    private static function payQrRow(?array $booking): ?array
     {
+        try {
+            if (!class_exists('PayQr')) {
+                require_once __DIR__ . '/payqr.php';
+            }
+            return PayQr::pick($booking, 'NP');
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * The office's own Nepal QR image on the server (the files PayAdapter shows), or ''.
+     * 25 Nov 2026 (mp4): the QR library first - the issuing desk's own QR for this
+     * $booking, else the NP default (includes/payqr.php); then the old single setting.
+     */
+    public static function esewaQrFile(?array $booking = null): string
+    {
+        $lib = self::payQrRow($booking);
+        if ($lib !== null) {
+            $p = PayQr::absPath($lib);
+            if ($p !== '') {
+                return $p;
+            }
+        }
         // 21 Nov 2026: the NPJ branch's own QR uploaded on admin/owner-setup.php comes first.
         $up = ltrim(str_replace('\\', '/', Settings::getString('nepal_esewa_qr', '')), '/');
         $files = ['esewa-qr.jpg', 'esewa-qr.png', 'assets/img/esewa-qr.jpg', 'assets/img/esewa-qr.png'];
@@ -4830,7 +4868,7 @@ final class Ticket
         $npDueTxt = self::frozenNpr($booking) > 0 ? $money((float) $sumP['due']) : 'NPR ' . indianNumber(self::nprDue($booking, (float) $sumP['due']));
         if ($nprWords && $cleanPdf && (string) ($payPdf['esewaImg'] ?? '') !== '') {
             $pdfQrs[] = ['payload' => '', 'img' => (string) $payPdf['esewaImg'], 'ne' => 'भुक्तानी QR',
-                'en' => 'eSewa ' . $npDueTxt, 'rgb' => self::ORANGE, 'ecc' => QrCode::ECC_L];
+                'en' => (string) (($payPdf['qrKind'] ?? '') !== '' ? $payPdf['qrKind'] : 'eSewa') . ' ' . $npDueTxt, 'rgb' => self::ORANGE, 'ecc' => QrCode::ECC_L];
             $nprWords = false;   // the slot's own caption carries the amount + id (a 4th slot leaves no room for the words)
         }
         $codWords = $payPdf['mode'] === 'cod' && $sumP['due'] > 0;   // 25 Nov 2026 (wx1): pay-at-boarding, no pay QR - the due in words
@@ -4871,7 +4909,7 @@ final class Ticket
             $npX = 284.0 + count($pdfQrs) * $qStep;
             $npW = max(60.0, $W - 40 - $npX);
             self::devText($pdf, $npX, $footY + 10, 'तिर्न बाँकी · DUE', 7, $F7, self::MUTE);
-            foreach ([[$npDueTxt, 22.0, 10.0], ['eSewa:', 38.0, 7.0], [$payPdf['esewa'] !== '' ? self::latin($payPdf['esewa']) : '-', 48.0, 7.0]] as [$npTx, $npY, $npSz]) {
+            foreach ([[$npDueTxt, 22.0, 10.0], [(string) ($payPdf['esewaKind'] ?? 'eSewa') . ':', 38.0, 7.0], [$payPdf['esewa'] !== '' ? self::latin($payPdf['esewa']) : '-', 48.0, 7.0]] as [$npTx, $npY, $npSz]) {
                 while ($npSz > 4.5 && $pdf->textWidth($npTx, $npSz, 'F2') > $npW) { $npSz -= 0.25; }
                 $pdf->text($npX, $footY + $npY, $npTx, $npSz, 'F2', self::ORANGE);
             }

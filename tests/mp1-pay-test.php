@@ -153,12 +153,16 @@ function cleanup(): void {
         elseif (Database::exists('SELECT 1 FROM settings WHERE skey = :k', ['k' => $k])) { Database::run('UPDATE settings SET svalue = :v, stype = :t WHERE skey = :k', ['v' => $row['svalue'], 't' => $row['stype'], 'k' => $k]); }
         else { try { Database::insert('settings', ['skey' => $k] + $row + ['sgroup' => 'payments']); } catch (Throwable $e) {} }   // unsetKeep() removed it
     }
+    /* mp4: viewing admin/payment-center.php copies the old single QR (this run's temp file) into
+       the QR library once - that row goes, and pay_qr_legacy_imported is restored via $keep */
+    try { Database::run("DELETE FROM pay_qr_codes WHERE file LIKE 'uploads/payqr/esewa-npj-mp1test%'"); } catch (Throwable $e) {}
     $keep = [];
     Settings::flush();
     foreach ($tmpFiles as $f) { @unlink($f); }
     if ($wroteCfg && is_file($CFG)) { @unlink($CFG); }
 }
 register_shutdown_function('cleanup');
+$keep['pay_qr_legacy_imported'] = Database::fetch('SELECT svalue, stype FROM settings WHERE skey = :k', ['k' => 'pay_qr_legacy_imported']);   // mp4 QR library flag
 
 echo "\n=== mp1 pay: Payment Management ===\n\n";
 foreach (['whatsapp_notify_customer' => '0', 'whatsapp_notify_admin' => '0', 'email_enabled' => '0'] as $k => $v) { setKeep($k, $v, 'bool'); }
@@ -587,7 +591,7 @@ check('B an NPR sale: the Nepal eSewa id + name, NPR from the frozen total (825)
     && str_starts_with((string) ($st['esewa']['qr'] ?? ''), 'data:image/png;base64,'), json_encode(['id' => $st['esewa']['id'] ?? null, 'npr' => $st['esewa']['npr'] ?? null, 'qr' => substr((string) ($st['esewa']['qr'] ?? ''), 0, 30)]));
 $st2 = (new ManualQrAdapter())->start(['pnr' => 'SHG-2026-00002', 'total_amount' => 1000.0, 'counter_code' => '', 'entity' => 'IN'], 1000.0);
 check('B an India sale keeps the India eSewa id (same QR picture as the ticket)', ($st2['esewa']['id'] ?? '') === '9811111111' && str_starts_with((string) ($st2['esewa']['qr'] ?? ''), 'data:image/png'));
-check('B pay.php reads the same QR (ManualQrAdapter::esewaQrSrc)', str_contains((string) file_get_contents($ROOT . '/pay.php'), 'ManualQrAdapter::esewaQrSrc()'));
+check('B pay.php reads the same QR (ManualQrAdapter::esewaQrSrc)', preg_match('/ManualQrAdapter::esewaQrSrc\(/', (string) file_get_contents($ROOT . '/pay.php')) === 1);   // mp4: now esewaQrSrc($booking)
 
 /* ---------------- E. Gmail poll end to end ---------------- */
 echo "\n-- E Gmail credits -> PayCredits\n";

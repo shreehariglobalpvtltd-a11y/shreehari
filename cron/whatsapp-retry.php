@@ -171,6 +171,62 @@ $purposeM  = $hasPurpose ? " AND (purpose IS NULL OR purpose IN ('ticket','ticke
 $purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
 $purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
 
+/* 5 Oct 2026: a ticket the customer already HAS is not "failed". Since 3 Oct
+   the ticket goes out on AiSensy (message_logs provider=aisensy, and the
+   "hi" queue wa_ticket_queue), while the Meta row for the same booking still
+   reads failed (131042). Without this every such booking was re-sent up to
+   six times - 33 dead resends on 5 Oct alone, and now that a resend goes via
+   AiSensy too, each would be a duplicate ticket on the passenger's phone. */
+$hasQueue = (int) Database::scalar(
+    "SELECT COUNT(*) FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_ticket_queue'",
+    [], 0
+) > 0;
+$alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
+                                       WHERE a.booking_id = b.id AND a.provider = 'aisensy'
+                                         AND (a.purpose IS NULL OR a.purpose <> 'seller_copy')
+                                         AND a.status IN ('sent','delivered','read'))"
+    . ($hasQueue ? " AND NOT EXISTS (SELECT 1 FROM wa_ticket_queue q
+                                      WHERE q.booking_id = b.id AND q.role IN ('customer','alt')
+                                        AND q.status IN ('sent','delivered','read'))" : '');
+
+/* 25 Nov 2026 (mp4, includes/wahealth.php): a booking whose newest WhatsApp failed on a Meta-side
+   code - 131070 (another app owns the chat), 131042 (no billing), 132001 (template refused) - is
+   PARKED: resending fails the same way (SHG-2026-00958 was tried 8+ times, those codes did not use
+   up the tries). The office gets ONE panel alert with the wa.me + ticket links instead. "Meta ठीक भयो"
+   on admin/wa-templates.php releases them (failures before that moment are tried again). */
+require_once INCLUDE_PATH . '/wahealth.php';
+$parkOn  = WaHealth::on();
+// mp4: the parked tickets - one office alert each (AdminAlerts dedupe: once per booking).
+$parked = 0;
+$parkAlerts = 0;
+if ($parkOn) {
+    try {
+        $parkRows = Database::fetchAll(
+            "SELECT b.id, b.pnr, b.contact_phone, b.contact_country_code, m.error
+               FROM bookings b
+               JOIN message_logs m
+                 ON m.id = (SELECT m2.id FROM message_logs m2
+                             WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
+                             ORDER BY m2.id DESC LIMIT 1)
+              WHERE b.status = 'confirmed' AND m.status = 'failed'
+                AND " . WaHealth::permanentSql('m') . " AND m.created_at > :parked_after" . $alreadyHasTicket . "
+                AND EXISTS (SELECT 1 FROM booking_legs bl WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
+              ORDER BY b.id DESC LIMIT 50",
+            ['parked_after' => WaHealth::parkedAfter()]
+        );
+        $parked = count($parkRows);
+        foreach ($parkRows as $pr) {
+            if (WaHealth::officeAlert($pr, WaHealth::parkCode((string) $pr['error']))) {
+                $parkAlerts++;
+            }
+        }
+    } catch (Throwable $e) {
+        Logger::exception($e, 'whatsapp');
+    }
+}
+
+
 $lastFail = Database::fetch(
     "SELECT id, error, created_at FROM message_logs
       WHERE channel = 'whatsapp' AND status = 'failed' AND error IS NOT NULL" . $purposeM . "
@@ -241,25 +297,6 @@ const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 
                          OR m.error LIKE '%(code 21211)%' OR m.error LIKE '%(code 21614)%'
                          OR m.error LIKE '%(code 131026)%')";
 
-/* 5 Oct 2026: a ticket the customer already HAS is not "failed". Since 3 Oct
-   the ticket goes out on AiSensy (message_logs provider=aisensy, and the
-   "hi" queue wa_ticket_queue), while the Meta row for the same booking still
-   reads failed (131042). Without this every such booking was re-sent up to
-   six times - 33 dead resends on 5 Oct alone, and now that a resend goes via
-   AiSensy too, each would be a duplicate ticket on the passenger's phone. */
-$hasQueue = (int) Database::scalar(
-    "SELECT COUNT(*) FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_ticket_queue'",
-    [], 0
-) > 0;
-$alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
-                                       WHERE a.booking_id = b.id AND a.provider = 'aisensy'
-                                         AND (a.purpose IS NULL OR a.purpose <> 'seller_copy')
-                                         AND a.status IN ('sent','delivered','read'))"
-    . ($hasQueue ? " AND NOT EXISTS (SELECT 1 FROM wa_ticket_queue q
-                                      WHERE q.booking_id = b.id AND q.role IN ('customer','alt')
-                                        AND q.status IN ('sent','delivered','read'))" : '');
-
 /* 15 Oct 2026 (2F-retry): exponential backoff. A booking is tried again
    15 min after its last failed attempt, then 30, 60, 120, 240 (12 h at the
    most) - the same doubling msg-ledger's AiSensy poll uses. A flat 15-minute
@@ -275,6 +312,13 @@ $retryParams = ['max' => MAX_TRIES];
 if ($recoverMissing !== '') {
     $retryParams['recover_from'] = $recoverFrom;
 }
+$parkSql = $parkOn ? ' AND NOT (m.id IS NOT NULL AND ' . WaHealth::permanentSql('m') . ' AND m.created_at > :parked_after)' : '';
+if ($parkOn) {
+    $retryParams['parked_after'] = WaHealth::parkedAfter();
+}
+/* mp4 review: only while parking is on (a parked booking is not picked below, so these can
+   never loop) - with WaHealth off they count as tries as before. */
+$heldNoTry = $parkOn ? "OR COALESCE(t.error, '') LIKE '%(code 131042)%' OR COALESCE(t.error, '') LIKE '%(held %'" : '';
 $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone, COALESCE(m.created_at, b.confirmed_at) AS last_at,
             (SELECT COUNT(*) FROM message_logs t
@@ -287,7 +331,10 @@ $due = Database::fetchAll(
                 -- passenger's: an approved template Meta still answers 132001 for, a paused /
                 -- disabled template (132015 / 132016), or another app (AiSensy) holding the
                 -- chat thread (131070). They must not use up the tries either.
+                -- 25 Nov 2026 (mp4 review): nor no billing on the WABA (131042), nor a send we
+                -- HELD without calling Meta ((held 131042) / (held 131070), includes/wahealth.php).
                 AND NOT (t.status = 'failed' AND (COALESCE(t.error, '') LIKE '%(code 132001)%' OR COALESCE(t.error, '') LIKE '%(code 131070)%'
+                                                 " . $heldNoTry . "
                                                  OR COALESCE(t.error, '') LIKE '%(code 132015)%' OR COALESCE(t.error, '') LIKE '%(code 132016)%'))" . $purposeT . ") AS tries
        FROM bookings b
        LEFT JOIN message_logs m
@@ -295,7 +342,7 @@ $due = Database::fetchAll(
                      WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
-        AND ((m.status = 'failed' AND NOT " . UNREACHABLE_SQL . ")" . $recoverMissing . ")" . $alreadyHasTicket . "
+        AND ((m.status = 'failed' AND NOT " . UNREACHABLE_SQL . ")" . $recoverMissing . ")" . $alreadyHasTicket . $parkSql . "
         AND b.contact_phone IS NOT NULL AND b.contact_phone <> '' AND b.contact_phone NOT REGEXP '^0+$'
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
@@ -387,4 +434,6 @@ cron_done([
     'failed'      => $stillFailing,
     'exhausted'   => $exhausted,
     'unreachable' => $unreachable,
+    'parked'      => $parked,       // mp4: Meta-side refusals, not resent (one office alert each)
+    'park_alerts' => $parkAlerts,
 ]);

@@ -1631,6 +1631,29 @@ final class Notify
         if ($skipTemplate) {
             $template = '';
         }
+        /* 25 Nov 2026 (mp4, includes/wahealth.php): while Meta billing is missing (131042) no
+           template is sent - it would fail at delivery; and a number that just answered 131070
+           (another app owns the chat) gets no free message. The caller's SMS / e-mail / wa.me
+           link carries the ticket and the log says why. */
+        try {
+            require_once __DIR__ . '/wahealth.php';
+            require_once __DIR__ . '/waroute.php';
+            if ($template !== '' && $templateVars !== []) {
+                $hold = WaHealth::billingHold();
+                if ($hold !== '') {
+                    $template = '';
+                    if (!WaRoute::metaWindowOpen($number)) {
+                        self::$lastProviderError = $hold;
+                        return false;
+                    }
+                }
+            }
+            if (($template === '' || $templateVars === []) && WaHealth::threadBlocked($number)) {
+                self::$lastProviderError = 'this number answered 131070 - another app owns the chat (held 131070); no free message for now';
+                return false;
+            }
+        } catch (Throwable $ignored) {
+        }
 
         if ($template !== '' && $templateVars !== []) {
             $bodyVars = $templateVars;
@@ -2512,6 +2535,19 @@ final class Notify
         if (!empty($meta['admin_id']))       { $extra['admin_id']       = (int) $meta['admin_id']; }
         if (!empty($meta['agent_admin_id'])) { $extra['agent_admin_id'] = (int) $meta['agent_admin_id']; }
         if (!empty($meta['media_url']))      { $extra['media_url']      = substr((string) $meta['media_url'], 0, 255); }
+        /* 25 Nov 2026 (mp4): a Meta refusal that means more than this one message - 131042 (no
+           billing: templates held) or 131070 (another app owns this chat: no free message to it
+           for a while) - is remembered by includes/wahealth.php. Never breaks the log. */
+        if ($channel === 'whatsapp' && $status === 'failed' && is_string($row['error']) && $row['error'] !== '') {
+            try {
+                require_once __DIR__ . '/wahealth.php';
+                $mc = WaHealth::codeIn($row['error']);
+                if ($mc === WaHealth::BILLING || $mc === WaHealth::THREAD) {
+                    WaHealth::noteFailure($to, $mc);
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
         try {
             Database::insert('message_logs', $row + $extra);
         } catch (Throwable $e) {

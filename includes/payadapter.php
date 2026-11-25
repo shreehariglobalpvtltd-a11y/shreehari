@@ -75,12 +75,12 @@ final class ManualQrAdapter implements PaymentAdapter
      * first, else the fixed esewa-qr files) as an <img> src. An uploaded file is
      * sent inline (data:) so it shows even where /uploads/ is closed to the web.
      */
-    public static function esewaQrSrc(): string
+    public static function esewaQrSrc(?array $booking = null): string
     {
         if (!class_exists('Ticket') && is_file(__DIR__ . '/ticket.php')) {
             require_once __DIR__ . '/ticket.php';
         }
-        $abs = class_exists('Ticket') ? Ticket::esewaQrFile() : '';
+        $abs = class_exists('Ticket') ? Ticket::esewaQrFile($booking) : '';   // mp4: the booking's desk QR first (includes/payqr.php)
         if ($abs === '') {
             return '';
         }
@@ -123,6 +123,19 @@ final class ManualQrAdapter implements PaymentAdapter
         $nepal   = $frozen || ($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP';
         $esewaId = $nepal && $npId !== '' ? $npId : trim(Settings::getString('esewa_id', ''));
         $esewaNm = $nepal && $npId !== '' ? trim(Settings::getString('nepal_esewa_name', '')) : trim(Settings::getString('esewa_name', ''));
+        /* review fix (money): the id beside the QR picture is that picture's own - the QR library
+           row's payee (the issuing desk's QR, else the NP default; the same row the ticket prints). */
+        $esewaKind = 'eSewa';
+        if ($esewaId !== '' && is_file(__DIR__ . '/payqr.php')) {
+            require_once __DIR__ . '/payqr.php';
+            $qrRow = PayQr::pick($booking, 'NP');
+            $qrPay = $qrRow !== null ? trim((string) ($qrRow['payee'] ?? '')) : '';
+            if ($qrPay !== '') {
+                $esewaId   = $qrPay;
+                $esewaNm   = '';
+                $esewaKind = PayQr::printLabel((string) ($qrRow['kind'] ?? ''));
+            }
+        }
         return [
             'kind'  => 'qr',
             'upi'   => $upiId === '' ? null : [
@@ -134,8 +147,9 @@ final class ManualQrAdapter implements PaymentAdapter
             'esewa' => $esewaId === '' ? null : [
                 'id'   => $esewaId,
                 'name' => $esewaNm,
+                'kind' => $esewaKind,
                 'npr'  => $npr,
-                'qr'   => self::esewaQrSrc(),
+                'qr'   => self::esewaQrSrc($booking),
             ],
         ];
     }

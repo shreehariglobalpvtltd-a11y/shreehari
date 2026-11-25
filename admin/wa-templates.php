@@ -79,6 +79,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                Reading statuses is a GET; asking Meta for the missing templates
                is superadmin-only (free, but it is the owner's WABA). */
             $act = (string) ($_POST['action'] ?? '');
+            /* 25 Nov 2026 (mp4): the "Meta स्वास्थ्य · WhatsApp health" card (includes/wahealth.php) */
+            if ($act === 'meta_fixed' || $act === 'meta_phone') {
+                require_once INCLUDE_PATH . '/wahealth.php';
+                require_once INCLUDE_PATH . '/watplmeta.php';
+                if (!Auth::isSuperadmin()) {
+                    $flash = ['bad', 'Only the owner (superadmin) can do this.'];
+                } elseif ($act === 'meta_fixed') {
+                    $before = ['billing_hold_at' => WaHealth::billingHoldAt(), 'blocked_numbers' => WaHealth::blockedNumbers()];
+                    WaHealth::markFixed();
+                    Logger::audit('whatsapp.meta_fixed', 'setting', 'wa_health', $before, ['fixed_at' => WaHealth::fixedAt()], 'Owner: Meta fixed - holds cleared, parked tickets get one more try');
+                    $flash = ['ok', 'Meta ठीक भयो ✔ — billing hold र number block हटाइयो; रोकिएका टिकट अर्को retry (१५ मिनेट) मा एकपटक फेरि जान्छन्। · Holds cleared; parked tickets get one more try.'];
+                } else {
+                    $ph = WaTplMeta::phoneHealth();
+                    Logger::audit('whatsapp.phone_health', 'setting', 'wa_health', null, ['ok' => $ph['ok']], 'Meta number health read (GET)');
+                    $flash = $ph['ok'] ? ['ok', 'Number status read: ' . $ph['phone']['number'] . ' · ' . ($ph['phone']['name_status'] ?: '-') . ' · ' . ($ph['phone']['tier'] ?: '-') . ' · ' . ($ph['phone']['can_send'] ?: '-')]
+                                       : ['bad', 'Could not read the number from Meta: ' . $ph['error']];
+                }
+                header('Location: wa-templates.php?f=' . rawurlencode($flash[0] . '|' . mb_substr($flash[1], 0, 900)) . '#meta-health');
+                exit;
+            }
             if ($act === 'meta_sync' || $act === 'meta_submit') {
                 require_once INCLUDE_PATH . '/watplmeta.php';
                 if ($act === 'meta_submit' && !Auth::isSuperadmin()) {
@@ -187,7 +207,139 @@ try {
     $regRows = [];
 }
 $regDefs = class_exists('WaTplMeta') ? WaTplMeta::defs() : [];
+
+/* 25 Nov 2026 (mp4): Meta स्वास्थ्य · WhatsApp health - from our own log + the last template sync, no live Meta call */
+$hl = ['sent' => 0, 'failed' => 0, 'codes' => [], 'tpl132001' => []];
+$hold = '';
+$blocked = 0;
+$fixedAt = 0;
+$phone = null;
+$tktTpl = ['name' => '', 'lang' => ''];
+try {
+    require_once INCLUDE_PATH . '/wahealth.php';
+    $hl      = WaHealth::stats(7);
+    $hold    = WaHealth::billingHold();
+    $blocked = WaHealth::blockedNumbers();
+    $fixedAt = WaHealth::fixedAt();
+    if (class_exists('WaTplMeta')) {
+        $phone  = WaTplMeta::phoneInfo();
+        $tktTpl = WaTplMeta::ticketTemplate();
+    }
+} catch (Throwable $ex) {
+    // the card shows what it has
+}
+/* the ticket template the settings name (whatsapp_template_name) is listed even when the registry does not know it */
+$healthRows = $regRows;
+$setTpl = trim(Settings::getString('whatsapp_template_name', ''));
+if ($setTpl !== '' && !in_array($setTpl, array_column($regRows, 'name'), true) && class_exists('WaTplMeta')) {
+    array_unshift($healthRows, ['name' => $setTpl, 'status' => WaTplMeta::status($setTpl)]);
+}
+$codeUses = static function (string $name) use ($tktTpl): string {
+    if (!class_exists('WaTplMeta')) {
+        return '';
+    }
+    if ($name === $tktTpl['name']) {
+        return $tktTpl['lang'];
+    }
+    return WaTplMeta::langOf($name);
+};
 ?>
+<div class="panel wh-card" id="meta-health">
+  <h2>🩺 Meta स्वास्थ्य · WhatsApp health</h2>
+  <p class="muted">पछिल्लो ७ दिनको WhatsApp (हाम्रै log बाट) र Meta को अन्तिम template sync। यहाँ खोल्दा Meta लाई केही पठाइँदैन। · Last 7 days from our own log; nothing is sent to Meta by opening this page.</p>
+  <?php if ($hold !== ''): ?>
+  <div class="wh-alert" role="alert">🔴 <b>Meta billing missing · Meta मा भुक्तानी विधि छैन (131042)</b> — template (पैसा लाग्ने) सन्देश अहिले रोकिएका छन्; टिकट SMS / e-mail / link बाट जान्छ। <small><?= $e($hold) ?></small></div>
+  <?php endif; ?>
+  <div class="wt-kpis">
+    <span class="wt-kpi ok"><b><?= (int) $hl['sent'] ?></b> पठाइयो · sent</span>
+    <span class="wt-kpi wh-bad"><b><?= (int) $hl['failed'] ?></b> फेल · failed</span>
+    <?php foreach ([131070, 131042, 132001, 131026] as $c): $n = (int) ($hl['codes'][$c]['n'] ?? 0); ?>
+      <span class="wt-kpi <?= $n > 0 ? 'wh-bad' : '' ?>"><b><?= $n ?></b> × <?= (int) $c ?></span>
+    <?php endforeach; ?>
+    <span class="wt-kpi"><b><?= (int) $blocked ?></b> नम्बर free message बाट रोकिएको · numbers on 131070 hold</span>
+  </div>
+  <?php if ($hl['codes'] !== []): ?>
+  <div class="table-wrap"><table class="table wt-reg">
+    <thead><tr><th>Code</th><th>पटक · Times</th><th>पछिल्लो · Last</th><th>अर्थ · Meaning</th></tr></thead>
+    <tbody>
+    <?php foreach (array_slice($hl['codes'], 0, 8, true) as $c => $ci): ?>
+      <tr><td data-label="Code"><code><?= (int) $c ?></code></td><td data-label="Times"><?= (int) $ci['n'] ?></td>
+        <td data-label="Last"><?= $e(substr((string) $ci['last'], 0, 16)) ?></td><td data-label="Meaning"><?= $e(WaHealth::hint((int) $c)) ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
+  <?php if ($hl['tpl132001'] !== []): ?>
+  <p class="muted">132001 template अनुसार · by template: <?php foreach ($hl['tpl132001'] as $tn => $tc): ?><span class="wt-chip"><?= $e($tn) ?> × <?= (int) $tc ?></span> <?php endforeach; ?></p>
+  <?php endif; ?>
+
+  <h3 class="wh-h3">📱 नम्बर · The number</h3>
+  <?php if (is_array($phone) && $phone !== []): ?>
+  <p class="wh-kv"><b><?= $e($phone['number'] ?? '') ?></b> · <?= $e($phone['name'] ?? '') ?> · नाम (display name): <b><?= $e(($phone['name_status'] ?? '') ?: '—') ?></b>
+    · Quality <b><?= $e(($phone['quality'] ?? '') ?: '—') ?></b> · Limit <b><?= $e(($phone['tier'] ?? '') ?: '—') ?></b> · Sending <b class="<?= ($phone['can_send'] ?? '') === 'AVAILABLE' ? 'wh-ok' : 'wh-no' ?>"><?= $e(($phone['can_send'] ?? '') ?: '—') ?></b>
+    · Verification <?= $e(($phone['verification'] ?? '') ?: '—') ?> <small class="muted">(<?= $e(date('j M H:i', (int) ($phone['at'] ?? 0))) ?>)</small></p>
+  <?php foreach ((array) ($phone['notes'] ?? []) as $nt): ?><p class="wh-note">⚠️ <?= $e($nt) ?></p><?php endforeach; ?>
+  <?php else: ?>
+  <p class="muted">अहिलेसम्म पढिएको छैन · not read yet — तलको "🔄 नम्बरको स्थिति" थिच्नुहोस् (Meta बाट एउटा GET मात्र)।</p>
+  <?php endif; ?>
+
+  <h3 class="wh-h3">📨 Template: Meta मा भएको भाषा vs हाम्रो code ले पठाउने</h3>
+  <?php if ($healthRows !== []): ?>
+  <div class="table-wrap"><table class="table wt-reg">
+    <thead><tr><th>Template</th><th>Meta</th><th>Meta language</th><th>Code sends</th><th>पछिल्लो refuse</th></tr></thead>
+    <tbody>
+    <?php foreach ($healthRows as $r): $inf = class_exists('WaTplMeta') ? WaTplMeta::info($r['name']) : null; $rf = class_exists('WaTplMeta') ? WaTplMeta::refusedInfo($r['name']) : null;
+          $ml = (string) ($inf['language'] ?? ''); $cl = $codeUses($r['name']); ?>
+      <tr>
+        <td data-label="Template"><code><?= $e($r['name']) ?></code><?= $r['name'] === $tktTpl['name'] ? ' <span class="wt-badge st-approved">🎫 ticket</span>' : '' ?></td>
+        <td data-label="Meta"><?= $e($r['status'] !== '' ? $r['status'] : 'not read') ?></td>
+        <td data-label="Meta language"><?= $e($ml !== '' ? $ml : '—') ?></td>
+        <td data-label="Code sends"><span class="<?= $ml !== '' && $cl !== '' && $ml !== $cl ? 'wh-no' : '' ?>"><?= $e($cl !== '' ? $cl : '—') ?></span></td>
+        <td data-label="Last refusal"><?= $rf !== null ? $e((int) ($rf['code'] ?? 0) . ' · ' . date('j M H:i', (int) ($rf['at'] ?? 0))) : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
+
+  <details class="wh-steps" <?= ((int) ($hl['codes'][131070]['n'] ?? 0) + (int) ($hl['codes'][131042]['n'] ?? 0)) > 0 ? 'open' : '' ?>>
+    <summary><b>🧭 मालिकले मात्र गर्न मिल्ने काम · Steps only the owner can do in Meta</b></summary>
+    <p class="muted"><b>131070 किन?</b> Meta मा अब हरेक कुराकानीको एउटा मात्र "मालिक app" हुन्छ (thread control)। यो WhatsApp account पहिले AiSensy बाट बनेकोले कुराकानी अर्को app (पुरानो AiSensy / Meta Business Agent) सँग छ — हाम्रो app ले जवाफ दिन पाउँदैन, र code ले आफैं control लिन मिल्दैन। तलका काम Meta मा गरेपछि मात्र ठीक हुन्छ।</p>
+    <ol class="wh-ol">
+      <li><b>बिलिङ:</b> business.facebook.com → Billing &amp; payments (वा WhatsApp Manager → Settings → Payment methods)। "S hari global private limited - AiSensy" WABA छान्नुहोस् र आफ्नो Credit/Debit card थप्नुहोस्। AiSensy को credit line देखियो भने त्यसलाई बदल्नुहोस्।</li>
+      <li><b>AiSensy हटाउने:</b> Business Settings → Accounts → WhatsApp accounts → यो WABA → Partners मा AiSensy हटाउनुहोस्। Integrations → Connected apps मा भएका AiSensy app र AiSensy का system users पनि हटाउनुहोस्।</li>
+      <li><b>Conversation routing:</b> Meta Business Suite → Settings → WhatsApp → Conversation routing (नाम अलि फरक हुन सक्छ)। सबै entry point (customer service, utility, marketing, click-to-WhatsApp ads) मा "SHG Messaging API" लाई मुख्य app बनाउनुहोस्। WhatsApp Manager मा "Meta Business Agent" tab छ भने बन्द गर्नुहोस्।</li>
+      <li><b>Template जाँच:</b> WhatsApp Manager → Message templates → shg_ticket_image → Preview / Send test आफ्नै फोनमा। फेरि "template छैन" भन्यो भने Meta support मा ticket खोल्नुहोस् (template id र error 132001 दिनुहोस्, error को fbtrace id माग्नुहोस्)।</li>
+      <li><b>Display name:</b> "S Hari Global Pvt Ltd" approve गराउनुहोस् — LIMITED हट्छ र दिनको 250 भन्दा बढी पठाउन मिल्छ।</li>
+      <li>सबै भएपछि तल <b>"✅ Meta ठीक भयो"</b> थिच्नुहोस् र "🔄 नम्बरको स्थिति" पढ्नुहोस्।</li>
+    </ol>
+    <p class="muted">त्यतिन्जेल: टिकट SMS + e-mail मा जान्छ; WhatsApp नगएको हरेक टिकटको लागि office लाई <b>एउटा</b> alert (wa.me + टिकट link) आउँछ — एउटै टिकट बारम्बार पठाइँदैन। · Until then tickets go by SMS + e-mail and the office gets ONE alert per ticket (wa.me + ticket link); nothing is retried in a loop.</p>
+  </details>
+  <?php if (Auth::isSuperadmin()): ?>
+  <div class="wt-row">
+    <form method="post"><input type="hidden" name="<?= $e($ck) ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="meta_phone">
+      <button class="btn ghost" type="submit" <?= $regConf ? '' : 'disabled title="Meta token / WABA id not configured"' ?>>🔄 नम्बरको स्थिति · Read number status</button></form>
+    <form method="post" onsubmit="return confirm('Meta मा billing, AiSensy हटाउने र routing सबै गरिसक्नुभयो? रोकिएका टिकट एकपटक फेरि पठाइन्छन्। · Done in Meta? Parked tickets get one more try.')"><input type="hidden" name="<?= $e($ck) ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="meta_fixed">
+      <button class="btn" type="submit">✅ Meta ठीक भयो · Meta fixed</button></form>
+  </div>
+  <?php if ($fixedAt > 0): ?><p class="muted" style="font-size:12px">अन्तिम "Meta ठीक भयो": <?= $e(date('j M Y, H:i', $fixedAt)) ?></p><?php endif; ?>
+  <?php endif; ?>
+</div>
+<style>
+.wh-card h2 { margin: 0 0 6px; }
+.wh-h3 { font-size: 15px; margin: 14px 0 6px; }
+.wh-alert { background: rgba(220,38,38,.12); color: #b91c1c; border: 1px solid rgba(220,38,38,.35); border-radius: 10px; padding: 10px 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.wh-alert small { display: block; margin-top: 4px; opacity: .85; }
+.wt-kpi.wh-bad { background: rgba(220,38,38,.12); color: #b91c1c; }
+.wh-ok { color: #15803d; } .wh-no { color: #b91c1c; font-weight: 700; }
+.wh-kv { font-size: 13.5px; overflow-wrap: anywhere; }
+.wh-note { font-size: 12.5px; color: #b45309; margin: 2px 0; overflow-wrap: anywhere; }
+.wh-steps { margin-top: 12px; border: 1px dashed var(--line); border-radius: 10px; padding: 8px 12px; }
+.wh-steps summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; }
+.wh-ol { padding-left: 20px; font-size: 13.5px; line-height: 1.55; } .wh-ol li { margin: 0 0 6px; overflow-wrap: anywhere; }
+:root[data-theme="dark"] .wh-alert, :root[data-theme="dark"] .wt-kpi.wh-bad, :root[data-theme="dark"] .wh-no { color: #FCA5A5; }
+:root[data-theme="dark"] .wh-ok { color: #6EE7A0; }
+</style>
 <div class="panel" id="meta-registry">
   <h2>📨 Meta templates on the bot number</h2>
   <p class="muted">The small UTILITY templates this site uses outside the 24-hour window (language English). A template is used only once Meta marks it <b>APPROVED</b>; until then the message waits for the customer's next WhatsApp (free) as before. Last read from Meta: <b><?= $regSync > 0 ? $e(date('j M Y, H:i', $regSync)) : 'never' ?></b>.</p>
