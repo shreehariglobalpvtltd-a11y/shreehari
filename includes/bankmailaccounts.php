@@ -48,6 +48,8 @@ final class BankMailAccounts
     public const LOG_KEEP = 200;
     /** The marker that the old single-box settings were looked at (account id, or 0 = skipped). */
     public const LEGACY_KEY = 'bankmail_legacy_account';
+    /** What a box without its rules says: it is NOT read until DKIM domain + account digits are saved. */
+    public const NOT_READY_MSG = 'अधुरो — Edit मा DKIM domain + खाताको अन्तिम अंक राख्नुहोस्; त्यसपछि मात्र mail पढिन्छ · setup incomplete, not reading yet';
     public const OUTCOMES = ['suggestion', 'suggestion-amount', 'confirmed', 'unmatched', 'duplicate', 'debit-ignored',
                              'not-credit', 'not-bank-sender', 'setup-incomplete', 'unreadable', 'gone'];
 
@@ -309,6 +311,19 @@ final class BankMailAccounts
         }
         if ($set !== []) {
             Database::update('bank_mail_accounts', $set, 'id = :i', ['i' => $id]);
+        }
+    }
+
+    /**
+     * The box has just become READY (Edit -> Save): read its recent mail again from the start
+     * (the last 2-3 days), so an alert that came while it had no rules is not lost. Clears the
+     * position and the 'setup-incomplete' log rows; the credits ledger dedupes by message id + txn.
+     */
+    public static function rereadIncomplete(int $id): void
+    {
+        Database::update('bank_mail_accounts', ['last_uid' => null, 'uidvalidity' => null, 'last_seen_ms' => null], 'id = :i', ['i' => $id]);
+        if (self::logReady()) {
+            Database::delete('bank_mail_log', "account_id = :i AND outcome = 'setup-incomplete'", ['i' => $id]);
         }
     }
 

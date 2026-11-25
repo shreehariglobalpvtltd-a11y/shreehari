@@ -1175,7 +1175,8 @@ final class BankMail
         if (!BankMailAccounts::ready()) {
             return self::on();
         }
-        return BankMailAccounts::legacyPending() || BankMailAccounts::active() !== [];
+        return BankMailAccounts::legacyPending()
+            || array_filter(BankMailAccounts::active(), static fn(array $a): bool => BankMailAccounts::isReady($a)) !== [];
     }
 
     /**
@@ -1235,6 +1236,13 @@ final class BankMail
         $id  = (int) $a['id'];
         if (!PayCredits::ready()) {
             return ['ok' => false, 'msg' => 'bank_credits table missing (migration not applied)'] + $res;
+        }
+        if (!BankMailAccounts::isReady($a)) {
+            /* no DKIM domain / account digits yet: read NOTHING, so no alert is used up before the
+               rules exist - the first read after Edit -> Save starts from the last 2-3 days */
+            $res['msg'] = BankMailAccounts::NOT_READY_MSG;
+            BankMailAccounts::note($id, false, $res['msg']);
+            return $res;
         }
         $secret = '';
         try {
@@ -1447,7 +1455,11 @@ final class BankMail
         if ($acct !== null && !BankMailAccounts::isReady($acct)) {
             $res['other']++;
             $res['incomplete'] = (int) ($res['incomplete'] ?? 0) + 1;   // no DKIM domain / account digits yet: logged, no credit, no suggestion
-            $log('setup-incomplete');
+            /* (pollAccount does not read a box that is not ready; this is only a race with Edit)
+               no msg_ref: the mail is read again once the box is ready (BankMailAccounts::rereadIncomplete) */
+            if ($acct !== null) {
+                BankMailAccounts::log((int) $acct['id'], 'setup-incomplete', (string) $p['subject'], $p['date'] !== '' ? (string) $p['date'] : null, null, '');
+            }
             return;
         }
         $res['credits']++;

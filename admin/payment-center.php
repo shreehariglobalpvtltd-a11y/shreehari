@@ -141,11 +141,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Logger::audit('bank_mail.' . ($on ? 'resume' : 'pause'), 'bank_mail_account', (string) $aid, ['is_active' => (int) $acct['is_active']], ['is_active' => $on ? 1 : 0], $who);
                 $flash[] = ['ok', $who . ': ' . ($on ? '▶ चालु · on — cron ले हरेक २ मिनेट हेर्छ' : '⏸ पज · paused — mail पढिँदैन')];
             } elseif ($act === 'acct_remove') {
-                if ((string) $acct['method'] === 'google') {
+                /* Google withdraws the WHOLE grant on revoke: the same Gmail on the other tab would lose access too */
+                $shared = (string) $acct['method'] === 'google' && (int) Database::scalar(
+                    "SELECT COUNT(*) FROM bank_mail_accounts WHERE email = :e AND method = 'google' AND id <> :i", ['e' => $who, 'i' => $aid], 0) > 0;
+                if ((string) $acct['method'] === 'google' && !$shared) {
                     GoogleOAuth::revoke($acct);   // best effort; the row and its sealed tokens go either way
                 }
+                /* the migrated mp1 box: its plaintext app password in settings goes too */
+                $legacy = $aid === (int) Settings::getString(BankMailAccounts::LEGACY_KEY, '0');
+                if ($legacy && Settings::getString('bankmail_app_password', '') !== '') {
+                    Settings::set('bankmail_app_password', '', 'string', 'payments');
+                    Settings::flush();
+                }
                 BankMailAccounts::remove($aid);
-                Logger::audit('bank_mail.remove', 'bank_mail_account', (string) $aid, ['email' => $who, 'country' => (string) $acct['country'], 'method' => (string) $acct['method']], null, 'Bank Gmail removed (tokens deleted)');
+                Logger::audit('bank_mail.remove', 'bank_mail_account', (string) $aid, ['email' => $who, 'country' => (string) $acct['country'], 'method' => (string) $acct['method']],
+                    ['revoked' => (string) $acct['method'] === 'google' && !$shared, 'legacy_password_cleared' => $legacy], 'Bank Gmail removed (tokens deleted)');
                 $flash[] = ['ok', $who . ' हटाइयो · removed (token / password मेटियो; पुराना credits ledger मा रहन्छन्)'];
             } else {
                 $bad = BankMailAccounts::badSenders((string) ($_POST['senders'] ?? ''));
@@ -187,7 +197,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         Logger::audit('bank_mail.edit', 'bank_mail_account', (string) $aid, null, ['changed' => $changed, 'senders' => $rules['senders'], 'dkim_domain' => $dk, 'account_hint' => (string) $hint], $who);
                     }
                     $now = BankMailAccounts::get($aid) ?? $acct;
-                    $flash[] = ['ok', $who . ': ' . ($changed !== [] ? 'सेभ भयो · saved: ' . implode(', ', $changed) : 'केही बदलिएन · nothing changed')
+                    if (!BankMailAccounts::isReady($acct) && BankMailAccounts::isReady($now)) {
+                        BankMailAccounts::rereadIncomplete($aid);   // now ready: read the last 2-3 days again, nothing lost
+                        Logger::audit('bank_mail.reread', 'bank_mail_account', (string) $aid, null, ['from' => 'start'], 'Box ready: recent mail read again');
+                    }
+                    $flash[] =['ok', $who . ': ' . ($changed !== [] ? 'सेभ भयो · saved: ' . implode(', ', $changed) : 'केही बदलिएन · nothing changed')
                         . (BankMailAccounts::isReady($now) ? ' · ✓ तयार · ready' : ' · अधुरो: DKIM domain र खाताको अन्तिम अंक दुवै चाहिन्छ')];
                 }
             }
@@ -535,13 +549,16 @@ $outTxt = [
 /** The one-time Google Cloud setup: numbered Nepali steps + the exact redirect URI + the client form. */
 $googleSetup = static function (string $tabKey, bool $open) use ($e): void {
     $uri = GoogleOAuth::redirectUri();
-    echo '<div class="pc-gsetup">'
+    echo ($open ? '' : '<details class="pc-adv"><summary>🔧 Google setup (एकपटकको) · steps + redirect URI</summary>')
+       . '<div class="pc-gsetup">'
        . '<p class="hint" style="margin:0 0 6px"><b>एकपटकको Google setup</b> (करिब १० मिनेट) — यसपछि जुनसुकै बैंक Gmail एक click मा जोडिन्छ:</p>'
        . '<ol class="pc-steps">'
        . '<li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">console.cloud.google.com</a> मा project बनाउनुहोस् (जस्तै "S Hari Bank Mail")।</li>'
        . '<li>APIs &amp; Services → Library → <b>"Gmail API"</b> खोजेर <b>Enable</b> गर्नुहोस्।</li>'
-       . '<li><b>OAuth consent screen</b>: User type <b>External</b>, app name, आफ्नो email; Scopes मा <code>…/auth/gmail.readonly</code> थप्नुहोस्; <b>Test users</b> मा आफ्नो bank Gmail थप्नुहोस्; अनि <b>"Publish app"</b> (In production) गर्नुहोस् — नत्र Google ले हरेक ७ दिनमा logout गर्छ।</li>'
-       . '<li>Credentials → Create credentials → <b>OAuth client ID</b> → <b>Web application</b> → Authorized redirect URIs मा ठ्याक्कै यो राख्नुहोस्:'
+       . '<li><b>Google Auth Platform</b> (APIs &amp; Services → OAuth consent screen) → <b>Get started</b>: app name + आफ्नो email, Audience: <b>External</b>, contact email → <b>Create</b>। '
+       . 'अनि बायाँ menu: <b>Data access</b> → <b>Add or remove scopes</b> → <code>…/auth/gmail.readonly</code> → <b>Save</b>। '
+       . '<b>Audience</b> → <b>Test users</b> मा bank Gmail थप्नुहोस्, अनि <b>"Publish app"</b> → In production — नत्र Google ले हरेक ७ दिनमा logout गर्छ।</li>'
+       . '<li><b>Clients</b> → <b>Create client</b> (वा Credentials → Create credentials → <b>OAuth client ID</b>) → <b>Web application</b> → Authorized redirect URIs मा ठ्याक्कै यो राख्नुहोस्:'
        . '<span class="pc-copy"><input class="pc-url" readonly value="' . $e($uri) . '" onclick="this.select()" aria-label="Redirect URI">'
        . '<button class="btn" type="button" onclick="pcCopy(this)">📋 Copy</button></span></li>'
        . '<li><b>Client ID</b> र <b>Client Secret</b> तल राखेर Save गर्नुहोस्।</li>'
@@ -555,7 +572,8 @@ $googleSetup = static function (string $tabKey, bool $open) use ($e): void {
            . '<input name="google_oauth_client_secret" type="password" value="" autocomplete="new-password" placeholder="' . (Settings::getString('google_oauth_client_secret', '') !== '' ? '•••• (बदल्न मात्र लेख्नुहोस्)' : 'GOCSPX-…') . '"></label>'
        . '<label>Redirect URI (खाली = माथिको) <input name="google_oauth_redirect" value="' . $e(Settings::getString('google_oauth_redirect', '')) . '" placeholder="' . $e($uri) . '"></label>'
        . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn btn-orange" type="submit">सेभ · Save</button></div>'
-       . '</form></details></div>';
+       . '</form></details></div>'
+       . ($open ? '' : '</details>');
 };
 /** The card on a tab: the boxes of one country + "➕ Gmail जोड्नुहोस्". */
 $mailCard = static function (string $country) use ($e, $outTxt, $googleSetup, $mailReady): void {
@@ -596,7 +614,7 @@ $mailCard = static function (string $country) use ($e, $outTxt, $googleSetup, $m
            . ' · DKIM ' . $e(BankMailAccounts::dkimDomain($a) !== '' ? BankMailAccounts::dkimDomain($a) : '—')
            . ' · A/C …' . $e(BankMailAccounts::hint($a) !== '' ? substr(BankMailAccounts::hint($a), -4) : '—') . '</div>';
         if (!$ready) {
-            echo '<p class="pc-warn" style="margin:6px 0 0;font-size:12.5px">अधुरो: तल "Edit" मा बैंकको <b>DKIM domain</b> र हाम्रो खाताको <b>अन्तिम ४–६ अंक</b> राख्नुहोस्। त्यतिन्जेल mail पढिन्छ र तल log हुन्छ, तर credit / सुझाव बन्दैन।</p>';
+            echo '<p class="pc-warn" style="margin:6px 0 0;font-size:12.5px">अधुरो: तल "Edit" मा बैंकको <b>DKIM domain</b> र हाम्रो खाताको <b>अन्तिम ४–६ अंक</b> राख्नुहोस्। त्यतिन्जेल यो box को mail <b>पढिँदैन</b> (केही छुट्दैन) — Save गरेपछि पछिल्लो २–३ दिनको mail पढिन्छ।</p>';
         }
         echo '<div class="pc-btns pc-acc-btns">'
            . $post('acct_check', '🔄 अहिले जाँच्नुहोस् · Check now', 'btn btn-orange')
@@ -707,6 +725,10 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
 .pc-loglist{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:12.5px}
 .pc-loglist li{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-bottom:1px solid var(--line,#e0e8f2);padding:4px 0;min-width:0}
 .pc-subj{flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
+:root[data-theme="dark"] .pc-chip.info{color:#9CC0FF;border-color:rgba(59,130,246,.35)}
+:root[data-theme="dark"] .pc-chip.warn{background:rgba(245,158,11,.14);color:#FBC56B;border-color:rgba(245,158,11,.35)}
+:root[data-theme="dark"] .pc-chip.no{color:#FCA5A5;border-color:rgba(220,38,38,.35)}
+:root[data-theme="dark"] .pc-chip.ok{color:#6EE7A0;border-color:rgba(34,197,94,.35)}
 </style>
 <script>
 function pcCopy(b){var i=b.previousElementSibling;if(!i)return;i.select();try{if(navigator.clipboard){navigator.clipboard.writeText(i.value);}else{document.execCommand('copy');}b.textContent='✔ Copied';}catch(x){}}

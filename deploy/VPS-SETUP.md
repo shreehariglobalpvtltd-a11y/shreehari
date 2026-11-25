@@ -183,12 +183,14 @@ One-time Google Cloud setup (the panel shows the same steps + a Copy button):
 
 1. <https://console.cloud.google.com/> → create a project (e.g. "S Hari Bank Mail").
 2. APIs & Services → Library → **Gmail API** → Enable.
-3. **OAuth consent screen**: User type External, app name, your e-mail; Scopes:
-   `https://www.googleapis.com/auth/gmail.readonly`; **Test users**: add the bank
-   Gmail; then **Publish app** (In production) — otherwise Google signs the box
-   out every 7 days.
-4. Credentials → Create credentials → **OAuth client ID** → **Web application** →
-   Authorized redirect URI, exactly:
+3. **Google Auth Platform** (APIs & Services → OAuth consent screen) → **Get started**:
+   app name + your e-mail, Audience **External**, contact e-mail → **Create**.
+   Then in the left menu: **Data access** → **Add or remove scopes** →
+   `https://www.googleapis.com/auth/gmail.readonly` → Save; **Audience** → **Test users**:
+   add the bank Gmail, then **Publish app** → In production — otherwise Google signs
+   the box out every 7 days.
+4. **Clients** → **Create client** (or Credentials → Create credentials → **OAuth
+   client ID**) → **Web application** → Authorized redirect URIs, exactly:
 
    ```text
    https://<the .network admin host>/admin/gmail-oauth.php

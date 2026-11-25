@@ -335,7 +335,7 @@ $mail = static function (array $o): string {
     $h = "Delivered-To: bankbox@gmail.com\r\n" . ($auth !== '' ? "Authentication-Results: $auth\r\n" : '')
         . 'From: ' . ($o['from'] ?? "Bank Alerts <alerts@$dom>") . "\r\n"
         . 'Message-ID: <' . ($o['mid'] ?? bin2hex(random_bytes(6))) . "@$dom>\r\n"
-        . "Date: Tue, 25 Nov 2026 10:15:00 +0530\r\n"
+        . 'Date: ' . ($o['date'] ?? date('D, d M Y H:i:s O')) . "\r\n"   // default now: amount-only looks at bookings made BEFORE the money came
         . 'Subject: ' . ($o['subject'] ?? 'Credit Alert') . "\r\nMIME-Version: 1.0\r\n"
         . "Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n";
     return $h . quoted_printable_encode((string) $o['plain']) . "\r\n";
@@ -536,6 +536,35 @@ $aRaw4 = $mail(['dom' => 'icici.test', 'mid' => 'mp2am4' . $tag, 'plain' => "Dea
 BankMail::pollAccount(BankMailAccounts::get($INID), 50, $imapFor([6004 => $aRaw4]));
 $ac4 = $credit($T('A4') . '4');
 check('A no PNR and nobody owes that amount -> unmatched "no booking … owes exactly"', $ac4 !== null && $ac4['state'] === 'unmatched' && str_contains((string) $ac4['note'], 'owes exactly INR 1.37'), (string) ($ac4['note'] ?? ''));
+/* money that came BEFORE the booking existed is never offered for it on the amount alone */
+$u5 = $uniq();
+$oldB = $mk($u5);
+$aRaw5 = $mail(['dom' => 'icici.test', 'mid' => 'mp2am5' . $tag, 'date' => date('D, d M Y H:i:s O', time() - 2 * 86400),
+    'plain' => "Dear Customer,\nRs " . number_format($u5, 2) . " credited to A/c XX1234 by UPI Ref No " . $T('A5') . "5.\n"]);
+BankMail::pollAccount(BankMailAccounts::get($INID), 50, $imapFor([6005 => $aRaw5]));
+$ac5 = $credit($T('A5') . '5');
+check('A an alert from 2 days ago, a pending booking made now owing the same INR -> unmatched (the booking did not exist yet), no suggestion',
+    $ac5 !== null && $ac5['state'] === 'unmatched' && $ac5['booking_id'] === null && str_contains((string) $ac5['note'], 'owes exactly') && $status($oldB) === 'pending', json_encode($ac5, JSON_UNESCAPED_UNICODE));
+$aRaw6 = $mail(['dom' => 'icici.test', 'mid' => 'mp2am6' . $tag, 'date' => date('D, d M Y H:i:s O', time() - (PayCredits::AMOUNT_WINDOW_H + 2) * 3600),
+    'plain' => "Dear Customer,\nRs " . number_format($u5, 2) . " credited to A/c XX1234 by UPI Ref No " . $T('A6') . "6.\n"]);
+BankMail::pollAccount(BankMailAccounts::get($INID), 50, $imapFor([6006 => $aRaw6]));
+$ac6 = $credit($T('A6') . '6');
+check('A an alert older than ' . PayCredits::AMOUNT_WINDOW_H . ' h with no PNR (a new / resumed box reading back) -> unmatched "old alert", never amount-matched',
+    $ac6 !== null && $ac6['state'] === 'unmatched' && $ac6['booking_id'] === null && str_contains((string) $ac6['note'], 'old alert'), json_encode($ac6, JSON_UNESCAPED_UNICODE));
+/* the only booking owing the amount already has an open suggestion: a second, remark-less payment is NOT pinned on anyone */
+$aRaw7 = $mail(['dom' => 'icici.test', 'mid' => 'mp2am7' . $tag, 'plain' => "Dear Customer,\nRs " . number_format($u1, 2) . " credited to A/c XX1234 by UPI Ref No " . $T('A7') . "7.\n"]);
+BankMail::pollAccount(BankMailAccounts::get($INID), 50, $imapFor([6007 => $aRaw7]));
+$ac7 = $credit($T('A7') . '7');
+check('A the one booking owing the amount already has a suggestion -> the second credit is unmatched "already has a suggestion", not suggested again',
+    $ac7 !== null && $ac7['state'] === 'unmatched' && $ac7['booking_id'] === null && str_contains((string) $ac7['note'], (string) $aB['pnr'] . ' already has a suggestion')
+    && PayCredits::isSuggestion($credit($T('A1') . '2') ?? []), json_encode($ac7, JSON_UNESCAPED_UNICODE));
+$tw3 = $mk($u1);
+$aRaw8 = $mail(['dom' => 'icici.test', 'mid' => 'mp2am8' . $tag, 'plain' => "Dear Customer,\nRs " . number_format($u1, 2) . " credited to A/c XX1234 by UPI Ref No " . $T('A8') . "8.\n"]);
+BankMail::pollAccount(BankMailAccounts::get($INID), 50, $imapFor([6008 => $aRaw8]));
+$ac8 = $credit($T('A8') . '8');
+check('A booking A (already suggested) + a new booking B owe the same amount -> "several bookings", both PNRs, B NOT suggested',
+    $ac8 !== null && $ac8['state'] === 'unmatched' && $ac8['booking_id'] === null && str_contains((string) $ac8['note'], 'several bookings match the amount')
+    && str_contains((string) $ac8['note'], (string) $aB['pnr']) && str_contains((string) $ac8['note'], (string) $tw3['pnr']), json_encode($ac8, JSON_UNESCAPED_UNICODE));
 
 /* ---------------- R. per-box rules ---------------- */
 echo "\n-- R per-box rules (never the global bankmail_* settings)\n";
@@ -558,14 +587,22 @@ check('R the box\'s sender list decides: alerts@spoof.test (the GLOBAL allowed s
     && in_array('not-bank-sender', array_column($logOf($INID), 'outcome'), true));
 check('R the box\'s account digits decide: A/C XX9999 (the GLOBAL hint) -> unmatched "not to our account"', $r3 !== null && $r3['state'] === 'unmatched' && str_contains((string) $r3['note'], 'not to our account'), json_encode($r3));
 check('R the booking stayed pending', $status($rB) === 'pending' && $resR['ok']);
-/* a box without DKIM domain / digits: logs, stores nothing */
+/* a box without DKIM domain / digits: NOT read at all (no alert used up before its rules exist) */
 $incId = BankMailAccounts::save(['country' => 'IN', 'email' => $em('inc'), 'method' => 'app_password', 'secret_enc' => SecretBox::seal('abcdefghijklmnop', 'bankmail')], $SUP);
 $acctIds[] = $incId;
 $incA = BankMailAccounts::get($incId);
 $resInc = BankMail::pollAccount($incA, 50, $imapFor([7001 => $mail(['dom' => 'icici.test', 'mid' => 'mp2inc' . $tag, 'plain' => "Rs $rAmt credited to A/c XX1234 UPI Ref No " . $T('N1') . "1 Remarks: " . $rB['pnr']])]));
-check('R a box without DKIM domain + digits is NOT ready: the credit mail is logged "setup-incomplete", no credit stored, no suggestion',
-    !BankMailAccounts::isReady($incA) && $resInc['ok'] && $resInc['credits'] === 0 && ($resInc['incomplete'] ?? 0) === 1 && $credit($T('N1') . '1') === null
-    && array_column($logOf($incId), 'outcome') === ['setup-incomplete'] && str_contains((string) (BankMailAccounts::get($incId)['last_result'] ?? ''), 'setup incomplete'), json_encode($resInc));
+check('R a box without DKIM domain + digits is NOT ready: nothing is read (no credit, no log row, no position), the box says "setup incomplete, not reading yet"',
+    !BankMailAccounts::isReady($incA) && $resInc['ok'] && $resInc['seen'] === 0 && $resInc['credits'] === 0 && $credit($T('N1') . '1') === null
+    && $logOf($incId) === [] && (BankMailAccounts::get($incId)['last_uid'] ?? null) === null
+    && str_contains((string) (BankMailAccounts::get($incId)['last_result'] ?? ''), 'setup incomplete, not reading yet'), json_encode($resInc));
+/* a race with Edit (the box loses its rules mid-run): logged "setup-incomplete" WITHOUT a msg_ref, so it is read again later */
+$resRace = ['credits' => 0, 'other' => 0, 'incomplete' => 0];
+BankMail::handle($mail(['dom' => 'icici.test', 'mid' => 'mp2inc' . $tag, 'plain' => "Rs $rAmt credited to A/c XX1234 UPI Ref No " . $T('N1') . "1 Remarks: " . $rB['pnr']]), $resRace, $incA, 'uid:7001');
+$lInc = $logOf($incId);
+check('R handle() on a box that is not ready: "setup-incomplete" logged with no msg_ref (not "seen"), no credit', $resRace['credits'] === 0 && $resRace['incomplete'] === 1
+    && array_column($lInc, 'outcome') === ['setup-incomplete'] && $lInc[0]['msg_ref'] === null && BankMailAccounts::seen($incId, ['uid:7001']) === [] && $credit($T('N1') . '1') === null);
+Database::update('bank_mail_accounts', ['last_uid' => 7001, 'uidvalidity' => '5151'], 'id = :i', ['i' => $incId]);   // as if an older build had moved on
 check('R the IMAP query of a box: FROM its senders, else its DKIM domain', BankMail::fromCriteria(BankMailAccounts::senders($inA)) === 'FROM "alerts@icici.test"' && GmailApi::query(['senders' => '', 'dkim_domain' => 'gibl.test']) === 'newer_than:3d from:(gibl.test)');
 check('R senderRule: blank senders = any address under the DKIM domain; nothing set = no rule (null)',
     BankMailAccounts::senderRule(['senders' => '', 'dkim_domain' => 'gibl.test'], 'x@alerts.gibl.test') === true && BankMailAccounts::senderRule(['senders' => '', 'dkim_domain' => 'gibl.test'], 'x@evil.test') === false
@@ -666,6 +703,12 @@ $h = $page('payment-center.php', $SUP, ['tab' => 'in'], $ed);
 $incA = BankMailAccounts::get($incId) ?? [];
 check('P Edit (CSRF) -> rules saved ("12-34" -> 1234), now ✓ ready, audited bank_mail.edit', str_contains($h, '✓ तयार · ready') && BankMailAccounts::isReady($incA) && $incA['account_hint'] === '1234' && $incA['label'] === 'HDFC test'
     && (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'bank_mail.edit' AND entity_id = :i", ['i' => (string) $incId], 0) === 1);
+check('P the box just became ready -> its position is cleared + its "setup-incomplete" rows dropped (recent mail read again), audited bank_mail.reread',
+    $incA['last_uid'] === null && $incA['uidvalidity'] === null && $incA['last_seen_ms'] === null && !in_array('setup-incomplete', array_column($logOf($incId), 'outcome'), true)
+    && (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'bank_mail.reread' AND entity_id = :i", ['i' => (string) $incId], 0) === 1, json_encode([$incA['last_uid'], $logOf($incId)]));
+$resRe = BankMail::pollAccount($incA, 50, $imapFor([7001 => $mail(['dom' => 'icici.test', 'mid' => 'mp2inc' . $tag, 'plain' => "Rs $rAmt credited to A/c XX1234 UPI Ref No " . $T('N1') . "1 Remarks: " . $rB['pnr']])]));
+check('P the next check reads the mail that came while the box was incomplete -> the credit is stored now (from that box)', $resRe['ok'] && $resRe['credits'] === 1
+    && (int) (($credit($T('N1') . '1') ?? [])['mail_account_id'] ?? 0) === $incId, json_encode($resRe, JSON_UNESCAPED_UNICODE));
 $add = ['act' => 'acct_add_pw', 'tab' => 'in', 'country' => 'IN', 'email' => $em('add'), 'app_password' => 'qrst uvwx yzab cdef', 'dkim_domain' => 'icici.test', 'account_hint' => '1234', 'senders' => ''];
 $page('payment-center.php', $SUP, ['tab' => 'in'], $add, true);
 check('P Add with an app password and a forged CSRF token -> nothing added', Database::fetch('SELECT id FROM bank_mail_accounts WHERE email = :e', ['e' => $em('add')]) === null);
@@ -680,12 +723,36 @@ check('P Remove with a forged CSRF token -> the box stays', BankMailAccounts::ge
 $h = $page('payment-center.php', $SUP, ['tab' => 'in'], $rm);
 check('P Remove (CSRF) -> row + sealed password gone, audited bank_mail.remove', BankMailAccounts::get((int) ($addA['id'] ?? 0)) === null && str_contains($h, 'हटाइयो')
     && (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'bank_mail.remove' AND entity_id = :i", ['i' => (string) ($addA['id'] ?? 0)], 0) === 1);
+/* one Gmail on BOTH tabs: removing one must not revoke Google's grant for the other */
+$shNp = BankMailAccounts::save(['country' => 'NP', 'email' => $em('shared'), 'method' => 'google', 'secret_enc' => SecretBox::seal('1//MP2SHARED' . $tag, 'bankmail')], $SUP);
+$shIn = BankMailAccounts::save(['country' => 'IN', 'email' => $em('shared'), 'method' => 'google', 'secret_enc' => SecretBox::seal('1//MP2SHARED' . $tag, 'bankmail')], $SUP);
+$acctIds[] = $shNp; $acctIds[] = $shIn;
+$revMock = [['oauth2.googleapis.com/revoke', 200, []]];
+$auditNew = static fn(int $aid): string => (string) Database::scalar("SELECT new_value FROM audit_logs WHERE action = 'bank_mail.remove' AND entity_id = :i ORDER BY id DESC LIMIT 1", ['i' => (string) $aid], '');
+$page('payment-center.php', $SUP, ['tab' => 'in'], ['act' => 'acct_remove', 'tab' => 'in', 'id' => (string) $shIn], false, $revMock);
+check('P the same Gmail is on the other tab too -> removing one does NOT revoke at Google (the other box keeps working)',
+    BankMailAccounts::get($shIn) === null && BankMailAccounts::get($shNp) !== null && str_contains($auditNew($shIn), '"revoked":false'), $auditNew($shIn));
+$page('payment-center.php', $SUP, ['tab' => 'np'], ['act' => 'acct_remove', 'tab' => 'np', 'id' => (string) $shNp], false, $revMock);
+check('P the last box of that Gmail removed -> revoked at Google', BankMailAccounts::get($shNp) === null && str_contains($auditNew($shNp), '"revoked":true'), $auditNew($shNp));
+/* the migrated mp1 box: removing it also blanks the plaintext app password left in settings */
+$lgId = BankMailAccounts::save(['country' => 'NP', 'email' => $em('legacy2'), 'method' => 'app_password', 'secret_enc' => SecretBox::seal('abcdefghijklmnop', 'bankmail')], $SUP);
+$acctIds[] = $lgId;
+setKeep(BankMailAccounts::LEGACY_KEY, (string) $lgId, 'string');
+setKeep('bankmail_app_password', 'abcd efgh ijkl mnop', 'string');
+$page('payment-center.php', $SUP, ['tab' => 'np'], ['act' => 'acct_remove', 'tab' => 'np', 'id' => (string) $lgId]);
+Settings::flush();
+check('P removing the box migrated from the old settings also blanks settings.bankmail_app_password (no plaintext copy left)',
+    BankMailAccounts::get($lgId) === null && Settings::getString('bankmail_app_password', 'x') === '' && str_contains($auditNew($lgId), '"legacy_password_cleared":true'), $auditNew($lgId));
 $gs = ['act' => 'google_save', 'tab' => 'np', 'google_oauth_client_id' => '999-mp2save.apps.googleusercontent.com', 'google_oauth_client_secret' => '', 'google_oauth_redirect' => ''];
 $h = $page('payment-center.php', $SUP, ['tab' => 'np'], $gs);
+Settings::flush();   // the page saved in its own process
 check('P Google client Save (CSRF): the id saved, a blank secret keeps the saved one, the secret never printed, the Login button back',
     Settings::getString('google_oauth_client_id', '') === '999-mp2save.apps.googleusercontent.com' && Settings::getString('google_oauth_client_secret', '') === 'GOCSPX-mp2-local-test-secret'
     && !str_contains($h, 'GOCSPX-mp2-local-test-secret') && str_contains($h, '🔐 Google बाट Login गर्नुहोस् (browser जस्तै)</a>'));
+check('P with the Google client saved, the one-time steps fold away under a closed "🔧 Google setup (एकपटकको)" (Login button stays on top)',
+    str_contains($h, '<details class="pc-adv"><summary>🔧 Google setup (एकपटकको)') && strpos($h, '🔐 Google बाट Login') < strpos($h, '🔧 Google setup (एकपटकको)'));
 $h = $page('payment-center.php', $SUP, ['tab' => 'np'], ['google_oauth_client_id' => 'not-a-client-id'] + $gs);
+Settings::flush();
 check('P Google client Save with a bad Client ID -> refused', str_contains($h, 'apps.googleusercontent.com मा सकिनुपर्छ') && Settings::getString('google_oauth_client_id', '') === '999-mp2save.apps.googleusercontent.com');
 
 $h = $page('gmail-oauth.php', $SUP, ['start' => '1', 'country' => 'IN']);

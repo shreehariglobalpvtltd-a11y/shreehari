@@ -93,6 +93,8 @@ final class PayCredits
     public const AMOUNT_NOTE  = 'PNR छैन — रकम मात्र मिल्यो · amount-only match';
     /** How far back an amount-only match looks for a booking that still owes money. */
     public const AMOUNT_WINDOW_H = 72;
+    /** a booking made up to this long AFTER the alert's time still counts (clock drift between bank and us) */
+    public const AMOUNT_SLACK_S = 600;
     private const PREFIX = ['gmail' => 'GIME-', 'bankapi' => 'UPIAPI-'];
     /** A Gmail credit in INR (an India bank box) is not Global IME. */
     private const PREFIX_GMAIL_INR = 'INBANK-';
@@ -653,8 +655,8 @@ final class PayCredits
         if (trim((string) ($c['pnr'] ?? '')) !== '') {
             $pnrs = array_values(array_unique(array_merge([strtoupper((string) $c['pnr'])], $pnrs)));
         }
-        if ($pnrs === [] && $source === 'gmail') {
-            return self::amountOnly($id, $txn, $amount, $cur);   // mp2: no PNR - exactly one booking owing exactly this = a suggestion, never auto
+        if ($pnrs === [] && $source === 'gmail' && self::mailCols()) {
+            return self::amountOnly($id, $txn, $amount, $cur, (string) ($c['received_at'] ?? ''));   // mp2: no PNR - exactly one booking owing exactly this = a suggestion, never auto
         }
         if ($pnrs === []) {
             return self::unmatched($id, 'No PNR in the remarks', null);
@@ -717,28 +719,32 @@ final class PayCredits
     }
 
     /**
-     * The bookings from the last AMOUNT_WINDOW_H hours that still owe EXACTLY $amount in $cur
-     * (NPR = the NPR the customer had to send, INR = the INR due): pending, or confirmed with a
-     * balance; never pay-at-boarding; none another credit already suggests. Newest first, at
-     * most 500 looked at.
+     * The bookings that still owe EXACTLY $amount in $cur (NPR = the NPR the customer had to send,
+     * INR = the INR due) and were made in the AMOUNT_WINDOW_H hours BEFORE the money arrived
+     * ($receivedTs; up to AMOUNT_SLACK_S after it for clock drift): pending, or confirmed with a
+     * balance; never pay-at-boarding. A booking another credit already suggests is still in the
+     * list (column 'suggested' = 1) so an ambiguous amount stays ambiguous. Newest first, at most
+     * 500 looked at.
      *
-     * @return list<array<string,mixed>> booking rows (+ owed)
+     * @return list<array<string,mixed>> booking rows (+ owed, suggested)
      */
-    public static function owingExactly(float $amount, string $cur, int $exceptCredit = 0): array
+    public static function owingExactly(float $amount, string $cur, int $exceptCredit = 0, ?int $receivedTs = null): array
     {
         self::boot();
         if ($amount <= 0) {
             return [];
         }
+        $at  = min($receivedTs ?? time(), time());
         $cod = class_exists('CounterDesk') && !CounterDesk::hasColumn('bookings', 'is_cod') ? '' : ' AND COALESCE(b.is_cod, 0) = 0';
         $rows = Database::fetchAll(
-            "SELECT b.*, (b.total_amount - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.booking_id = b.id AND p.status = 'verified'), 0)) AS owed
+            "SELECT b.*, (b.total_amount - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.booking_id = b.id AND p.status = 'verified'), 0)) AS owed,
+                    EXISTS (SELECT 1 FROM bank_credits s WHERE s.booking_id = b.id AND s.state = 'matched' AND s.acted_at IS NULL AND s.id <> :me) AS suggested
                FROM bookings b
-              WHERE b.created_at >= :since AND b.status IN ('pending','confirmed')$cod
-                AND NOT EXISTS (SELECT 1 FROM bank_credits s WHERE s.booking_id = b.id AND s.state = 'matched' AND s.acted_at IS NULL AND s.id <> :me)
+              WHERE b.created_at >= :since AND b.created_at <= :until AND b.status IN ('pending','confirmed')$cod
              HAVING owed > 0.004
            ORDER BY b.id DESC LIMIT 500",
-            ['since' => date('Y-m-d H:i:s', time() - self::AMOUNT_WINDOW_H * 3600), 'me' => $exceptCredit]
+            ['since' => date('Y-m-d H:i:s', $at - self::AMOUNT_WINDOW_H * 3600),
+             'until' => date('Y-m-d H:i:s', $at + self::AMOUNT_SLACK_S), 'me' => $exceptCredit]
         );
         $out = [];
         foreach ($rows as $b) {
@@ -758,10 +764,21 @@ final class PayCredits
      *
      * @return array{ok:bool, state:string, why:string, bookingId:?int}
      */
-    private static function amountOnly(int $id, string $txn, float $amount, string $cur): array
+    private static function amountOnly(int $id, string $txn, float $amount, string $cur, string $receivedAt = ''): array
     {
         $amt = $cur . ' ' . number_format($amount, 2);
-        $cands = self::owingExactly($amount, $cur, $id);
+        $ts  = $receivedAt !== '' ? strtotime($receivedAt) : false;
+        $ts  = $ts === false ? time() : $ts;
+        if ($ts < time() - self::AMOUNT_WINDOW_H * 3600) {
+            /* an old alert read late (new box, resumed box): money that came before today's bookings
+               must never be offered for them on the amount alone */
+            return self::unmatched($id, 'पुरानो alert, PNR छैन · old alert (' . date('Y-m-d H:i', $ts) . '), no PNR — link it by hand', null);
+        }
+        $cands = self::owingExactly($amount, $cur, $id, $ts);
+        if (count($cands) === 1 && (int) ($cands[0]['suggested'] ?? 0) === 1) {
+            return self::unmatched($id, mb_substr('रकम मिल्ने टिकट ' . (string) $cands[0]['pnr'] . ' मा पहिले नै सुझाव छ · '
+                . (string) $cands[0]['pnr'] . ' already has a suggestion (' . $amt . ') — second payment? link it by hand', 0, 255), null);
+        }
         if ($cands === []) {
             return self::unmatched($id, 'No PNR in the alert, and no booking from the last ' . self::AMOUNT_WINDOW_H . ' h owes exactly ' . $amt . ' — link it by hand', null);
         }
