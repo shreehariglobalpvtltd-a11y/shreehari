@@ -119,6 +119,30 @@ final class BookingService
     }
 
     /**
+     * 25 Nov 2026 (wx1, owner: "payment ma NPR ki INR choose garna milos"): a CUSTOMER
+     * (no seller, so no desk code) who chose NPR on the SmartBook card gets the NPR total
+     * frozen on the sale at today's company rate (npr_per_inr) - the same three columns an
+     * NPR desk fills, so the ticket prints NPR as the main amount (Ticket::isNprSale).
+     * INR stays the currency the books run in. Nothing without the fx columns
+     * (upgrade-2026-10-04-counter-desks.sql) or with customer_currency_choice_on off.
+     *
+     * @param array<string, mixed> $request
+     * @param array<string, mixed>|null $seller
+     * @return array<string, mixed> merged into the bookings insert
+     */
+    private static function customerFxStamp(array $request, ?array $seller, float $totalInr): array
+    {
+        if ($seller !== null || strtoupper((string) ($request['payCurrency'] ?? '')) !== 'NPR'
+            || !Settings::getBool('customer_currency_choice_on', true) || !CounterDesk::frozenColumns()['bookings']) {
+            return [];
+        }
+        $rate = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+        $rate = $rate > 0 ? round($rate, 4) : 1.6;
+
+        return ['fx_currency' => 'NPR', 'fx_rate' => $rate, 'fx_total' => (float) round($totalInr * $rate)];
+    }
+
+    /**
      * What the drawer physically received, when that is not rupees.
      * payments.amount stays the INR the ledger sums; local_amount is the NPR
      * the clerk counted, so a Nepalgunj day sheet balances in the money that
@@ -858,7 +882,8 @@ final class BookingService
                 $pricing['total'] = round((float) $pricing['total'] + $extraAmt, 2);
             }
 
-            $bookingId = Database::insert('bookings', BookGeo::stamp() + $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
+            $bookingId = Database::insert('bookings', BookGeo::stamp() + $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total'])
+                + self::customerFxStamp($request, $seller, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',

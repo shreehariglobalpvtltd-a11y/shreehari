@@ -960,6 +960,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           </div>
           <div class="sb-dir" role="radiogroup" aria-label="Direction">
             <button type="button" class="sb-dir-b on" role="radio" aria-checked="true" data-dir="toNepal"><span aria-hidden="true">🇮🇳→🇳🇵</span> <b data-sbi="dirGo">Gujarat → Rupaidiha</b></button>
+            <button type="button" class="sb-dir-swap" id="sbSwap" data-sbswap="1" aria-label="रुट साट्नुहोस् · Swap route" title="रुट साट्नुहोस् · Swap route">⇄</button>
             <button type="button" class="sb-dir-b" role="radio" aria-checked="false" data-dir="toIndia"><span aria-hidden="true">🇳🇵→🇮🇳</span> <b data-sbi="dirBack">Rupaidiha → Gujarat</b></button>
           </div>
           <div class="sb-grid">
@@ -1025,6 +1026,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           </div>
           <div class="sb-suggest" id="sbSuggest" hidden></div>
           <div class="sb-alt" id="sbAlt" hidden></div>
+          <div class="sb-cur" id="sbCur" role="radiogroup" aria-label="भुक्तानी मुद्रा · Pay in" hidden><span class="sb-cur-l">भुक्तानी · Pay in</span><button type="button" data-cur="INR" role="radio" aria-checked="false">₹ INR</button><button type="button" data-cur="NPR" role="radio" aria-checked="false">रू NPR</button></div>
           <p class="sb-terms"><span data-sbi="terms">By booking I accept the</span> <a href="#/terms" data-sbi="termsLink">Terms</a><span class="sb-policy" id="sbPolicy"> · {{f:policy.line.en}}</span></p>
         </div>
       </div>
