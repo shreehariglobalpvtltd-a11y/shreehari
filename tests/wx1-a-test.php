@@ -12,14 +12,15 @@ $chk = function ($name, $cond) use (&$ok, &$bad) { if ($cond) { $ok++; echo "  P
 $root = dirname(__DIR__);
 $src = static fn(string $f): string => (string) file_get_contents($root . '/' . $f);
 
-/* keep the two switches as they were */
-$keys = ['geo_direction_on', 'customer_currency_choice_on'];
+/* keep the two switches (and the office default rules) as they were: the whole row is put
+   back (value, type, group, label, public), because the test deletes the rows while it runs */
+$keys = ['geo_direction_on', 'customer_currency_choice_on', 'default_rules'];
 $saved = [];
 foreach ($keys as $k) { $saved[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]); }
 $restore = function () use ($keys, $saved) {
     foreach ($keys as $k) {
-        if ($saved[$k] === null) { Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]); }
-        else { Database::run('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => $saved[$k]['svalue'], 'k' => $k]); }
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($saved[$k] !== null) { Database::insert('settings', $saved[$k]); }
     }
     Settings::flush();
 };
@@ -50,6 +51,12 @@ try {
     $off = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
     $chk('geo_direction_on = 0: timezone ignored', $off['direction'] === $plain['direction'] && !isset($off['why']['direction']));
     Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'geo_direction_on']); Settings::flush();
+    /* an office "fixed" direction (Admin -> Default Rules) beats the timezone */
+    Settings::set('default_rules', ['fixed' => ['direction' => 'toNepal']], 'json', 'booking', false); Settings::flush();
+    $fx1 = SmartBook::defaults(['tz' => 'Asia/Kathmandu'], 'customer');
+    $chk('office fixed direction wins over the timezone', $fx1['direction'] === 'toNepal'
+        && strpos((string) ($fx1['why']['direction']['ne'] ?? ''), 'नेपालबाट खोलिएको') !== 0);
+    Database::run('DELETE FROM settings WHERE skey = :k', ['k' => 'default_rules']); Settings::flush();
 
     /* 2. NPR | INR */
     $chk('customer NPR', SmartBook::payCurrency(['cur' => 'NPR'], 'customer', null) === 'NPR');
@@ -157,6 +164,23 @@ try {
     $chk('NPR opens eSewa first', strpos($js, "if (inNpr() && r.pay && r.pay.esewa) PAY.tab = 'esewa';") !== false);
     $chk('chips: BS वि.सं. + AD ई.सं.', strpos($js, "' वि.सं.</span>'") !== false && strpos($js, "' ई.सं.</span></button>'") !== false);
     $chk('quick line: full BS + AD', strpos($js, "bsQ + ' वि.सं. · ' : '') + q.dateLabel + ' ई.सं.'") !== false);
+    /* review fixes: NPR on the Cash confirm sheet + the normal fare, desk card unchanged */
+    $chk('confirm sheet total in the chosen money', strpos($js, "esc(q.price ? curAmt(Number(q.price.total) + dxS.amt, q) : '—')") !== false
+        && strpos($js, "esc(altAmt(Number(q.price.total) + dxS.amt, q))") !== false);
+    $chk('Confirm button / pay-at-boarding line use the chosen money', strpos($js, "var tot = q.price ? curAmt(Number(q.price.total) + deskExtras('cash').amt, q) : '';") !== false
+        && strpos($js, "var tot = q.price ? curAmt(q.price.total, q) : '';") !== false);
+    $chk('normal fare struck through in the chosen money', strpos($js, 'nfHtml(q.price.normal, function (n) { return curAmt(n, q); })') !== false
+        && strpos($js, "curAmt(q.price.normal.normal, q)") !== false);
+    $chk('desk keeps the old date chip + no Quick-line swap', strpos($js, "if (STAFF) {   // the staff desk keeps its compact one-line chip") !== false
+        && strpos($js, "var swapQ = STAFF ? '' :") !== false);
+    $adm = $src('admin/smartbook.php');
+    $chk('desk card drops the swap and is marked data-staff', strpos($adm, 'class="sb-dir-swap"[^>]*>') !== false && strpos($adm, "'\$0 data-staff=\"1\"'") !== false);
+    $tplCard = preg_match('~<section class="sb" id="smartBook"[^>]*>.*?</section>~s', $src('app.template.html'), $mm) === 1 ? $mm[0] : '';
+    $deskCard = (string) preg_replace('~<button type="button" class="sb-dir-swap"[^>]*>.*?</button>\s*~s', '', $tplCard, 1);
+    $deskCard = (string) preg_replace('~<section class="sb" id="smartBook"~', '$0 data-staff="1"', $deskCard, 1);
+    $chk('desk card: no swap, both directions kept, data-staff set', $tplCard !== '' && strpos($deskCard, 'sb-dir-swap') === false
+        && substr_count($deskCard, 'class="sb-dir-b') === 2 && strpos($deskCard, '<section class="sb" id="smartBook" data-staff="1"') === 0);
+    $chk('3-column direction grid only on the customer card', strpos($src('assets/css/smartbook.css'), '#smartBook:not([data-staff]) .sb-dir{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}') !== false);
     $html = $src('app.template.html');
     $chk('swap button in the card', strpos($html, 'id="sbSwap" data-sbswap="1" aria-label="रुट साट्नुहोस् · Swap route"') !== false);
     $chk('currency chips in the card', strpos($html, 'id="sbCur"') !== false && strpos($html, 'data-cur="NPR"') !== false && strpos($html, 'data-cur="INR"') !== false);

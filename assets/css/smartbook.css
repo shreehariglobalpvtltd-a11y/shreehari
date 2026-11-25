@@ -793,8 +793,10 @@ html #view-home > #sbDesk{order:-1 !important}
 /* ===================================================================
    25 Nov 2026 (wx1) — route swap, ₹ INR | रू NPR, both calendars
    =================================================================== */
-/* ⇄ between the two directions: one tap = the other run (44px target) */
-#smartBook .sb-dir{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}
+/* ⇄ between the two directions: one tap = the other run (44px target). Customer card only:
+   the staff desk (admin/smartbook.php, data-staff) drops the button and keeps its 2-column row */
+#smartBook:not([data-staff]) .sb-dir{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}
+#smartBook[data-staff] .sb-dir-swap{display:none}
 #smartBook .sb-dir-swap{width:44px;min-width:44px;min-height:44px;padding:0;border:1px solid var(--sb-line);border-radius:50%;background:var(--sb-panel);color:var(--sb-primary);font:inherit;font-size:20px;font-weight:800;line-height:1;cursor:pointer;align-self:center;display:grid;place-items:center;touch-action:manipulation}
 #smartBook .sb-dir-swap:focus-visible,#smartBook .sb-qline .sb-q-swap:focus-visible,#smartBook .sb-cur button:focus-visible{outline:3px solid var(--sb-primary);outline-offset:2px}
 @media (hover:hover){#smartBook .sb-dir-swap:hover{border-color:var(--sb-primary)}}
@@ -815,5 +817,5 @@ html #view-home > #sbDesk{order:-1 !important}
 #smartBook #sbDates .sb-chip-2d.on .sb-d-ad{color:rgba(255,255,255,.88)}
 #smartBook .sb-qline span.sb-ql-date{white-space:normal;overflow:visible;text-overflow:clip}
 /* with ⇄ in the middle a 360px phone has ~125px per direction: wrap the town names to two lines, never cut them */
-#smartBook .sb-dir .sb-dir-b{white-space:normal;min-width:0;padding:2px 6px}
-#smartBook .sb-dir .sb-dir-b b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15;text-align:center;overflow-wrap:anywhere}
+#smartBook:not([data-staff]) .sb-dir .sb-dir-b{white-space:normal;min-width:0;padding:2px 6px}
+#smartBook:not([data-staff]) .sb-dir .sb-dir-b b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15;text-align:center;overflow-wrap:anywhere}

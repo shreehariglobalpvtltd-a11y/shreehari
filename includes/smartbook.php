@@ -366,9 +366,11 @@ final class SmartBook
         /* 25 Nov 2026 (wx1, owner: "Nepal bata kholda Nepal -> India rute khulos"): no server
            geo - the browser's own timezone (tz). Customer card only, after an explicit / saved
            direction and the phone's history: Asia/Kathmandu opens on Rupaidiha -> Gujarat.
-           Switch: geo_direction_on (default on). */
+           Switch: geo_direction_on (default on). An office "fixed" direction (Default Rules)
+           still wins: then the timezone stays out and DefaultRules::apply() sets it as before. */
         if ($dir === '' && $mode === 'customer' && self::nepalTz((string) ($in['tz'] ?? ''))
             && Settings::getBool('geo_direction_on', true)
+            && !self::officeFixedDirection()
             && in_array('toIndia', array_column(self::directions(), 'direction'), true)) {
             $dir = 'toIndia';
             $why['direction'] = self::why('नेपालबाट खोलिएको · Opened from Nepal', 'नेपाल से खोला गया · Opened from Nepal', 'नेपालबाट खोलिएको · Opened from Nepal');
@@ -1655,7 +1657,6 @@ final class SmartBook
         ];
     }
 
-    /** @return array{en: string, hi: string, ne: string} */
     /**
      * 25 Nov 2026 (wx1): 'NPR' when a customer (never a desk) chose to pay in NPR and the
      * owner's switch customer_currency_choice_on is on; '' otherwise (= INR, as before).
@@ -1675,6 +1676,15 @@ final class SmartBook
     {
         return in_array(trim($tz), ['Asia/Kathmandu', 'Asia/Katmandu'], true);
     }
+
+    /** 25 Nov 2026 (wx1): has the office fixed the card's direction in Default Rules? */
+    private static function officeFixedDirection(): bool
+    {
+        require_once __DIR__ . '/defaultrules.php';
+        return isset(DefaultRules::config()['fixed']['direction']);
+    }
+
+    /** @return array{en: string, hi: string, ne: string} */
 
     private static function why(string $en, string $hi, string $ne): array
     {
