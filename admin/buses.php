@@ -65,6 +65,12 @@ function shg_run_bus_on_date(int $busId, int $routeId, string $date, string $dep
         if ($clash !== null) {
             throw new RuntimeException('Bus ' . $label . ' already runs ' . $clash['from_city'] . ' → ' . $clash['to_city'] . ' on ' . $date . '.');
         }
+        // 25 Nov 2026 (op5): guard + tickets re-minted + passengers told once.
+        require_once INCLUDE_PATH . '/busswap.php';
+        if (BusSwap::on()) {
+            $sw = BusSwap::swap($sid, $busId, $adminId, 'Fleet: run on date', ['via' => 'fleet.run_on_date']);
+            return 'Done — ' . $label . ' is now the main bus on ' . $date . '. ' . $sw['message'];
+        }
         $check = Seats::assertBusSwapSafe($sid, $busId);
         Database::transaction(static function () use ($sid, $busId, $check): void {
             Database::update('schedules', ['bus_id' => $busId], 'id = :id', ['id' => $sid]);

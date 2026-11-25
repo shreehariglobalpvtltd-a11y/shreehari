@@ -266,6 +266,7 @@ const CORE_SUITES = [
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+    'op5-busswap-test.php'            => 'bus swap: guard / smaller bus refused, tickets re-minted, live trip follows, every passenger told once (25 Nov op5)',
 ];
 
 /**

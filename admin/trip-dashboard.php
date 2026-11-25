@@ -15,6 +15,8 @@ $admin = admin_boot('schedules.view');
 
 $base  = '';   // root-relative
 $flash = null;
+require_once INCLUDE_PATH . '/busswap.php';   // 25 Nov 2026 (op5): one-click swap + passenger notice
+$swapResult = null;
 
 /* ---- Per-date manual bus-assignment (POST) --------------------------
    Mirrors the trips.php assign_driver pattern: a single-select form in
@@ -38,6 +40,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $sid    = (int) ($_POST['schedule_id'] ?? 0);
                 $busId  = (int) ($_POST['bus_id'] ?? 0);
                 if ($sid <= 0) { throw new RuntimeException('Missing schedule id.'); }
+
+                /* op5 (bus_swap_v2_on): a real change of coach goes through the
+                   preview + confirm card, which re-mints the tickets and tells
+                   the passengers. Un-assign (0) keeps the old path below. */
+                if ($busId > 0 && BusSwap::on()) {
+                    $cur = Database::fetch('SELECT bus_id, travel_date FROM schedules WHERE id = :id', ['id' => $sid]);
+                    if ($cur !== null && (int) ($cur['bus_id'] ?? 0) !== $busId) {
+                        header('Location: ' . $base . '/admin/trip-dashboard.php?' . http_build_query([
+                            'date' => (string) $cur['travel_date'], 'swap' => $sid, 'to' => $busId,
+                        ]) . '#bus-swap', true, 303);
+                        exit;
+                    }
+                }
 
                 $before = Database::fetch(
                     'SELECT bus_id, total_seats FROM schedules WHERE id = :id',
@@ -97,6 +112,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     );
                     $flash = ['ok', 'Bus un-assigned.'];
                 }
+            } elseif ($action === 'swap_bus') {
+                // op5: the confirm button of the "बस साट्नुहोस् · Swap bus" card.
+                Auth::requireAdmin('schedules.manage');
+                if (!BusSwap::on()) { throw new RuntimeException('Bus swap is switched off (bus_swap_v2_on).'); }
+                $sid    = (int) ($_POST['schedule_id'] ?? 0);
+                $busId  = (int) ($_POST['bus_id'] ?? 0);
+                $preset = Security::clean((string) ($_POST['reason_preset'] ?? ''), 60);
+                $note   = Security::clean((string) ($_POST['reason'] ?? ''), 120);
+                $reason = trim($preset . ($preset !== '' && $note !== '' ? ' · ' : '') . $note);
+                $swapResult = BusSwap::swap($sid, $busId, (int) $admin['id'], $reason, [
+                    'notify' => !empty($_POST['notify']), 'via' => 'trip_dashboard',
+                ]);
+                $flash = [((int) $swapResult['failed'] > 0) ? 'warn' : 'ok', (string) $swapResult['message']];
             }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
@@ -389,6 +417,130 @@ if ($allDaySchedules !== []) {
 }
 ?>
 
+<?php
+/* ── op5 (25 Nov 2026): "बस साट्नुहोस् · Swap bus" card ─────────────
+   ?swap=<sid>[&to=<bus>] — pick the replacement, read the preview
+   (sold beds vs seats, coach, who has no seat on a smaller bus), confirm.
+   The confirm posts action=swap_bus → BusSwap::swap(). */
+$swapSid = (int) ($_GET['swap'] ?? ((string) ($_POST['action'] ?? '') === 'swap_bus' ? ($_POST['schedule_id'] ?? 0) : 0));
+$swapTo  = (int) ($_GET['to'] ?? ((string) ($_POST['action'] ?? '') === 'swap_bus' && $swapResult === null ? ($_POST['bus_id'] ?? 0) : 0));   // a refused confirm shows its reasons again
+if ($canEdit && BusSwap::on() && $swapSid > 0 && ($swapTrip = BusSwap::trip($swapSid)) !== null):
+    $swapPv = $swapTo > 0 ? BusSwap::preview($swapSid, $swapTo) : null;
+    $curEff = (int) ($swapTrip['eff_bus_id'] ?? 0);
+?>
+<div class="panel" id="bus-swap" style="margin-bottom:18px;border-left:4px solid var(--warning)">
+  <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">🔁 बस साट्नुहोस् · Swap bus
+    <a href="?date=<?= urlencode($date) ?>" class="btn btn-ghost btn-sm" style="margin-left:auto">✕ बन्द</a></h2>
+  <p style="margin:0 0 10px">
+    <b><?= Security::e($swapTrip['from_city'] . ' → ' . $swapTrip['to_city']) ?></b>
+    · <?= Security::e(formatDate((string) $swapTrip['travel_date'], 'j M Y')) ?>
+    · <?= Security::e(formatTime((string) $swapTrip['dep_time'])) ?>
+    · <?= admin_pill((string) $swapTrip['status']) ?>
+    <br><span class="muted">अहिलेको बस · Now:</span> <b class="mono"><?= Security::e(BusSwap::label(BusSwap::bus($curEff))) ?></b>
+    <?php if ((string) $swapTrip['status'] === 'departed'): ?>
+      <br><span class="muted" style="font-size:12px">बस हिँडिसक्यो — बाटोमा गाडी बिग्रिएमा पनि साट्न मिल्छ; चढेको (boarded) चिन्ह उही रहन्छ।</span>
+    <?php endif; ?>
+  </p>
+
+  <?php if ($swapResult !== null && $swapResult['failedList'] !== []): ?>
+    <div class="flash warn" style="margin:0 0 10px">
+      <b>नपुगेका सन्देश · Not sent (<?= count($swapResult['failedList']) ?>):</b>
+      <?php foreach (array_slice($swapResult['failedList'], 0, 20) as $fl): ?><br><span class="mono" style="font-size:12px"><?= Security::e($fl) ?></span><?php endforeach; ?>
+      <br><span style="font-size:12px">फेरि “बस साट्नुहोस्” थिच्दा यी मात्र फेरि पठाइन्छ।</span>
+    </div>
+  <?php endif; ?>
+
+  <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
+    <input type="hidden" name="date" value="<?= Security::e($date) ?>">
+    <input type="hidden" name="swap" value="<?= $swapSid ?>">
+    <label style="flex:1 1 220px">नयाँ बस · Replacement bus
+      <select name="to" onchange="this.form.submit()" style="width:100%">
+        <option value="0">— छान्नुहोस् · choose —</option>
+        <?php foreach ($activeBuses as $ab): if ((int) $ab['id'] === $curEff && (int) $ab['id'] !== $swapTo) { continue; } ?>
+          <option value="<?= (int) $ab['id'] ?>" <?= (int) $ab['id'] === $swapTo ? 'selected' : '' ?>>
+            <?= Security::e((string) $ab['bus_name']) ?><?= $ab['bus_number'] ? ' · ' . Security::e((string) $ab['bus_number']) : '' ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-ghost btn-sm">जाँच्नुहोस् · Check</button>
+  </form>
+
+  <?php if ($swapPv !== null): ?>
+    <div class="td-cards" style="margin-bottom:12px">
+      <div class="td-card blue"><div class="k">बिक्री भएको बर्थ · Sold beds</div><div class="v"><?= (int) $swapPv['beds'] ?></div></div>
+      <div class="td-card <?= (int) $swapPv['overflow'] > 0 ? 'orange' : 'green' ?>"><div class="k">नयाँ बसको सिट · New bus seats</div><div class="v"><?= (int) $swapPv['newSeats'] ?></div></div>
+      <div class="td-card gray"><div class="k">यात्रु · Passengers</div><div class="v"><?= (int) $swapPv['pax'] ?> <small><?= (int) $swapPv['confirmed'] ?> पक्का</small></div></div>
+      <div class="td-card gray"><div class="k">कोच · Coach</div><div class="v" style="font-size:15px"><?= Security::e((string) ($swapTrip['coach_type'] ?? '')) ?> → <?= Security::e((string) ($swapPv['newBus']['coach_type'] ?? '—')) ?></div></div>
+    </div>
+    <p style="margin:0 0 10px">बस नम्बर: <b class="mono"><?= Security::e((string) $swapPv['oldLabel']) ?></b> → <b class="mono"><?= Security::e((string) $swapPv['newLabel']) ?></b></p>
+
+    <?php foreach ($swapPv['errors'] as $er): ?>
+      <div class="flash bad" style="margin:0 0 8px"><?= Security::e((string) $er) ?></div>
+    <?php endforeach; ?>
+
+    <?php if ($swapPv['noSeat'] !== []): ?>
+      <div class="flash warn" style="margin:0 0 10px">
+        <b>सिट नपुग्ने यात्रु · No seat on the smaller bus (<?= (int) $swapPv['overflow'] ?> beds short)</b><br>
+        <span style="font-size:12px">पछिल्लो बुकिङ पहिले देखाइएको छ। यिनलाई अर्को बस / मितिमा सार्नुहोस् (Transfer), अनि फेरि जाँच्नुहोस्।</span>
+        <?php foreach ($swapPv['noSeat'] as $ns): ?>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+            <span class="mono"><?= Security::e($ns['pnr']) ?></span>
+            <b><?= Security::e($ns['name']) ?></b>
+            <span class="muted"><?= Security::e($ns['seats']) ?></span>
+            <a class="btn btn-ghost btn-sm" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode($ns['pnr']) ?>">↪ Transfer</a>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
+    <?php if ($swapPv['ok']): ?>
+      <form method="post" style="display:flex;flex-direction:column;gap:10px;max-width:520px"
+            onsubmit="return confirm('बस <?= Security::e(addslashes((string) $swapPv['oldLabel'])) ?> → <?= Security::e(addslashes((string) $swapPv['newLabel'])) ?> साट्ने?')">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="action" value="swap_bus">
+        <input type="hidden" name="schedule_id" value="<?= $swapSid ?>">
+        <input type="hidden" name="bus_id" value="<?= $swapTo ?>">
+        <?php if ($swapPv['resume']): ?>
+          <div class="flash ok" style="margin:0">यो बस पहिल्यै राखियो। थिच्दा नपुगेका सन्देश मात्र फेरि पठाइन्छ · Already swapped — only messages that did not go are tried again.</div>
+        <?php endif; ?>
+        <label>कारण · Reason
+          <select name="reason_preset" style="width:100%">
+            <option value="गाडी बिग्रियो">गाडी बिग्रियो · Breakdown</option>
+            <option value="नम्बर बदलियो">नम्बर बदलियो · Number changed</option>
+            <option value="अर्को बस पठाइयो">अर्को बस पठाइयो · Other bus sent</option>
+            <option value="">अरू · Other</option>
+          </select>
+        </label>
+        <input type="text" name="reason" maxlength="120" placeholder="थप कुरा (ऐच्छिक) · note (optional)" style="width:100%">
+        <label style="display:flex;gap:8px;align-items:center">
+          <input type="checkbox" name="notify" value="1" <?= BusSwap::notifyOn() ? 'checked' : 'disabled' ?>>
+          यात्रुलाई र ड्राइभरलाई WhatsApp पठाउने · Tell passengers + driver
+          <?php if (!BusSwap::notifyOn()): ?><span class="muted" style="font-size:12px">(bus_swap_notify_on बन्द)</span><?php endif; ?>
+        </label>
+        <button type="submit" class="btn btn-blue">✅ <?= $swapPv['resume'] ? 'फेरि पठाउनुहोस् · Resend missed' : 'बस साट्नुहोस् · Swap bus' ?></button>
+        <span class="muted" style="font-size:12px">टिकट (फोटो / PDF / QR) र चलानीमा नयाँ बस नम्बर आउँछ। सिट, भुक्तानी र चढेको चिन्ह उही रहन्छ।</span>
+      </form>
+    <?php endif; ?>
+
+    <?php if ($swapPv['passengers'] !== []): ?>
+      <details style="margin-top:12px">
+        <summary>यात्रु सूची · Passengers (<?= count($swapPv['passengers']) ?> bookings)</summary>
+        <?php foreach ($swapPv['passengers'] as $pp): ?>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">
+            <span class="mono"><?= Security::e($pp['pnr']) ?></span>
+            <b><?= Security::e($pp['name']) ?></b>
+            <span class="muted"><?= Security::e($pp['seats']) ?></span>
+            <?= admin_pill($pp['status']) ?>
+            <?php if ((int) $pp['boarded'] > 0): ?><span class="pill">✓ चढेको <?= (int) $pp['boarded'] ?></span><?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </details>
+    <?php endif; ?>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <div class="panel" style="margin-bottom:18px">
   <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     📅 All Buses — <?= Security::e(formatDate($date)) ?>
@@ -478,6 +630,10 @@ if ($allDaySchedules !== []) {
            class="btn btn-blue btn-sm">🗺️ Seat Map</a>
         <a href="?route=<?= (int)($ds['route_id'] ?? 0) ?>&date=<?= urlencode($date) ?>"
            class="btn btn-ghost btn-sm">📊 Detail</a>
+        <?php if ($canEdit && BusSwap::on() && (string) $ds['status'] !== 'arrived'): ?>
+        <a href="?date=<?= urlencode($date) ?>&swap=<?= $sid ?>#bus-swap"
+           class="btn btn-ghost btn-sm" title="गाडी बिग्रियो / नम्बर बदलियो">🔁 बस साट्नुहोस्</a>
+        <?php endif; ?>
       </td>
     </tr>
     <?php endforeach; ?>
