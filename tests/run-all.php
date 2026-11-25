@@ -270,6 +270,7 @@ const CORE_SUITES = [
     'wa87-e2e-test.php'               => '87 WhatsApp sender end to end: name / date → one booking, pay link, UTR never marks paid, one ticket (19 Nov)',
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'mp1-pay-test.php'                => 'Payment Management: ICICI strict fields, one Nepal QR, Gmail bank alerts + bank webhook -> credits ledger, exact-match auto-confirm only (25 Nov)',
+    'mp2-bankgmail-test.php'          => 'bank Gmail boxes from Payment Management: Google sign-in (OAuth+PKCE, sealed tokens), Gmail API reader, per-box rules, Indian INR alerts, amount-only suggestions, never auto (25 Nov mp2)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'mp1-login-test.php'              => 'top bar photo / initials + mode badge, login mode cards never change the role, credential actions super-admin only, remember 90 days (25 Nov mp1-lg)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
@@ -290,6 +291,7 @@ const CORE_SUITES = [
  */
 const SUITE_EXT = [
     'u5-ag-payout-test.php' => ['sodium'],
+    'mp2-bankgmail-test.php' => ['sodium'],
 ];
 
 /**
