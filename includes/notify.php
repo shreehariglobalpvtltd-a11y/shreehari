@@ -1161,7 +1161,8 @@ final class Notify
             '3' => $dateLine,
             '4' => $boardLine          !== '' ? $boardLine          : '-',
             '5' => $seatLine,
-            '6' => inr((float) ($booking['total_amount'] ?? 0)),
+            // 25 Nov 2026 (wx1): an NPR sale reads रू NPR here too, like the free-form text + ticket image.
+            '6' => self::waAmount($booking),
             // {{7}} is the template's IMAGE header — the ticket PNG itself.
             '7' => Ticket::imageUrl($pnr),
         ];
@@ -1206,6 +1207,7 @@ final class Notify
               . "जम्मा: " . self::waAmount($booking) . "\n"
               . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . self::pickupMapLine($booking)
               . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
               . "राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
@@ -1306,7 +1308,9 @@ final class Notify
                 $changedTpl = WaTplMeta::forPurpose('ticket_update', [
                     'name'   => $pname,
                     'pnr'    => $pnr,
-                    'change' => self::CHANGE_EN[$what] ?? 'ticket updated',
+                    'change' => ($what === 'trip_change' && is_scalar($ctx['busNew'] ?? null) && trim((string) $ctx['busNew']) !== '')
+                        ? 'bus number changed: ' . (trim((string) (is_scalar($ctx['busOld'] ?? null) ? $ctx['busOld'] : '')) ?: '-') . ' -> ' . trim((string) $ctx['busNew']) . ', same seat'
+                        : (self::CHANGE_EN[$what] ?? 'ticket updated'),
                     'date'   => $facts0['date'] !== '' ? formatDate($facts0['date'], 'j M Y') : '',
                     'seat'   => $facts0['seats'],
                     'header' => Ticket::imageUrl($pnr),
@@ -1376,6 +1380,19 @@ final class Notify
                 $np = 'टिकट ' . $pnr . ' को चढ्ने / ओर्लने ठाउँ मिलाइयो' . ($seats !== '' ? ': ' . $seats : '') . '।';
                 break;
             case 'trip_change':
+                /* 25 Nov 2026 (op5 bus swap, includes/busswap.php): the coach
+                   under the trip was swapped - say the old and new number,
+                   that the seat stays, the time and the PNR. */
+                $busNew = trim((string) (is_scalar($ctx['busNew'] ?? null) ? $ctx['busNew'] : ''));
+                if ($busNew !== '') {
+                    $busOld = trim((string) (is_scalar($ctx['busOld'] ?? null) ? $ctx['busOld'] : '')) ?: '—';
+                    $when   = trim((string) (is_scalar($ctx['time'] ?? null) ? $ctx['time'] : ''));
+                    $en = 'Your bus number has changed: ' . $busOld . ' -> ' . $busNew . ', same seat' . ($seats !== '' ? ' (' . $seats . ')' : '')
+                        . ($when !== '' ? ', time ' . $when : '') . ', PNR ' . $pnr;
+                    $np = 'तपाईंको बस नम्बर परिवर्तन भयो: ' . $busOld . ' -> ' . $busNew . ', सिट उही' . ($seats !== '' ? ' (' . $seats . ')' : '')
+                        . ($when !== '' ? ', समय ' . $when : '') . ', PNR ' . $pnr;
+                    break;
+                }
                 $en = 'Your trip on ticket ' . $pnr . ' has CHANGED' . ($seats !== '' ? ': ' . $seats : '') . ($newDate !== '' ? ' · ' . $newDate : '');
                 $np = 'टिकट ' . $pnr . ' को बस / समय बदलियो' . ($seats !== '' ? ': ' . $seats : '') . ($newDate !== '' ? ' · ' . $newDate : '') . '।';
                 break;
@@ -1405,6 +1422,7 @@ final class Notify
               . "जम्मा: " . self::waAmount($booking) . " (उही)\n"
               . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . self::pickupMapLine($booking)
               . "📍 बस कहाँ छ (लाइभ): " . Ticket::trackUrl($pnr) . "\n"
               . "नयाँ टिकट लिएर जानुहोला। राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
@@ -2293,6 +2311,103 @@ final class Notify
         return inr($inr);
     }
 
+    /**
+     * 25 Nov 2026 (wx1): the pickup map link of the free-form WhatsApp ticket
+     * texts = the payload of the ticket's own PICKUP QR (Ticket::mapQrs() row
+     * 'board'), so the text and the printed QR open the same place. The
+     * outbound leg gives boarding_stop / route / cities, as the ticket render
+     * reads them. '' when the switch wa_pickup_map_link_on is off, the pickup
+     * has no pin, or anything fails - never breaks a send.
+     */
+    private static function pickupMapUrl(array $booking): string
+    {
+        try {
+            if (!Settings::getBool('wa_pickup_map_link_on', true)) {
+                return '';
+            }
+            if (!class_exists('Ticket')) {
+                require_once __DIR__ . '/ticket.php';
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            if ($bid > 0 && (!isset($booking['boarding_stop']) || !isset($booking['route_id_for_stop']))) {
+                $leg = Database::fetch(
+                    "SELECT l.boarding_stop, r.from_city, r.to_city, r.id AS route_id_for_stop
+                       FROM booking_legs l
+                       JOIN schedules s ON s.id = l.schedule_id
+                       JOIN routes r ON r.id = s.route_id
+                      WHERE l.booking_id = :b AND l.leg_type = 'outbound'
+                      LIMIT 1",
+                    ['b' => $bid]
+                );
+                if ($leg !== null) {
+                    $booking = array_merge($booking, $leg);
+                }
+            }
+            foreach (Ticket::mapQrs($booking) as $q) {
+                $url = (string) ($q['payload'] ?? '');
+                if (($q['kind'] ?? '') === 'board' && preg_match('#^https?://\S+$#i', $url) === 1) {
+                    return $url;
+                }
+            }
+        } catch (Throwable $ignored) {
+        }
+        return '';
+    }
+
+    /** "📍 चढ्ने ठाउँको नक्सा · Pickup map: <url>\n", or '' when there is no map link. */
+    private static function pickupMapLine(array $booking): string
+    {
+        $url = self::pickupMapUrl($booking);
+        return ($url !== '' ? "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $url . "\n" : '') . self::nepalJourneyLines($booking);
+    }
+
+    /**
+     * wx6 (25 Nov 2026, owner): a Nepal -> India ticket's WhatsApp text carries the journey -
+     * office 4 pm with ID -> our auto across Jamunaha-Rupaidiha -> 6 pm bus - and that the auto
+     * and the bus are ONE S Hari service (TravelGuide::nepalJourney, from the route rows).
+     * Boarding at Rupaidiha: only the bus step + the one-service line. '' otherwise / on error.
+     * Switch wa_np_journey_on (default on).
+     */
+    private static function nepalJourneyLines(array $booking): string
+    {
+        try {
+            if (!Settings::getBool('wa_np_journey_on', true)) {
+                return '';
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            if ($bid > 0 && (!isset($booking['from_city']) || !isset($booking['boarding_stop']))) {
+                $leg = Database::fetch(
+                    "SELECT l.boarding_stop, r.from_city, r.to_city FROM booking_legs l
+                       JOIN schedules s ON s.id = l.schedule_id JOIN routes r ON r.id = s.route_id
+                      WHERE l.booking_id = :b AND l.leg_type = 'outbound' LIMIT 1",
+                    ['b' => $bid]
+                );
+                if ($leg !== null) {
+                    $booking = array_merge($booking, $leg);
+                }
+            }
+            if (!class_exists('Boarding')) {
+                require_once __DIR__ . '/boarding.php';
+            }
+            $route = ['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')];
+            if ($route['from_city'] === '' || Boarding::routeDirection($route) !== 'toIndia') {
+                return '';
+            }
+            require_once __DIR__ . '/travelguide.php';
+            $j = TravelGuide::nepalJourney('ne');
+            if ($j === [] || ($j['steps'] ?? []) === []) {
+                return '';
+            }
+            $steps = $j['steps'];
+            if (preg_match('/nepal\s*g[au]n[jg]/i', (string) ($booking['boarding_stop'] ?? '')) !== 1 && count($steps) > 1) {
+                $steps = [end($steps)];   // boards at Rupaidiha: only the bus step
+            }
+            return implode("\n", $steps) . "\nℹ️ " . $j['one'] . "\n";
+        } catch (Throwable) {
+            return '';
+        }
+    }
+
     /** The {{1}}..{{7}} ticket template variables — public for WaTemplates. */
     public static function ticketVars(array $booking): array
     {
@@ -2630,6 +2745,7 @@ final class Notify
                   . "बुकिङ नं.: " . $pnr . "\n"
                   . ($waBoard !== '' ? "चढ्ने ठाउँ: " . $waBoard . "\n" : '')
                   . ($waTime !== '' ? "समय: " . $waTime . "\n" : '')
+                  . self::pickupMapLine($booking)
                   . ($waDrop !== '' ? "गन्तव्य: " . $waDrop . "\n" : '')
                   . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
                   . ($waDateNep !== '' ? "यात्रा मिति: " . $waDateNep . "\n" : '')
@@ -4057,13 +4173,19 @@ final class Notify
                 'whatsapp' => "⏰ " . $company . "\n"
                     . "2 ghanta ma bus aaunchha / 2 घंटे में बस — booking " . $pnr . "\n"
                     . $routeLn . ($when !== '' ? "Pickup / चढ्ने समय: " . $when . "\n" : '') . $seatLine . $boardLn
+                    /* 25 Nov 2026 (op5): the passenger's own pickup map + that place's phone +
+                       the ticket picture (it carries the pickup QR) - TripNotify::reminderExtras() */
+                    . (($f['pickupMap'] ?? '') !== '' ? "📍 चढ्ने ठाउँ · Pickup map: " . $f['pickupMap'] . "\n" : '')
+                    . (($f['pickupPhone'] ?? '') !== '' ? "📞 त्यहाँको फोन · Place phone: " . $f['pickupPhone'] . "\n" : '')
+                    . (($f['withTicket'] ?? '') === '1' && ($tl2 = self::tripTicketLink($pnr)) !== '' ? "🎫 टिकट (QR सहित) · Ticket: " . $tl2 . "\n" : '')
                     . "\n🎒 Boarding point ma samayamai pugnuhos.\n"
                     . "Please reach the boarding point on time.\n"
                     . ($helpline !== '' ? "Help: " . $helpline : ''),
                 'sms' => $company . ': Your bus reaches your stop in about 2 hours. ' . $pnr . '.'
                     . ($when !== '' ? ' ' . $when . '.' : '')
                     . ($f['seats'] !== '' ? ' Seat ' . $f['seats'] . '.' : '')
-                    . ' Please reach the boarding point on time.',
+                    . ' Please reach the boarding point on time.'
+                    . (($f['pickupMap'] ?? '') !== '' ? ' Map: ' . $f['pickupMap'] : ''),
             ],
             'delayed' => [
                 'whatsapp' => "⏳ " . $company . "\n"

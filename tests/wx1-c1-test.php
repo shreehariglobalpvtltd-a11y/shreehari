@@ -8,6 +8,7 @@
  *     home_office_incharge_on = 0 gives the old list back.
  *  4. SiteFacts places: only https pins, one row per town, switch home_pickup_maps_on = 0 -> [].
  *  5. The home cards (app.template.html) and /offices carry the same order: Call, WhatsApp, Map.
+ *  7. wx5: the office photo (upgrade-2026-11-25-wx5-office-photo.sql, switch home_office_photo_on).
  *
  *   php -c .claude/php-dev.ini tests/wx1-c1-test.php
  */
@@ -176,7 +177,7 @@ try {
     check('no exception', false, $e->getMessage());
 } finally {
     Database::run('DELETE FROM counter_locations WHERE code = :c', ['c' => $code]);
-    try { Database::run("DELETE FROM company_locations WHERE town = 'Wxtown'"); } catch (Throwable $e) { }
+    try { Database::run("DELETE FROM company_locations WHERE town IN ('Wxtown', 'Wxspot')"); } catch (Throwable $e) { }
     CounterDesk::flush();
     CounterDesk::syncSettingsMirror();
     $restore();
@@ -197,6 +198,230 @@ check('admin form: upload + in-charge boxes', str_contains($adm, 'enctype="multi
     && str_contains($adm, 'name="incharge_photo"') && str_contains($adm, 'incharge_photo_remove'));
 check('admin form: a too-big / bad photo is skipped, the desk still saves', str_contains($adm, 'UPLOAD_ERR_INI_SIZE')
     && str_contains($adm, 'catch (Throwable $photoErr)') && str_contains($adm, '$photoLimitMb') && str_contains($adm, "'Desk ' . \$code . ' saved. ' . \$photoWarn"));
+
+/* ---------- 6. wx1 (owner 25 Nov): the company is every office card's title, Nepal "Shree"; Kamrej dedupe ---------- */
+echo "\n  -- office titles + pickup dedupe --\n";
+$plBefore = PublicLayout::offices();   // static cache: built with the settings as they were
+$brandBefore = ['IN' => SiteFacts::officeBrand('IN'), 'NP' => SiteFacts::officeBrand('NP')];
+check('/offices list rows carry the brand of their country', $plBefore !== [] && array_filter($plBefore,
+    static fn(array $x): bool => ($x['brand'] ?? null) !== $brandBefore[$x['country']]) === []);
+$keep6 = [];
+foreach (['office_brand_title_on', 'office_brand_in', 'office_brand_np', 'home_pickup_dedupe_on', 'home_pickup_maps_on'] as $k) {
+    $keep6[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]);
+}
+try {
+    foreach (array_keys($keep6) as $k) {
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);   // the defaults
+    }
+    Settings::flush(); SiteFacts::flush();
+    $cn = trim(Settings::getString('company_name', ''));
+    check('title IN = the company name (default)', SiteFacts::officeBrand('IN') === ($cn !== '' ? $cn : 'S Hari Global Pvt Ltd'), SiteFacts::officeBrand('IN'));
+    check('title NP = Shree Hari Global Pvt Ltd (no branch suffix)', SiteFacts::officeBrand('NP') === 'Shree Hari Global Pvt Ltd' && SiteFacts::officeBrand('np') === 'Shree Hari Global Pvt Ltd');
+    $offs = SiteFacts::all()['offices'];
+    check('facts offices: IN rows S Hari, NP rows Shree', $offs !== [] && array_filter($offs, static fn(array $x): bool =>
+        $x['brand'] !== (($x['country'] ?? 'IN') === 'NP' ? 'Shree Hari Global Pvt Ltd' : SiteFacts::officeBrand('IN'))) === []);
+    $npRow = array_values(array_filter($offs, static fn(array $x): bool => ($x['country'] ?? '') === 'NP'))[0] ?? null;
+    if ($npRow !== null) {
+        check('NP office keeps its own town name + phone', $npRow['name'] !== '' && $npRow['name'] !== $npRow['brand']);
+    }
+    Settings::set('office_brand_in', 'Wx Brand India', 'string', 'company');
+    Settings::set('office_brand_np', 'Wx Brand Nepal', 'string', 'company');
+    Settings::flush(); SiteFacts::flush();
+    check('office_brand_in / office_brand_np override', SiteFacts::officeBrand('IN') === 'Wx Brand India' && SiteFacts::officeBrand('NP') === 'Wx Brand Nepal');
+    Settings::set('office_brand_title_on', '0', 'bool', 'company');
+    Settings::flush(); SiteFacts::flush();
+    $offs = SiteFacts::all()['offices'];
+    check('switch office_brand_title_on OFF: no brand = the old town titles', SiteFacts::officeBrand('IN') === '' && SiteFacts::officeBrand('NP') === ''
+        && array_filter($offs, static fn(array $x): bool => $x['brand'] !== '') === []);
+    foreach (['office_brand_title_on', 'office_brand_in', 'office_brand_np'] as $k) {
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+    }
+    Settings::flush(); SiteFacts::flush();
+
+    /* Kamrej: a company place "… — Kamrej Char Rasta" covers the separate "Kamrej" route stop */
+    $isKam = static fn(array $p): bool => mb_strtolower($p['town']) === 'kamrej' || mb_strtolower($p['name']) === 'kamrej';
+    $base = SiteFacts::pickupPlaces();
+    $names = static fn(array $l): array => array_map(static fn(array $p): string => $p['name'], $l);
+    /* review: the city after the comma (or the place's town) must never hide a different stop -
+       "S Hari Parking — Nana Chiloda, Ahmedabad" and "Ahmedabad — Paldi Bus Stand" are two boarding points */
+    $isAhm = static fn(array $p): bool => $p['kind'] === 'pickup' && mb_strtolower($p['town']) === 'ahmedabad';
+    $pinnedAhm = Database::fetch("SELECT id FROM route_stops WHERE stop_type = 'boarding' AND stop_name LIKE 'Ahmedabad%'
+                                   AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude <> 0 AND longitude <> 0 LIMIT 1");
+    $chiloda = array_filter($base, static fn(array $p): bool => str_contains(mb_strtolower($p['name']), 'nana chiloda, ahmedabad')) !== [];
+    if ($pinnedAhm === null || !$chiloda) {
+        echo "  SKIP  dedupe: Ahmedabad stop next to the Nana Chiloda place (no pinned Ahmedabad stop / Chiloda place here)\n";
+    } else {
+        check('dedupe: the Ahmedabad route stop stays beside "Nana Chiloda, Ahmedabad"', array_filter($base, $isAhm) !== [], implode(', ', $names($base)));
+    }
+    if (array_filter($base, $isKam) === []) {
+        echo "  SKIP  dedupe: Kamrej checks (no pinned Kamrej stop on this DB)\n";
+    } else {
+        Database::run("DELETE FROM company_locations WHERE town IN ('Wxtown', 'Wxspot')");
+        Database::insert('company_locations', ['name' => 'Wxtown — Kamrej Char Rasta', 'kind' => 'pickup', 'town' => 'Wxtown',
+            'map_url' => 'https://www.google.com/maps?q=0.000006,0.000006', 'show_public' => 1, 'sort_order' => 999, 'created_at' => date('Y-m-d H:i:s')]);
+        // a place whose comma city / town is every other stop's town: it must hide none of them
+        $cities = implode(' ', array_map(static fn(array $p): string => $p['town'], array_filter($base, static fn(array $p): bool => $p['kind'] === 'pickup')));
+        Database::insert('company_locations', ['name' => 'Wxspot Parking — Wxnana Spot, ' . $cities, 'kind' => 'parking', 'town' => 'Wxspot',
+            'map_url' => 'https://www.google.com/maps?q=0.000007,0.000007', 'show_public' => 1, 'sort_order' => 999, 'created_at' => date('Y-m-d H:i:s')]);
+        $after = SiteFacts::pickupPlaces();
+        $hasPlace = array_filter($after, static fn(array $p): bool => $p['name'] === 'Wxtown — Kamrej Char Rasta') !== [];
+        check('dedupe: company place kept, the "Kamrej" stop dropped', $hasPlace && array_filter($after, $isKam) === [], (string) count($after) . ' rows');
+        // the two test places come first, so the 16-row cap can only cut base rows past 14
+        $want = array_slice(array_values(array_filter($base, static fn(array $p): bool => !$isKam($p))), 0, 14);
+        $missing = array_values(array_diff($names($want), $names($after)));
+        $hasSpot = array_filter($after, static fn(array $p): bool => str_starts_with($p['name'], 'Wxspot Parking')) !== [];
+        check('dedupe: every other stop / place stays, by name (comma city words hide nothing)', $hasSpot && $missing === [],
+            $missing === [] ? count($want) . ' kept' : 'missing: ' . implode(', ', $missing));
+        Settings::set('home_pickup_dedupe_on', '0', 'bool', 'company');
+        Settings::flush();
+        check('switch home_pickup_dedupe_on OFF: the Kamrej stop is back', array_filter(SiteFacts::pickupPlaces(), $isKam) !== []);
+    }
+
+    $base6 = getenv('SHG_TEST_BASE') ?: '';
+    if ($base6 !== '') {
+        Database::run("DELETE FROM settings WHERE skey = 'home_pickup_dedupe_on'");
+        Settings::flush();
+        $ctx = stream_context_create(['http' => ['timeout' => 15, 'ignore_errors' => true]]);
+        $page = @file_get_contents(rtrim($base6, '/') . '/offices', false, $ctx);
+        if (is_string($page) && $page !== '') {
+            check('/offices: cards titled with the company, the town under it', str_contains($page, 'class="off-town"')
+                && str_contains($page, '<h2 class="off-name">' . htmlspecialchars(SiteFacts::officeBrand('IN'), ENT_QUOTES) . '</h2>'));
+            if ($npRow !== null) {
+                check('/offices: the Nepal card says Shree Hari Global Pvt Ltd', str_contains($page, '<h2 class="off-name">Shree Hari Global Pvt Ltd</h2>'));
+            }
+        } else {
+            check('/offices page reachable at SHG_TEST_BASE', false, $base6);
+        }
+    }
+} catch (Throwable $e) {
+    check('section 6: no exception', false, $e->getMessage());
+} finally {
+    try { Database::run("DELETE FROM company_locations WHERE town IN ('Wxtown', 'Wxspot')"); } catch (Throwable $e) { }
+    foreach ($keep6 as $k => $row) {
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($row !== null) {
+            Database::insert('settings', $row);
+        }
+    }
+    Settings::flush(); SiteFacts::flush(); CounterDesk::flush();
+}
+$tpl = (string) file_get_contents(dirname(__DIR__) . '/app.template.html');
+$fn  = substr($tpl, (int) strpos($tpl, '  function offices(F) {'), 7000);
+check('home card: o.brand title + town line (cp-town), old title when no brand', str_contains($fn, "String(o.brand || '')") && str_contains($fn, 'cp-town')
+    && str_contains($fn, "esc(nm) + badge + '</h3>'"));
+check('home guide: "नेपालगञ्जपछि · After Nepalgunj" (markup + 3 tables)', substr_count($tpl, 'After Nepalgunj') === 4 && !str_contains($tpl, 'Onward buses'));
+
+/* ---------- 7. wx5 (owner 25 Nov): an OFFICE photo (building / signboard) per office ---------- */
+echo "\n  -- office photo (wx5) --\n";
+$sql7  = (string) file_get_contents(dirname(__DIR__) . '/database/upgrade-2026-11-25-wx5-office-photo.sql');
+$stmt7 = rtrim(trim((string) preg_replace('/^--.*$/m', '', $sql7)), "; \r\n");
+$okMig7 = true;
+try {
+    Database::query($stmt7);
+    Database::query($stmt7);   // twice: idempotent
+} catch (Throwable $e) {
+    $okMig7 = false;
+}
+check('wx5 migration runs twice', $okMig7);
+check('wx5 column office_photo there', CounterDesk::hasColumn('counter_locations', 'office_photo'));
+check('office_photo is a website-only field', in_array('office_photo', CounterDesk::PUBLIC_FIELDS, true));
+$keep7 = ['home_office_photo_on' => Database::fetch("SELECT * FROM settings WHERE skey = 'home_office_photo_on'")];
+$c7a = 'WXP'; $c7b = 'WXQ';
+try {
+    Database::run("DELETE FROM settings WHERE skey = 'home_office_photo_on'");   // the default (ON)
+    Settings::flush();
+    Database::run('DELETE FROM counter_locations WHERE code IN (:a, :b)', ['a' => $c7a, 'b' => $c7b]);
+    $desk7 = static fn(string $c, string $town, array $more = []): string => CounterDesk::save($more + [
+        'code' => $c, 'name' => $town . ' — Test Desk', 'country' => 'IN', 'is_active' => 1, 'sort_order' => 998,
+        'phone' => '+91 90000 00003', 'show_public' => 1, 'office_kind' => 'branch', 'public_status' => 'open',
+    ]);
+    $desk7($c7a, 'Wxphoto', ['office_photo' => '/uploads/locations/office-wxp-test.webp']);
+    $desk7($c7b, 'Wxplain');
+    $r7 = static fn(string $c): ?array => Database::fetch('SELECT office_photo FROM counter_locations WHERE code = :c', ['c' => $c]);
+    check('save keeps a clean office photo path', ($r7($c7a)['office_photo'] ?? null) === 'uploads/locations/office-wxp-test.webp');
+    $isNull7 = static fn(?array $r): bool => $r !== null && array_key_exists('office_photo', $r) && $r['office_photo'] === null;
+    check('a desk with no photo stores none', $isNull7($r7($c7b)));
+    $bad7 = [];
+    foreach (['uploads/locations/../config.php', 'https://evil.example/o.jpg', 'assets/img/ceo.jpg', 'uploads/agents-kyc/x.webp', 'uploads/locations/o.php'] as $bad) {
+        CounterDesk::save(array_merge((array) CounterDesk::get($c7a), ['office_photo' => $bad]));
+        if (!$isNull7($r7($c7a))) { $bad7[] = $bad; }
+    }
+    check('save refuses "..", a URL, a non-uploads path, a script', $bad7 === [], implode(', ', $bad7));
+    CounterDesk::save(array_merge((array) CounterDesk::get($c7a), ['office_photo' => 'uploads/locations/office-wxp-test.webp']));
+    $keepSave = (array) CounterDesk::get($c7a);
+    unset($keepSave['office_photo']);   // a caller that never sent the key (My desk) keeps the photo
+    CounterDesk::save($keepSave);
+    check('a save without the key keeps the photo', ($r7($c7a)['office_photo'] ?? null) === 'uploads/locations/office-wxp-test.webp');
+
+    CounterDesk::flush(); SiteFacts::flush();
+    $find7 = static function (string $c): ?array {
+        foreach (CounterDesk::publicOffices() as $o) {
+            if ($o['code'] === $c) { return $o; }
+        }
+        return null;
+    };
+    $o7 = $find7($c7a); $q7 = $find7($c7b);
+    check('publicOffices: officePhoto = the public path', $o7 !== null && $o7['officePhoto'] === '/uploads/locations/office-wxp-test.webp');
+    check('publicOffices: no photo -> ""', $q7 !== null && $q7['officePhoto'] === '');
+    $f7 = array_values(array_filter(SiteFacts::all()['offices'], static fn(array $x): bool => ($x['code'] ?? '') === $c7a))[0] ?? null;
+    check('home facts carry officePhoto', $f7 !== null && ($f7['officePhoto'] ?? '') === '/uploads/locations/office-wxp-test.webp');
+
+    Database::update('counter_locations', ['public_status' => 'coming_soon'], 'code = :c', ['c' => $c7a]);
+    CounterDesk::flush();
+    $o7 = $find7($c7a);
+    check('a coming-soon office shows no office photo', $o7 !== null && $o7['officePhoto'] === '');
+    Database::update('counter_locations', ['public_status' => 'open'], 'code = :c', ['c' => $c7a]);
+    Settings::set('home_office_photo_on', '0', 'bool', 'company');
+    Settings::flush(); CounterDesk::flush(); SiteFacts::flush();
+    $o7 = $find7($c7a);
+    check('switch home_office_photo_on OFF: no office photo', $o7 !== null && $o7['officePhoto'] === '');
+    Database::run("DELETE FROM settings WHERE skey = 'home_office_photo_on'");
+    Settings::flush(); CounterDesk::flush(); SiteFacts::flush();
+
+    $base7 = getenv('SHG_TEST_BASE') ?: '';
+    if ($base7 === '') {
+        echo "  SKIP  /offices photo render (no SHG_TEST_BASE)\n";
+    } else {
+        $ctx7 = stream_context_create(['http' => ['timeout' => 15, 'ignore_errors' => true]]);
+        $page7 = @file_get_contents(rtrim($base7, '/') . '/offices', false, $ctx7);
+        $card7 = static function (string $page, string $c): string {
+            $i = strpos($page, 'id="office-' . strtolower($c) . '"');
+            if ($i === false) { return ''; }
+            $j = strpos($page, '</article>', $i);
+            return substr($page, $i, $j === false ? 4000 : $j - $i);
+        };
+        if (is_string($page7) && $page7 !== '') {
+            $a7 = $card7($page7, $c7a); $b7 = $card7($page7, $c7b);
+            check('/offices: the desk with a photo renders the <img>', $a7 !== ''
+                && str_contains($a7, '<img class="off-ph" src="/uploads/locations/office-wxp-test.webp" alt="Wxphoto"') && str_contains($a7, 'loading="lazy"'));
+            check('/offices: the desk with no photo renders none', $b7 !== '' && !str_contains($b7, 'off-ph'));
+        } else {
+            check('/offices page reachable at SHG_TEST_BASE', false, $base7);
+        }
+    }
+} catch (Throwable $e) {
+    check('section 7: no exception', false, $e->getMessage());
+} finally {
+    Database::run('DELETE FROM counter_locations WHERE code IN (:a, :b)', ['a' => $c7a, 'b' => $c7b]);
+    foreach ($keep7 as $k => $row) {
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($row !== null) {
+            Database::insert('settings', $row);
+        }
+    }
+    CounterDesk::flush(); CounterDesk::syncSettingsMirror();
+    Settings::flush(); SiteFacts::flush();
+}
+$fn7 = substr($tpl, (int) strpos($tpl, '  function offices(F) {'), 8000);
+check('home card: office photo renderer (same-origin, lazy, alt = name)', str_contains($fn7, 'samePhoto(o.officePhoto)')
+    && str_contains($fn7, 'class="cp-oph"') && str_contains($fn7, 'loading="lazy"') && str_contains($fn7, "alt=\"' + esc(nm)"));
+check('home card: switch home_office_photo_on named + 16:9 cover style', str_contains($tpl, 'home_office_photo_on')
+    && str_contains($tpl, '.cp-off img.cp-oph{') && str_contains($tpl, 'aspect-ratio:16/9;max-height:150px;object-fit:cover'));
+check('admin form: office photo upload + remove + own prefix', str_contains($adm, 'name="office_photo"') && str_contains($adm, 'office_photo_remove')
+    && str_contains($adm, "'office-' . strtolower(") && str_contains($adm, 'कार्यालयको फोटो · Office photo') && str_contains($adm, '$newOffPhoto ?? \'\''));
+$labels7 = ['कार्यालयको नाम · Office name', 'ठेगाना · Address', 'नक्सा लिंक · Map link', 'कार्यालयको फोन · Office phone', 'कार्यालयको WhatsApp',
+    'कार्यालय प्रमुखको नाम · In-charge name', 'प्रमुखको फोन · In-charge phone', 'प्रमुखको फोटो · In-charge photo', 'वेबसाइटमा देखाउने · Show this office'];
+check('admin form: every office field labelled Nepali + English', array_filter($labels7, static fn(string $l): bool => !str_contains($adm, $l)) === []);
 
 echo "\n  $PASS passed, $FAIL failed\n\n";
 exit($FAIL === 0 ? 0 : 1);

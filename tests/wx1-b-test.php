@@ -245,5 +245,59 @@ try {
     $restoreMem();
 }
 
+/* 25 Nov 2026 (wx1-b2): WhatsApp texts - {{6}} = waAmount (रू on an NPR sale), the pickup
+   map line (= the ticket PICKUP QR) behind wa_pickup_map_link_on, AI luggage from settings.
+   No booking is seeded: the helper gets a booking array with no id (no DB read). */
+echo "\n== 5. WhatsApp pickup map + {{6}} amount + AI luggage ==\n";
+try {
+    require_once INCLUDE_PATH . '/notify.php';
+    $nsrc = (string) file_get_contents(INCLUDE_PATH . '/notify.php');
+    check('notify: template {{6}} = self::waAmount($booking)', str_contains($nsrc, "'6' => self::waAmount(\$booking),")
+        && !str_contains($nsrc, "'6' => inr((float) (\$booking['total_amount'] ?? 0)),"));
+    check('notify: map line in bookingConfirmed (after समय), resend + correction texts',
+        substr_count($nsrc, '. self::pickupMapLine($booking)') === 3
+        && str_contains($nsrc, "\"समय: \" . \$waTime . \"\\n\" : '')\n                  . self::pickupMapLine(\$booking)"));
+    check('notify: line text Nepali first', str_contains($nsrc, '"📍 चढ्ने ठाउँको नक्सा · Pickup map: "'));
+
+    $rm = new ReflectionMethod('Notify', 'pickupMapUrl'); $rm->setAccessible(true);
+    $rl = new ReflectionMethod('Notify', 'pickupMapLine'); $rl->setAccessible(true);
+    // A Nepal -> India pickup whose label froze the live Rupaidiha border-parking pin.
+    $bk = ['boarding_stop' => 'Rupaidiha @ 18:00 [27.9996732,81.5867382]', 'route_id_for_stop' => 0,
+           'from_city' => 'Rupaidiha', 'to_city' => 'Ahmedabad', 'counter_code' => '', 'entity' => ''];
+    $setMem(['ticket_maps_qr' => ['1', 'bool'], 'wa_pickup_map_link_on' => ['1', 'bool']]);
+    $board = '';
+    foreach (Ticket::mapQrs($bk) as $q) { if ($q['kind'] === 'board') { $board = $q['payload']; break; } }
+    $u = (string) $rm->invoke(null, $bk);
+    check('pickupMapUrl = the ticket PICKUP QR payload', $u !== '' && $u === $board, $u);
+    check('pickupMapUrl = the pinned place', $u === 'https://maps.google.com/?q=27.999673,81.586738', $u);   // mapLink: 6 decimals
+    // wx6: a Nepal -> India booking's line goes on with the journey (office -> our auto -> bus)
+    check('pickupMapLine carries the url', str_starts_with((string) $rl->invoke(null, $bk), "📍 चढ्ने ठाउँको नक्सा · Pickup map: " . $u . "\n"));
+    $setMem(['wa_pickup_map_link_on' => ['0', 'bool']]);
+    check('switch wa_pickup_map_link_on off -> no map line', (string) $rm->invoke(null, $bk) === '' && !str_contains((string) $rl->invoke(null, $bk), 'Pickup map:'));
+    $setMem(['wa_pickup_map_link_on' => ['1', 'bool'], 'ticket_maps_qr' => ['0', 'bool']]);
+    check('ticket_maps_qr off -> no map line (same as the ticket)', !str_contains((string) $rl->invoke(null, $bk), 'Pickup map:'));
+    $setMem(['ticket_maps_qr' => ['1', 'bool']]);
+    check('helper never throws on an empty booking', (string) $rm->invoke(null, []) === '');
+
+    // waAmount: an NPR sale (frozen NPR) vs a ₹ sale - {{6}} reads the same string.
+    $inrOnly = Notify::waAmount(['total_amount' => 2800]);
+    check('waAmount: ₹ sale stays ₹', $inrOnly === inr(2800.0), $inrOnly);
+    $setMem(['ticket_npr_primary' => ['1', 'bool']]);
+    $nprBk = ['total_amount' => 2800, 'fx_currency' => 'NPR', 'fx_total' => 4480, 'fx_rate' => 1.6];
+    $nprTxt = Notify::waAmount($nprBk);
+    check('waAmount: NPR sale reads रू NPR first, ₹ in brackets', $nprTxt === 'रू ' . indianNumber(4480.0) . ' (' . inr(2800.0) . ')', $nprTxt);
+
+    // AI prompt: luggage from the settings.
+    require_once INCLUDE_PATH . '/aiprompt.php';
+    $setMem(['luggage_free_kg' => ['23', 'int'], 'cabin_bag_kg' => ['5', 'int']]);
+    $p = ai_system_prompt();
+    check('aiprompt: luggage line from luggage_free_kg + cabin_bag_kg', str_contains($p, 'Luggage: 1 suitcase (23 kg) + 1 cabin bag (5 kg) per passenger free'));
+    check('aiprompt: no hard-coded 20 kg left', !str_contains((string) file_get_contents(INCLUDE_PATH . '/aiprompt.php'), '1 suitcase (20 kg)'));
+} catch (Throwable $e) {
+    check('section 5 ran without an exception', false, get_class($e) . ': ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
+} finally {
+    $restoreMem();
+}
+
 echo "\n$PASS passed, $FAIL failed\n";
 exit($FAIL === 0 ? 0 : 1);

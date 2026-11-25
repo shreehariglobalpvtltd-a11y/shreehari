@@ -149,6 +149,7 @@ function admin_nav(): array
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat / Berth Layout Map','perm' => 'schedules.view',   'section' => $S3],
         ['href' => 'extra-seats.php',  'icon' => 'seat',      'label' => 'Extra Seats',            'perm' => 'bookings.view',    'section' => $S3],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani',     'perm' => 'bookings.view',    'section' => $S3],
+        ['href' => 'parcels.php',      'icon' => 'clipboard', 'label' => '📦 पार्सल · Parcels',      'perm' => 'bookings.edit', 'section' => $S3],   // 25 Nov 2026 (op5): small register per bus
         ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Boarding QR',       'perm' => 'tickets.scan',     'section' => $S3],
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts',     'perm' => 'payments.view',    'section' => $S3],
         ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customer CRM',           'perm' => 'customers.view',   'section' => $S3],
@@ -168,6 +169,7 @@ function admin_nav(): array
         ['href' => 'shift.php',        'icon' => 'clock',     'label' => 'Shift & Cash Handover',  'perm' => 'bookings.view',    'section' => $S4],
         ['href' => 'reconcile.php',    'icon' => 'ledger',    'label' => 'Money Reconciliation',   'perm' => 'reports.view',     'section' => $S4],
         ['href' => 'pnl.php',          'icon' => 'chart-up',  'label' => 'Profit & Loss (route · agent)', 'perm' => 'reports.view', 'section' => $S4],   // 29 Oct 2026 (management upgrade 4.4)
+        ['href' => 'trip-expenses.php', 'icon' => 'ledger', 'label' => '⛽ ट्रिप खर्च · Trip expenses', 'perm' => in_array((string) (Auth::admin()['role'] ?? ''), ['superadmin', 'manager', 'accountant', 'counter'], true) ? 'payments.view' : 'reports.view', 'also' => 'payments.view', 'section' => $S4],   // 25 Nov 2026 (op5): per-trip costs + bus profit
         ['href' => 'ops-reports.php',  'icon' => 'chart-up',  'label' => 'Cancellations & Bus Use · रद्द र बस प्रयोग', 'perm' => 'reports.view', 'section' => $S4],   // 15 Nov 2026 (P4)
         ['href' => 'ledger-check.php', 'icon' => 'shield',    'label' => 'Ledger Check (मिलान)',   'perm' => 'commissions.view', 'section' => $S4],
         ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Executive Analytics',    'perm' => 'dashboard.view',   'section' => $S4],
@@ -665,6 +667,8 @@ function admin_header(string $title, string $active = ''): void
     if ($showGroups) { echo '<script>' . admin_nav_js() . '</script>'; }
 
     echo '<main class="wrap"><h1>' . Security::e(admin_plain($title)) . '</h1>';
+    // 25 Nov 2026 (op5-credit): an agent near / at their credit limit (or stopped by the office) sees it on every desk page
+    if (Auth::isCounterAgent() && is_file(INCLUDE_PATH . '/agentcredit.php')) { require_once INCLUDE_PATH . '/agentcredit.php'; echo AgentCredit::bannerHtml((int) (Auth::admin()['id'] ?? 0)); }
 }
 
 /**

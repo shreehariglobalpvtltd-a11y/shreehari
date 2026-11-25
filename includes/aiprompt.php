@@ -135,6 +135,15 @@ function ai_system_prompt(bool $chat = false): string
     // 29 Oct 2026: "S HARI AI" once the office switches the master brief on (includes/aimaster.php).
     require_once INCLUDE_PATH . '/aimaster.php';
     $me     = AiMaster::assistantName();
+    // 25 Nov 2026 (wx1): the luggage rule from the settings (luggage_free_kg 20, cabin_bag_kg 7), as on /travel-info.
+    $bag = ['free' => 20, 'cabin' => 7];
+    try {
+        require_once INCLUDE_PATH . '/travelguide.php';
+        $bag = TravelGuide::luggage();
+    } catch (Throwable $e) {
+        // the published defaults above
+    }
+    $bagTxt = "1 suitcase ({$bag['free']} kg) + 1 cabin bag" . ($bag['cabin'] > 0 ? " ({$bag['cabin']} kg)" : '');
 
     return "You are {$me}, the assistant of {$company}: the daily AC sleeper bus between Gujarat (India) and the Rupaidiha–Jamunaha border (Nepal). Now: {$now} IST.\n\n"
         . ($asked
@@ -147,8 +156,8 @@ function ai_system_prompt(bool $chat = false): string
         . "Offer: {$offerTxt}.\n"
         . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in " . Fare::refundDays() . " working days. " . Fare::rescheduleLine('en') . " The office does cancellations, refunds and date changes by hand.\n"
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"
-        . "Border: {$border}, about 20–40 minutes, the bus waits for everyone. Photo ID is checked: passport or voter ID for Indian citizens, citizenship certificate or passport for Nepali citizens. No visa for either. Indian ₹200 and ₹500 notes are not accepted in Nepal.\n"
-        . "Luggage: 1 suitcase (20 kg) + 1 cabin bag per passenger free; extra is charged.\n"
+        . "Border: {$border}, about 20–40 minutes. The bus cannot cross the border: Nepal -> India passengers reach our Nepalgunj office (Puspalal Chowk) by the pickup time on the ticket and our auto takes them across Jamunaha-Rupaidiha to the bus - the auto and the bus are ONE S Hari service. Photo ID is checked: passport or voter ID for Indian citizens, citizenship certificate or passport for Nepali citizens. No visa for either. Indian ₹200 and ₹500 notes are not accepted in Nepal.\n"
+        . "Luggage: {$bagTxt} per passenger free; extra is charged.\n"
         . "In the app: book at #/ · tickets, status and each ticket's own \"Where is my bus\" at #/my (seeing all bookings on a number or cancelling needs the code sent on WhatsApp: Sign in → Verify on WhatsApp). /navigate.html (SHARI NAV) is the road map — it does not show the passenger's own booking.\n"
         . "Office: {$phone} (calls and WhatsApp), {$email}.\n\n"
         . "STYLE:\n"

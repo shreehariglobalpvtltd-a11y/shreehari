@@ -707,6 +707,78 @@ final class TripNotify
         return ['ok' => true, 'sent' => $sent, 'skipped' => $skipped, 'failed' => $failed, 'message' => $message];
     }
 
+    /**
+     * 25 Nov 2026 (op5, item 5c): what the 2-hour reminder adds - the pickup
+     * map link, the place's phone and the ticket picture link (the picture
+     * already draws the pickup QR). [] for every other event, or while
+     * reminder_map_link_on (default on) is off. The claim in trip_events is
+     * unchanged, so this never causes a second send.
+     *
+     * @param array<string,mixed> $row a reminder row (boarding_stop, route_id, from_city, to_city)
+     * @return array<string,string>
+     */
+    public static function reminderExtras(array $row, string $event): array
+    {
+        if ($event !== 'reminder_2h' || !Settings::getBool('reminder_map_link_on', true)) {
+            return [];
+        }
+        $pp = self::pickupPlace($row);
+        return ['pickupMap' => $pp['map'], 'pickupPhone' => $pp['phone'], 'withTicket' => '1'];
+    }
+
+    /**
+     * Where THIS passenger boards, for a reminder: the same pin the ticket's
+     * pickup QR carries (Ticket::mapQrs 'board': the stop row's pin, the
+     * label's [lat,lng], S Hari Parking's india_hub_map), else the stop's own
+     * pin, else the office's place in that town (CompanyLocations,
+     * admin/locations.php). Never a guessed pin: no pin and no place = ''.
+     * The phone is the first number of that town's place ('' when none).
+     *
+     * @param array<string,mixed> $row
+     * @return array{map: string, phone: string}
+     */
+    public static function pickupPlace(array $row): array
+    {
+        $out   = ['map' => '', 'phone' => ''];
+        $label = trim((string) ($row['boarding_stop'] ?? ''));
+        if ($label === '') {
+            return $out;
+        }
+        try {
+            if (!class_exists('Ticket')) {
+                require_once __DIR__ . '/ticket.php';
+            }
+            if (!class_exists('CompanyLocations')) {
+                require_once __DIR__ . '/companylocations.php';
+            }
+            $b = ['boarding_stop' => $label, 'route_id_for_stop' => (int) ($row['route_id'] ?? 0),
+                  'from_city' => (string) ($row['from_city'] ?? ''), 'to_city' => (string) ($row['to_city'] ?? '')];
+            foreach (Ticket::mapQrs($b) as $q) {
+                if (($q['kind'] ?? '') === 'board') {
+                    $out['map'] = (string) $q['payload'];
+                    break;
+                }
+            }
+            if ($out['map'] === '' && ($geo = Ticket::pickupGeo($b)) !== null) {
+                $out['map'] = Ticket::mapLink($geo);
+            }
+            $town = mb_strtolower(Ticket::stopForPrint($label));
+            if ($out['map'] === '') {
+                $out['map'] = Ticket::mapLink(CompanyLocations::mapForTown($town));
+            }
+            foreach (CompanyLocations::all() as $p) {
+                $t = mb_strtolower(trim((string) $p['town']));
+                if ($t !== '' && trim((string) $p['phone']) !== '' && str_contains($town, $t)) {
+                    $out['phone'] = trim((string) (preg_split('#\s*/\s*#', trim((string) $p['phone']))[0] ?? ''));
+                    break;
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Reminder pickup map failed', ['err' => $e->getMessage()], 'notify');
+        }
+        return $out;
+    }
+
     private static function deliver(array $row, string $event): ?array
     {
         $bookingId  = (int) $row['booking_id'];
@@ -782,6 +854,8 @@ final class TripNotify
             'delayNote'    => (string) ($row['delayNote'] ?? ''),
             'cancelReason' => (string) ($row['cancelReason'] ?? ''),
         ];
+        // 25 Nov 2026 (op5): the 2-hour reminder carries this passenger's pickup map + that place's phone
+        $ctx += self::reminderExtras($row, $event);
 
         try {
             $res = Notify::tripEvent($booking, $event, $ctx);

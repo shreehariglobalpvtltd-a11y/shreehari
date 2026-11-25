@@ -694,6 +694,10 @@ final class ChalaniPng
             'genders' => array_map(static fn(array $r): string => (string) ($r['gender'] ?? ''), $rows),
             'strip'  => ChalaniStrip::on(),   // 25 Nov 2026 (release ch): the switch redraws the page
         ];
+        // 25 Nov 2026 (op5): the border ID tag is drawn too - only when the caller passes it (other keys unchanged)
+        if (isset($fmt['paxId']) && is_callable($fmt['paxId'])) {
+            $seed['paxid'] = array_map(static fn(array $r): string => (string) $fmt['paxId']($r), $rows);
+        }
         return md5((string) json_encode($seed));
     }
 
@@ -1251,6 +1255,8 @@ final class ChalaniPng
             if ($name === '') { $name = $tkt !== '' ? $tkt : '(name not in Latin or Devanagari)'; }
             $rInf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? (int) $fmt['infantsOf']($r) : 0;   // 16 Nov 2026
             if ($rInf > 0) { $name .= ' +' . $rInf . ' infant'; }
+            $pidT = isset($fmt['paxId']) && is_callable($fmt['paxId']) ? (string) $fmt['paxId']($r) : '';   // 25 Nov 2026 (op5): border ID tag
+            if ($pidT !== '') { $name .= '  ' . $pidT; }
             $tktW = $tkt !== '' ? self::w(11, $tkt) + 14 : 0;
             self::t($im, 18, $cx[2] + 10, $vy + 1, $ink, self::fit(18, $name, $cw[2] - 20 - $tktW), false);
             if ($tkt !== '') {

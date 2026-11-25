@@ -255,12 +255,14 @@ final class ChalaniPdf
         $placeNo     = isset($fmt['placeNo']) && is_callable($fmt['placeNo']) ? $fmt['placeNo'] : static fn(string $s): int => 0;
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai"): desk extras */
         $infantsOf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? $fmt['infantsOf'] : static fn(array $r): int => 0;
+        // 25 Nov 2026 (op5): the border ID tag ("CTZ **1234"), office / counter copy only
+        $paxIdOf   = isset($fmt['paxId']) && is_callable($fmt['paxId']) ? $fmt['paxId'] : static fn(array $r): string => '';
         $rowState  = isset($fmt['rowState']) && is_callable($fmt['rowState']) ? $fmt['rowState'] : static fn(array $r): string => 'due';
         $stateNe   = static fn(string $s): string => match ($s) { 'paid' => 'भयो', 'agent' => 'भयो (एजेन्टसँग)', 'free' => 'निःशुल्क', default => 'बाँकी' };
         /* 16 Nov 2026 (owner: "pay at boarding vane option ... cash ho ki online ho"): how the
            row pays - ['mode', 'amt', 'first', 'ne'] from ChalaniPng::payMode via the caller */
         $payMark   = isset($fmt['payMark']) && is_callable($fmt['payMark']) ? $fmt['payMark'] : static fn(array $r): array => [];
-        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $width, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe, $payMark, $cs): void {
+        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $width, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe, $payMark, $cs, $paxIdOf): void {
             $ws = $r !== null && $womanSingle($r);
             if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
@@ -273,6 +275,7 @@ final class ChalaniPdf
             $name = (string) ($r['full_name'] ?? '');
             $inf  = (int) $infantsOf($r);
             if ($inf > 0) { $name .= ' + शिशु ' . $neDigits((string) $inf); }
+            if (($pidT = (string) $paxIdOf($r)) !== '') { $name .= ' · ' . $pidT; }
             $tail = ' ' . (string) ($r['ticket_number'] ?: $r['pnr']);
             $txt($cx[2] + 3, $ty, $fit($name, 7.8, $cw[2] - 6 - 52), 7.8, false, self::INK);
             $txtR($cx[2] + $cw[2] - 3, $ty, $fit(trim($tail), 5.6, 50), 5.6, false, $isLate($r) ? self::RED : self::MUTE);

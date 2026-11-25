@@ -88,7 +88,7 @@ try {
         // that don't know about this field will simply ignore it (added
         // 29 Aug 2026, layout-unification round 1).
         'layout'         => $availability['layout'],
-        'holdMinutes'    => Settings::getInt('seat_hold_minutes', SEAT_HOLD_MINUTES),
+        'holdMinutes'    => (static function (): int { require_once INCLUDE_PATH . '/holdrelease.php'; return HoldRelease::lockMinutes(); })(),
         // Extra seats EX1..EXn (8 Oct 2026): null unless a selling staff
         // member is signed in (counter / agent / admin), sharing or seater.
         'extra'          => $availability['extra'] ?? null,

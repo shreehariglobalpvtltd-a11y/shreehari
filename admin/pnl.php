@@ -20,6 +20,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('reports.view');
+require_once INCLUDE_PATH . '/tripexpense.php';   // 25 Nov 2026 (op5): profit by bus from the per-trip costs
 
 $e    = static fn($v): string => Security::e((string) $v);
 $to   = Security::isValidDate((string) ($_GET['to'] ?? '')) ? (string) $_GET['to'] : todayISO();
@@ -81,6 +82,9 @@ foreach ($routes as &$r) {
 unset($r);
 $rt = ['trips' => 0, 'tickets' => 0, 'seats' => 0, 'revenue' => 0.0, 'commission' => 0.0, 'expenses' => 0.0, 'net' => 0.0];
 foreach ($routes as $r) { foreach ($rt as $k => $_) { $rt[$k] += $r[$k]; } }
+
+/* ---- By bus (25 Nov 2026, op5): ticket income − trip costs per coach ---- */
+$byBus = TripExpense::on() ? TripExpense::range($from, $to) : null;
 
 /* ---- By agent ---------------------------------------------------------- */
 $agents = $safe("SELECT a.id, a.full_name, a.username,
@@ -188,6 +192,29 @@ admin_header('Profit & loss', 'pnl');
   </table></div>
   <p class="muted" style="font-size:12px;padding:0 16px 12px;margin:0">Revenue counts each ticket leg on the day its coach ran. Expenses come from the trip-expense entries for each route<?= $rt['expenses'] <= 0 ? ' — none entered for these dates yet' : '' ?>.</p>
 </div>
+
+<?php if ($byBus !== null): ?>
+<div class="panel" id="by-bus">
+  <h2>🚌 By bus · बस-अनुसार <a class="btn ghost" style="margin-left:auto;padding:5px 11px;font-size:12px" href="trip-expenses.php?<?= $qs([]) ?>#by-bus">⛽ ट्रिप खर्च · Trip expenses</a></h2>
+  <div class="dt-wrap"><table class="dt card-table">
+    <thead><tr><th>Bus</th><th class="num">Trips</th><th class="num">Tickets</th><th class="num">Income</th><th class="num">Trip costs</th><th class="num">Profit</th></tr></thead>
+    <tbody>
+    <?php foreach ($byBus['buses'] as $b): ?>
+      <tr>
+        <td data-label="Bus"><b><?= $e($b['bus_label']) ?></b></td>
+        <td data-label="Trips" class="num"><?= (int) $b['trips'] ?></td>
+        <td data-label="Tickets" class="num"><?= (int) $b['tickets'] ?></td>
+        <td data-label="Income" class="num"><?= $e(inr($b['income'])) ?></td>
+        <td data-label="Trip costs" class="num"><?= $b['expenses'] > 0 ? '−' . $e(inr($b['expenses'])) : '<span class="muted">—</span>' ?></td>
+        <td data-label="Profit" class="num <?= $b['profit'] < 0 ? 'pl-neg' : 'pl-pos' ?>"><b><?= $e(inr($b['profit'])) ?></b></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if ($byBus['unlinked'] > 0): ?><tr><td data-label="Bus" class="muted">Old costs with no trip · ट्रिप नजोडिएको</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td data-label="Trip costs" class="num">−<?= $e(inr($byBus['unlinked'])) ?></td><td class="num">—</td></tr><?php endif; ?>
+    </tbody>
+  </table></div>
+  <p class="muted" style="font-size:12px;padding:0 16px 12px;margin:0">Profit here = ticket income − trip costs (before agent commission). The same costs are already inside the route table's Expenses.</p>
+</div>
+<?php endif; ?>
 
 <div class="panel">
   <h2>🧑‍💼 By agent · sold <?= $e(formatDate($from)) ?> – <?= $e(formatDate($to)) ?> <a class="btn ghost" style="margin-left:auto;padding:5px 11px;font-size:12px" href="?<?= $qs(['export' => 'agents']) ?>">⬇ CSV</a></h2>

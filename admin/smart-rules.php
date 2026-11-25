@@ -20,6 +20,7 @@ require __DIR__ . '/_guard.php';
 $admin = admin_boot('dashboard.view');
 require_once INCLUDE_PATH . '/smartbook.php';
 require_once INCLUDE_PATH . '/defaultrules.php';
+require_once INCLUDE_PATH . '/holdrelease.php';
 
 $e      = static fn($v): string => Security::e((string) $v);
 $canEdit = Auth::canManageSettings();
@@ -96,6 +97,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'allow_cod'                 => [!empty($_POST['allow_cod']) ? '1' : '0', 'bool', true],
                     'smartbook_agent_required'  => [!empty($_POST['agent_req']) ? '1' : '0', 'bool', false],
                 ];
+                // op5 (25 Nov 2026): the one unpaid-hold window + its two switches.
+                if (isset($_POST['seat_hold_min'])) {
+                    $pairs['seat_hold_minutes']        = [max(HoldRelease::MIN_MIN, min(HoldRelease::MAX_MIN, (int) $_POST['seat_hold_min'])), 'int', true];
+                    $pairs['seat_hold_autorelease_on'] = [!empty($_POST['hold_auto']) ? '1' : '0', 'bool', false];
+                    $pairs['hold_expiry_notice_on']    = [!empty($_POST['hold_notice']) ? '1' : '0', 'bool', false];
+                }
                 foreach ($pairs as $k => [$v, $t, $pub]) {
                     $old = Settings::getString($k, '');
                     Settings::set($k, (string) $v, $t, 'booking', $pub);
@@ -293,8 +300,40 @@ $tabs = ['rules' => 'Default Rules', 'seats' => 'Seat rules', 'limits' => 'Booki
     <label>Counter / admin SmartBook must pick the agent a sale is credited to<select name="agent_req"><option value="1"<?= Settings::getBool('smartbook_agent_required', true) ? ' selected' : '' ?>>Yes — choose an agent or Other (company)</option><option value=""<?= Settings::getBool('smartbook_agent_required', true) ? '' : ' selected' ?>>No — blank = company code</option></select></label>
   </div>
   <p class="sr-note">Cash is normally paid AT boarding, so the auto-cancel is off; switching it on cancels website Cash tickets that nobody paid by that time (desk sales are never touched).</p>
+  <h2 style="margin-top:14px">⏱ होल्ड आफैं खुल्ने · Unpaid hold auto-release</h2>
+  <div class="sr-grid">
+    <label>होल्ड मिनेट · Hold minutes (15-30)<input type="number" name="seat_hold_min" min="<?= HoldRelease::MIN_MIN ?>" max="<?= HoldRelease::MAX_MIN ?>" value="<?= HoldRelease::minutes() ?>"></label>
+    <label>पैसा नआए सिट आफैं खुल्ने · Auto-release on<select name="hold_auto"><option value="1"<?= HoldRelease::on() ? ' selected' : '' ?>>हो · Yes (one window for every hold)</option><option value=""<?= HoldRelease::on() ? '' : ' selected' ?>>होइन · No (old: lock <?= (int) Settings::getInt('seat_hold_minutes', defined('SEAT_HOLD_MINUTES') ? (int) SEAT_HOLD_MINUTES : 30) ?> min, unpaid booking <?= (int) Settings::getInt('booking_expiry_minutes', 120) ?> min)</option></select></label>
+    <label>ग्राहकलाई "होल्ड सकियो" WhatsApp · Hold-expired message<select name="hold_notice"><option value=""<?= Settings::getBool('hold_expiry_notice_on', false) ? '' : ' selected' ?>>बन्द · Off</option><option value="1"<?= Settings::getBool('hold_expiry_notice_on', false) ? ' selected' : '' ?>>खुला · On (only inside the 24 h chat window)</option></select></label>
+  </div>
+  <p class="sr-note">अहिले लागू: सिट छान्दा <b><?= HoldRelease::lockMinutes() ?></b> मिनेट · पैसा नतिरेको बुकिङ <b><?= HoldRelease::pendingMinutes() ?></b> मिनेट · SmartBook QR <b><?= HoldRelease::smartbookMinutes() ?></b> मिनेट (booking_expiry_minutes = <?= (int) Settings::getInt('booking_expiry_minutes', 120) ?>). Cash / pay at boarding, confirmed sales and bookings whose customer already sent a UTR or screenshot are NEVER released — the office decides those.</p>
   <?php if ($canEdit): ?><p><button class="btn ok" type="submit">💾 Save limits</button></p><?php endif; ?>
 </form>
+<?php $held = HoldRelease::heldNow(50); ?>
+<div class="panel">
+  <h2>अहिले होल्डमा · Held right now</h2>
+  <?php if ($held['locks'] === [] && $held['pending'] === [] && $held['proof'] === []): ?>
+    <p class="sr-note">कुनै होल्ड छैन · Nothing is held.</p>
+  <?php endif; ?>
+  <?php if ($held['locks'] !== []): ?>
+    <p class="sr-note"><b>सिट छान्दै · Choosing seats (checkout lock)</b></p>
+    <ul><?php foreach ($held['locks'] as $l): $left = HoldRelease::minutesLeft($l['secs'] ?? null); ?>
+      <li><?= $e($l['from_city'] . ' → ' . $l['to_city']) ?> · <?= $e(formatDate((string) $l['travel_date'], 'j M')) ?> · <span class="mono"><?= $e((string) $l['seats']) ?></span> — <b>होल्ड: <?= (int) $left ?> मिनेट बाँकी</b></li>
+    <?php endforeach; ?></ul>
+  <?php endif; ?>
+  <?php if ($held['pending'] !== []): ?>
+    <p class="sr-note"><b>पैसा पर्खँदै · Waiting for payment (frees itself)</b></p>
+    <ul><?php foreach ($held['pending'] as $p): $left = HoldRelease::minutesLeft($p['secs'] ?? null); ?>
+      <li><a class="mono" href="booking-view.php?pnr=<?= urlencode((string) $p['pnr']) ?>"><?= $e((string) $p['pnr']) ?></a> · <span class="mono"><?= $e((string) ($p['seats'] ?? '')) ?></span> · <?= $e(inr((float) $p['total_amount'])) ?> — <b><?= $left !== null ? 'होल्ड: ' . $left . ' मिनेट बाँकी' : 'अर्को cron मा खुल्छ · frees on the next cron run' ?></b></li>
+    <?php endforeach; ?></ul>
+  <?php endif; ?>
+  <?php if ($held['proof'] !== []): ?>
+    <p class="sr-note"><b>प्रमाण आएको, जाँच बाँकी · Proof sent — office must check (never auto-released)</b></p>
+    <ul><?php foreach ($held['proof'] as $p): ?>
+      <li><a class="mono" href="booking-view.php?pnr=<?= urlencode((string) $p['pnr']) ?>"><?= $e((string) $p['pnr']) ?></a> · <span class="mono"><?= $e((string) ($p['seats'] ?? '')) ?></span> · <?= $e(inr((float) $p['total_amount'])) ?></li>
+    <?php endforeach; ?></ul>
+  <?php endif; ?>
+</div>
 <?php elseif ($tab === 'policy'): ?>
 <form method="post" class="panel">
   <?= Security::csrfField() ?><input type="hidden" name="action" value="policy">

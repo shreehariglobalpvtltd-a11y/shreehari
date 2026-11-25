@@ -589,6 +589,42 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 . inr(abs((float) Database::scalar('SELECT amount FROM agent_ledger WHERE id = :i', ['i' => $lid], 0))) . '). Pay it out from Settlements as usual.');
             a360_go($targetId, 'targets');
 
+        } elseif (in_array($action, ['credit_limit', 'credit_hold', 'credit_release', 'credit_settle'], true)) {
+            /* 25 Nov 2026 (op5-credit): credit limit, "Stop selling" hold and
+               "हिसाब क्लियर / Settlement received" - settler permission, never on
+               your own account; each audited in AgentCredit. */
+            require_once INCLUDE_PATH . '/agentcredit.php';
+            $needPay();
+            $notSelf();
+            if ($action === 'credit_limit') {
+                $raw = trim((string) ($_POST['credit_limit'] ?? ''));
+                $lim = $raw === '' ? null : Boarding::parseRupees($raw);
+                if ($raw !== '' && !is_float($lim) && !is_int($lim)) {
+                    throw new RuntimeException('Enter the limit as a number of rupees (blank = company default).');
+                }
+                AgentCredit::setLimit($targetId, $lim === null ? null : (float) $lim, $selfId);
+                a360_flash('ok', $lim === null ? 'Credit limit now follows the company default.'
+                    : ((float) $lim <= 0 ? 'No credit limit for this agent.' : 'Credit limit set to ' . inr((float) $lim) . '.'));
+            } elseif ($action === 'credit_hold') {
+                AgentCredit::setHold($targetId, true, (string) ($_POST['reason'] ?? ''), $selfId);
+                a360_flash('ok', 'Selling stopped — the agent can still sign in, see their statement and hand cash over. Their public card and website listing are unchanged.');
+            } elseif ($action === 'credit_release') {
+                AgentCredit::setHold($targetId, false, (string) ($_POST['reason'] ?? ''), $selfId);
+                a360_flash('ok', 'Selling resumed for this agent.');
+            } else {
+                $amount   = (float) (Boarding::parseRupees((string) ($_POST['amount'] ?? '')) ?? 0);
+                $ledgerId = AgentCredit::recordSettlement($targetId, $amount, (string) ($_POST['mode'] ?? 'cash'),
+                    (string) ($_POST['ref'] ?? ''), (string) ($_POST['note'] ?? ''), (string) ($_POST['received_on'] ?? ''), $selfId);
+                if (!empty($_POST['release_hold']) && AgentCredit::hold($targetId)['held']) {
+                    AgentCredit::setHold($targetId, false, 'dues settled', $selfId);
+                }
+                $voucher = AgentWallet::voucherFor($ledgerId);
+                $wa = a360_notify_settlement($agent, $profile, 'cash_handover', round(abs($amount), 2), $ledgerId);
+                a360_flash('ok', 'Settlement of ' . inr(round(abs($amount), 2)) . ' recorded' . ($voucher !== '' ? ' — receipt ' . $voucher : '')
+                    . '. Still owed: ' . inr(AgentCredit::outstanding($targetId)) . '.', $wa);
+            }
+            a360_go($targetId, 'overview');
+
         } elseif ($action === 'toggle_active') {
             $needManage();
             if ($targetId === $selfId) {
@@ -884,6 +920,13 @@ $showSettle   = $canSettle && !$selfWalled;
 $openReqTotal = array_sum(array_map(static fn(array $r): float => (float) $r['amount'], $openReqs));
 $loanOutstanding = array_sum(array_map(static fn(array $l): float => (float) $l['outstanding'], $openLoans));
 $overCash     = (float) ($profile['cash_limit'] ?? 0) > 0 && $balances['cash'] > (float) $profile['cash_limit'] + 0.009;
+// 25 Nov 2026 (op5-credit): credit limit + "Stop selling" hold, one read
+require_once INCLUDE_PATH . '/agentcredit.php';
+try {
+    $credit = AgentCredit::status($agentId);
+} catch (Throwable $e) {
+    $credit = null;
+}
 
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
@@ -1000,6 +1043,9 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
           <?= a360_kyc_pill($kycStatus) ?>
           <?php if ($overdue > 0): ?><span class="pill st-bad">Settlement overdue <?= (int) $overdue ?>d</span><?php endif; ?>
           <?php if ($overCash): ?><span class="pill st-bad">Over cash limit</span><?php endif; ?>
+          <?php if ($credit !== null && $credit['held']): ?><a class="pill st-bad" href="?agent=<?= $agentId ?>&amp;tab=overview#credit">Selling stopped · बिक्री रोकिएको</a>
+          <?php elseif ($credit !== null && $credit['blocked']): ?><a class="pill st-bad" href="?agent=<?= $agentId ?>&amp;tab=overview#credit">At credit limit · सीमा पुग्यो</a>
+          <?php elseif ($credit !== null && $credit['warn']): ?><a class="pill st-warn" href="?agent=<?= $agentId ?>&amp;tab=overview#credit">Credit <?= (int) $credit['pct'] ?>% used</a><?php endif; ?>
           <?php if ($openReqs !== []): ?><span class="pill st-orange"><?= count($openReqs) ?> payout request<?= count($openReqs) === 1 ? '' : 's' ?> open</span><?php endif; ?>
           <?php if ($openLoans !== []): ?><span class="pill st-warn"><?= $e(inr($loanOutstanding)) ?> on loan</span><?php endif; ?>
           <?php if ($salary > 0): ?><span class="pill st-info nodot">Salary <?= $e(inr($salary)) ?>/mo</span><?php endif; ?>
@@ -1541,6 +1587,77 @@ $imgData = [
 
 <!-- ============ OVERVIEW ============ -->
 <section class="a360-tab" data-tab="overview"<?= $tab === 'overview' ? '' : ' hidden' ?>>
+  <?php if ($credit !== null): /* 25 Nov 2026 (op5-credit) */ ?>
+  <?php
+    $crLim  = (float) $credit['limit'];
+    $crOut  = (float) $credit['outstanding'];
+    $crPct  = $crLim > 0 ? min(100, (int) $credit['pct']) : 0;
+    $crTone = $credit['blocked'] ? 'var(--bad)' : ($credit['warn'] ? 'var(--warn, #b45309)' : 'var(--ok)');
+    $crOwn  = $credit['own'];
+  ?>
+  <div class="panel" id="credit">
+    <h2><svg class="a-ic"><use href="#a-rupee"/></svg> Credit limit · बाँकी हिसाब सीमा</h2>
+    <div style="padding:0 18px 14px">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <strong>Owes now · बाँकी: <?= $e(inr($crOut)) ?></strong>
+        <span class="muted">Limit · सीमा: <?= $crLim > 0 ? $e(inr($crLim)) : 'none · छैन' ?><?= $crOwn === null && $crLim > 0 ? ' (company default)' : '' ?></span>
+      </div>
+      <?php if ($crLim > 0): ?>
+      <div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $crPct ?>" aria-label="Credit used" style="height:10px;border-radius:999px;background:var(--line);margin:8px 0 4px;overflow:hidden">
+        <div style="height:100%;width:<?= $crPct ?>%;background:<?= $crTone ?>"></div>
+      </div>
+      <small class="muted"><?= (int) $credit['pct'] ?>% used<?= (int) $credit['overdueDays'] > 0 ? ' · settlement overdue ' . (int) $credit['overdueDays'] . 'd' : '' ?></small>
+      <?php endif; ?>
+      <?php if ($credit['held']): ?>
+        <div class="flash bad" style="margin:10px 0 0">Selling stopped · बिक्री रोकिएको<?= $credit['holdSince'] ? ' — ' . $e(formatDate((string) $credit['holdSince'])) : '' ?><?= $credit['holdReason'] !== '' ? ' · ' . $e($credit['holdReason']) : '' ?></div>
+      <?php elseif ($credit['blocked']): ?>
+        <div class="flash bad" style="margin:10px 0 0">New agent sales are refused until the dues come under the limit.</div>
+      <?php endif; ?>
+      <?php if (!$credit['blockOn']): ?>
+        <div class="flash warn" style="margin:10px 0 0">The credit block is switched off (Settings → Agent rules) — this card only shows the figures.</div>
+      <?php endif; ?>
+    </div>
+    <?php if ($showSettle): ?>
+    <div class="fp-grid" style="padding-top:0">
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <?= a360_form_head('overview', 'credit_settle', $agentId, $csrf, $k) ?>
+        <strong>हिसाब क्लियर · Settlement received</strong>
+        <label>Amount · रकम (₹)<input type="text" inputmode="decimal" name="amount" required placeholder="<?= $e((string) round(max(0.0, (float) $balances['cash']))) ?>"></label>
+        <label>How · कसरी
+          <select name="mode"><?php foreach (AgentCredit::MODES as $mk => $ml): ?><option value="<?= $e($mk) ?>"><?= $e($ml) ?></option><?php endforeach; ?></select></label>
+        <label>Reference / UTR <span class="muted">(bank / online)</span><input type="text" name="ref" maxlength="60"></label>
+        <label>Date received · मिति<input type="date" name="received_on" value="<?= $e(todayISO()) ?>" max="<?= $e(todayISO()) ?>"></label>
+        <label>Note<input type="text" name="note" maxlength="150"></label>
+        <?php if ($credit['held']): ?><label class="row" style="gap:8px"><input type="checkbox" name="release_hold" value="1"> Also resume selling · बिक्री फेरि खोल्ने</label><?php endif; ?>
+        <button class="btn sm" type="submit">Record settlement</button>
+        <small class="muted">Written as a cash handover with a receipt number — shows on the statement and aging. Up to the <?= $e(inr(max(0.0, (float) $balances['cash']))) ?> cash this agent holds.</small>
+      </form>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <form method="post" style="display:flex;flex-direction:column;gap:8px">
+          <?= a360_form_head('overview', 'credit_limit', $agentId, $csrf, $k) ?>
+          <label>This agent's limit · सीमा (₹)
+            <input type="text" inputmode="decimal" name="credit_limit" value="<?= $crOwn === null ? '' : $e((string) round($crOwn)) ?>" placeholder="blank = company default"<?= AgentCredit::hasLimitColumn() ? '' : ' disabled title="Run database/upgrade-2026-11-25-op5-credit.sql once"' ?>>
+            <small class="muted">blank = company default (<?= $e(inr(Settings::getFloat('agent_credit_limit_default', 0.0))) ?>) · 0 = no limit</small></label>
+          <button class="btn ghost sm" type="submit"<?= AgentCredit::hasLimitColumn() ? '' : ' disabled' ?>>Save limit</button>
+        </form>
+        <?php if ($credit['held']): ?>
+        <form method="post" style="display:flex;flex-direction:column;gap:8px">
+          <?= a360_form_head('overview', 'credit_release', $agentId, $csrf, $k) ?>
+          <label>Note <span class="muted">(optional)</span><input type="text" name="reason" maxlength="200" placeholder="dues cleared"></label>
+          <button class="btn sm" type="submit">Resume selling · बिक्री खोल्ने</button>
+        </form>
+        <?php else: ?>
+        <form method="post" style="display:flex;flex-direction:column;gap:8px">
+          <?= a360_form_head('overview', 'credit_hold', $agentId, $csrf, $k) ?>
+          <label>Reason · कारण<input type="text" name="reason" maxlength="200" required minlength="3" placeholder="dues not settled"></label>
+          <button class="btn danger sm" type="submit"<?= AgentCredit::hasHoldColumns() ? '' : ' disabled title="Run database/upgrade-2026-11-25-op5-credit.sql once"' ?> onclick="return confirm('Stop this agent selling new tickets? They can still sign in and settle; their card stays genuine.')">Stop selling · बिक्री रोक्ने</button>
+        </form>
+        <?php endif; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
   <div class="kpis">
     <?= admin_kpi('Commission due', inr($balances['commission']), 'earned ' . inr($summary['earned']) . ' · paid ' . inr($summary['paidOut']), 'coins', 'green') ?>
     <?= admin_kpi('Cash in hand', inr($balances['cash']),

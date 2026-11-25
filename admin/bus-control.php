@@ -125,6 +125,14 @@ if (Security::isPost()) {
                 $s   = Database::fetch('SELECT id, bus_id FROM schedules WHERE id = :i', ['i' => $sid]);
                 $bus = Database::fetch('SELECT id, bus_number, bus_name FROM buses WHERE id = :i AND is_active = 1', ['i' => $bid]);
                 if ($s === null || $bus === null) { throw new RuntimeException('Choose an active bus.'); }
+                /* 25 Nov 2026 (op5): this path wrote bus_id with no capacity /
+                   coach guard, no total_seats sync and told nobody. BusSwap
+                   guards, re-mints the tickets and tells the passengers. */
+                require_once INCLUDE_PATH . '/busswap.php';
+                if (BusSwap::on() && (int) ($s['bus_id'] ?? 0) !== $bid) {   // same bus = the old harmless no-op below
+                    $sw = BusSwap::swap($sid, $bid, (int) $admin['id'], 'Bus Control', ['via' => 'bus_control']);
+                    $back(['ok', '🚌 ' . $sw['message']], $date, 'trip' . $sid);
+                }
                 Database::update('schedules', ['bus_id' => $bid], 'id = :i', ['i' => $sid]);
                 Logger::audit('schedule.bus', 'schedule', (string) $sid, ['bus_id' => $s['bus_id']], ['bus_id' => $bid], 'via Bus Control');
                 $back(['ok', '🚌 This date now runs ' . $bus['bus_name'] . ' (' . $bus['bus_number'] . ').'], $date, 'trip' . $sid);

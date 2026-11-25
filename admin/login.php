@@ -1443,7 +1443,7 @@ body.px .qk-tabs button.on{background:#A8C7FA;border-color:#A8C7FA;color:#062E6F
 })();
 </script>
 <?php endif; ?>
-<?php if (in_array($step, ['start', 'c_code', 'c_unlock'], true) && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261125m" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
+<?php if (in_array($step, ['start', 'c_code', 'c_unlock'], true) && Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261126b" data-next="<?= $h($odUrl()) ?>"></script><?php endif; ?>
 <?php $cPad = in_array($step, ['c_unlock', 'c_create', 'c_confirm'], true); ?>
 <?php if ($ltPixel && !(($remembered ?? null) !== null || $cPad) && !$cLock): /* pixel look: the clock on the code / mobile steps (the PIN steps already run their own) */ ?><script>(function(){var c=document.getElementById('lkClock'),d=document.getElementById('lkDate');if(!c)return;function t(){var n=new Date();c.textContent=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);if(d)d.textContent=n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});}t();setInterval(t,15000);})();</script><?php endif; ?>
 <?php if (($remembered ?? null) !== null || $cPad): ?><script>
@@ -1974,6 +1974,6 @@ $doors = static function (string $title) use ($next): string {
   </div>
 </form>
 <?php if ($step === 'start' && !$agentFlow): $meUrl = Security::e('/admin/login.php' . ($next !== '' ? '?next=' . rawurlencode($next) : '')); ?>
-<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261125m" data-next="<?= $meUrl ?>"></script><?php endif; ?>
+<?php if (Passkeys::ready()): ?><script src="/assets/js/team-passkey.js?v=20261126b" data-next="<?= $meUrl ?>"></script><?php endif; ?>
 <?php endif; ?>
 </body></html>

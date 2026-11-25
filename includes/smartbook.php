@@ -42,6 +42,7 @@ require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/sitefacts.php';
 require_once __DIR__ . '/normalfare.php';         // 20 Nov 2026 (nf1): the route's real normal fare
 require_once __DIR__ . '/emergencycontact.php';   // 15 Nov 2026 (P7): the optional emergency contact
+require_once __DIR__ . '/paxid.php';              // 25 Nov 2026 (op5): the optional passenger ID on the desk card
 
 /** An idempotency key presented with another request / by another browser: the card makes a new key. */
 final class SmartBookKeyReused extends RuntimeException
@@ -374,6 +375,16 @@ final class SmartBook
             && in_array('toIndia', array_column(self::directions(), 'direction'), true)) {
             $dir = 'toIndia';
             $why['direction'] = self::why('नेपालबाट खोलिएको · Opened from Nepal', 'नेपाल से खोला गया · Opened from Nepal', 'नेपालबाट खोलिएको · Opened from Nepal');
+        }
+        /* wx1: any other known browser timezone (India or abroad) opens on India -> Nepal, so the
+           most-used direction never flips an India visitor onto Rupaidiha -> Gujarat. Same gates. */
+        $tzIn = trim((string) ($in['tz'] ?? ''));
+        if ($dir === '' && $mode === 'customer' && $tzIn !== '' && !self::nepalTz($tzIn)
+            && Settings::getBool('geo_direction_on', true)
+            && !self::officeFixedDirection()
+            && in_array('toNepal', array_column(self::directions(), 'direction'), true)) {
+            $dir = 'toNepal';
+            $why['direction'] = self::why('भारतबाट खोलिएको · Opened from India', 'भारत से खोला गया · Opened from India', 'भारतबाट खोलिएको · Opened from India');
         }
         if ($dir === '') {
             $dir = self::mostUsedDirection();
@@ -1011,11 +1022,14 @@ final class SmartBook
             'point'        => $point !== '' ? $point : (string) $plan['boardingName'],
             'boardingStop' => $boardStop,   // the list name of the pickup really booked ('' on a drop run)
             // wx1 (25 Nov 2026): the Nepal-side pickups a passenger may choose (>= 2 ON boarding rows on a toIndia bus), and the one booked
+            // wx6 (25 Nov 2026): the Nepal -> India journey (office -> our auto -> Rupaidiha bus) + the one-service line, ne/hi/en
+            'journey'      => $points['type'] === 'drop' ? self::npJourney() : null,
             'pickups'      => count($npPicks) > 1 ? $npPicks : [],
             'pickup'       => count($npPicks) > 1 ? (self::matchPoint((string) $plan['boardingName'], array_map(static fn(array $p): string => $p['name'], $npPicks)) ?: (string) $plan['boardingName']) : '',
             'pointNote'    => $pointNote ?? $npNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null (wx1: also a closed Nepal-side pickup)
             // 19 Nov 2026 (NP-3): {label, at, tz, reason} when today's bus is closed by the sales clock and this is a later day
             'clockNote'    => $plan['clockNote'] ?? null,
+            'clockSoon'    => !empty($plan['isToday']) && Settings::getBool('sales_clock_warn_on', true) ? ($plan['clockSoon'] ?? null) : null,   // wx6
             'coach'        => $coach,
             'type'         => $mode2 ?? 'seater',
             'cabin'        => $req['cabin'],
@@ -1361,6 +1375,12 @@ final class SmartBook
                 'gender'  => AutoBerth::gender($p['gender'] ?? null),
                 'special' => $band !== 'adult' ? $band : null,
             ];
+            // 25 Nov 2026 (op5): BookingService::create stores it (paxIdField); blank stays NULL
+            if ($mode !== 'customer' && PaxId::enabled() && ($p['idNum'] ?? '') !== '') {
+                $last = (int) array_key_last($passengers);
+                $passengers[$last]['idType'] = (string) ($p['idType'] ?? 'Other');
+                $passengers[$last]['idNum']  = (string) $p['idNum'];
+            }
         }
         $request = [
             'routeId'         => (int) $q['routeId'],
@@ -1452,7 +1472,8 @@ final class SmartBook
         ];
         // Online: the berths are held for the QR payment window, then released by cron/expire.php.
         if (($booking['status'] ?? '') === 'pending') {
-            $hold = max(5, Settings::getInt('smartbook_online_hold_min', 15));
+            require_once __DIR__ . '/holdrelease.php';
+            $hold = HoldRelease::smartbookMinutes();   // op5: never longer than the owner's hold window
             Database::run(
                 "UPDATE bookings SET expires_at = DATE_ADD(NOW(), INTERVAL {$hold} MINUTE) WHERE id = :id AND status = 'pending'",
                 ['id' => (int) $booking['id']]
@@ -1622,6 +1643,27 @@ final class SmartBook
      *  Input
      * ================================================================= */
 
+    /** wx6: TravelGuide::nepalJourney in the three card languages, or null (switch off / no rows). */
+    private static function npJourney(): ?array
+    {
+        try {
+            require_once __DIR__ . '/travelguide.php';
+            $out = [];
+            foreach (['ne', 'hi', 'en'] as $l) {
+                $j = TravelGuide::nepalJourney($l);
+                if ($j === [] || ($j['steps'] ?? []) === []) {
+                    return null;
+                }
+                $out[$l] = ['steps' => $j['steps'], 'one' => $j['one']];
+            }
+            $j = TravelGuide::nepalJourney('en');
+            $out['maps'] = ['office' => $j['office']['map'] ?? '', 'bus' => $j['bus']['map'] ?? ''];
+            return $out;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     /**
      * wx1 (25 Nov 2026, owner: "Nepal tarfa pickup ma Nepalgunj office ra Rupaidiha parking - duita
      * matra"): the switched-ON boarding rows of a Nepal -> India bus, so the card can offer them
@@ -1655,11 +1697,21 @@ final class SmartBook
             if (!is_array($p)) {
                 continue;
             }
-            $pax[] = [
+            $row = [
                 'gender' => (string) (AutoBerth::gender($p['gender'] ?? '') ?? ''),
                 'band'   => AutoBerth::band($p['band'] ?? 'adult'),
                 'name'   => Security::clean((string) ($p['name'] ?? ''), 120),
             ];
+            /* 25 Nov 2026 (op5): the optional per-passenger ID for the border - a staff
+               desk only (switch pax_id_field_on); a customer card never sends one. */
+            if ($mode !== 'customer' && isset($p['idNum']) && PaxId::enabled()) {
+                $id = PaxId::clean($p['idType'] ?? '', $p['idNum']);
+                if ($id !== null) {
+                    $row['idType'] = $id['type'];
+                    $row['idNum']  = $id['num'];
+                }
+            }
+            $pax[] = $row;
         }
         if ($pax === []) {
             $pax[] = ['gender' => '', 'band' => 'adult', 'name' => ''];

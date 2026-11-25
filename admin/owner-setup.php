@@ -357,7 +357,8 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
   </form>
 
   <?php
-  /* 25 Nov 2026 (wx1-c2): the 6 towns as names only + 2 free rows; saved rows keep their values. */
+  /* 25 Nov 2026 (wx1-c2): Surkhet only as a name (owner: "our bus is NPJ only; NPJ-Surkhet
+     may start") + 2 free rows; saved rows keep their values. */
   $onwSaved = []; foreach (TravelGuide::onward() as $r) { $onwSaved[mb_strtolower($r['to'], 'UTF-8')] = $r; }
   $onwRows = [];
   foreach (TravelGuide::TOWNS as [$to, $toNe]) { $onwRows[] = $onwSaved[mb_strtolower($to, 'UTF-8')] ?? ['to' => $to, 'to_ne' => $toNe]; unset($onwSaved[mb_strtolower($to, 'UTF-8')]); }
@@ -367,7 +368,7 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
   <form method="post" class="os-card" id="onward">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="onward">
     <h2>🧭 नेपालगञ्जपछि आगेको बस · Onward buses from Nepalgunj</h2>
-    <p class="hint"><a href="/travel-info?lang=ne#onward" target="_blank" rel="noopener">/travel-info</a> मा देखिन्छ। <b>साँचो</b> समय, बस कम्पनी र फोन मात्र लेख्नुहोस् — खाली छोडेको सहर देखिँदैन; सबै खाली भए "नेपालगञ्ज कार्यालयलाई सोध्नुहोस्" र कार्यालयको फोन देखिन्छ।</p>
+    <p class="hint"><a href="/travel-info?lang=ne#onward" target="_blank" rel="noopener">/travel-info</a> मा देखिन्छ। <b>साँचो</b> समय, बस कम्पनी र फोन मात्र लेख्नुहोस् — खाली छोडेको सहर देखिँदैन; सबै खाली भए "हाम्रो बस नेपालगञ्ज (पुष्पलाल चोक) सम्म मात्र जान्छ … नेपालगञ्ज कार्यालयलाई सोध्नुहोस्" र कार्यालयको फोन देखिन्छ। नेपालगञ्ज–सुर्खेत सेवा सुरु भएपछि मात्र सुर्खेतको समय लेख्नुहोस्।</p>
     <?php foreach ($onwRows as $i => $r): ?>
       <div class="os-f" style="padding:8px 0;border-bottom:1px dashed var(--line)">
         <label>सहर · Town<input name="onw[<?= (int) $i ?>][to]" maxlength="40" value="<?= $e($r['to'] ?? '') ?>" placeholder="Town"></label>

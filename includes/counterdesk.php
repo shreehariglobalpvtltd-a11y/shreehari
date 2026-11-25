@@ -64,7 +64,9 @@ final class CounterDesk
     public const PUBLIC_FIELDS = ['show_public', 'office_kind', 'public_status', 'name_ne', 'name_hi',
                                   'address_ne', 'lat', 'lng', 'whatsapp', 'contact_person',
                                   // 25 Nov 2026 (wx1-c1): the office in-charge's own phone + photo
-                                  'incharge_phone', 'incharge_photo'];
+                                  'incharge_phone', 'incharge_photo',
+                                  // 25 Nov 2026 (wx5): the office's own photo (building / signboard)
+                                  'office_photo'];
 
     /** What a listed office is: head office, branch, partner (Nepal) or border point. */
     public const OFFICE_KINDS = ['head', 'branch', 'partner', 'border'];
@@ -556,6 +558,7 @@ final class CounterDesk
             'contact_person' => static fn($v): ?string => trim(Security::clean((string) $v, 80)) ?: null,
             'incharge_phone' => static fn($v): ?string => trim(Security::clean((string) $v, 40)) ?: null,
             'incharge_photo' => static fn($v): ?string => self::cleanPhotoPath((string) $v) ?: null,
+            'office_photo'   => static fn($v): ?string => self::cleanPhotoPath((string) $v) ?: null,
         ];
         foreach ($pub as $col => $clean) {
             if (array_key_exists($col, $in) && self::hasColumn('counter_locations', $col)) {
@@ -791,7 +794,8 @@ final class CounterDesk
      * @return list<array{code:string,name:string,nameNe:string,nameHi:string,label:string,city:string,
      *                    kind:string,status:string,country:string,phone:string,tel:string,wa:string,
      *                    address:string,addressNe:string,hours:string,mapUrl:string,lat:?float,lng:?float,contact:string,
-     *                    inchargeName:string,inchargePhone:string,inchargeTel:string,inchargePhoto:string}>
+     *                    inchargeName:string,inchargePhone:string,inchargeTel:string,inchargePhoto:string,
+     *                    officePhoto:string}>
      */
     public static function publicOffices(): array
     {
@@ -802,6 +806,8 @@ final class CounterDesk
         /* 25 Nov 2026 (wx1-c1, owner: every office card the same - in-charge, Call,
            WhatsApp, Map). Switch home_office_incharge_on OFF = the list exactly as before. */
         $v2      = Settings::getBool('home_office_incharge_on', true);
+        // 25 Nov 2026 (wx5): the office photo on the cards; OFF = the cards exactly as before
+        $photoOn = Settings::getBool('home_office_photo_on', true);
         $co      = Settings::company();
         $byTown  = self::countersByTown((string) ($co['counters'] ?? ''));
 
@@ -873,6 +879,8 @@ final class CounterDesk
             // the office in-charge (कार्यालय प्रमुख): name = contact_person, own phone + photo (wx1-c1)
             $inPhone = $v2 ? trim((string) ($d['incharge_phone'] ?? '')) : '';
             $inPhoto = $v2 ? self::cleanPhotoPath((string) ($d['incharge_photo'] ?? '')) : '';
+            // the office's own photo (wx5): only an open office, switch home_office_photo_on
+            $offPhoto = $status === 'open' && $photoOn ? self::cleanPhotoPath((string) ($d['office_photo'] ?? '')) : '';
 
             $out[] = [
                 'code'      => $code,
@@ -898,6 +906,7 @@ final class CounterDesk
                 'inchargePhone' => $status === 'open' ? $inPhone : '',
                 'inchargeTel'   => $status === 'open' && $inPhone !== '' ? self::firstDial($inPhone, $country) : '',
                 'inchargePhoto' => $inPhoto !== '' ? '/' . $inPhoto : '',
+                'officePhoto'   => $offPhoto !== '' ? '/' . $offPhoto : '',
                 'sort'      => (int) $d['sort_order'],
             ];
         }
@@ -1180,6 +1189,7 @@ final class CounterDesk
                 'contact_person' => (string) ($r['contact_person'] ?? ''),
                 'incharge_phone' => (string) ($r['incharge_phone'] ?? ''),
                 'incharge_photo' => (string) ($r['incharge_photo'] ?? ''),
+                'office_photo'   => (string) ($r['office_photo'] ?? ''),
             ];
         }
 
@@ -1233,6 +1243,7 @@ final class CounterDesk
                 'contact_person' => '',
                 'incharge_phone' => '',
                 'incharge_photo' => '',
+                'office_photo'   => '',
             ];
         }
 
