@@ -264,6 +264,7 @@ const CORE_SUITES = [
     'wa-form-link-test.php'           => 'WhatsApp booking link (wa.php) + one-message form, agent code credit (19 Nov)',
     'wa87-e2e-test.php'               => '87 WhatsApp sender end to end: name / date → one booking, pay link, UTR never marks paid, one ticket (19 Nov)',
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
+    'mp1-pay-test.php'                => 'Payment Management: ICICI strict fields, one Nepal QR, Gmail bank alerts + bank webhook -> credits ledger, exact-match auto-confirm only (25 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
 ];

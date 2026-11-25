@@ -1,0 +1,775 @@
+<?php
+/**
+ * =====================================================================
+ *  includes/paycredits.php — PayCredits: the shared ledger of money the
+ *  BANK says arrived (25 Nov 2026, mp1 "pay").
+ *
+ *  Two feeders write one table (bank_credits,
+ *  database/upgrade-2026-11-25-mp1-pay-credits.sql):
+ *    gmail   — a Global IME Bank credit alert e-mail (BankMail, cron/bank-mail.php)
+ *    bankapi — a signed India bank / UPI API webhook (BankApi, payment/bank-webhook.php)
+ *
+ *  Money rule (owner, 19 Nov: "auto-confirm only on authenticated provider/bank
+ *  success matching booking, amount, currency and transaction"). A credit
+ *  confirms a ticket by itself ONLY when ALL of these hold:
+ *    - the source was authenticated: gmail = DKIM pass from the bank's domain
+ *      AND the sender is on the allow-list AND the credited account in the
+ *      alert ends with OUR account digits (bankmail_account_hint) - a genuine,
+ *      signed alert for money paid into someone else's account is re-sendable;
+ *      bankapi = HMAC signature verified
+ *      AND bankapi_mode = live (sandbox rows are 'test' and never confirm);
+ *    - it carries a transaction id never used before (UNIQUE source+txn, and
+ *      not on any other booking's payment). The same txn on a DIFFERENT e-mail
+ *      (or a different amount / remark) is never dropped as a replay: it is
+ *      kept without the txn id, 'unmatched', with a bell;
+ *    - the remarks name exactly ONE booking, that booking is pending payment,
+ *      is not pay-at-boarding, and carries no proof with this txn elsewhere;
+ *    - the amount equals what is due EXACTLY (NPR credit: the NPR frozen on
+ *      the sale, else the INR due x npr_per_inr; INR credit: the INR due).
+ *  Then it goes through BookingService::submitPaymentProof + PayAuto (the same
+ *  approveReviewed() gate a person uses) and OpsHub::markPaid ticks the
+ *  chalani "PAID - Nepali online (Gmail Auto)" / "PAID - Indian UPI (API Auto)".
+ *  Anything else: state 'unmatched' + an admin bell with the reason. A person
+ *  can then "Link to PNR" (approveReviewed via 'queue': PaymentRisk + a person
+ *  stay in the loop, and the amount must still match) or Ignore it.
+ *
+ *  Never writes bookings.status itself. Quietly off when the table is missing.
+ * =====================================================================
+ */
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+final class PayCredits
+{
+    public const LABEL_AUTO = [
+        'gmail'   => 'PAID - Nepali online (Gmail Auto)',
+        'bankapi' => 'PAID - Indian UPI (API Auto)',
+    ];
+    public const LABEL_LINKED = [
+        'gmail'   => 'PAID - Nepali online (Linked)',
+        'bankapi' => 'PAID - Indian UPI (Linked)',
+    ];
+    private const PREFIX = ['gmail' => 'GIME-', 'bankapi' => 'UPIAPI-'];
+    /** No single booking is a crore: a bigger figure means the alert was misread (and would not fit DECIMAL(12,2) safely). */
+    public const MAX_AMOUNT = 10000000.0;
+
+    private static ?bool $ready = null;
+    private static ?bool $acctCol = null;
+    /** What the last record() call did: 'new' | 'replay' | 'conflict' ('' = nothing stored). */
+    private static string $lastOutcome = '';
+
+    /** The bank_credits table exists (the migration ran). */
+    public static function ready(): bool
+    {
+        if (self::$ready === null) {
+            try {
+                self::$ready = Database::fetch("SHOW TABLES LIKE 'bank_credits'") !== null;
+            } catch (Throwable $e) {
+                self::$ready = false;
+            }
+        }
+        return self::$ready;
+    }
+
+    /** Test hook / after the migration ran in the same request. */
+    public static function flush(): void
+    {
+        self::$ready = null;
+        self::$acctCol = null;
+    }
+
+    /** bank_credits.credit_account is there (the same migration adds it). */
+    public static function accountCol(): bool
+    {
+        if (self::$acctCol === null) {
+            try {
+                self::$acctCol = self::ready() && Database::fetch("SHOW COLUMNS FROM bank_credits LIKE 'credit_account'") !== null;
+            } catch (Throwable $e) {
+                self::$acctCol = false;
+            }
+        }
+        return self::$acctCol;
+    }
+
+    /** 'new' (a row was stored), 'replay' (the same credit again: the old row), 'conflict' (same txn, another alert). */
+    public static function lastOutcome(): string
+    {
+        return self::$lastOutcome;
+    }
+
+    /** The money code + the confirm path, loaded only when needed. */
+    private static function boot(): void
+    {
+        foreach (['fare', 'seats', 'qr', 'pdf', 'ticket', 'counterdesk', 'booking', 'notify', 'payevents', 'payauto', 'opshub'] as $f) {
+            if (is_file(__DIR__ . '/' . $f . '.php')) {
+                require_once __DIR__ . '/' . $f . '.php';
+            }
+        }
+    }
+
+    /* =================================================================
+     *  PNRs in free text
+     * ================================================================= */
+
+    /**
+     * Every distinct PNR written in a remark, normalised to upper case:
+     * SHG-YYYY-NNNNN (new, 5 digits), SHG-YYYY-NNNN (the owner's 4-digit form,
+     * e.g. SHG-2026-0842) and the legacy SHG-<ROUTE>-<STAMP>-<RAND>. Spaces or
+     * underscores in place of the dashes are accepted ("shg 2026 0842").
+     *
+     * @return list<string>
+     */
+    public static function pnrsIn(string $text): array
+    {
+        $p   = defined('PNR_PREFIX') ? preg_quote((string) PNR_PREFIX, '/') : 'SHG';
+        $out = [];
+        $t   = strtoupper($text);
+        // legacy first: four segments, so a new-style number can never be read as one
+        if (preg_match_all('/(?<![A-Z0-9])' . $p . '-([A-Z0-9]{1,6})-([A-Z0-9]{5,8})-([A-Z0-9]{4})(?![A-Z0-9])/', $t, $m, PREG_SET_ORDER) > 0) {
+            foreach ($m as $x) {
+                $out[$x[0]] = true;
+                $t = str_replace($x[0], ' ', $t);
+            }
+        }
+        if (preg_match_all('/(?<![A-Z0-9])' . $p . '[\s\-_]*((?:19|20)\d{2})[\s\-_]*(\d{4,5})(?![0-9])/', $t, $m, PREG_SET_ORDER) > 0) {
+            foreach ($m as $x) {
+                $out[(defined('PNR_PREFIX') ? (string) PNR_PREFIX : 'SHG') . '-' . $x[1] . '-' . $x[2]] = true;
+            }
+        }
+        return array_keys($out);
+    }
+
+    /**
+     * The booking numbers one written PNR may stand for: SHG-2026-0842 and
+     * SHG-2026-00842 are the same ticket (the system prints 5 digits).
+     *
+     * @return list<string>
+     */
+    public static function pnrCandidates(string $pnr): array
+    {
+        $pnr = strtoupper(trim($pnr));
+        if (preg_match('/^([A-Z]+)-(\d{4})-(\d{4,5})$/', $pnr, $m) === 1) {
+            $n = (int) $m[3];
+            $c = [sprintf('%s-%s-%05d', $m[1], $m[2], $n)];
+            if ($n < 10000) {
+                $c[] = sprintf('%s-%s-%04d', $m[1], $m[2], $n);
+            }
+            return array_values(array_unique($c));
+        }
+        return $pnr !== '' ? [$pnr] : [];
+    }
+
+    /** @return list<array<string,mixed>> the bookings a written PNR names */
+    public static function bookingsFor(string $pnr): array
+    {
+        $c = self::pnrCandidates($pnr);
+        if ($c === []) {
+            return [];
+        }
+        $ph = [];
+        $pa = [];
+        foreach ($c as $i => $v) {
+            $ph[] = ':p' . $i;
+            $pa['p' . $i] = $v;
+        }
+        return Database::fetchAll('SELECT * FROM bookings WHERE pnr IN (' . implode(',', $ph) . ') LIMIT 3', $pa);
+    }
+
+    /* =================================================================
+     *  Money helpers
+     * ================================================================= */
+
+    /** INR still owed: total minus verified payments. */
+    public static function dueInr(array $b): float
+    {
+        $paid = (float) Database::scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
+            ['b' => (int) $b['id']], 0);
+        return round(max(0.0, (float) ($b['total_amount'] ?? 0) - $paid), 2);
+    }
+
+    /**
+     * The NPR a Nepali payer must send for $dueInr: the NPR frozen on the sale
+     * (Ticket::nprOf - never today's rate) when the window took it in NPR, else
+     * the INR due x npr_per_inr (the rate pay.php shows the same customer).
+     * A peg changed after the QR was shown gives a different figure - that lands
+     * in the review queue, never "fixed" with a tolerance.
+     */
+    public static function expectedNpr(array $b, float $dueInr): float
+    {
+        self::boot();
+        if (class_exists('Ticket') && Ticket::frozenNpr($b) > 0) {
+            return (float) Ticket::nprOf($b, $dueInr);
+        }
+        return (float) round($dueInr * Settings::getFloat('npr_per_inr', 1.6));
+    }
+
+    /** Gmail: the From address is on bankmail_from (addresses or @domains). */
+    public static function senderAllowed(string $from): bool
+    {
+        $from = strtolower(trim($from));
+        if ($from === '' || !str_contains($from, '@')) {
+            return false;
+        }
+        foreach (explode(',', strtolower(Settings::getString('bankmail_from', ''))) as $a) {
+            $a = trim($a);
+            if ($a === '') {
+                continue;
+            }
+            if ($a[0] === '@' ? str_ends_with($from, $a) : $from === $a) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The last 4-6 digits of the company's own Global IME account (bankmail_account_hint); '' = not set. */
+    public static function accountHint(): string
+    {
+        $d = (string) preg_replace('/\D/', '', Settings::getString('bankmail_account_hint', ''));
+        return strlen($d) >= 4 ? substr($d, -6) : '';
+    }
+
+    /**
+     * The credited account an alert names ('XXXXXXX789012', 'XXXX9012') ends with
+     * our digits. At least 4 digits must be visible; with fewer visible than the
+     * hint has, the visible ones are compared.
+     */
+    public static function accountMatches(string $acct, string $hint): bool
+    {
+        $hint = (string) preg_replace('/\D/', '', $hint);
+        if (strlen($hint) < 4 || preg_match('/(\d+)$/', strtoupper(trim($acct)), $m) !== 1 || strlen($m[1]) < 4) {
+            return false;
+        }
+        $n = min(strlen($m[1]), strlen($hint));
+        return substr($m[1], -$n) === substr($hint, -$n);
+    }
+
+    /** payments.utr_number this credit is recorded under. */
+    public static function proofRef(string $source, string $txn): string
+    {
+        $clean = preg_replace('/[^A-Za-z0-9\-\/]/', '', $txn) ?? '';
+        return mb_substr((self::PREFIX[$source] ?? 'BANK-') . $clean, 0, 60);
+    }
+
+    /** Long digit runs (account numbers) masked to their last 4 for the stored excerpt. */
+    public static function redact(string $s, int $max = 1200): string
+    {
+        $s = self::text($s, 20000, true);
+        $s = (string) preg_replace_callback('/\d{10,}/', static fn(array $m): string => str_repeat('X', strlen($m[0]) - 4) . substr($m[0], -4), $s);
+        $s = (string) preg_replace('/[ \t]+/', ' ', $s);
+        return mb_substr(trim($s), 0, $max);
+    }
+
+    /**
+     * Text from a bank e-mail / webhook made safe for a utf8mb4 column under
+     * STRICT_TRANS_TABLES: invalid bytes scrubbed (a raw 8-bit subject), control
+     * characters gone, cut to $max characters.
+     */
+    public static function text(mixed $v, int $max, bool $lines = false): string
+    {
+        $s = mb_scrub(is_scalar($v) ? (string) $v : '', 'UTF-8');
+        $s = (string) preg_replace($lines ? '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/' : '/[\x00-\x1F\x7F]+/', $lines ? '' : ' ', $s);
+        return mb_substr(trim($s), 0, $max);
+    }
+
+    /** An amount that fits the ledger: 0 for anything not a positive figure below MAX_AMOUNT. */
+    public static function cleanAmount(mixed $v): float
+    {
+        $a = is_numeric($v) ? (float) $v : 0.0;
+        return (is_finite($a) && $a > 0 && $a < self::MAX_AMOUNT) ? round($a, 2) : 0.0;
+    }
+
+    /**
+     * The admin bell (notifications, audience admin) - best effort, never throws.
+     * $tab = the Payment Management tab the bell opens ('np' | 'in').
+     */
+    public static function alert(string $title, string $body, ?int $bookingId = null, string $tab = 'np'): void
+    {
+        try {
+            Database::insert('notifications', [
+                'audience'   => 'admin',
+                'booking_id' => $bookingId,
+                'icon'       => '🏦',
+                'title'      => Security::clean(self::text($title, 191), 191),
+                'body'       => Security::clean(self::text($body, 500), 500),
+                'link'       => '/admin/payment-center.php?tab=' . ($tab === 'in' ? 'in' : 'np'),
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('PayCredits bell failed', ['err' => $e->getMessage()], 'payment');
+        }
+    }
+
+    /* =================================================================
+     *  The ledger
+     * ================================================================= */
+
+    /**
+     * Store one credit. Idempotent for a REPLAY only: the same Message-ID (the
+     * same e-mail), or - with no Message-ID (a webhook) - the same txn id with
+     * the same amount and remark, returns the row already there and changes
+     * nothing (lastOutcome() = 'replay').
+     *
+     * The same txn id on a different e-mail, or with another amount / remark, is
+     * NOT a replay (a Gmail txn id is read from free text and may be the payer's
+     * wallet or a date): it is stored without the txn id, 'unmatched', with a
+     * note naming the earlier credit and an admin bell (lastOutcome() = 'conflict').
+     *
+     * @param array<string,mixed> $c source, currency, amount, txn_id, ref_text, pnr, sender, dkim_ok,
+     *                               message_id, received_at, raw_excerpt, credit_account, state ('new'|'test'), note
+     * @return int the row id (0 = the table is not there yet)
+     */
+    public static function record(array $c): int
+    {
+        self::$lastOutcome = '';
+        if (!self::ready()) {
+            return 0;
+        }
+        $source = (string) ($c['source'] ?? '');
+        if (!in_array($source, ['gmail', 'bankapi'], true)) {
+            throw new InvalidArgumentException('Unknown credit source.');
+        }
+        $currency = strtoupper((string) ($c['currency'] ?? ($source === 'gmail' ? 'NPR' : 'INR')));
+        if (!in_array($currency, ['NPR', 'INR'], true)) {
+            throw new InvalidArgumentException('Credit currency must be NPR or INR.');
+        }
+        $txn    = self::text($c['txn_id'] ?? '', 80);
+        $msgId  = self::text($c['message_id'] ?? '', 255);
+        $ref    = self::text($c['ref_text'] ?? '', 255);
+        $amount = self::cleanAmount($c['amount'] ?? 0);
+        $state  = (string) ($c['state'] ?? 'new') === 'test' ? 'test' : 'new';
+        $note   = self::text($c['note'] ?? '', 255);
+
+        /* the same e-mail again = a replay */
+        if ($msgId !== '' && ($id = self::byMessageId($msgId)) > 0) {
+            self::$lastOutcome = 'replay';
+            return $id;
+        }
+        $seenOn = 0;
+        if ($txn !== '') {
+            $prev = Database::fetch('SELECT id, message_id, amount, ref_text FROM bank_credits WHERE source = :s AND txn_id = :t LIMIT 1',
+                ['s' => $source, 't' => $txn]);
+            if ($prev !== null) {
+                $same = $msgId === '' && (string) ($prev['message_id'] ?? '') === ''
+                    && abs((float) $prev['amount'] - $amount) < 0.005 && (string) ($prev['ref_text'] ?? '') === $ref;
+                if ($same) {
+                    self::$lastOutcome = 'replay';
+                    return (int) $prev['id'];
+                }
+                $seenOn = (int) $prev['id'];
+            }
+        }
+        $pnr = strtoupper(self::text($c['pnr'] ?? '', 40));
+        if ($pnr === '') {
+            $all = self::pnrsIn($ref);
+            $pnr = count($all) === 1 ? $all[0] : '';
+        }
+        if ($seenOn > 0) {
+            $note = mb_substr('Txn ' . mb_substr($txn, 0, 40) . ' already seen on credit #' . $seenOn
+                . ' — a second payment or the same alert sent again? Check the bank statement.' . ($note !== '' ? ' · ' . $note : ''), 0, 255);
+        }
+        $ts = !empty($c['received_at']) ? strtotime((string) $c['received_at']) : false;
+        if ($ts === false || $ts < 946684800 || $ts > time() + 7 * 86400) {
+            $ts = time();   // a Date header from nowhere (or year 99999) never breaks the insert
+        }
+        $row = [
+            'source'      => $source,
+            'currency'    => $currency,
+            'amount'      => $amount,
+            'txn_id'      => $txn !== '' && $seenOn === 0 ? $txn : null,
+            'ref_text'    => $ref !== '' ? $ref : null,
+            'pnr'         => $pnr !== '' ? $pnr : null,
+            'sender'      => self::text($c['sender'] ?? '', 190) ?: null,
+            'dkim_ok'     => !empty($c['dkim_ok']) ? 1 : 0,
+            'message_id'  => $msgId !== '' ? $msgId : null,
+            'received_at' => date('Y-m-d H:i:s', $ts),
+            'raw_excerpt' => self::redact((string) ($c['raw_excerpt'] ?? '')) ?: null,
+            'state'       => $seenOn > 0 && $state !== 'test' ? 'unmatched' : $state,
+            'note'        => $note !== '' ? $note : null,
+            'created_at'  => date('Y-m-d H:i:s'),
+        ];
+        if (self::accountCol()) {
+            $row['credit_account'] = self::text($c['credit_account'] ?? '', 40) ?: null;
+        }
+        try {
+            $id = (int) Database::insert('bank_credits', $row);
+        } catch (Throwable $e) {
+            $again = $msgId !== '' ? self::byMessageId($msgId) : 0;   // a racing poll stored the same e-mail first
+            if ($again === 0 && $txn !== '' && $seenOn === 0) {
+                $again = (int) Database::scalar('SELECT id FROM bank_credits WHERE source = :s AND txn_id = :t LIMIT 1', ['s' => $source, 't' => $txn], 0);
+            }
+            if ($again > 0) {
+                self::$lastOutcome = 'replay';
+                return $again;
+            }
+            throw $e;
+        }
+        self::$lastOutcome = $seenOn > 0 ? 'conflict' : 'new';
+        if ($seenOn > 0) {
+            Logger::warning('bank credit: txn id seen before', ['id' => $id, 'earlier' => $seenOn, 'source' => $source], 'payment');
+            if ($state !== 'test') {
+                self::alert('Bank credit needs a person · ' . $currency . ' ' . number_format($amount, 2),
+                    (string) $row['note'] . ' (credit #' . $id . ', ' . ($source === 'gmail' ? 'Gmail' : 'bank API') . ').', null, $source === 'gmail' ? 'np' : 'in');
+            }
+        }
+        return $id;
+    }
+
+    private static function byMessageId(string $msgId): int
+    {
+        return (int) Database::scalar('SELECT id FROM bank_credits WHERE message_id = :m LIMIT 1', ['m' => $msgId], 0);
+    }
+
+    /** @return array<string,mixed>|null */
+    public static function get(int $id): ?array
+    {
+        return self::ready() ? Database::fetch('SELECT * FROM bank_credits WHERE id = :i', ['i' => $id]) : null;
+    }
+
+    /**
+     * Confirm the ticket this credit pays for, when (and only when) every rule
+     * in the file header holds. A row that is not 'new' is left alone, so a
+     * replayed e-mail / webhook is a no-op.
+     *
+     * @return array{ok:bool, state:string, why:string, bookingId:?int}
+     */
+    public static function tryAutoConfirm(int $id): array
+    {
+        $c = self::get($id);
+        if ($c === null) {
+            return ['ok' => false, 'state' => '', 'why' => 'no such credit', 'bookingId' => null];
+        }
+        if ((string) $c['state'] !== 'new') {
+            return ['ok' => false, 'state' => (string) $c['state'], 'why' => 'already ' . $c['state'], 'bookingId' => $c['booking_id'] !== null ? (int) $c['booking_id'] : null];
+        }
+        // claim it: two polls racing on one credit - only one goes on
+        $claimed = Database::query("UPDATE bank_credits SET state = 'unmatched', note = 'checking…' WHERE id = :i AND state = 'new'", ['i' => $id])->rowCount();
+        if ($claimed !== 1) {
+            return ['ok' => false, 'state' => 'unmatched', 'why' => 'busy', 'bookingId' => null];
+        }
+        self::boot();
+        $source = (string) $c['source'];
+        $txn    = trim((string) ($c['txn_id'] ?? ''));
+        $amount = round((float) $c['amount'], 2);
+        $cur    = (string) $c['currency'];
+
+        /* 1. the source */
+        if ($source === 'gmail') {
+            if (!Settings::getBool('bankmail_on', false) || !Settings::getBool('pay_bankmail_autoconfirm_on', true)) {
+                return self::unmatched($id, 'Gmail auto-confirm is off — link it by hand', null);
+            }
+            if ((int) $c['dkim_ok'] !== 1) {
+                return self::unmatched($id, 'No DKIM pass from the bank domain — could be a forged e-mail', null);
+            }
+            if (!self::senderAllowed((string) ($c['sender'] ?? ''))) {
+                return self::unmatched($id, 'Sender ' . mb_substr((string) $c['sender'], 0, 80) . ' is not on the allowed list', null);
+            }
+            if ($cur !== 'NPR') {
+                return self::unmatched($id, 'A Gmail bank alert must be NPR', null);
+            }
+            /* a genuine, DKIM-signed alert for money paid into SOMEONE ELSE's account can be re-sent
+               to our box unchanged: the money must have come to OUR account */
+            $hint = self::accountHint();
+            if ($hint === '') {
+                return self::unmatched($id, 'Our Global IME account digits (bankmail_account_hint) are not saved — cannot tell the money came to us', null);
+            }
+            $acct = self::accountCol() ? trim((string) ($c['credit_account'] ?? '')) : '';
+            if (!self::accountMatches($acct, $hint)) {
+                return self::unmatched($id, match (true) {
+                    !self::accountCol() => 'Credited account not stored (run the mp1-pay-credits migration again) — check the bank statement',
+                    $acct === ''        => 'No credited account in the alert — cannot tell the money came to our account',
+                    $acct === '?'       => 'Two different accounts in the alert — cannot tell which one was credited',
+                    default             => 'Credit not to our account (alert says A/C …' . substr($acct, -4) . ')',
+                }, null);
+            }
+        } else {
+            if (!PayAuto::on() || !Settings::getBool('bankapi_on', false) || Settings::getString('bankapi_mode', 'sandbox') !== 'live') {
+                return self::unmatched($id, 'Bank API is off or in sandbox — link it by hand', null);
+            }
+            if ((int) $c['dkim_ok'] !== 1) {
+                return self::unmatched($id, 'Webhook signature was not verified', null);
+            }
+            if ($cur !== 'INR') {
+                return self::unmatched($id, 'A bank API credit must be INR', null);
+            }
+        }
+        /* 2. the transaction */
+        if ($txn === '') {
+            return self::unmatched($id, 'No transaction id in the credit', null);
+        }
+        if ($amount <= 0) {
+            return self::unmatched($id, 'No amount in the credit', null);
+        }
+        $usedAgain = (int) Database::scalar("SELECT COUNT(*) FROM bank_credits WHERE txn_id = :t AND id <> :i AND state IN ('matched','linked')",
+            ['t' => $txn, 'i' => $id], 0);
+        if ($usedAgain > 0) {
+            return self::unmatched($id, 'This transaction id already paid another ticket', null);
+        }
+        /* 3. the booking */
+        $pnrs = self::pnrsIn((string) ($c['ref_text'] ?? ''));
+        if (trim((string) ($c['pnr'] ?? '')) !== '') {
+            $pnrs = array_values(array_unique(array_merge([strtoupper((string) $c['pnr'])], $pnrs)));
+        }
+        if ($pnrs === []) {
+            return self::unmatched($id, 'No PNR in the remarks', null);
+        }
+        if (count($pnrs) > 1) {
+            return self::unmatched($id, 'More than one PNR in the remarks (' . implode(', ', array_slice($pnrs, 0, 3)) . ')', null);
+        }
+        $found = self::bookingsFor($pnrs[0]);
+        if (count($found) !== 1) {
+            return self::unmatched($id, $found === [] ? 'PNR ' . $pnrs[0] . ' not found' : 'PNR ' . $pnrs[0] . ' matches more than one booking', null);
+        }
+        $b   = $found[0];
+        $bid = (int) $b['id'];
+        if ((string) $b['status'] !== 'pending') {
+            return self::unmatched($id, (string) $b['pnr'] . ' is ' . $b['status'] . ' (not waiting for payment) — check, refund by hand if paid twice', $bid);
+        }
+        if ((int) ($b['is_cod'] ?? 0) === 1) {
+            return self::unmatched($id, (string) $b['pnr'] . ' is pay-at-boarding — settle it on Payments / Cash book', $bid);
+        }
+        $ref = self::proofRef($source, $txn);
+        $elsewhere = (int) Database::scalar('SELECT COUNT(*) FROM payments WHERE (utr_number = :u OR utr_number = :t) AND booking_id <> :b',
+            ['u' => $ref, 't' => $txn, 'b' => $bid], 0);
+        if ($elsewhere > 0) {
+            return self::unmatched($id, 'This transaction id is already on another booking', $bid);
+        }
+        /* 4. the amount, exactly */
+        $due = self::dueInr($b);
+        if ($due <= 0) {
+            return self::unmatched($id, (string) $b['pnr'] . ': nothing is due', $bid);
+        }
+        $expected = $cur === 'NPR' ? self::expectedNpr($b, $due) : $due;
+        if ($expected <= 0 || abs($amount - round($expected, 2)) > 0.004) {
+            return self::unmatched($id, sprintf('Amount %s %s, but %s needs %s %s', $cur, number_format($amount, 2), (string) $b['pnr'], $cur, number_format($expected, 2)), $bid);
+        }
+
+        /* 5. record the proof, then the same gate a person uses */
+        $tag = $source === 'gmail' ? 'Global IME credit (Gmail)' : 'Bank UPI API';
+        try {
+            self::recordProof($b, $source, $txn, $ref, $due, $amount, $cur, $tag, 'auto');
+        } catch (Throwable $e) {
+            return self::unmatched($id, 'Could not record the proof: ' . mb_substr($e->getMessage(), 0, 120), $bid);
+        }
+        $auto = PayAuto::confirmFromBankCredit($bid, $source, $txn, $ref, $due, $cur, $amount);
+        if (!$auto['ok']) {
+            return self::unmatched($id, 'Proof is on ' . $b['pnr'] . ' (Verify Payments), not confirmed: ' . $auto['why'], $bid);
+        }
+        self::tick($bid, self::LABEL_AUTO[$source], $due, $txn, PayAuto::systemAdmin() ?? ['id' => 0, 'role' => 'superadmin']);
+        Database::update('bank_credits', [
+            'state' => 'matched', 'booking_id' => $bid, 'pnr' => (string) $b['pnr'], 'acted_at' => date('Y-m-d H:i:s'),
+            'note' => mb_substr('Auto-confirmed ' . $b['pnr'] . ' (' . $cur . ' ' . number_format($amount, 2) . ')', 0, 255),
+        ], 'id = :i', ['i' => $id]);
+        return ['ok' => true, 'state' => 'matched', 'why' => 'confirmed', 'bookingId' => $bid];
+    }
+
+    /**
+     * A person links a credit to a PNR ("Link to PNR"). The amount must still
+     * match exactly, and approveReviewed() runs via 'queue', so PaymentRisk can
+     * still ask for the bank-statement tick, a reason or a second person.
+     *
+     * @return array{ok:bool, msg:string, bookingId:?int}
+     */
+    public static function link(int $id, string $pnr, int $adminId, bool $bankChecked = true, string $note = ''): array
+    {
+        $c = self::get($id);
+        if ($c === null) {
+            throw new RuntimeException('Credit not found.');
+        }
+        if (in_array((string) $c['state'], ['matched', 'linked'], true)) {
+            throw new RuntimeException('This credit already paid ' . ($c['pnr'] ?? 'a ticket') . '.');
+        }
+        if ((string) $c['state'] === 'test') {
+            throw new RuntimeException('A sandbox test credit is not real money — it cannot pay a ticket.');
+        }
+        self::boot();
+        $admin = Database::fetch('SELECT id, role FROM admins WHERE id = :i AND is_active = 1', ['i' => $adminId]);
+        if ($admin === null) {
+            throw new RuntimeException('Unknown staff account.');
+        }
+        $source = (string) $c['source'];
+        $txn    = trim((string) ($c['txn_id'] ?? ''));
+        $amount = round((float) $c['amount'], 2);
+        $cur    = (string) $c['currency'];
+        if ($txn === '' || $amount <= 0) {
+            throw new RuntimeException('This credit has no own transaction id or no amount — check the bank statement, then type the bank reference on the booking page (payment proof) and approve it on Verify Payments.');
+        }
+        $found = self::bookingsFor(Security::clean($pnr, 40));
+        if (count($found) !== 1) {
+            throw new RuntimeException($found === [] ? 'PNR not found.' : 'That PNR matches more than one booking.');
+        }
+        $b   = $found[0];
+        $bid = (int) $b['id'];
+        if ((string) $b['status'] !== 'pending') {
+            throw new RuntimeException((string) $b['pnr'] . ' is ' . $b['status'] . ' — only a booking waiting for payment can be linked.');
+        }
+        if ((int) ($b['is_cod'] ?? 0) === 1) {
+            throw new RuntimeException((string) $b['pnr'] . ' is pay-at-boarding — settle it on Payments / Cash book.');
+        }
+        $ref = self::proofRef($source, $txn);
+        if ((int) Database::scalar('SELECT COUNT(*) FROM payments WHERE (utr_number = :u OR utr_number = :t) AND booking_id <> :b',
+                ['u' => $ref, 't' => $txn, 'b' => $bid], 0) > 0
+            || (int) Database::scalar("SELECT COUNT(*) FROM bank_credits WHERE txn_id = :t AND id <> :i AND state IN ('matched','linked')", ['t' => $txn, 'i' => $id], 0) > 0) {
+            throw new RuntimeException('This transaction id is already on another booking.');
+        }
+        $due = self::dueInr($b);
+        $expected = $cur === 'NPR' ? self::expectedNpr($b, $due) : $due;
+        if ($due <= 0 || abs($amount - round($expected, 2)) > 0.004) {
+            throw new RuntimeException(sprintf('Amount does not match: credit %s %s, %s needs %s %s.', $cur, number_format($amount, 2), (string) $b['pnr'], $cur, number_format($expected, 2)));
+        }
+        $tag = $source === 'gmail' ? 'Global IME credit (Gmail, linked)' : 'Bank UPI API (linked)';
+        if (!Database::exists('SELECT 1 FROM payments WHERE booking_id = :b AND utr_number = :u', ['b' => $bid, 'u' => $ref])) {
+            self::recordProof($b, $source, $txn, $ref, $due, $amount, $cur, $tag, 'link');
+        }
+        $note = Security::clean($note, 120);
+        Database::update('bank_credits', ['booking_id' => $bid, 'pnr' => (string) $b['pnr']], 'id = :i', ['i' => $id]);
+        try {
+            $r = BookingService::approveReviewed($bid, ['id' => (int) $admin['id'], 'role' => (string) $admin['role']], [
+                'via' => 'queue', 'bankChecked' => $bankChecked, 'amountSeen' => $due,
+                'note' => mb_substr('Bank credit #' . $id . ' linked: txn ' . mb_substr($txn, -14) . ', ' . $cur . ' ' . number_format($amount, 2) . ($note !== '' ? ' · ' . $note : ''), 0, 255),
+            ]);
+        } catch (Throwable $e) {
+            Database::update('bank_credits', ['note' => mb_substr('Proof on ' . $b['pnr'] . '; not approved: ' . $e->getMessage(), 0, 255)], 'id = :i', ['i' => $id]);
+            throw new RuntimeException($e->getMessage());
+        }
+        if (($r['state'] ?? '') !== 'confirmed') {
+            Database::update('bank_credits', ['note' => 'First approval saved on ' . $b['pnr'] . '; a second person approves on Verify Payments'], 'id = :i', ['i' => $id]);
+            return ['ok' => false, 'msg' => (string) $b['pnr'] . ': first approval saved — a manager / accountant gives the second on Verify Payments.', 'bookingId' => $bid];
+        }
+        self::tick($bid, self::LABEL_LINKED[$source], $due, $txn, ['id' => (int) $admin['id'], 'role' => (string) $admin['role']]);
+        Database::update('bank_credits', [
+            'state' => 'linked', 'booking_id' => $bid, 'pnr' => (string) $b['pnr'], 'acted_by' => (int) $admin['id'], 'acted_at' => date('Y-m-d H:i:s'),
+            'note' => mb_substr('Linked to ' . $b['pnr'] . ' by #' . (int) $admin['id'] . ($note !== '' ? ' · ' . $note : ''), 0, 255),
+        ], 'id = :i', ['i' => $id]);
+        Logger::audit('bank_credit.link', 'bank_credit', (string) $id, ['state' => (string) $c['state']],
+            ['state' => 'linked', 'pnr' => (string) $b['pnr'], 'txn' => mb_substr($txn, -14), 'amount' => $amount, 'currency' => $cur], 'Bank credit linked to a PNR by hand');
+        return ['ok' => true, 'msg' => (string) $b['pnr'] . ' confirmed — ticket sent.', 'bookingId' => $bid];
+    }
+
+    /** A person sets a credit aside (not ours, a refund, a test). Never for a credit that paid a ticket. */
+    public static function ignore(int $id, int $adminId, string $note): void
+    {
+        $c = self::get($id);
+        if ($c === null) {
+            throw new RuntimeException('Credit not found.');
+        }
+        if (in_array((string) $c['state'], ['matched', 'linked'], true)) {
+            throw new RuntimeException('This credit already paid a ticket — it cannot be ignored.');
+        }
+        $note = mb_substr(Security::clean($note, 200), 0, 200);
+        Database::update('bank_credits', [
+            'state' => 'ignored', 'acted_by' => $adminId, 'acted_at' => date('Y-m-d H:i:s'),
+            'note' => 'Ignored' . ($note !== '' ? ': ' . $note : ''),
+        ], 'id = :i', ['i' => $id]);
+        Logger::audit('bank_credit.ignore', 'bank_credit', (string) $id, ['state' => (string) $c['state']], ['state' => 'ignored'], $note !== '' ? $note : 'Ignored');
+    }
+
+    /**
+     * The newest credits for the admin page.
+     *
+     * @param array<string,mixed> $f source, state ('open' = new + unmatched), limit
+     * @return list<array<string,mixed>>
+     */
+    public static function listRecent(array $f = []): array
+    {
+        if (!self::ready()) {
+            return [];
+        }
+        $w = [];
+        $p = [];
+        if (in_array((string) ($f['source'] ?? ''), ['gmail', 'bankapi'], true)) {
+            $w[] = 'c.source = :s';
+            $p['s'] = (string) $f['source'];
+        }
+        $st = (string) ($f['state'] ?? '');
+        if ($st === 'open') {
+            $w[] = "c.state IN ('new','unmatched')";
+        } elseif (in_array($st, ['new', 'matched', 'unmatched', 'linked', 'ignored', 'test'], true)) {
+            $w[] = 'c.state = :st';
+            $p['st'] = $st;
+        }
+        $lim = max(1, min(500, (int) ($f['limit'] ?? 50)));
+        return Database::fetchAll(
+            'SELECT c.*, b.pnr AS booking_pnr, a.full_name AS acted_name
+               FROM bank_credits c
+          LEFT JOIN bookings b ON b.id = c.booking_id
+          LEFT JOIN admins a ON a.id = c.acted_by'
+            . ($w !== [] ? ' WHERE ' . implode(' AND ', $w) : '') .
+            " ORDER BY c.id DESC LIMIT $lim",
+            $p
+        );
+    }
+
+    /** @return array<string,int> state => count for one source */
+    public static function counts(string $source): array
+    {
+        if (!self::ready()) {
+            return [];
+        }
+        $out = [];
+        foreach (Database::fetchAll('SELECT state, COUNT(*) AS n FROM bank_credits WHERE source = :s GROUP BY state', ['s' => $source]) as $r) {
+            $out[(string) $r['state']] = (int) $r['n'];
+        }
+        return $out;
+    }
+
+    /* =================================================================
+     *  internals
+     * ================================================================= */
+
+    /** The proof on the booking (the same path a typed UTR / ICICI takes) + where it came from. */
+    private static function recordProof(array $b, string $source, string $txn, string $ref, float $due, float $amount, string $cur, string $tag, string $how): void
+    {
+        BookingService::submitPaymentProof((string) $b['pnr'], [
+            'utr'           => $ref,
+            'payerName'     => $tag,
+            'method'        => $source === 'gmail' ? 'bank' : 'upi',
+            'claimedAmount' => $due,
+        ]);
+        $upd = [
+            'match_hint' => mb_substr(($source === 'gmail' ? 'bankmail_' : 'upiapi_') . $how, 0, 20),
+            'match_note' => mb_substr($tag . ' · txn ' . $txn . ' · ' . $cur . ' ' . number_format($amount, 2), 0, 255),
+        ];
+        if ($cur === 'NPR' && class_exists('CounterDesk') && CounterDesk::hasColumn('payments', 'local_amount')) {
+            $upd['local_currency'] = 'NPR';
+            $upd['local_amount']   = $amount;
+        }
+        try {
+            Database::update('payments', $upd, 'booking_id = :b AND utr_number = :u', ['b' => (int) $b['id'], 'u' => $ref]);
+        } catch (Throwable $e) {
+            Logger::warning('PayCredits: payment tag failed', ['pnr' => $b['pnr'] ?? '', 'err' => $e->getMessage()], 'payment');
+        }
+    }
+
+    /** The chalani tick (best effort: the ticket is already confirmed). */
+    private static function tick(int $bookingId, string $label, float $due, string $txn, array $admin): void
+    {
+        try {
+            if (!class_exists('OpsHub')) {
+                require_once __DIR__ . '/opshub.php';
+            }
+            OpsHub::markPaid($bookingId, $label, $due, 'UTR ' . mb_substr($txn, 0, 60), $admin);
+        } catch (Throwable $e) {
+            Logger::warning('PayCredits: chalani tick failed', ['booking' => $bookingId, 'err' => $e->getMessage()], 'payment');
+        }
+    }
+
+    /** @return array{ok:bool, state:string, why:string, bookingId:?int} */
+    private static function unmatched(int $id, string $why, ?int $bookingId, bool $bell = true): array
+    {
+        $c = self::get($id) ?? [];
+        Database::update('bank_credits', ['state' => 'unmatched', 'note' => mb_substr($why, 0, 255)]
+            + ($bookingId !== null ? ['booking_id' => $bookingId] : []), 'id = :i', ['i' => $id]);
+        if ($bell) {
+            $amt = (string) ($c['currency'] ?? '') . ' ' . number_format((float) ($c['amount'] ?? 0), 2);
+            self::alert('Bank credit needs a person · ' . $amt,
+                $why . ' (txn …' . substr((string) ($c['txn_id'] ?? ''), -6) . ', ' . (($c['source'] ?? '') === 'gmail' ? 'Gmail' : 'bank API') . ').',
+                $bookingId, ($c['source'] ?? '') === 'gmail' ? 'np' : 'in');
+        }
+        Logger::info('bank credit unmatched', ['id' => $id, 'why' => $why], 'payment');
+        return ['ok' => false, 'state' => 'unmatched', 'why' => $why, 'bookingId' => $bookingId];
+    }
+}

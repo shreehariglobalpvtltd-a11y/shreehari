@@ -10,6 +10,13 @@
  * Yo file sirf testing ko lagi ho.
  */
 
+// 25 Nov 2026 (mp1): it printed the merchant id, aggregator id and a hash to anyone on the web.
+// Command line only now: php payment/test_sandbox.php  (the web gets a plain 404).
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 require_once __DIR__ . '/icici_config.php';
 
 echo "<h2>🏦 ICICI PG Sandbox Test - shreehariglobal.in</h2>";

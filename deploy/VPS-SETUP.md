@@ -148,6 +148,11 @@ sudo systemctl restart php8.3-fpm
 
 # Log rotation, Sundays 03:00.
 0 3 * * 0 /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/rotate.php >/dev/null 2>&1
+
+# Nepal online payments (25 Nov 2026, mp1): read new Global IME Bank credit
+# alerts from the Gmail box, every 2 minutes. Exits at once while
+# bankmail_on is off (Admin -> Payment Management -> Nepal tab).
+*/2 * * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/bank-mail.php >/dev/null 2>&1
 ```
 
 Confirm the seat sweep is actually running — an unscheduled `expire.php`
