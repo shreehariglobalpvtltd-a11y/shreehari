@@ -153,6 +153,12 @@ sudo systemctl restart php8.3-fpm
 # alerts from the Gmail box, every 2 minutes. Exits at once while
 # bankmail_on is off (Admin -> Payment Management -> Nepal tab).
 */2 * * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/bank-mail.php >/dev/null 2>&1
+# Evening day report on WhatsApp (release dy): from seller_day_report_hour
+# (default 20 IST) each seller with a ticket today gets their own day once,
+# free inside their 24 h window, else a web push, else nothing; the owner
+# gets one all-desk total. Every 15 minutes; a claim per person per day
+# stops reruns sending twice. Switch: seller_day_report_on.
+*/15 * * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/seller-day.php >> /var/www/shreehariglobal.in/public_html/logs/seller-day.log 2>&1
 ```
 
 Confirm the seat sweep is actually running — an unscheduled `expire.php`
