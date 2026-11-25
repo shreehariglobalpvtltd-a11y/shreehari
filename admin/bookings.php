@@ -314,6 +314,7 @@ $offset = ($page - 1) * $PER_PAGE;
 // real prepares and would quote a bound LIMIT (same note as activity-log.php).
 $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.booking_mode,
                b.source, b.sold_by_admin_id, b.is_cod, b.parcel_tag, b.border_id_verified, b.sub_agent_admin_id, b.parent_agent_id,
+               b.expires_at, TIMESTAMPDIFF(SECOND, NOW(), b.expires_at) AS hold_secs,
                " . $fxSel . ",
                r.from_city, r.to_city, r.route_code, bl.travel_date, bl.boarding_stop, bl.drop_stop,
                s.id AS schedule_id, COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
@@ -334,6 +335,8 @@ $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created
           ORDER BY b.id DESC LIMIT ' . (int) $PER_PAGE . ' OFFSET ' . (int) $offset;
 
 $rows = Database::fetchAll($sql, $params);
+require_once INCLUDE_PATH . '/holdrelease.php';
+$holdOn = HoldRelease::on();
 
 /* 29 Oct 2026 (management upgrade 3.1, "duplicate check"): another OPEN
    ticket on the same mobile, for the same travel date, carrying a passenger
@@ -830,6 +833,10 @@ $canEdit   = Auth::can('bookings.edit');
         <td data-label="Payment">
           <?= pay_status_pill($b['pay_status'] ?? null) ?>
           <div class="muted" style="font-size:11px;margin-top:3px"><?= Security::e(strtoupper((string) ($b['pay_method'] ?: ((int) ($b['is_cod'] ?? 0) === 1 ? 'COD' : '—')))) ?></div>
+          <?php /* op5 (25 Nov 2026): an unpaid hold's countdown; it frees itself at 0. */
+          if ($holdOn && (string) $b['status'] === 'pending' && !empty($b['expires_at']) && ($holdLeft = HoldRelease::minutesLeft($b['hold_secs'] ?? null)) !== null): ?>
+            <div><span class="pill" style="background:#fff4d1;color:#8a5a00;font-size:10.5px" title="Unpaid hold - the seats free themselves when it reaches 0">⏱ होल्ड: <?= (int) $holdLeft ?> मिनेट बाँकी</span></div>
+          <?php endif; ?>
           <?php if (in_array((string)($b['pay_status'] ?? ''), ['pending', 'cod_pending'], true) && Auth::can('payments.verify')): ?>
             <form method="post" style="display:inline;margin-top:3px" onsubmit="return confirm('<?= ((int) ($b['is_cod'] ?? 0) === 1) ? 'Record cash collected for' : 'Verify payment and confirm' ?> booking <?= Security::e((string)$b['pnr']) ?>?')">
               <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="verify_payment"><input type="hidden" name="pnr" value="<?= Security::e((string)$b['pnr']) ?>">

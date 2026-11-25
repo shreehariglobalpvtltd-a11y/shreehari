@@ -1387,7 +1387,9 @@ final class Seats
 
         self::expireLocks();
 
-        $holdMinutes = Settings::getInt('seat_hold_minutes', SEAT_HOLD_MINUTES);
+        // op5 (25 Nov 2026): the owner's one hold window (15-30, default 20) while seat_hold_autorelease_on.
+        require_once __DIR__ . '/holdrelease.php';
+        $holdMinutes = HoldRelease::lockMinutes();
         $expiresAt   = date('Y-m-d H:i:s', time() + ($holdMinutes * 60));
 
         /* One visitor may hold one party's worth of seats. There was no cap
