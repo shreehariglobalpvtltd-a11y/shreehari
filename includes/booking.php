@@ -648,6 +648,13 @@ final class BookingService
         $bookingMode = in_array($request['bookingMode'] ?? '', ['sharing', 'private'], true)
             ? (string) $request['bookingMode'] : null;
         $isCod = !empty($request['isCod']) && Settings::getBool('allow_cod', true) && $seller === null;
+        /* 25 Nov 2026 (op5-credit): an AGENT session booking pay-at-boarding through the
+           public flow is a credit sale on the agent's code - the same credit limit / hold
+           as the counter. A booking paid online first is never refused. */
+        if ($isCod && Auth::isCounterAgent()) {
+            require_once INCLUDE_PATH . '/agentcredit.php';
+            AgentCredit::assertRoom((int) (Auth::admin()['id'] ?? 0));
+        }
 
         /* ---- Agent-code resolution ---------------------------------
            $referralCodeClean / $soldByAdminId were resolved up front (above
