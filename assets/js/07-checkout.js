@@ -1960,7 +1960,10 @@ function coServerExtras(d, out) {
        a UPI-amount code off it. undefined = an older server; nothing is guessed. */
     fxCurrency: d.fxCurrency === undefined ? undefined : String(d.fxCurrency || ''),
     fxTotal: d.fxTotal === undefined ? undefined : (Number(d.fxTotal) || 0),
-    fxRate: d.fxRate === undefined ? undefined : (Number(d.fxRate) || 0)
+    fxRate: d.fxRate === undefined ? undefined : (Number(d.fxRate) || 0),
+    /* 26 Nov 2026 (mp4): this sale's own Nepal pay QR + its payee + wallet word (track.php,
+       PayQr::resolve - the issuing desk's QR, else the NP default). undefined = older server. */
+    npPay: (d.npPay && d.npPay.url) ? { url: String(d.npPay.url), payee: String(d.npPay.payee || ''), kind: String(d.npPay.kind || 'eSewa') } : undefined
   };
 }
 /* Turn a track.php payload into the shape the app renders. Used both to
@@ -2003,7 +2006,7 @@ function bookingFromServer(d, phone) {
   };
   Object.assign(b, coServerExtras(d, out));
   if (b.pickupMap === undefined) delete b.pickupMap;
-  ['fxCurrency', 'fxTotal', 'fxRate'].forEach(k => { if (b[k] === undefined) delete b[k]; });
+  ['fxCurrency', 'fxTotal', 'fxRate', 'npPay'].forEach(k => { if (b[k] === undefined) delete b[k]; });
   if (ret) {
     b.ret = {
       routeId: ret.routeCode || '', date: ret.date || '',
@@ -2678,7 +2681,12 @@ function tkGoldPay(b) {
   if (bs0.ticket_cash_no_payqr !== false && due <= 0) return null;
   const rr0 = (typeof routeById === 'function' && b.routeId) ? (routeById(b.routeId) || {}) : {};
   const fromNp = typeof isNepalPoint === 'function' && isNepalPoint(rr0.from) && !isNepalPoint(rr0.to);
-  const npQr = String(bs0.nepal_esewa_qr_url || '');
+  /* 26 Nov 2026 (mp4 review fix, money): the picture, the id under it and its wallet word come
+     from ONE QR row - this sale's own (b.npPay, track.php) else the boot's NP default (PayQr). */
+  const npP = (b.npPay && b.npPay.url) ? b.npPay : null;
+  const npQr = npP ? String(npP.url) : String(bs0.nepal_esewa_qr_url || '');
+  const npId = npP ? String(npP.payee || '') : String(bs0.nepal_esewa_id || '');
+  const npKind = String((npP ? npP.kind : bs0.nepal_pay_qr_kind) || 'eSewa');
   /* review (money, = Ticket::staticPayQrOk): the static Nepal QR records nothing, so on an INR
      ticket it stands in only where a raw UPI code would - confirmed, not pay-at-boarding, no
      proof waiting. A COD / pending ticket keeps the live pay.php link below (UTR -> COD queue). */
@@ -2687,7 +2695,7 @@ function tkGoldPay(b) {
   if (due > 0 && open && npQr && (nprSale || (bs0.ticket_pay_qr_by_country !== false && fromNp && staticOk))) {
     const rate = nprSale && Number(b.total) > 0 ? Number(b.fxTotal || b.fx_total) / Number(b.total) : Number((typeof CONFIG !== 'undefined' && CONFIG.nprPerInr) || 1.6);
     return { kind: 'npr', due: due, paid: false, upi: '', name: name, img: true, url: npQr,
-      npr: Math.round(due * rate), esewa: String(bs0.nepal_esewa_id || '') };
+      npr: Math.round(due * rate), esewa: npId, esewaKind: npKind === 'eSewa' ? 'eSewa / Fonepay' : npKind };
   }
   if (due > 0 && upi && cur === 'INR' && !nprSale) {
     const bs = bs0;
@@ -2753,8 +2761,8 @@ function tkGoldPayFigure(b, gp, money) {
   }
   if (gp.kind === 'npr') {
     return '<figure class="tkg-qr tkg-qr-pay is-due is-npr"><a class="tkg-qr-frame" id="tkPayQrBox" href="' + esc(gp.url) + '" target="_blank" rel="noopener" aria-label="eSewa QR">'
-      + '<img src="' + esc(gp.url) + '" width="240" height="240" alt="eSewa / Fonepay QR" style="width:100%;height:auto"></a>'
-      + '<figcaption><b>तिर्न बाँकी · NPR ' + esc(Number(gp.npr || 0).toLocaleString('en-IN')) + '</b><small>eSewa / Fonepay' + (gp.esewa ? ' · ' + esc(gp.esewa) : '') + '</small></figcaption></figure>';
+      + '<img src="' + esc(gp.url) + '" width="240" height="240" alt="' + esc(gp.esewaKind || 'eSewa / Fonepay') + ' QR" style="width:100%;height:auto"></a>'
+      + '<figcaption><b>तिर्न बाँकी · NPR ' + esc(Number(gp.npr || 0).toLocaleString('en-IN')) + '</b><small>' + esc(gp.esewaKind || 'eSewa / Fonepay') + (gp.esewa ? ' · ' + esc(gp.esewa) : '') + '</small></figcaption></figure>';
   }
   const cap = gp.kind === 'due' ? tf('tkgPayDue', { a: money(gp.due) })
     : (gp.kind === 'office' ? t('tkgPayOffice') : t('tkgPayUpi'));
@@ -3125,10 +3133,10 @@ function renderStatus(id) {
     ${tkClean ? '' : '<div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ' + esc(tkMantraLine()) + ' <span aria-hidden="true">❖</span></div>'}
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261126b" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261126c" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126b" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126b" width="600" height="312" alt="" decoding="async">'}
+      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126c" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126c" width="600" height="312" alt="" decoding="async">'}
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

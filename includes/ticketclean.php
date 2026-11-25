@@ -719,7 +719,11 @@ trait TicketClean
             /* review: a Nepal-side pay-at-boarding / pending ticket keeps the LIVE pay link
                (pay.php: UPI or eSewa + "I paid, here is the UTR") - say so, with the रू too. */
             $liveNp = !$isNp && ($payQ['country'] ?? 'IN') === 'NP' && $payQ['qr'] !== '' && $payQ['qr'] === $payQ['payload'];
-            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, $isNp ? 'भुक्तानी QR · eSewa / Fonepay' : ($liveNp ? 'भुक्तानी QR · UPI / eSewa' : 'भुक्तानी QR · SCAN & PAY UPI'), self::P_ORG, self::P_ORG_D);
+            /* mp4 review fix (money): the wallet word is the QR row's own ("Khalti", "Global IME"),
+               never "eSewa" printed over another wallet's QR / number (PayQr::resolve). */
+            $npKind = (string) ($payQ['esewaKind'] ?? 'eSewa');
+            $npHead = $npKind === 'eSewa' ? 'eSewa / Fonepay' : $npKind;
+            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, $isNp ? 'भुक्तानी QR · ' . $npHead :($liveNp ? 'भुक्तानी QR · UPI / eSewa' : 'भुक्तानी QR · SCAN & PAY UPI'), self::P_ORG, self::P_ORG_D);
             $qy = $qy1 + 64;
             if ($payImg !== '') {
                 $src = @imagecreatefromstring((string) @file_get_contents($payImg));
@@ -747,7 +751,7 @@ trait TicketClean
             $l1s = 21;
             while ($l1s > 14 && self::gdWidth($l1s, $l1) > $qR2 - $qR1 - 36) { $l1s--; }
             self::gdText($im, $l1s, $qR1 + intdiv(($qR2 - $qR1) - self::gdWidth($l1s, $l1), 2), $qy2 - 46, $orgD, $l1, true);
-            $l2 = $isNp ? ($payQ['esewa'] !== '' ? 'eSewa: ' . self::latin((string) $payQ['esewa']) : 'Nepal eSewa / Fonepay QR')
+            $l2 = $isNp ? ($payQ['esewa'] !== '' ? $npKind . ': ' . self::latin((string) $payQ['esewa']) : 'Nepal ' . $npHead . ' QR')
                         : ($liveNp ? 'Scan, pay, send the UTR there' : ($payQ['vpa'] !== '' ? 'UPI: ' . self::latin((string) $payQ['vpa']) : 'UPI'));
             [$l2s, $l2t] = self::v2Fit(17, 12, $l2, $qR2 - $qR1 - 36, 'Medium');
             self::gdTextP($im, $l2s, $qR1 + intdiv(($qR2 - $qR1) - self::gdWidthP($l2s, $l2t, 'Medium'), 2), $qy2 - 16, $mut, $l2t, 'Medium');
@@ -755,7 +759,9 @@ trait TicketClean
             /* 25 Nov 2026: money due on the Nepal QR path, an eSewa / Fonepay id typed but no QR image
                on the server - no QR frame and no stamp ring: the due big, the id to pay to and the PNR
                for the remarks, centred in the card. Words only - the office still approves the money. */
-            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, 'भुक्तानी · eSewa / Fonepay', self::P_ORG, self::P_ORG_D);
+            $npKind = (string) ($payQ['esewaKind'] ?? 'eSewa');   // mp4 review fix: the id's own wallet word
+            $npHead = $npKind === 'eSewa' ? 'eSewa / Fonepay' : $npKind;
+            self::v2Card($im, $qR1, $qy1, $qR2, $qy2, 'भुक्तानी · ' . $npHead, self::P_ORG, self::P_ORG_D);
             $mx   = intdiv($qR1 + $qR2, 2);
             $room = $qR2 - $qR1 - 48;
             $dl   = 'तिर्न बाँकी · Amount due';
@@ -769,7 +775,7 @@ trait TicketClean
             $iy1 = $qy1 + 194; $iy2 = $qy1 + 252;
             self::gdRounded($im, $qR1 + 22, $iy1, $qR2 - 22, $iy2, 14, DocArt::col($im, [255, 241, 228]));
             DocArt::roundOutline($im, $qR1 + 22, $iy1, $qR2 - 22, $iy2, 14, DocArt::col($im, [250, 214, 180]), 1);
-            [$iS, $iT] = self::v2Fit(24, 12, 'eSewa / Fonepay ID: ' . self::latin((string) $payQ['esewa']), $qR2 - $qR1 - 72);
+            [$iS, $iT] = self::v2Fit(24, 12, $npHead . ' ID: ' . self::latin((string) $payQ['esewa']), $qR2 - $qR1 - 72);
             self::gdTextP($im, $iS, $mx - intdiv(self::gdWidthP($iS, $iT, 'Bold'), 2), $iy1 + intdiv(($iy2 - $iy1) + (int) round($iS * 0.93), 2), $ink, $iT, 'Bold');
             $rm = 'भुक्तानी गर्दा Remarks मा PNR लेख्नुहोस्';
             $rmS = 17;
@@ -804,7 +810,7 @@ trait TicketClean
                 $aSz = 40;
                 while ($aSz > 20 && self::gdWidth($aSz, $amt) > 196) { $aSz--; }
                 self::gdText($im, $aSz, $mx - intdiv(self::gdWidth($aSz, $amt), 2), $my + 20, $sColI, $amt, true);
-                $how = $payQ['esewa'] !== '' ? 'eSewa: ' . self::latin((string) $payQ['esewa'])
+                $how = $payQ['esewa'] !== '' ? (string) ($payQ['esewaKind'] ?? 'eSewa') . ': ' . self::latin((string) $payQ['esewa'])
                     : ($payQ['wa'] !== '' ? 'WhatsApp +' . $payQ['wa'] : ($stamp['state'] === 'board' ? 'Cash on bus' : 'Pay at counter'));
                 [$hs, $ht] = self::v2Fit(16, 11, $how, 186, 'SemiBold');
                 self::gdTextP($im, $hs, $mx - intdiv(self::gdWidthP($hs, $ht, 'SemiBold'), 2), $my + 58, $sColI, $ht, 'SemiBold');

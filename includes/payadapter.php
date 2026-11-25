@@ -75,12 +75,33 @@ final class ManualQrAdapter implements PaymentAdapter
      * first, else the fixed esewa-qr files) as an <img> src. An uploaded file is
      * sent inline (data:) so it shows even where /uploads/ is closed to the web.
      */
-    public static function esewaQrSrc(): string
+    public static function esewaQrSrc(?array $booking = null): string
     {
-        if (!class_exists('Ticket') && is_file(__DIR__ . '/ticket.php')) {
-            require_once __DIR__ . '/ticket.php';
+        return self::qrSrc(self::nepalQr($booking)['file']);
+    }
+
+    /**
+     * 25 Nov 2026 (mp4): THE one resolver (PayQr::resolve - the ticket reads the same): the
+     * issuing desk's Nepal QR, else the NP default, else the old single QR; the picture, the id
+     * beside it and its wallet word come from that one source. $fallbackId / $fallbackName =
+     * this sale's own eSewa, used only on the old path (no library row).
+     * @return array{file: string, payee: string, name: string, kind: string, row: ?array, source: string}
+     */
+    public static function nepalQr(?array $booking, string $fallbackId = '', string $fallbackName = ''): array
+    {
+        try {
+            if (!class_exists('PayQr')) {
+                require_once __DIR__ . '/payqr.php';
+            }
+            return PayQr::resolve($booking, 'NP', $fallbackId, $fallbackName);
+        } catch (Throwable $e) {
+            return ['file' => '', 'payee' => $fallbackId, 'name' => $fallbackName, 'kind' => 'eSewa', 'row' => null, 'source' => $fallbackId !== '' ? 'legacy' : ''];
         }
-        $abs = class_exists('Ticket') ? Ticket::esewaQrFile() : '';
+    }
+
+    /** A QR file on the server -> an <img> src (an uploaded file inline as data:). */
+    public static function qrSrc(string $abs): string
+    {
         if ($abs === '') {
             return '';
         }
@@ -123,6 +144,13 @@ final class ManualQrAdapter implements PaymentAdapter
         $nepal   = $frozen || ($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP';
         $esewaId = $nepal && $npId !== '' ? $npId : trim(Settings::getString('esewa_id', ''));
         $esewaNm = $nepal && $npId !== '' ? trim(Settings::getString('nepal_esewa_name', '')) : trim(Settings::getString('esewa_name', ''));
+        /* review fix (money): picture, id and wallet word from ONE resolver (the ticket's own) - a
+           library row prints ITS payee and kind, never nepal_esewa_id beside another wallet's QR.
+           Only when an eSewa is offered at all (as before). */
+        $npQ = $esewaId !== '' || $nepal ? self::nepalQr($booking, $esewaId, $esewaNm) : null;
+        if ($npQ !== null && $esewaId === '' && $npQ['row'] === null) {
+            $npQ = null;   // mp4 review fix: no eSewa id and no library QR for this Nepal sale - nothing offered (as before)
+        }
         return [
             'kind'  => 'qr',
             'upi'   => $upiId === '' ? null : [
@@ -131,11 +159,12 @@ final class ManualQrAdapter implements PaymentAdapter
                 'link' => $link,
                 'qr'   => QrCode::dataUri($link, 7, 3),
             ],
-            'esewa' => $esewaId === '' ? null : [
-                'id'   => $esewaId,
-                'name' => $esewaNm,
+            'esewa' => $npQ === null || ($npQ['payee'] === '' && $npQ['file'] === '') ? null : [
+                'id'   => $npQ['payee'],
+                'name' => $npQ['name'],
+                'kind' => $npQ['kind'],
                 'npr'  => $npr,
-                'qr'   => self::esewaQrSrc(),
+                'qr'   => self::qrSrc($npQ['file']),
             ],
         ];
     }

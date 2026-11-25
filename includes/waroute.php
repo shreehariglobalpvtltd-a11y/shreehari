@@ -224,6 +224,16 @@ final class WaRoute
         if ($to === '' || $text === '' || !self::metaWindowOpen($to)) {
             return null;
         }
+        /* 25 Nov 2026 (mp4): this number answered 131070 (another app owns the chat) a moment ago -
+           no free message to it for a while; the template / SMS / link path carries it. */
+        try {
+            require_once __DIR__ . '/wahealth.php';
+            if (WaHealth::threadBlocked($to)) {
+                return null;
+            }
+        } catch (Throwable $e) {
+            // try as before
+        }
         $media = trim((string) $mediaUrl);
         // A picture: ticket / seat map / QR / chart links, or a plain image file. (Meta itself insists on https.)
         $isImg = $media !== '' && preg_match('#^https?://#i', $media) === 1
@@ -369,6 +379,17 @@ final class WaRoute
      *
      * @param array<int|string,string> $vars the ticket template's {{1}}..{{6}}: name, from, to, date, seat, pnr
      */
+    /** mp4: the rescue template in the exact language the WABA holds it in (last template sync), else en. */
+    private static function rescueLang(string $tpl): string
+    {
+        try {
+            require_once __DIR__ . '/watplmeta.php';
+            return WaTplMeta::langOf($tpl, 'en');
+        } catch (Throwable $e) {
+            return 'en';
+        }
+    }
+
     private static function ticketRescue(string $to, string $refused, array $vars, ?string $image, string $purpose, array $meta): ?array
     {
         if (self::$inRescue) {
@@ -381,7 +402,7 @@ final class WaRoute
         [$tpl, $args, $pnr] = [$spec['name'], $spec['vars'], $spec['pnr']];
         self::$inRescue = true;
         try {
-            $r = self::metaTemplate($to, $tpl, 'en', $args, null, $purpose . '_rescue', ['bookingId' => $meta['bookingId'] ?? null] + (isset($meta['country']) ? ['country' => $meta['country']] : []));
+            $r = self::metaTemplate($to, $tpl, self::rescueLang($tpl), $args, null, $purpose . '_rescue', ['bookingId' => $meta['bookingId'] ?? null] + (isset($meta['country']) ? ['country' => $meta['country']] : []));
         } finally {
             self::$inRescue = false;
         }
@@ -484,7 +505,8 @@ final class WaRoute
         }
         // 15 Oct 2026: the office's daily cap on paid messages - except a
         // login code: a customer outside the 24 h window could not sign in.
-        $cap = self::isLoginTemplate($templateName) ? '' : self::paidRefusal();
+        // mp4 review fix: false = no Meta-WABA billing hold (131042) here - AiSensy has its own billing
+        $cap = self::isLoginTemplate($templateName) ? '' : self::paidRefusal(false);
         if ($cap !== '') {
             return $cap;
         }
@@ -542,9 +564,27 @@ final class WaRoute
         return self::counter(date('Y-m-d') . ':paid') + self::counter(date('Y-m-d') . ':meta_tpl');
     }
 
-    /** '' when a paid message may go now, else why not. */
-    public static function paidRefusal(): string
+    /**
+     * '' when a paid message may go now, else why not.
+     * $metaCloud = the send goes through OUR Meta WABA (the default for every caller but
+     * AiSensy): only then does the 131042 billing hold apply - AiSensy bills from its own
+     * wallet / BSP, so a missing payment method on our WABA never stops its templates.
+     */
+    public static function paidRefusal(bool $metaCloud = true): string
     {
+        /* 25 Nov 2026 (mp4): Meta answered 131042 (no payment method on the WABA) - every template
+           would fail at delivery, so none is attempted until billing works (includes/wahealth.php). */
+        if ($metaCloud) {
+            try {
+                require_once __DIR__ . '/wahealth.php';
+                $hold = WaHealth::billingHold();
+                if ($hold !== '') {
+                    return $hold;
+                }
+            } catch (Throwable $e) {
+                // the cap below still applies
+            }
+        }
         $cap = self::paidLimit();
         if ($cap === null) {
             return '';

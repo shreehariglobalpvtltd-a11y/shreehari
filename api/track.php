@@ -117,6 +117,16 @@ try {
     $payload['fxCurrency'] = strtoupper(trim((string) ($detail['fx_currency'] ?? '')));
     $payload['fxTotal']    = (float) ($detail['fx_total'] ?? 0);
     $payload['fxRate']     = (float) ($detail['fx_rate'] ?? 0);
+    /* 26 Nov 2026 (mp4 review fix, money): this sale's own Nepal pay QR (the issuing desk's,
+       else the NP default) with ITS payee + wallet word - the same PayQr::resolve answer the
+       server ticket and pay.php print, so the app never shows another desk's QR. */
+    try {
+        require_once INCLUDE_PATH . '/payqr.php';
+        $npPay = PayQr::publicInfo($detail);
+        $payload['npPay'] = $npPay['url'] !== '' ? ['url' => $npPay['url'], 'payee' => $npPay['payee'], 'kind' => $npPay['kind']] : null;
+    } catch (Throwable $e) {
+        $payload['npPay'] = null;
+    }
 
     /* Directions to the pickup (8 Oct 2026, D6-11): only from the OFFICIAL
        coordinates (the label's [lat,lng] or the route's pickup row) — null

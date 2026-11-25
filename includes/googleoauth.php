@@ -92,6 +92,65 @@ final class GoogleOAuth
         return OpsHub::staffUrl('admin/gmail-oauth.php');
     }
 
+    /**
+     * 25 Nov 2026 (mp4): the client_secret_….json file Google gives when the OAuth
+     * client is made - {"web": {client_id, client_secret, redirect_uris}} (or
+     * "installed"). Pure: nothing is stored here (the page saves id + secret through
+     * the settings path; the file itself is never kept). 'warn' is set when our
+     * redirect URI is not one of the file's redirect_uris (Google would refuse the login).
+     *
+     * @return array{ok: bool, error: string, warn: string, type: string, client_id: string, client_secret: string, redirect_uris: list<string>, redirect_ok: bool}
+     */
+    public static function parseClientJson(string $raw, string $ourRedirect): array
+    {
+        $out = ['ok' => false, 'error' => '', 'warn' => '', 'type' => '', 'client_id' => '', 'client_secret' => '', 'redirect_uris' => [], 'redirect_ok' => false];
+        $raw = trim($raw);
+        if ($raw === '' || strlen($raw) > 64 * 1024) {
+            $out['error'] = 'JSON file छान्नुहोस् (64 KB सम्म) · choose the client_secret JSON file';
+            return $out;
+        }
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
+        }
+        $j = json_decode($raw, true);
+        if (!is_array($j)) {
+            $out['error'] = 'यो JSON होइन · not a valid JSON file';
+            return $out;
+        }
+        $type = isset($j['web']) && is_array($j['web']) ? 'web' : (isset($j['installed']) && is_array($j['installed']) ? 'installed' : '');
+        if ($type === '') {
+            $out['error'] = 'Google OAuth client को file होइन ("web" / "installed" छैन) · not a Google OAuth client file';
+            return $out;
+        }
+        $c   = $j[$type];
+        $cid = trim((string) ($c['client_id'] ?? ''));
+        $sec = trim((string) ($c['client_secret'] ?? ''));
+        if (preg_match('/^[A-Za-z0-9\-_.]{6,200}\.apps\.googleusercontent\.com$/', $cid) !== 1) {
+            $out['error'] = 'Client ID मिलेन (…apps.googleusercontent.com) · client_id missing or wrong';
+            return $out;
+        }
+        if (preg_match('/^[A-Za-z0-9\-_]{10,120}$/', $sec) !== 1) {
+            $out['error'] = 'Client Secret मिलेन (जस्तै GOCSPX-…) · client_secret missing or wrong';
+            return $out;
+        }
+        $uris = [];
+        foreach ((array) ($c['redirect_uris'] ?? []) as $u) {
+            if (is_string($u) && trim($u) !== '') {
+                $uris[] = trim($u);
+            }
+        }
+        $norm = static fn(string $u): string => rtrim(strtolower($u), '/');
+        $okUri = $ourRedirect !== '' && in_array($norm($ourRedirect), array_map($norm, $uris), true);
+        $out = ['ok' => true, 'error' => '', 'warn' => '', 'type' => $type, 'client_id' => $cid, 'client_secret' => $sec, 'redirect_uris' => $uris, 'redirect_ok' => $okUri];
+        if ($type === 'installed') {
+            $out['warn'] = '⚠️ यो "Desktop app" client हो — Google Cloud मा "Web application" client बनाउनुहोस्, नत्र login हुँदैन · make a Web application client.';
+        } elseif (!$okUri) {
+            $out['warn'] = '⚠️ Redirect URI मिलेन — Google Cloud → Clients → यो client → Authorized redirect URIs मा ठ्याक्कै यो थप्नुहोस्: ' . $ourRedirect
+                . ($uris !== [] ? ' (file मा: ' . implode(', ', array_slice($uris, 0, 3)) . ')' : ' (file मा कुनै redirect URI छैन)');
+        }
+        return $out;
+    }
+
     private static function b64url(string $bin): string
     {
         return rtrim(strtr(base64_encode($bin), '+/', '-_'), '=');

@@ -243,6 +243,14 @@ function wh_status(array $st): void
     }
 
     if ($final === 'failed') {
+        /* 25 Nov 2026 (mp4): 131042 (billing) holds every template, 131070 (thread owner) stops
+           free messages to this number for a while - includes/wahealth.php. */
+        try {
+            require_once INCLUDE_PATH . '/wahealth.php';
+            WaHealth::noteFailure($to, $code);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
         Logger::warning('WhatsApp delivery FAILED (Meta, async)', [
             'wamid' => $wamid, 'booking' => $row['booking_id'], 'code' => $code,
         ], 'whatsapp');

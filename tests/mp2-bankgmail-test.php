@@ -161,6 +161,7 @@ function cleanup(): void {
 register_shutdown_function('cleanup');
 
 echo "\n=== mp2 bank Gmail: boxes from the admin panel ===\n\n";
+$keep['pay_qr_legacy_imported'] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => 'pay_qr_legacy_imported']);   // mp4: viewing payment-center.php sets the QR library import flag
 foreach (['whatsapp_notify_customer' => '0', 'whatsapp_notify_admin' => '0', 'email_enabled' => '0'] as $k => $v) { setKeep($k, $v, 'bool'); }
 setKeep('npr_per_inr', '1.6', 'float');
 unsetKeep('pay_bankmail_autoconfirm_on');   // the code default: OFF (suggestions only)
