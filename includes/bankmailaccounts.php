@@ -321,8 +321,14 @@ final class BankMailAccounts
      */
     public static function rereadIncomplete(int $id): void
     {
-        Database::update('bank_mail_accounts', ['last_uid' => null, 'uidvalidity' => null, 'last_seen_ms' => null], 'id = :i', ['i' => $id]);
-        if (self::logReady()) {
+        /* review: a box that is not ready never moves its position, so a position is normally real -
+           keep it (clearing it would skip mail older than the 2-3 day window). Only when mails WERE
+           passed over as 'setup-incomplete' (the rare race in handle()) is the position cleared so
+           exactly those are read again; the ledger dedupes the rest by message id + txn. */
+        $skipped = self::logReady() && (int) Database::scalar(
+            "SELECT COUNT(*) FROM bank_mail_log WHERE account_id = :i AND outcome = 'setup-incomplete'", ['i' => $id], 0) > 0;
+        if ($skipped) {
+            Database::update('bank_mail_accounts', ['last_uid' => null, 'uidvalidity' => null, 'last_seen_ms' => null], 'id = :i', ['i' => $id]);
             Database::delete('bank_mail_log', "account_id = :i AND outcome = 'setup-incomplete'", ['i' => $id]);
         }
     }

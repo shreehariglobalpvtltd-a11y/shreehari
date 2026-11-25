@@ -706,6 +706,13 @@ check('P Edit (CSRF) -> rules saved ("12-34" -> 1234), now ✓ ready, audited ba
 check('P the box just became ready -> its position is cleared + its "setup-incomplete" rows dropped (recent mail read again), audited bank_mail.reread',
     $incA['last_uid'] === null && $incA['uidvalidity'] === null && $incA['last_seen_ms'] === null && !in_array('setup-incomplete', array_column($logOf($incId), 'outcome'), true)
     && (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'bank_mail.reread' AND entity_id = :i", ['i' => (string) $incId], 0) === 1, json_encode([$incA['last_uid'], $logOf($incId)]));
+/* a box with a real position and NO skipped mail keeps its position when its rules are saved again
+   (clearing it would skip alerts older than the 2-3 day re-read window) */
+$posBefore = BankMailAccounts::get($incId) ?? [];
+Database::update('bank_mail_accounts', ['last_uid' => 6500, 'uidvalidity' => 1], 'id = :i', ['i' => $incId]);
+BankMailAccounts::rereadIncomplete($incId);
+check('P rules saved again with nothing skipped -> the position (last_uid 6500) is kept', (int) ((BankMailAccounts::get($incId) ?? [])['last_uid'] ?? 0) === 6500);
+Database::update('bank_mail_accounts', ['last_uid' => $posBefore['last_uid'] ?? null, 'uidvalidity' => $posBefore['uidvalidity'] ?? null], 'id = :i', ['i' => $incId]);
 $resRe = BankMail::pollAccount($incA, 50, $imapFor([7001 => $mail(['dom' => 'icici.test', 'mid' => 'mp2inc' . $tag, 'plain' => "Rs $rAmt credited to A/c XX1234 UPI Ref No " . $T('N1') . "1 Remarks: " . $rB['pnr']])]));
 check('P the next check reads the mail that came while the box was incomplete -> the credit is stored now (from that box)', $resRe['ok'] && $resRe['credits'] === 1
     && (int) (($credit($T('N1') . '1') ?? [])['mail_account_id'] ?? 0) === $incId, json_encode($resRe, JSON_UNESCAPED_UNICODE));
