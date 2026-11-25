@@ -198,5 +198,11 @@ try {
 } finally {
     $restore();
 }
+/* frozen NPR follows a new INR total (a seat cancelled / a fare corrected) at the same rate */
+$chk('fxFollow: NPR 3,200 @1.6 -> INR 1,000 = NPR 1,600', BookingService::fxFollow(['fx_currency' => 'NPR', 'fx_rate' => '1.6000', 'fx_total' => '3200'], 1000.0) === ['fx_total' => 1600.0]);
+$chk('fxFollow: nothing frozen = no change', BookingService::fxFollow(['fx_currency' => null, 'fx_rate' => null, 'fx_total' => null], 1000.0) === []);
+$chk('fxFollow: INR row = no change', BookingService::fxFollow(['fx_currency' => 'INR', 'fx_rate' => '1', 'fx_total' => '2000'], 1000.0) === []);
+$chk('fxFollow wired into cancelSeat + fare correction', str_contains($src('includes/booking.php'), 'self::fxFollow($locked, (float) $newTotal)')
+    && str_contains($src('includes/ticketedit.php'), 'BookingService::fxFollow($b, (float) $total)'));
 echo "\n  wx1-a-test: $ok passed, $bad failed\n";
 exit($bad ? 1 : 0);

@@ -30,14 +30,13 @@ echo "\n=== wx1-c1 office in-charge + pickup maps ===\n\n";
 
 $keep = [];
 foreach (['home_office_incharge_on', 'home_pickup_maps_on'] as $k) {
-    $keep[$k] = Database::fetch('SELECT svalue FROM settings WHERE skey = :k', ['k' => $k]);
+    $keep[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]);   // the whole row, put back as it was
 }
 $restore = static function () use ($keep): void {
     foreach ($keep as $k => $row) {
-        if ($row === null) {
-            Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
-        } else {
-            Database::run('UPDATE settings SET svalue = :v WHERE skey = :k', ['v' => $row['svalue'], 'k' => $k]);
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($row !== null) {
+            Database::insert('settings', $row);
         }
     }
     Settings::flush();

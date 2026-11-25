@@ -37,6 +37,7 @@ if (!defined('SHG_APP')) {
 
 require_once __DIR__ . '/seats.php';
 require_once __DIR__ . '/autoberth.php';
+require_once __DIR__ . '/booking.php';   // wx1: BookingService::fxFollow on a fare correction
 
 final class TicketEdit
 {
@@ -340,7 +341,7 @@ final class TicketEdit
             $pnr   = (string) $b['pnr'];
             $tail  = 'fare corrected ' . inr($oldTotal) . ' -> ' . inr($total);
 
-            Database::update('bookings', [
+            Database::update('bookings', BookingService::fxFollow($b, (float) $total) + [   // wx1: frozen NPR follows the corrected fare
                 'total_amount'    => $total,
                 'coupon_discount' => $disc,
                 'updated_at'      => date('Y-m-d H:i:s'),

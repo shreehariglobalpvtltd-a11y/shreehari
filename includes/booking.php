@@ -143,6 +143,23 @@ final class BookingService
     }
 
     /**
+     * wx1 (25 Nov 2026): a booking's frozen local total follows a new INR total
+     * (a seat cancelled, a fare corrected) at the SAME frozen rate, so the ticket
+     * and pay.php never ask for the NPR of the old fare. [] when nothing is frozen.
+     * @param array<string,mixed> $row the bookings row (SELECT *)
+     * @return array<string,mixed> merged into the bookings update
+     */
+    public static function fxFollow(array $row, float $newTotalInr): array
+    {
+        $cur  = strtoupper((string) ($row['fx_currency'] ?? ''));
+        $rate = (float) ($row['fx_rate'] ?? 0);
+        if ($cur === '' || $cur === 'INR' || $rate <= 0 || !array_key_exists('fx_total', $row)) {
+            return [];
+        }
+        return ['fx_total' => (float) round($newTotalInr * $rate)];
+    }
+
+    /**
      * What the drawer physically received, when that is not rupees.
      * payments.amount stays the INR the ledger sums; local_amount is the NPR
      * the clerk counted, so a Nepalgunj day sheet balances in the money that
@@ -3286,7 +3303,7 @@ final class BookingService
             $existingRefund = (float) ($locked['refund_amount'] ?? 0);
             $newRefundTotal = round($existingRefund + $refund['amount'], 2);
 
-            Database::update('bookings', [
+            Database::update('bookings', self::fxFollow($locked, (float) $newTotal) + [
                 'total_amount'  => $newTotal,
                 'refund_amount' => $newRefundTotal,
                 'refund_status' => $newRefundTotal > 0 ? 'pending' : ($locked['refund_status'] ?? 'none'),

@@ -829,11 +829,20 @@ final class SmartBook
            Rupaidiha parking) as chips. The list is the route the plan really chose; a chosen
            pickup that differs from the plan's default re-plans once with that stop. */
         $npPicks = $points['type'] === 'drop' ? self::npPickups((int) $plan['routeId']) : [];
+        $npNote  = null;   // {en,hi,ne} when a chosen Nepal-side pickup is closed and the plan boards elsewhere
         if ($npPicks !== [] && $req['pickup'] !== '') {
             $npNames = array_map(static fn(array $p): string => $p['name'], $npPicks);
             $npPick  = self::matchPoint($req['pickup'], $npNames);
             if ($npPick !== '' && self::matchPoint((string) $plan['boardingName'], $npNames) !== $npPick) {
                 $plan = QuickTicket::plan(['boarding' => $npPick] + $planArgs);
+                if (self::matchPoint((string) $plan['boarding'], $npNames) !== $npPick && self::matchPoint((string) $plan['boardingName'], $npNames) !== $npPick) {
+                    $npGot = trim((string) $plan['boardingName'] . ' ' . (string) $plan['boardingTime']);
+                    $npNote = self::why(
+                        $npPick . ' is closed for this bus. You board at ' . $npGot . ' - for ' . $npPick . ', choose a later date.',
+                        $npPick . ' इस बस के लिए बंद है। ' . $npGot . ' से चढ़ें - ' . $npPick . ' के लिए आगे की तारीख चुनें।',
+                        $npPick . ' यो बसका लागि बन्द भयो। ' . $npGot . ' बाट चढ्नुहोस् - ' . $npPick . ' का लागि पछिको मिति छान्नुहोस्।'
+                    );
+                }
             }
         }
         $route    = Database::fetch('SELECT * FROM routes WHERE id = :id LIMIT 1', ['id' => (int) $plan['routeId']]);
@@ -1004,7 +1013,7 @@ final class SmartBook
             // wx1 (25 Nov 2026): the Nepal-side pickups a passenger may choose (>= 2 ON boarding rows on a toIndia bus), and the one booked
             'pickups'      => count($npPicks) > 1 ? $npPicks : [],
             'pickup'       => count($npPicks) > 1 ? (self::matchPoint((string) $plan['boardingName'], array_map(static fn(array $p): string => $p['name'], $npPicks)) ?: (string) $plan['boardingName']) : '',
-            'pointNote'    => $pointNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null
+            'pointNote'    => $pointNote ?? $npNote,   // {en,hi,ne} when the plan moved the pickup that was asked, else null (wx1: also a closed Nepal-side pickup)
             // 19 Nov 2026 (NP-3): {label, at, tz, reason} when today's bus is closed by the sales clock and this is a later day
             'clockNote'    => $plan['clockNote'] ?? null,
             'coach'        => $coach,

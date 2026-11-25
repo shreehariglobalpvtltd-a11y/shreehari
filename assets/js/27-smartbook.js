@@ -955,11 +955,13 @@
     var f = $('sbPickF'), box = $('sbPicks'); if (!f || !box) return;
     var q = S.q, list = (q && q.ok !== false && S.dir === 'toIndia' && Array.isArray(q.pickups)) ? q.pickups : [];
     if (list.length < 2) { f.hidden = true; box.innerHTML = ''; return; }
-    var cur = S.pickup || q.pickup || '';
+    var cur = q.pickup || S.pickup || '';   // the pickup the server REALLY booked (a closed stop falls back, see q.pointNote)
     box.innerHTML = list.map(function (p) {
       var on = p.name === cur;
       return '<button type="button" class="sb-chip' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-pick="' + esc(p.name) + '"><b>' + esc(p.name) + '</b>' + (p.time ? '<small>' + esc(p.time) + '</small>' : '') + '</button>';
     }).join('');
+    var w = $('sbPickWhy'), moved = !!(S.pickup && q.pickup && S.pickup !== q.pickup);
+    if (w) { w.classList.toggle('sb-why-moved', moved); w.textContent = moved ? '⚠️ ' + (q.pointNote ? L3(q.pointNote) : q.pickup) : ''; }
     f.hidden = false;
   }
   function renderQuote(flash) {
@@ -1102,7 +1104,9 @@
     }
     if ((b = e.target.closest('#sbPicks [data-pick]'))) {   // 25 Nov 2026 (wx1): Nepalgunj office | Rupaidiha parking
       var pk = b.getAttribute('data-pick'); if (pk === S.pickup) return;
-      S.pickup = pk; S.manual = []; drawPicks(); changed('pickup'); return;
+      S.pickup = pk; S.manual = [];
+      root.querySelectorAll('#sbPicks [data-pick]').forEach(function (x) { var on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', on ? 'true' : 'false'); });
+      changed('pickup'); return;   // the next quote redraws the chips from the pickup really booked
     }
     /* 25 Nov 2026 (wx1): ⇄ = a tap on the other direction (the same reset as above) */
     if (e.target.closest('[data-sbswap]')) {
