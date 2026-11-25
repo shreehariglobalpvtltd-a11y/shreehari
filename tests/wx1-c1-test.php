@@ -8,6 +8,7 @@
  *     home_office_incharge_on = 0 gives the old list back.
  *  4. SiteFacts places: only https pins, one row per town, switch home_pickup_maps_on = 0 -> [].
  *  5. The home cards (app.template.html) and /offices carry the same order: Call, WhatsApp, Map.
+ *  7. wx5: the office photo (upgrade-2026-11-25-wx5-office-photo.sql, switch home_office_photo_on).
  *
  *   php -c .claude/php-dev.ini tests/wx1-c1-test.php
  */
@@ -309,6 +310,118 @@ $fn  = substr($tpl, (int) strpos($tpl, '  function offices(F) {'), 7000);
 check('home card: o.brand title + town line (cp-town), old title when no brand', str_contains($fn, "String(o.brand || '')") && str_contains($fn, 'cp-town')
     && str_contains($fn, "esc(nm) + badge + '</h3>'"));
 check('home guide: "नेपालगञ्जपछि · After Nepalgunj" (markup + 3 tables)', substr_count($tpl, 'After Nepalgunj') === 4 && !str_contains($tpl, 'Onward buses'));
+
+/* ---------- 7. wx5 (owner 25 Nov): an OFFICE photo (building / signboard) per office ---------- */
+echo "\n  -- office photo (wx5) --\n";
+$sql7  = (string) file_get_contents(dirname(__DIR__) . '/database/upgrade-2026-11-25-wx5-office-photo.sql');
+$stmt7 = rtrim(trim((string) preg_replace('/^--.*$/m', '', $sql7)), "; \r\n");
+$okMig7 = true;
+try {
+    Database::query($stmt7);
+    Database::query($stmt7);   // twice: idempotent
+} catch (Throwable $e) {
+    $okMig7 = false;
+}
+check('wx5 migration runs twice', $okMig7);
+check('wx5 column office_photo there', CounterDesk::hasColumn('counter_locations', 'office_photo'));
+check('office_photo is a website-only field', in_array('office_photo', CounterDesk::PUBLIC_FIELDS, true));
+$keep7 = ['home_office_photo_on' => Database::fetch("SELECT * FROM settings WHERE skey = 'home_office_photo_on'")];
+$c7a = 'WXP'; $c7b = 'WXQ';
+try {
+    Database::run("DELETE FROM settings WHERE skey = 'home_office_photo_on'");   // the default (ON)
+    Settings::flush();
+    Database::run('DELETE FROM counter_locations WHERE code IN (:a, :b)', ['a' => $c7a, 'b' => $c7b]);
+    $desk7 = static fn(string $c, string $town, array $more = []): string => CounterDesk::save($more + [
+        'code' => $c, 'name' => $town . ' — Test Desk', 'country' => 'IN', 'is_active' => 1, 'sort_order' => 998,
+        'phone' => '+91 90000 00003', 'show_public' => 1, 'office_kind' => 'branch', 'public_status' => 'open',
+    ]);
+    $desk7($c7a, 'Wxphoto', ['office_photo' => '/uploads/locations/office-wxp-test.webp']);
+    $desk7($c7b, 'Wxplain');
+    $r7 = static fn(string $c): ?array => Database::fetch('SELECT office_photo FROM counter_locations WHERE code = :c', ['c' => $c]);
+    check('save keeps a clean office photo path', ($r7($c7a)['office_photo'] ?? null) === 'uploads/locations/office-wxp-test.webp');
+    $isNull7 = static fn(?array $r): bool => $r !== null && array_key_exists('office_photo', $r) && $r['office_photo'] === null;
+    check('a desk with no photo stores none', $isNull7($r7($c7b)));
+    $bad7 = [];
+    foreach (['uploads/locations/../config.php', 'https://evil.example/o.jpg', 'assets/img/ceo.jpg', 'uploads/agents-kyc/x.webp', 'uploads/locations/o.php'] as $bad) {
+        CounterDesk::save(array_merge((array) CounterDesk::get($c7a), ['office_photo' => $bad]));
+        if (!$isNull7($r7($c7a))) { $bad7[] = $bad; }
+    }
+    check('save refuses "..", a URL, a non-uploads path, a script', $bad7 === [], implode(', ', $bad7));
+    CounterDesk::save(array_merge((array) CounterDesk::get($c7a), ['office_photo' => 'uploads/locations/office-wxp-test.webp']));
+    $keepSave = (array) CounterDesk::get($c7a);
+    unset($keepSave['office_photo']);   // a caller that never sent the key (My desk) keeps the photo
+    CounterDesk::save($keepSave);
+    check('a save without the key keeps the photo', ($r7($c7a)['office_photo'] ?? null) === 'uploads/locations/office-wxp-test.webp');
+
+    CounterDesk::flush(); SiteFacts::flush();
+    $find7 = static function (string $c): ?array {
+        foreach (CounterDesk::publicOffices() as $o) {
+            if ($o['code'] === $c) { return $o; }
+        }
+        return null;
+    };
+    $o7 = $find7($c7a); $q7 = $find7($c7b);
+    check('publicOffices: officePhoto = the public path', $o7 !== null && $o7['officePhoto'] === '/uploads/locations/office-wxp-test.webp');
+    check('publicOffices: no photo -> ""', $q7 !== null && $q7['officePhoto'] === '');
+    $f7 = array_values(array_filter(SiteFacts::all()['offices'], static fn(array $x): bool => ($x['code'] ?? '') === $c7a))[0] ?? null;
+    check('home facts carry officePhoto', $f7 !== null && ($f7['officePhoto'] ?? '') === '/uploads/locations/office-wxp-test.webp');
+
+    Database::update('counter_locations', ['public_status' => 'coming_soon'], 'code = :c', ['c' => $c7a]);
+    CounterDesk::flush();
+    $o7 = $find7($c7a);
+    check('a coming-soon office shows no office photo', $o7 !== null && $o7['officePhoto'] === '');
+    Database::update('counter_locations', ['public_status' => 'open'], 'code = :c', ['c' => $c7a]);
+    Settings::set('home_office_photo_on', '0', 'bool', 'company');
+    Settings::flush(); CounterDesk::flush(); SiteFacts::flush();
+    $o7 = $find7($c7a);
+    check('switch home_office_photo_on OFF: no office photo', $o7 !== null && $o7['officePhoto'] === '');
+    Database::run("DELETE FROM settings WHERE skey = 'home_office_photo_on'");
+    Settings::flush(); CounterDesk::flush(); SiteFacts::flush();
+
+    $base7 = getenv('SHG_TEST_BASE') ?: '';
+    if ($base7 === '') {
+        echo "  SKIP  /offices photo render (no SHG_TEST_BASE)\n";
+    } else {
+        $ctx7 = stream_context_create(['http' => ['timeout' => 15, 'ignore_errors' => true]]);
+        $page7 = @file_get_contents(rtrim($base7, '/') . '/offices', false, $ctx7);
+        $card7 = static function (string $page, string $c): string {
+            $i = strpos($page, 'id="office-' . strtolower($c) . '"');
+            if ($i === false) { return ''; }
+            $j = strpos($page, '</article>', $i);
+            return substr($page, $i, $j === false ? 4000 : $j - $i);
+        };
+        if (is_string($page7) && $page7 !== '') {
+            $a7 = $card7($page7, $c7a); $b7 = $card7($page7, $c7b);
+            check('/offices: the desk with a photo renders the <img>', $a7 !== ''
+                && str_contains($a7, '<img class="off-ph" src="/uploads/locations/office-wxp-test.webp" alt="Wxphoto"') && str_contains($a7, 'loading="lazy"'));
+            check('/offices: the desk with no photo renders none', $b7 !== '' && !str_contains($b7, 'off-ph'));
+        } else {
+            check('/offices page reachable at SHG_TEST_BASE', false, $base7);
+        }
+    }
+} catch (Throwable $e) {
+    check('section 7: no exception', false, $e->getMessage());
+} finally {
+    Database::run('DELETE FROM counter_locations WHERE code IN (:a, :b)', ['a' => $c7a, 'b' => $c7b]);
+    foreach ($keep7 as $k => $row) {
+        Database::run('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($row !== null) {
+            Database::insert('settings', $row);
+        }
+    }
+    CounterDesk::flush(); CounterDesk::syncSettingsMirror();
+    Settings::flush(); SiteFacts::flush();
+}
+$fn7 = substr($tpl, (int) strpos($tpl, '  function offices(F) {'), 8000);
+check('home card: office photo renderer (same-origin, lazy, alt = name)', str_contains($fn7, 'samePhoto(o.officePhoto)')
+    && str_contains($fn7, 'class="cp-oph"') && str_contains($fn7, 'loading="lazy"') && str_contains($fn7, "alt=\"' + esc(nm)"));
+check('home card: switch home_office_photo_on named + 16:9 cover style', str_contains($tpl, 'home_office_photo_on')
+    && str_contains($tpl, '.cp-off img.cp-oph{') && str_contains($tpl, 'aspect-ratio:16/9;max-height:150px;object-fit:cover'));
+check('admin form: office photo upload + remove + own prefix', str_contains($adm, 'name="office_photo"') && str_contains($adm, 'office_photo_remove')
+    && str_contains($adm, "'office-' . strtolower(") && str_contains($adm, 'कार्यालयको फोटो · Office photo') && str_contains($adm, '$newOffPhoto ?? \'\''));
+$labels7 = ['कार्यालयको नाम · Office name', 'ठेगाना · Address', 'नक्सा लिंक · Map link', 'कार्यालयको फोन · Office phone', 'कार्यालयको WhatsApp',
+    'कार्यालय प्रमुखको नाम · In-charge name', 'प्रमुखको फोन · In-charge phone', 'प्रमुखको फोटो · In-charge photo', 'वेबसाइटमा देखाउने · Show this office'];
+check('admin form: every office field labelled Nepali + English', array_filter($labels7, static fn(string $l): bool => !str_contains($adm, $l)) === []);
 
 echo "\n  $PASS passed, $FAIL failed\n\n";
 exit($FAIL === 0 ? 0 : 1);

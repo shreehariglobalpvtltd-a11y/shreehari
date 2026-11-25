@@ -381,6 +381,7 @@ html,body{margin:0;background:#F4F6FB}
     :root[data-theme="dark"] .cp-off p.cp-town{color:#eef3ff}
     /* 25 Nov 2026 (wx1-c1): the office in-charge row + the main pickup points with their map links */
     .cp-in{display:flex;align-items:center;gap:10px;min-height:48px}
+    .cp-off img.cp-oph{display:block;flex:none;width:100%;height:auto;aspect-ratio:16/9;max-height:150px;object-fit:cover;border-radius:12px;background:var(--line,#e4e9f1)}
     .cp-in .av{flex:0 0 44px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;overflow:hidden;font-weight:900;color:#fff;background:linear-gradient(135deg,#0a2a8f,#f07a1e)}
     .cp-in .av img{width:100%;height:100%;object-fit:cover}
     .cp-in .tx{min-width:0;flex:1}
@@ -4357,7 +4358,10 @@ s.addEventListener('click',function(e){e.preventDefault();
       var head = brand
         ? '<h3><i aria-hidden="true">' + flag + '</i>' + esc(brand) + '</h3><p class="cp-town"><b>' + esc(nm) + '</b>' + (lbl ? ' · ' + esc(lbl) : '') + (town ? ' · ' + esc(town) : '') + '</p>'
         : '<h3><i aria-hidden="true">' + flag + '</i>' + esc(nm) + badge + '</h3>' + (town ? '<p>' + esc(town) + '</p>' : '');
-      return '<li class="cp-off">' + head
+      /* wx5 (owner: a photo for each office): the building / signboard on top, only a same-origin
+         /uploads/ path (switch home_office_photo_on lives on the server side); none = the card as before */
+      var oph = samePhoto(o.officePhoto);
+      return '<li class="cp-off">' + (oph ? '<img class="cp-oph" src="' + esc(oph) + '" alt="' + esc(nm) + '" loading="lazy" decoding="async" width="640" height="360">' : '') + head
         + inRow
         + (addr ? '<p>' + esc(addr) + '</p>' : '')
         + (o.phone ? '<p><b>' + esc(o.phone) + '</b>' + (!inName && o.contact ? ' · ' + esc(o.contact) : '') + '</p>' : (o.status !== 'coming_soon' ? '<p>' + esc(ow('noNum')) + '</p>' : ''))

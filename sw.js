@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v301';   // 2026-11-25 op5 on wx4: hold auto-release, agent credit limit, trip expenses, bus swap notice, border ID + parcels + 2 h pickup map (27-smartbook.js)
+var VERSION = 'shg-v302';   // 2026-11-25 op5: hold auto-release, agent credit limit, trip expenses, bus swap notice, border ID + parcels + 2 h pickup map; wx5: office photo on the office cards; wx4: office titles = company name, onward NPJ-only, classic INR|NPR; wx3 on mp1wx2: WhatsApp pickup map link, head-office buttons, agents verified first, Nepal pickup in the WA sheet; mp1: Payment Management, clean ticket; wx1: office cards, NPR/INR, BS+AD, Nepal pickups, no pay QR on cash
 /* 13 Nov 2026 (owner: "two distinct apps"): the staff door (S Hari Manage,
    shreehariglobal.network) keeps its caches under its own names (shm-…), the
    customer app (S Hari Travel) under shg-…. The two were already apart - a
