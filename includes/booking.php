@@ -796,7 +796,9 @@ final class BookingService
                 }
             }
 
-            $expiryMinutes = Settings::getInt('booking_expiry_minutes', 120);
+            // op5 (25 Nov 2026): never longer than the owner's hold window (seat_hold_autorelease_on).
+            require_once __DIR__ . '/holdrelease.php';
+            $expiryMinutes = HoldRelease::pendingMinutes();
 
             /* A second WhatsApp number (4 Oct 2026): the other country's SIM, so
                the ticket reaches India and Nepal. Kept only when it is a real

@@ -1411,7 +1411,8 @@ final class SmartBook
         ];
         // Online: the berths are held for the QR payment window, then released by cron/expire.php.
         if (($booking['status'] ?? '') === 'pending') {
-            $hold = max(5, Settings::getInt('smartbook_online_hold_min', 15));
+            require_once __DIR__ . '/holdrelease.php';
+            $hold = HoldRelease::smartbookMinutes();   // op5: never longer than the owner's hold window
             Database::run(
                 "UPDATE bookings SET expires_at = DATE_ADD(NOW(), INTERVAL {$hold} MINUTE) WHERE id = :id AND status = 'pending'",
                 ['id' => (int) $booking['id']]

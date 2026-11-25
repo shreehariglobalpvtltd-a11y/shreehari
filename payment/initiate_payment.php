@@ -39,6 +39,11 @@ if ($why !== '') {
     exit;
 }
 
+// op5: the bank page can take minutes; keep the short unpaid hold alive so
+// the cron sweep cannot free (and resell) the seat while the customer pays.
+require_once INCLUDE_PATH . '/holdrelease.php';
+HoldRelease::keepForGateway((int) $booking['id']);
+
 $amount   = icici_amount_for($booking);
 $txnNo    = icici_txn_for_booking((int) $booking['id']);
 $mobile   = preg_replace('/\D/', '', (string) ($booking['contact_phone'] ?? ''));

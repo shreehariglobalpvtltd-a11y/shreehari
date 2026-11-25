@@ -73,7 +73,7 @@ try {
             'maxPax'     => BookingService::maxSeatsFor($mode !== 'customer'),
             'npr'        => (float) $facts['npr'],
             'policy'     => $facts['policy']['line'],
-            'holdMin'    => max(5, Settings::getInt('smartbook_online_hold_min', 15)),
+            'holdMin'    => (static function (): int { require_once INCLUDE_PATH . '/holdrelease.php'; return HoldRelease::smartbookMinutes(); })(),
             // 16 Oct 2026: Cash (pay at boarding) asks a customer for verification details.
             'codVerify'  => $mode === 'customer' && Settings::getBool('cod_verify_on', true),
             'idTypes'    => (static function (): array { require_once INCLUDE_PATH . '/customerprofile.php'; return CustomerProfile::ID_TYPES; })(),
