@@ -107,7 +107,8 @@ try {
     /* ---- 3. which branch answered -------------------------------------- */
     echo "\n== WaBot::\$lastRouter ==\n";
     $reply = WaBot::reply('+91' . '9100079002', 'SHG-2099-U7999');
-    check('a bare PNR is answered by the PNR lookup (router "pnr")', WaBot::$lastRouter === 'pnr' && $reply['text'] !== '', WaBot::$lastRouter);
+    // 25 Nov 2026 (mp3-bot): the gated lookup (WaLookup) answers a bare PNR first - router "lookup" ("pnr" with wa_answer_first_on off)
+    check('a bare PNR is answered by the PNR lookup (router "pnr" / "lookup")', in_array(WaBot::$lastRouter, ['pnr', 'lookup'], true) && $reply['text'] !== '', WaBot::$lastRouter);
     check('  and the role defaults to customer', WaBot::$lastRole === 'customer', WaBot::$lastRole);
 
     AiTools::$turnTools = [];

@@ -777,7 +777,10 @@ final class WaSend
                 return $out;
             }
             $pnr  = (string) $b['pnr'];
-            $vars = Notify::ticketVars($b);
+            /* 25 Nov 2026 (mp3-bot, P6): the labelled order, never the template's own numbering. Switch
+               wa_ticket_text_fix_on (default 1). */
+            $vars = Settings::getBool('wa_ticket_text_fix_on', true) && method_exists('Notify', 'ticketTextVars')
+                ? Notify::ticketTextVars($b) : Notify::ticketVars($b);
             $img  = (string) ($vars['7'] ?? Ticket::imageUrl($pnr));
             $co   = Settings::companyFor((string) ($b['counter_code'] ?? ''), (string) ($b['entity'] ?? ''));
             $role = (string) ($opt['role'] ?? 'customer');

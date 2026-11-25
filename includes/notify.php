@@ -1078,7 +1078,7 @@ final class Notify
              . self::nepaliDigits((string) date('Y', $ts));
     }
 
-    private static function ticketTemplateVars(array $booking): array
+    private static function ticketTemplateVars(array $booking, bool $labelled = false): array
     {
         $facts   = self::ticketFacts($booking);
         $pnr     = (string) ($booking['pnr'] ?? '');
@@ -1092,7 +1092,7 @@ final class Notify
             $tplNow = WaTplMeta::ticketTemplate()['name'] ?: $tplNow;
         } catch (Throwable $ignored) {
         }
-        if (in_array($tplNow, ['shg_ticket_image', 'shg_ticket_v2'], true)) {
+        if (!$labelled && in_array($tplNow, ['shg_ticket_image', 'shg_ticket_v2'], true)) {
             $name = trim((string) Database::scalar(
                 'SELECT full_name FROM booking_passengers WHERE booking_id = :id ORDER BY id LIMIT 1',
                 ['id' => (int) ($booking['id'] ?? 0)], ''
@@ -2297,6 +2297,18 @@ final class Notify
     public static function ticketVars(array $booking): array
     {
         return self::ticketTemplateVars($booking);
+    }
+
+    /**
+     * 25 Nov 2026 (mp3-bot, P6 — live: "Route: Surat / Date: Rupaidiha / Boarding: 19 Nov 2026 / Total: SHG-2026-00963"):
+     * the values in the LABELLED order a text body prints them - {1 PNR, 2 route, 3 date, 4 boarding + time, 5 seats,
+     * 6 total, 7 picture} - whatever template is in force (shg_ticket_image numbers them {2 from, 3 to, 4 date, …}).
+     *
+     * @return array<string, string>
+     */
+    public static function ticketTextVars(array $booking): array
+    {
+        return self::ticketTemplateVars($booking, true);
     }
 
     /**

@@ -41,6 +41,12 @@ final class WaBot
     public static string $lastRole = 'customer';
 
     /**
+     * 25 Nov 2026 (mp3-bot, P1): true when reply() decided NOT to answer at all (a machine's auto-reply, a bank
+     * bot's menu). Every transport checks it and sends nothing; the text is then ''.
+     */
+    public static bool $silent = false;
+
+    /**
      * Build the reply for one inbound message.
      *
      * @param string $from raw sender ("whatsapp:+9198…", "+9198…" or "9198…")
@@ -51,6 +57,7 @@ final class WaBot
     {
         self::$lastRouter = '';
         self::$lastRole   = 'customer';
+        self::$silent     = false;
         $company      = Settings::getString('company_name', APP_NAME);
         $phone        = Settings::officePhone();
         $body         = trim($body);
@@ -113,6 +120,24 @@ final class WaBot
         } catch (Throwable $e) {
             Logger::exception($e, 'whatsapp');
         }
+        /* 25 Nov 2026 (mp3-bot, P1 — live 15–17 Nov: a bank's WhatsApp bot and a shop's auto-greeting were answered 94
+           times, parked as 101 desk drafts and once SOLD as a confirmed ticket): a machine's message from a number that
+           is not staff gets no reply, no draft and no sale. Switch wa_auto_sender_guard_on (default 1). */
+        if ($senderDigits !== '') {
+            try {
+                require_once INCLUDE_PATH . '/waanswer.php';
+                if (WaAnswer::automated($body, $kind)) {
+                    require_once INCLUDE_PATH . '/aitools.php';
+                    if (!in_array((string) (AiTools::whoIs($from)['role'] ?? 'customer'), ['staff', 'admin'], true)) {
+                        self::$lastRouter = 'autoskip';
+                        self::$silent = true;
+                        return self::out('');
+                    }
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
         // Agent Pro (Oct 2026): the agents' and staff WhatsApp desk
         if (is_file(INCLUDE_PATH . '/agentpro-wa.php')) {
             require_once INCLUDE_PATH . '/agentpro-wa.php';
@@ -120,7 +145,7 @@ final class WaBot
             if ($apReply !== null) {
                 self::$lastRouter = 'apwa';
                 self::$lastRole   = 'staff';
-                return self::out($apReply['text'], $apReply['media'] ?? null);
+                return self::out($apReply['text'], $apReply['media'] ?? null, is_array($apReply['ui'] ?? null) ? $apReply['ui'] : null);
             }
         }
         /* Post-deploy probe A1 (31 Oct 2026, owner's rule R1): a passenger's name correction right after a sale is a
@@ -521,6 +546,25 @@ final class WaBot
            a question, not an order; it steps aside the moment a sale
            conversation is open, and it answers only what it recognises —
            everything else goes on exactly as before. Switch: wa_local_brain_on. */
+        /* 25 Nov 2026 (mp3-bot; owner: "j sodhchha user le tei ko answer din paryo"): what a passenger ASKED is answered
+           before the local brain and the sale engine can read it as a booking — a PNR (gated: own number or the last 4
+           digits), someone's ticket by name (refused politely), a place / a contact ("Nepalgunj office ko number?",
+           "CEO ko number", "Ahmedabad pickup kaha?"), luggage / documents, and a question in the middle of an open
+           booking (answered, the booking keeps waiting). Switch wa_answer_first_on. */
+        if ($senderDigits !== '' && $kind === 'text' && !$isStaff) {
+            try {
+                require_once INCLUDE_PATH . '/waanswer.php';
+                require_once INCLUDE_PATH . '/aitools.php';
+                $first = WaAnswer::forCustomer($from, $senderDigits, $body, is_array($who) ? $who : AiTools::whoIs($from));
+                if ($first !== null) {
+                    self::$lastRouter = (string) $first['router'];
+                    return self::out($first['text'], $first['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
+
         if (!$pnrOnly && $senderDigits !== '') {
             try {
                 require_once INCLUDE_PATH . '/walocal.php';
@@ -703,10 +747,29 @@ final class WaBot
                 Logger::exception($e);          // the draft below still answers
             }
 
+            /* 25 Nov 2026 (mp3-bot, code map E: "bholi office khulcha" became a desk draft "the desk will send your
+               ticket"): only a line that IS a booking request is parked; any other line gets the honest "I do not have
+               that answer" + the office. Switch wa_draft_only_bookings_on (default 1). */
+            $draftOk = true;
+            if ($body !== '' && Settings::getBool('wa_draft_only_bookings_on', true)) {
+                try {
+                    require_once INCLUDE_PATH . '/waanswer.php';
+                    if (!WaAnswer::looksLikeBooking($body)) {
+                        $draftOk = false;                       // a statement gets the welcome below, never a draft
+                        if (WaAnswer::isQuestion($body)) {
+                            self::$lastRouter = 'unsure';
+                            return self::out(WaAnswer::unsure($body, $isStaff));
+                        }
+                    }
+                } catch (Throwable $e) {
+                    Logger::exception($e, 'whatsapp');
+                }
+            }
+
             $draft = null;
             try {
                 require_once INCLUDE_PATH . '/ticketbrain.php';
-                $draft = TicketBrain::capture($senderDigits, $body, 'whatsapp');
+                $draft = $draftOk ? TicketBrain::capture($senderDigits, $body, 'whatsapp') : null;
             } catch (Throwable $e) {
                 Logger::exception($e);          // a parser hiccup must never eat the reply
             }
@@ -747,19 +810,19 @@ final class WaBot
             return self::out(
                 self::tr($fl,
                     "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
-                    . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
+                    . "आफ्नो बुकिङ PNR (जस्तै SHG-2026-00963) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
                     . "स्थिति र PDF पठाउँछु।\n\n"
                     . "यात्रा गर्नु छ? मलाई मिति, कति सिट र कहाँबाट चढ्ने भन्नुहोस् — "
                     . "जस्तै \"2 सिट Nepal 15 Sep, Mehsana\"।\n\n"
                     . ($phone !== '' ? "मान्छेसँग कुरा गर्नु छ? फोन गर्नुहोस्: " . $phone . "।" : ""),
                     "🙏 नमस्ते! मैं " . $company . " का टिकट सहायक हूँ।\n\n"
-                    . "अपना बुकिंग PNR (जैसे SHG-XXXX-XXXX-XXXX) भेजिए, मैं तुरंत आपके टिकट की "
+                    . "अपना बुकिंग PNR (जैसे SHG-2026-00963) भेजिए, मैं तुरंत आपके टिकट की "
                     . "स्थिति और PDF भेजूँगा।\n\n"
                     . "यात्रा करनी है? मुझे तारीख, कितनी सीट और कहाँ से चढ़ना है बताइए — "
                     . "जैसे \"2 सीट Nepal 15 Sep, Mehsana\"।\n\n"
                     . ($phone !== '' ? "किसी इंसान से बात करनी है? फ़ोन कीजिए: " . $phone . "।" : ""),
                     "🙏 Hello! I am the ticket assistant of " . $company . ".\n\n"
-                    . "Send your booking PNR (like SHG-XXXX-XXXX-XXXX) and I will send your ticket "
+                    . "Send your booking PNR (like SHG-2026-00963) and I will send your ticket "
                     . "status and PDF at once.\n\n"
                     . "Want to travel? Tell me the date, how many seats and where you board — "
                     . "like \"2 seats Nepal 15 Sep, Mehsana\".\n\n"
@@ -1458,7 +1521,7 @@ final class WaBot
     public static function greeting(): string
     {
         return "🙏 नमस्ते! यो " . Settings::getString('company_name', APP_NAME) . " को टिकट सहायक हो।\n"
-            . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाएर टिकट जाँच्नुहोस्।";
+            . "आफ्नो बुकिङ PNR (जस्तै SHG-2026-00963) पठाएर टिकट जाँच्नुहोस्।";
     }
 
     /**

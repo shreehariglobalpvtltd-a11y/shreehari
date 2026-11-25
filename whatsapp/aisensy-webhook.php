@@ -276,6 +276,9 @@ try {
     require_once INCLUDE_PATH . '/wabot.php';
     $kind  = in_array($ev['type'], ['text', 'button', 'interactive'], true) ? 'text' : $ev['type'];
     $reply = WaBot::reply('+' . $from, $ev['text'], $kind, []);
+    if (WaBot::$silent) {
+        exit;                                     // 25 Nov 2026 (mp3-bot, P1): a machine's message gets no reply
+    }
 
     $text  = (string) ($reply['text'] ?? '');
     $media = (string) ($reply['media'] ?? '');

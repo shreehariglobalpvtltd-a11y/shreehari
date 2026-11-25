@@ -202,6 +202,9 @@ function gs_inbound(array $msg): void
 
     require_once INCLUDE_PATH . '/wabot.php';
     $reply = WaBot::reply('+' . $from, $text);
+    if (WaBot::$silent) {
+        return;                                   // 25 Nov 2026 (mp3-bot, P1): a machine's message gets no reply
+    }
 
     // Send back through the same driver — Gupshup — so the reply lives in
     // the same session and its delivery status comes back to this webhook.

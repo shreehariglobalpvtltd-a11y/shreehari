@@ -352,6 +352,12 @@ final class WaLocal
         return count($real) >= 2 ? 'en' : '';
     }
 
+    /** 25 Nov 2026 (mp3-bot): WaAnswer answers some lines before answer() runs — the chat's language is noted the same way. */
+    public static function noteChatLang(string $digits, string $text): void
+    {
+        self::noteLang($digits, $text);
+    }
+
     private static function noteLang(string $digits, string $text): void
     {
         $l = self::signalLang($text);
@@ -1570,6 +1576,22 @@ final class WaLocal
         $lines[] = self::t($lang, '"agent report mahina" = यो महिना · SHG-00xx = एक एजेन्ट', '"agent report mahina" = यह महीना · SHG-00xx = एक एजेंट', '"agent report month" = this month · SHG-00xx = one agent');
         $lines[] = appUrl('admin/agent-sales.php');
         return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /**
+     * 25 Nov 2026 (mp3-bot; live 23 Nov: "मलाई आजको चलानी पठाइदेउ त", "Chalni deu" got the ticket menu): the chalani
+     * for the WhatsApp desk — the same answer as "yatri list": the office (no scope) gets each bus's chalani picture +
+     * keyed links, an agent / counter only their own passengers. null for anyone else.
+     */
+    public static function chalaniFor(array $who, string $text, string $lang = 'ne'): ?array
+    {
+        try {
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            return self::passengers($who, in_array($lang, ['ne', 'hi', 'en', 'gu'], true) ? $lang : 'ne', $text);
+        } catch (Throwable $e) {
+            Logger::warning('WaLocal chalani failed: ' . $e->getMessage(), [], 'whatsapp');
+            return null;
+        }
     }
 
     /** Staff: who is on the bus — name, seat, pickup, phone. Agents: their own sales only. */

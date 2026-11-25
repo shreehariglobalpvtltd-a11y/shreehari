@@ -136,6 +136,19 @@ final class ApWa
                 return self::joinVerify($fromRaw, $m[1], $text);
             }
             $member = self::memberFor($phone);
+            /* 25 Nov 2026 (mp3-bot, P7 — live 19 Nov: an agent's "✏️ नाम · Name" tap under a ticket got "नयाँ मान बुझिएन"
+               from the PNR command below): a ticket-menu button, or the edit it opened, is WaEdit's — answered here by
+               WaEdit itself, so the desk never reads it as a PNR line. Switch ap_wa_edit_yield_on (default 1). */
+            if ($member !== null && Settings::getBool('ap_wa_edit_yield_on', true) && is_file(__DIR__ . '/waedit.php')) {
+                require_once __DIR__ . '/waedit.php';
+                if (WaEdit::owns($fromRaw, $text)) {
+                    require_once __DIR__ . '/aitools.php';
+                    $ed = WaEdit::handle($fromRaw, (string) preg_replace('/^\s*shg:/i', '', $text), AiTools::whoIs($fromRaw));
+                    if ($ed !== null) {
+                        return ['text' => (string) $ed['text'], 'media' => $ed['media'] ?? null] + (isset($ed['ui']) ? ['ui' => $ed['ui']] : []);
+                    }
+                }
+            }
             $state  = self::state($phone);
             $lang   = self::lang($phone, $text, $member, $state);
 
@@ -176,6 +189,7 @@ final class ApWa
             $turn = self::bumpTurn($phone);
             self::touchLink($phone);
             $ctx  = self::ctx($member, $phone, $text, $turn);
+            $ctx['fromRaw'] = $fromRaw;                       // 25 Nov 2026 (mp3-bot): the cloud fallback answers this sender
 
             /* Round 3 (agent sim: "maile 2000 jama gareko chu" asked for the UTR, and the answer "UTR 412345670006" got the
                menu): the reference the desk itself asked for becomes the PREVIEW of that payment (filed on "ho"). Anything
@@ -852,6 +866,14 @@ final class ApWa
                             }
                             require_once __DIR__ . '/aitools.php';
                             $q = substr($c, 10);
+                            /* 25 Nov 2026 (mp3-bot, code map I): the office searched only its OWN sales by name — the
+                               office / CEO now searches the whole register (last 30 days + upcoming, audited, masked);
+                               an agent / counter still only their own sales. Switch wa_lookup_on. */
+                            require_once __DIR__ . '/walookup.php';
+                            if (WaLookup::on()) {
+                                $r = WaLookup::byName($q, self::lookupWho($ctx), (string) $ctx['phone'], self::mirrorLang($lang, $text));
+                                return self::out($r['text']);
+                            }
                             $f = AiTools::run('my_sales', ['name' => $q, 'limit' => 10], $ctx);
                             $sales = $f['ok'] ? (array) ($f['data']['sales'] ?? []) : [];
                             if ($sales === []) {
@@ -4275,8 +4297,23 @@ final class ApWa
         if ($member !== null && ($fast = ApLearn::fast($text)) !== null) {
             return self::actLearned($fast, $text, $member, $ctx, $lang) ?? self::help($member, $lang);
         }
+        /* 25 Nov 2026 (mp3-bot; owner: "j sodhchha user le tei ko answer din paryo" — live 15–25 Nov every free
+           question from staff / agents / the office got the "1️⃣ टिकट बुक…" menu here, because ap_ai_on is 0):
+           first what this desk can answer from the tables itself — chalani, today's news, a short PNR, a passenger
+           by name, where a person is, a place / contact, fare / time / luggage / documents; then the cloud assistant
+           with READ-ONLY tools; and when nothing knows, an honest "I do not have that" + the office — never the
+           ticket menu as an answer to a question. */
+        if ($member !== null) {
+            $first = self::answerFirst($fromRaw, $phone, $text, $member, $ctx, $lang);
+            if ($first !== null) {
+                return $first;
+            }
+        }
         if (!ApAi::enabled()) {
-            return $member !== null ? self::help($member, $lang) : null;
+            if ($member === null) {
+                return null;
+            }
+            return self::cloudAnswer($fromRaw, $text, $member, $ctx, $lang) ?? self::unsureFallback($member, $text, $lang);
         }
         if (self::transport() === 'sync') {
             $id = Database::insert('ap_jobs', ['phone' => $phone, 'kind' => $member !== null ? 'wa' : 'wa_customer', 'text' => mb_substr($text, 0, 1500)]);
@@ -4415,7 +4452,208 @@ final class ApWa
         // The model on this CPU only READS intent. A free-text answer from it reaches a member only when
         // the office has switched that on (ap_wa_ai_answers); otherwise the numbered menu.
         $answer = trim((string) ($i['answer'] ?? ''));
-        return $answer !== '' && Settings::getBool('ap_wa_ai_answers', false) ? self::out($answer) : self::aiFallback($member, $lang);
+        if ($answer !== '' && Settings::getBool('ap_wa_ai_answers', false)) {
+            return self::out($answer);
+        }
+        // 25 Nov 2026 (mp3-bot): the cloud assistant (read-only tools) before the menu
+        $raw = (string) ($ctx['raw_text'] ?? ($ctx['messageText'] ?? ''));
+        if ($raw !== '') {
+            $cloud = self::cloudAnswer((string) ($ctx['fromRaw'] ?? ('+' . (string) ($ctx['phone'] ?? ''))), $raw, $member, $ctx, $lang);
+            if ($cloud !== null) {
+                return $cloud;
+            }
+            if (Settings::getBool('ap_wa_honest_fallback_on', true)) {
+                return self::unsureFallback($member, $raw, $lang);
+            }
+        }
+        return self::aiFallback($member, $lang);
+    }
+
+    /* =================================================================
+     *  Answer what was asked (25 Nov 2026, mp3-bot)
+     * ================================================================= */
+
+    /** ne → rn when the member wrote in Latin letters (WaAnswer::mirror). */
+    private static function mirrorLang(string $lang, string $text): string
+    {
+        require_once __DIR__ . '/waanswer.php';
+        return WaAnswer::mirror($lang, $text);
+    }
+
+    /** The sender as WaLookup / WaDirectory read it: the desk's own role, scope and (OTP-linked) office flag. */
+    private static function lookupWho(array $ctx): array
+    {
+        $role = in_array((string) ($ctx['role'] ?? ''), ['staff', 'admin'], true) ? (string) $ctx['role'] : 'customer';
+        return [
+            'role' => $role, 'adminId' => (int) ($ctx['adminId'] ?? 0), 'scopeAdminId' => $role === 'admin' ? null : ($ctx['scopeAdminId'] ?? null),
+            'phone' => (string) ($ctx['phone'] ?? ''), 'name' => (string) ($ctx['name'] ?? ''), 'admin' => $ctx['admin'] ?? null,
+            'channel' => 'whatsapp', 'office' => self::isOffice($ctx),
+        ];
+    }
+
+    /**
+     * What the desk can answer itself before any model (live 23–25 Nov: "Chalni deu", "<name> ka xan",
+     * "K xa halkhbr", a short PNR, a passenger's name, "Nepalgunj office ko number"). null = none of these.
+     *
+     * @return array{text: string, media?: ?string}|null
+     */
+    private static function answerFirst(string $fromRaw, string $phone, string $text, array $member, array $ctx, string $lang): ?array
+    {
+        if (!Settings::getBool('ap_wa_answer_first_on', true) || self::$holdLine) {
+            return null;
+        }
+        try {
+            require_once __DIR__ . '/waanswer.php';
+            require_once __DIR__ . '/walookup.php';
+            require_once __DIR__ . '/wadirectory.php';
+            $who = self::lookupWho($ctx);
+            $l2 = WaAnswer::mirror($lang, $text);
+            $seller = in_array($who['role'], ['staff', 'admin'], true);
+
+            // 1. chalani: the office each bus's chalani picture, an agent / counter their own passengers
+            if ($seller && WaAnswer::asksChalani($text)) {
+                require_once __DIR__ . '/walocal.php';
+                $r = WaLocal::chalaniFor($who + ['intl' => ''], $text, $lang);
+                if ($r !== null) {
+                    return self::out((string) $r['text'], $r['media'] ?? null);
+                }
+            }
+            // 2. "k xa halkhabar": today in numbers (the same report as "aaja")
+            if ($seller && WaAnswer::asksNews($text)) {
+                return self::report($member, $ctx, $lang, '');
+            }
+            // 3. a short PNR ("PNR 963", "ticket no 00963") — a full SHG-… went through the PNR command already
+            if (WaLookup::on() && preg_match('/\bSHG-/i', $text) !== 1) {
+                $pnr = WaLookup::pnrIn($text);
+                if ($pnr !== '' && WaLookup::isLookupLine($text, $pnr)) {
+                    if ($seller) {
+                        $r = WaLookup::pnrAnswer($pnr, $who, $phone, $l2);
+                        return self::out($r['text'], $r['media'] ?? null);
+                    }
+                    $r = self::pnrCommand($pnr, $pnr, $member, $ctx, $lang);
+                    if ($r !== null) {
+                        return $r;
+                    }
+                }
+            }
+            // 4. a passenger by name (the office: the whole register; an agent / counter: own sales)
+            if (WaLookup::on()) {
+                $name = WaLookup::nameIn($text);
+                if ($name !== '') {
+                    $r = WaLookup::byName($name, $who, $phone, $l2);
+                    return self::out($r['text']);
+                }
+            }
+            // 5. "<name> ka xan" / "where is <name>": that person in the team directory (the desk's own rules)
+            $person = WaAnswer::personWhere($text);
+            if ($person !== '') {
+                $who1 = self::personAnswer($person, $ctx, $lang);
+                if ($who1 !== null) {
+                    return $who1;
+                }
+            }
+            // 6. a place / a contact — "Nepalgunj office ko number?", "CEO ko number", "Surat agent"
+            $dir = WaDirectory::lookup($text, $seller ? $who['role'] : 'customer', $l2);
+            if ($dir !== null) {
+                return self::out($dir['text']);
+            }
+            // 7. fare / time / luggage / documents asked as a question
+            if (WaAnswer::isQuestion($text)) {
+                require_once __DIR__ . '/wafaq.php';
+                $fact = WaFaq::common('+' . $phone, $text) ?? WaFaq::factAnswer('+' . $phone, $text);
+                if ($fact !== null) {
+                    return self::out((string) $fact['text'], $fact['media'] ?? null);
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('ApWa answerFirst failed: ' . $e->getMessage(), [], 'whatsapp');
+        }
+        return null;
+    }
+
+    /**
+     * The cloud assistant (AiAgent: the staff / office prompt) for a member's free question, with READ-ONLY tools —
+     * a sale, a change or money stays with this desk's own commands and their "ho". Switch ap_wa_cloud_fallback_on
+     * (default 1); the assistant's own caps and budget apply. null = off, no AI, or no answer.
+     *
+     * @return array{text: string, media?: ?string}|null
+     */
+    private static function cloudAnswer(string $fromRaw, string $text, array $member, array $ctx, string $lang): ?array
+    {
+        if (!Settings::getBool('ap_wa_cloud_fallback_on', true) || self::$holdLine
+            || !in_array((string) ($ctx['role'] ?? ''), ['staff', 'admin'], true)) {
+            return null;
+        }
+        try {
+            require_once __DIR__ . '/aiagent.php';
+            if (!AiAgent::enabled()) {
+                return null;
+            }
+            require_once __DIR__ . '/aitools.php';
+            $base = AiTools::whoIs($fromRaw);
+            $who = [
+                'role' => (string) $ctx['role'], 'admin' => $member, 'adminId' => (int) $member['id'],
+                'scopeAdminId' => (string) $ctx['role'] === 'admin' ? null : (int) $member['id'],
+                'name' => (string) $member['full_name'], 'phone' => (string) $ctx['phone'],
+                'intl' => (string) ($base['intl'] ?? $ctx['phone']), 'country' => (string) ($base['country'] ?? ''), 'login' => null,
+            ];
+            $r = AiAgent::handle($fromRaw, $text, 'whatsapp', ['who' => $who, 'readOnly' => true]);
+            if ($r === null || trim((string) ($r['text'] ?? '')) === '' || !empty($r['failed'])) {
+                return null;
+            }
+            return self::out((string) $r['text'], $r['media'] ?? null);
+        } catch (Throwable $e) {
+            Logger::warning('ApWa cloud answer failed: ' . $e->getMessage(), [], 'whatsapp');
+            return null;
+        }
+    }
+
+    /**
+     * "<name> ka xan" (live 25 Nov): that team member — name, code, role, branch, today's tickets; the phone for the
+     * office (role admin) and for office / counter staff (the numbers the desk directory already gives every member).
+     * An agent's personal mobile stays the office's. null = nobody by that name (the line goes on).
+     */
+    private static function personAnswer(string $q, array $ctx, string $lang): ?array
+    {
+        $q = mb_strtolower(trim($q));
+        $hits = [];
+        foreach (AgentPro::roster() as $r) {
+            if (!$r['active'] || mb_strlen($q) < 3) {
+                continue;
+            }
+            if (str_contains(mb_strtolower($r['name'] . ' ' . $r['idNo']), $q)) {
+                $hits[] = $r;
+            }
+        }
+        if ($hits === []) {
+            return null;
+        }
+        $office = (string) ($ctx['role'] ?? '') === 'admin';
+        $lines = [];
+        foreach (array_slice($hits, 0, 6) as $r) {
+            $today = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE (sold_by_admin_id = :a OR booked_by_admin_id = :a2)
+                                              AND created_at >= CURDATE() AND status IN ('confirmed','completed','pending')",
+                ['a' => (int) $r['id'], 'a2' => (int) $r['id']], 0);
+            $showPhone = $office || !$r['isAgent'];
+            $lines[] = '👤 ' . $r['name'] . ($r['idNo'] !== '' ? ' · ' . $r['idNo'] : '') . ' · ' . ($r['designation'] !== '' ? $r['designation'] : $r['roleLabel'])
+                . ($r['branch'] !== '' ? "\n   📍 " . $r['branch'] : '')
+                . ($showPhone && $r['phone'] !== '' ? "\n   📞 " . AgentPro::displayPhone(AgentPro::intlDigits($r['phone'])) : '')
+                . "\n   🎫 " . self::t('pf_today', $lang, ['n' => (string) $today]);
+        }
+        if (!$office && array_filter($hits, static fn(array $r): bool => (bool) $r['isAgent']) !== []) {
+            $lines[] = self::t('dir_hidden', $lang, ['phone' => Settings::officePhone()]);
+        }
+        return self::out(implode("\n", $lines));
+    }
+
+    /** Nothing knew the answer: say so, give the office, and point to *menu* (switch off = the old numbered menu). */
+    private static function unsureFallback(array $member, string $text, string $lang): array
+    {
+        if (!Settings::getBool('ap_wa_honest_fallback_on', true)) {
+            return self::help($member, $lang);
+        }
+        require_once __DIR__ . '/waanswer.php';
+        return self::out(WaAnswer::unsure($text, true, self::mirrorLang($lang, $text)));
     }
 
     /** What the model may do for a passenger: answer, guide a booking, their own tickets. */
@@ -4655,6 +4893,7 @@ final class ApWa
             'pay_confirm' => ['ne' => "💵 कम्पनीलाई तिरेको *{v}* (UTR {utr}) अफिसलाई जाँच्न पठाउने?\n👤 तिर्ने: {who} (तपाईंकै हिसाबमा)\n\n*ho* लेख्नुहोस् (नभए *no*)। अहिले केही रेकर्ड भएको छैन।", 'hi' => "💵 कंपनी को भरे *{v}* (UTR {utr}) ऑफिस को जाँच के लिए भेजें?\n👤 भरने वाले: {who} (आपके अपने हिसाब में)\n\n*ha* लिखें (नहीं तो *no*)। अभी कुछ दर्ज नहीं हुआ है।", 'en' => "💵 Send *{v}* paid to the company (UTR {utr}) to the office to check?\n👤 Paid by: {who} (on your own account)\n\nReply *yes* (or *no*). Nothing is recorded yet."],
             'pay_cash_note' => ['ne' => "💵 {v} नगद अफिसमा बुझाएको — अफिसले Team पेजमा पुष्टि गरेपछि तपाईंको खातामा देखिन्छ। यहाँबाट केही रेकर्ड गरिएन।\nबैंक / UPI बाट तिरेको भए: *jama 1500 UTR 430987651234*", 'hi' => "💵 {v} नकद ऑफिस में जमा — ऑफिस Team पेज पर पुष्टि करेगा तब आपके खाते में दिखेगा। यहाँ से कुछ दर्ज नहीं किया।\nबैंक / UPI से भरा हो तो: *jama 1500 UTR 430987651234*", 'en' => "💵 {v} cash handed to the office — it shows on your wallet once the office confirms it on the Team page. Nothing was recorded from here.\nPaid by bank / UPI? Send: *pay 1500 UTR 430987651234*"],
             'pf_head'     => ['ne' => "🔎 {q} — तपाईंका टिकट ({n}):", 'hi' => "🔎 {q} — आपके टिकट ({n}):", 'en' => "🔎 {q} — your tickets ({n}):"],
+            'pf_today'    => ['ne' => "आज {n} टिकट", 'hi' => "आज {n} टिकट", 'en' => "{n} ticket(s) today"],
             'pf_none'     => ['ne' => "🔎 {q} नामको यात्रु तपाईंका टिकटमा भेटिएन। PNR भए पठाउनुहोस्, वा *tickets* लेख्नुहोस्।", 'hi' => "🔎 {q} नाम का यात्री आपके टिकटों में नहीं मिला। PNR हो तो भेजें, या *tickets* लिखें।", 'en' => "🔎 No passenger called {q} among your tickets. Send the PNR, or write *tickets*."],
             'bal_commission_o' => ['ne' => "🟢 कम्पनीले {name} लाई दिनुपर्ने (कमिसन): *{v}*", 'hi' => "🟢 कंपनी को {name} को देना है (कमीशन): *{v}*", 'en' => "🟢 Company owes {name} (commission): *{v}*"],
             'bal_cash_o'  => ['ne' => "🔸 {name} सँग रहेको कम्पनीको नगद: *{v}*", 'hi' => "🔸 {name} के पास कंपनी का नकद: *{v}*", 'en' => "🔸 Company cash {name} holds: *{v}*"],

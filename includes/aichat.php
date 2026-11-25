@@ -115,7 +115,7 @@ final class AiChat
         // 29 Oct 2026: the master brief when switched on (no tools in this chat).
         require_once INCLUDE_PATH . '/aimaster.php';
 
-        return AiMaster::brief(['role' => 'customer']) . ai_system_prompt() . "\n\n"
+        return AiMaster::brief(['role' => 'customer']) . ai_system_prompt(true) . "\n\n"
             . "=== WHATSAPP CHANNEL RULES ===\n"
             . "You are replying inside WhatsApp, as the S Hari Global ticket assistant.\n"
             . "1. WRITE IN NEPALI (Devanagari), natural and fluent — the way a polite Nepali "
