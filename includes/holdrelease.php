@@ -80,6 +80,54 @@ final class HoldRelease
         return self::on() ? min($sb, self::minutes()) : $sb;
     }
 
+    /** Minutes the bank's payment page keeps an unpaid hold alive. */
+    public const GATEWAY_MIN = 20;
+
+    /**
+     * The customer has just opened the ICICI bank page. Starting a gateway
+     * payment writes no payments row, so the sweep cannot see it; with the
+     * short owner window a slow bank payment could otherwise finish after the
+     * seat was freed (money taken, no seat). Push the clock to NOW()+20 min:
+     *  - only later, never earlier (GREATEST);
+     *  - only a still-pending, non-COD booking that still has a clock (proof
+     *    clears expires_at, confirmed/COD never expire anyway);
+     *  - never past created_at + max(booking_expiry_minutes, window + 20), so
+     *    reloading the bank page cannot keep a seat held for ever.
+     * Switch seat_hold_autorelease_on off (old long window) or
+     * gateway_hold_extend_on off = no change. Never throws.
+     */
+    public static function keepForGateway(int $bookingId): bool
+    {
+        if ($bookingId <= 0 || !self::on() || !Settings::getBool('gateway_hold_extend_on', true)) {
+            return false;
+        }
+        try {
+            $g   = self::GATEWAY_MIN;
+            $cap = max(max(1, Settings::getInt('booking_expiry_minutes', 120)), self::minutes() + $g);
+            $b   = Database::fetch('SELECT pnr, expires_at FROM bookings WHERE id = :i', ['i' => $bookingId]);
+            if ($b === null) {
+                return false;
+            }
+            $n = Database::run(
+                "UPDATE bookings
+                    SET expires_at = GREATEST(expires_at, LEAST(NOW() + INTERVAL {$g} MINUTE, created_at + INTERVAL {$cap} MINUTE))
+                  WHERE id = :i AND status = 'pending' AND is_cod = 0 AND expires_at IS NOT NULL",
+                ['i' => $bookingId]
+            );
+            if ($n < 1) {
+                return false;                                   // nothing to push (or already later)
+            }
+            $after = (string) Database::scalar('SELECT expires_at FROM bookings WHERE id = :i', ['i' => $bookingId], '');
+            Logger::audit('booking.hold_extended', 'booking', (string) $b['pnr'],
+                ['expires_at' => (string) $b['expires_at']], ['expires_at' => $after],
+                'Bank payment page opened - hold kept up to ' . $g . ' min (auto)');
+            return true;
+        } catch (Throwable $e) {
+            Logger::error('gateway hold extend failed', ['booking' => $bookingId, 'err' => $e->getMessage()]);
+            return false;
+        }
+    }
+
     /**
      * Drop expired checkout seat locks, one audit row per bus (cron only:
      * Seats::lock() also sweeps them quietly on every request — an expired

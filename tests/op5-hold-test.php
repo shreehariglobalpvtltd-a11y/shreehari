@@ -232,5 +232,40 @@ check('K2 SmartBook 15 stays 15', HoldRelease::smartbookMinutes() === 15);
 check('L1 hold-expired message off by default', HoldRelease::notice((int) $stale['id']) === false);
 check('L2 sweep sent no notices', $r1['noticed'] === 0);
 
+/* ---------- M bank page keeps the hold alive ---------- */
+$secsOf = static fn(array $b): ?int => ($v = Database::scalar('SELECT TIMESTAMPDIFF(SECOND, NOW(), expires_at) FROM bookings WHERE id = :b', ['b' => (int) $b['id']])) === null ? null : (int) $v;
+$setClock = static function (array $b, string $expr, string $created = 'created_at'): void {
+    Database::run("UPDATE bookings SET expires_at = $expr, created_at = $created WHERE id = :i", ['i' => (int) $b['id']]);
+};
+$gNear = $mk(); $setClock($gNear, 'NOW() + INTERVAL 2 MINUTE');
+$gLate = $mk(); $setClock($gLate, 'NOW() - INTERVAL 1 MINUTE', 'NOW() - INTERVAL 21 MINUTE');
+$gOld  = $mk(); $setClock($gOld, 'NOW() - INTERVAL 1 MINUTE', 'NOW() - INTERVAL 3 HOUR');
+$gFar  = $mk(); $setClock($gFar, 'NOW() + INTERVAL 100 MINUTE');
+$gCod  = $mk(true);
+$gNoClk = $mk();
+Database::run('UPDATE bookings SET expires_at = NULL WHERE id = :i', ['i' => (int) $gNoClk['id']]);
+
+check('M1 hold about to end is pushed to ~20 min', HoldRelease::keepForGateway((int) $gNear['id']) && ($s = $secsOf($gNear)) !== null && $s > 19 * 60 && $s <= 20 * 60 + 5, (string) $secsOf($gNear));
+check('M2 one booking.hold_extended audit row', (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'booking.hold_extended' AND entity_id = :p", ['p' => $gNear['pnr']], 0) === 1);
+check('M3 just-lapsed (not yet swept) recent hold is revived', HoldRelease::keepForGateway((int) $gLate['id']) && (int) $secsOf($gLate) > 19 * 60);
+check('M4 3-hour-old booking is NOT revived (cap)', !HoldRelease::keepForGateway((int) $gOld['id']) && (int) $secsOf($gOld) < 0);
+check('M5 a later clock is never shortened', !HoldRelease::keepForGateway((int) $gFar['id']) && (int) $secsOf($gFar) > 99 * 60);
+check('M6 COD booking is not touched', !HoldRelease::keepForGateway((int) $gCod['id']) && $statusOf($gCod) === 'confirmed');
+check('M7 no-clock (proof) booking stays without a clock', !HoldRelease::keepForGateway((int) $gNoClk['id']) && $secsOf($gNoClk) === null);
+setKeep('seat_hold_autorelease_on', '0', 'bool');
+$gOff = $mk(); $setClock($gOff, 'NOW() + INTERVAL 2 MINUTE');
+check('M8 switch off: no change (old behaviour)', !HoldRelease::keepForGateway((int) $gOff['id']) && (int) $secsOf($gOff) <= 2 * 60 + 5);
+setKeep('seat_hold_autorelease_on', '1', 'bool');
+setKeep('gateway_hold_extend_on', '0', 'bool');
+check('M9 gateway_hold_extend_on off: no change', !HoldRelease::keepForGateway((int) $gOff['id']));
+setKeep('gateway_hold_extend_on', null);
+$rG = HoldRelease::expireStale(500, array_map(static fn(array $b): int => (int) $b['id'], [$gNear, $gLate, $gFar, $gOld]));
+check('M10 sweep spares the extended holds, frees the capped old one', $statusOf($gNear) === 'pending' && $statusOf($gLate) === 'pending' && $statusOf($gFar) === 'pending' && $statusOf($gOld) === 'expired', json_encode($rG));
+$ip = (string) file_get_contents(dirname(__DIR__) . '/payment/initiate_payment.php');
+$pWhy = strpos($ip, 'icici_cannot_pay_reason(');
+$pKeep = strpos($ip, 'HoldRelease::keepForGateway(');
+$pPost = strpos($ip, 'icici_api_post(');
+check('M11 initiate_payment keeps the hold after the can-pay check, before calling the bank', $pWhy !== false && $pKeep !== false && $pPost !== false && $pWhy < $pKeep && $pKeep < $pPost);
+
 echo "\n  $pass passed, $fail failed\n";
 exit($fail > 0 ? 1 : 0);
