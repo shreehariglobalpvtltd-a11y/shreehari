@@ -241,7 +241,7 @@ const CORE_SUITES = [
     'u2-wa-flow-test.php'             => 'WhatsApp form: ON only once published in this WABA, re-ask keeps the typed mobile + UPI',
     'u2-fb-booking-test.php'          => 'Messenger guided booking only with fb_msgr_form_on + a WhatsApp-proven number, summary + yes first',
     'u2-wa-form-page-test.php'        => 'admin/wa-form.php renders the form status and the dropped-form note',
-    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; COD and pending tickets print the live link',
+    'u3-ticket-render-test.php'       => 'ticket pay QR / verify QR / NPR first / map QRs; pending tickets print the live link, COD tickets no pay QR (wx1)',
     'u4-desk-test.php'                => 'sales closing clock per route + channel, office never blocked, Nepal desks and quick agent',
     'u5-ag-staff-headcount-test.php'  => 'staff / office logins earn a head count, not new commission; agents and counter unchanged',
     'u5-ag-payout-test.php'           => 'agent withdrawal request + manual office pay / decline, verify tick only when switched on',
@@ -267,6 +267,7 @@ const CORE_SUITES = [
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
     'wx1-a-test.php'                  => 'SmartBook: Nepal timezone opens Nepal -> India + swap, ₹ INR | रू NPR frozen on the sale, BS + AD date chips (25 Nov)',
+    'wx1-b-test.php'                  => 'no pay QR on a pay-at-boarding ticket, pickup map QR on every ticket / receipt / app PDF, Nepal pickups = route rows only (25 Nov wx1)',
 ];
 
 /**

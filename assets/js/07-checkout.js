@@ -2539,6 +2539,29 @@ window.TkLive = TkLive;
        ("Pay via office"); a phone call when there is no WhatsApp either.
    Display only: the money is the server's (paidAmount = verified payments),
    read the same way as fbPayBand() - confirmed + unknown + not cash = paid. */
+/* 25 Nov 2026 (wx1): "share live bus location with family" as ONE big green
+   WhatsApp-style button (ticket view + My Trips card). The phone's own share
+   sheet when it has one (navigator.share), else the wa.me link. Switch
+   family_share_btn_on (default on); off = the old small ghost link. */
+function famShareOn() {
+  const s = (window.SHG_BOOT && SHG_BOOT.settings) || {};
+  return !(s.family_share_btn_on === false || s.family_share_btn_on === 0 || s.family_share_btn_on === '0');
+}
+function famShareBtn(url) {
+  const u = String(url || '');
+  return '<a class="btn btn-wa tk-famshare" data-famshare="' + esc(u) + '" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + u)
+    + '" target="_blank" rel="noopener" style="display:flex;width:100%;justify-content:center;align-items:center;gap:8px;margin-top:8px;min-height:44px;background:#25d366 !important;border-color:#1ebe5b !important;color:#fff !important;font-weight:700">'
+    + '🟢 ' + esc(t('tkWhereFam')) + '</a>';
+}
+if (!window.__shgFamShare) { window.__shgFamShare = true; document.addEventListener('click', function (e) {
+  const a = e.target && e.target.closest ? e.target.closest('[data-famshare]') : null;
+  if (!a || !navigator.share) return;          // no share sheet: the wa.me link opens as before
+  e.preventDefault();
+  const u = a.getAttribute('data-famshare') || '';
+  navigator.share({ title: 'S Hari Global', text: t('tkWhereShare'), url: u }).catch(function (err) {
+    if (!err || err.name !== 'AbortError') { try { window.open(a.href, '_blank', 'noopener'); } catch (x) {} }
+  });
+}); }
 function tkGoldPay(b) {
   const st = (typeof S === 'function') ? S() : {};
   const enc = encodeURIComponent;
@@ -2550,6 +2573,10 @@ function tkGoldPay(b) {
   let due = known ? Math.max(0, total - Math.max(0, Number(b.paidAmount || 0)))
     : ((b.status === 'confirmed' && !isCod) ? 0 : total);
   if (!open) due = 0;                         // cancelled / expired / rejected: nothing to collect here
+  /* 25 Nov 2026 (wx1, owner): a pay-at-boarding (cash) ticket carries NO pay QR -
+     the crew takes the cash on the bus (Ticket::paymentQr mode 'cod'). Switch
+     ticket_cod_no_payqr (default on); tkGoldPayFigure() draws the stamp instead. */
+  if (isCod && due > 0 && (((window.SHG_BOOT && SHG_BOOT.settings) || {}).ticket_cod_no_payqr !== false)) return null;
   const paid = due <= 0 && (b.status === 'confirmed' || b.status === 'completed' || (b.status === 'expired' && known && total > 0 && Number(b.paidAmount) >= total));
   const upi = String(st.upiId || '').trim();
   const name = String(st.upiName || '');
@@ -2604,6 +2631,14 @@ function tkMantraLine() {
 }
 /* The pay half of the gold QR stub (the verify half is #tkQrBox). */
 function tkGoldPayFigure(b, gp, money) {
+  if (!gp) {
+    /* wx1: pay-at-boarding - a stamp, no QR */
+    const dueC = Math.max(0, Number(b.total || 0) - Math.max(0, Number(b.paidAmount || 0)));
+    return '<figure class="tkg-qr tkg-qr-pay is-cod">'
+      + '<div class="tkg-qr-frame tkg-cod-stamp" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:3px double #c2410c;border-radius:14px;color:#9a3412;font-weight:800;transform:rotate(-4deg);padding:10px;min-height:120px">'
+      + '<span lang="ne" style="font-size:20px">बसमा तिर्ने</span><span style="font-size:13px;letter-spacing:.06em">PAY ON BOARDING</span></div>'
+      + '<figcaption><b>' + esc('बसमा तिर्ने · Pay on boarding') + '</b>' + (dueC > 0 ? '<small>' + esc(money(dueC)) + '</small>' : '') + '</figcaption></figure>';
+  }
   const cap = gp.kind === 'due' ? tf('tkgPayDue', { a: money(gp.due) })
     : (gp.kind === 'office' ? t('tkgPayOffice') : t('tkgPayUpi'));
   const sub = gp.kind === 'office' ? (gp.due > 0 ? money(gp.due) : '') : gp.upi;
@@ -2769,7 +2804,8 @@ function renderStatus(id) {
   const whereBox = (b.status === 'confirmed' && b.trackUrl && !tripCancelled)
     ? '<div class="crew-box where-box">📍 <div><small>' + t('tkWhereT') + '</small>'
       + '<a class="btn btn-blue btn-sm" href="' + esc(b.trackUrl) + '" target="_blank" rel="noopener" style="margin:6px 8px 0 0">' + t('tkWhereBtn') + '</a>'
-      + '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>'
+      + (famShareOn() ? famShareBtn(b.trackUrl)
+        : '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>')
       + '</div></div>'
     : '';
 
@@ -3033,7 +3069,7 @@ function renderStatus(id) {
   /* The pay QR lives in the gold stub now (tkGoldPay - the same UPI link
      with the amount when money is owed), so the pay card keeps its button
      and amount but no second copy of the same QR. */
-  makeQR(gp2.url, 240).then(url => {
+  (gp2 ? makeQR(gp2.url, 240) : Promise.resolve('')).then(url => {   // wx1: no pay QR on a cash ticket
     const box = $('#tkPayQrBox');
     if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id || !url) return;
     const img = new Image(); img.src = url; img.width = 240; img.height = 240; img.alt = gp2.kind === 'office' ? t('tkgPayOffice') : t('premiumPay');
