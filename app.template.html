@@ -340,11 +340,16 @@ html,body{margin:0;background:#F4F6FB}
        is not shown (no "+ More"). Staff doors (sign-in, forms, business, tours, theme buttons) are
        hidden from the customer page - they stay on S Hari Manage (.network) and keep their URLs. -->
   <style id="cp1Home">
-    html.cp1 body #view-home > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#cpOffices):not(#homeLive):not(#cpAgents):not(#hero3d):not(#hyperBus){display:none !important}
+    html.cp1 body #view-home > :not(#smartBook):not(#sbDesk):not(#search-anchor):not(#quick-ticket):not(#nextTripBox):not(#rtBox):not(#cpOffices):not(#homeLive):not(#cpAgents):not(#cpStaff):not(#cpWaEasy):not(#cpGuide):not(#cpLuggage):not(#hero3d):not(#hyperBus){display:none !important}
+    html.cp1 body #view-home > #cpWaEasy{order:4 !important}
     html.cp1 body #view-home > #cpOffices{order:5 !important}
     html.cp1 body #view-home > #homeLive{order:6 !important}
     html.cp1 body #view-home > #cpAgents{order:7 !important}
+    html.cp1 body #view-home > #cpStaff{order:8 !important}
+    html.cp1 body #view-home > #cpGuide{order:9 !important}
+    html.cp1 body #view-home > #cpLuggage{order:10 !important}
     html:not(.cp1) #cpOffices,html:not(.cp1) #cpAgents,html:not(.cp1) #cpTrackForm,html:not(.cp1) .bn-item[data-bn="office"]{display:none !important}
+    html:not(.cp1) #cpStaff,html:not(.cp1) #cpWaEasy,html:not(.cp1) #cpGuide,html:not(.cp1) #cpLuggage,#cpStaff[hidden],#cpWaEasy[hidden],#cpGuide[hidden],#cpLuggage[hidden]{display:none !important}
     html.cp1 #homeLive .hx-live-soon,html.cp1 #homeLive .hx-live-art{display:none !important}
     /* staff / partner doors off the customer page */
     html.cp1 .theme-btn,html.cp1 .palette-wrap,html.cp1 .mm-display,html.cp1 #navUserBtn,html.cp1 #mmUserBtn,
@@ -388,6 +393,27 @@ html,body{margin:0;background:#F4F6FB}
     .cp-ag .tx small{display:block;font-size:12px;color:var(--muted,#5b6b8c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .cp-ag .ok{color:#11703f;font-weight:900}
     .cp-ag a.call{flex:0 0 auto;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;text-decoration:none;font-size:18px;background:rgba(18,140,74,.12)}
+    /* 25 Nov 2026 (wx1-c2): agents grouped by town + partner badge + WhatsApp; bus crew; guide, luggage, easy WhatsApp, PNR download */
+    .cp-ag li.grp{grid-column:1/-1;min-height:0;padding:8px 4px 0;background:none;border:0;font-size:12.5px;font-weight:900;letter-spacing:.02em;color:var(--muted,#5b6b8c)}
+    .cp-ag .pt{display:inline-block;margin-right:2px;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:800;vertical-align:middle;color:#8a4b00;background:rgba(240,122,30,.14)}
+    .cp-ag a.wa{flex:0 0 auto;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;text-decoration:none;font-size:18px;background:rgba(18,140,74,.2)}
+    .cp-vid{margin:10px 0 0;font-size:13px;line-height:1.5;text-align:center}
+    .cp-vid a{font-weight:800;color:#0a2a8f}
+    .cp-wa-easy{width:100%;min-height:56px;font-size:16px}
+    .cp-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+    .cp-links .cp-btn{justify-content:flex-start;text-align:left;border-radius:16px;padding:8px 14px}
+    .cp-lug{margin:0;padding:12px;border-radius:16px;font-size:14.5px;font-weight:800;line-height:1.45;color:var(--fg,#0d1b3e);background:color-mix(in srgb,#f07a1e 9%,var(--surface,#fff));border:1px solid color-mix(in srgb,#f07a1e 30%,transparent)}
+    .cp-fac{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;padding:0;list-style:none}
+    .cp-fac li{padding:7px 12px;border-radius:999px;font-size:13px;font-weight:700;color:var(--fg,#0d1b3e);background:color-mix(in srgb,#0a2a8f 5%,var(--surface,#fff));border:1px solid var(--line,#e4e9f1)}
+    #cpTrkOut{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px}
+    #cpTrkOut[hidden]{display:none}
+    #waReqJourney > .wa-req-row,#waReqJourney > .wa-req-field{margin-top:8px}
+    #waReqJourney > summary{color:var(--ink,#0d1b3e)}
+    #cpTrkOut p{flex:1 1 100%;margin:0;font-size:13px;font-weight:700;color:var(--fg,#0d1b3e)}
+    #cpTrkOut p.bad{color:#b3261e}
+    :root[data-theme="dark"] .cp-lug,:root[data-theme="dark"] .cp-fac li,:root[data-theme="dark"] #cpTrkOut p:not(.bad){color:#eef3ff}
+    :root[data-theme="dark"] .cp-vid a{color:#bcd0ff}
+    :root[data-theme="dark"] .cp-ag .pt{color:#ffc58a;background:rgba(240,122,30,.22)}
     #cpTrackForm{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
     #cpTrackForm input{flex:1 1 180px;min-height:46px;padding:0 14px;border-radius:14px;border:1.5px solid var(--line,#cfd8e6);font-size:16px;background:var(--surface,#fff);color:var(--fg,#0d1b3e);text-transform:uppercase}
     #cpTrackForm small{flex:1 1 100%;font-size:12px;color:var(--muted,#5b6b8c)}
@@ -1733,6 +1759,42 @@ s.addEventListener('click',function(e){e.preventDefault();
       <p class="cp-sub" data-cp="agSub">यी व्यक्तिबाट मात्र टिकट लिनुहोस्। शंका लागे कार्यालयमा फोन गर्नुहोस्।</p>
       <ul class="cp-ag" id="cpAgList"><li><span class="tx"><small data-cp="agLoad">लोड हुँदैछ…</small></span></li></ul>
       <p class="cp-more" id="cpAgMoreP" hidden><button type="button" class="cp-btn l" id="cpAgMore" data-cp="agMore">सबै एजेन्ट देखाउनुहोस्</button></p>
+      <p class="cp-vid"><a href="/verify-id.php" data-cp="agVid">एजेन्टको ID कार्डको QR स्क्यान गर्नुहोस् वा नम्बर जाँच्नुहोस् · Check an agent's ID card</a></p>
+    </div>
+  </section>
+  <!-- 25 Nov 2026 (wx1-c2): the bus crew - ONLY the consent-filtered /api/staff-list.php?for=home
+       (the people the office put on the website, the fields it allowed). Hidden when empty or when
+       home_staff_list_on is off. -->
+  <section class="container cp-sec" id="cpStaff" aria-labelledby="cpStTitle" hidden>
+    <div class="cp-box">
+      <p class="cp-eb">🚌 <span data-cp="stEb">बस स्टाफ · Bus crew</span></p>
+      <h2 class="cp-h" id="cpStTitle" data-cp="stH">चालक, सह-चालक र स्टाफ</h2>
+      <ul class="cp-ag" id="cpStList"></ul>
+      <p class="cp-more" id="cpStMoreP" hidden><button type="button" class="cp-btn l" id="cpStMore" data-cp="stMore">सबै हेर्नुहोस् · Show all</button></p>
+    </div>
+  </section>
+  <!-- 25 Nov 2026 (wx1-c2): the short WhatsApp booking - the #waSheet on its booking tab (name, phone, passengers). -->
+  <section class="container cp-sec" id="cpWaEasy" aria-label="WhatsApp">
+    <button type="button" class="cp-btn g cp-wa-easy" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet">💬 <span data-cp="waEasy">WhatsApp बाट सजिलो बुकिङ · Easy WhatsApp booking</span></button>
+  </section>
+  <!-- 25 Nov 2026 (wx1-c2): travel guide -> /travel-info (documents, customs, onward buses). -->
+  <section class="container cp-sec" id="cpGuide" aria-labelledby="cpGdTitle">
+    <div class="cp-box">
+      <p class="cp-eb">🧭 <span data-cp="gdEb">यात्रा गाइड · Travel guide</span></p>
+      <h2 class="cp-h" id="cpGdTitle" data-cp="gdH">सीमा पार र आगेको यात्रा</h2>
+      <div class="cp-links">
+        <a class="cp-btn l" href="/travel-info?lang=ne">🪪 <span data-cp="gdDocs">सीमा पार गर्दा चाहिने कागजात · Border documents</span></a>
+        <a class="cp-btn l" href="/travel-info?lang=ne#onward">🚌 <span data-cp="gdOnw">आगेको बस · Onward buses</span></a>
+      </div>
+    </div>
+  </section>
+  <!-- 25 Nov 2026 (wx1-c2): luggage rule (luggage_free_kg / cabin_bag_kg, the terms' 20 + 7 kg) + bus facilities (bus_facilities_json). -->
+  <section class="container cp-sec" id="cpLuggage" aria-labelledby="cpLgTitle">
+    <div class="cp-box">
+      <p class="cp-eb">🧳 <span data-cp="lgEb">सामान र बसका सुविधा · Luggage &amp; facilities</span></p>
+      <h2 class="cp-h" id="cpLgTitle" data-cp="lgH">कति सामान लैजान मिल्छ?</h2>
+      <p class="cp-lug" id="cpLugRule"></p>
+      <ul class="cp-fac" id="cpFacList"></ul>
     </div>
   </section>
   <section class="container hx hx-livebus" id="homeLive" aria-labelledby="hxLiveTitle">
@@ -1759,8 +1821,11 @@ s.addEventListener('click',function(e){e.preventDefault();
           <!-- 25 Nov 2026 (cp1): ticket number -> My Tickets opens it and its live bus (#/my?pnr=) -->
           <form id="cpTrackForm" autocomplete="off">
             <input type="text" id="cpTrackPnr" inputmode="text" maxlength="40" placeholder="PNR / टिकट नम्बर" aria-label="PNR / Ticket number" required>
+            <!-- 25 Nov 2026 (wx1-c2): + the booking mobile -> download / track / share (PNR alone never downloads) -->
+            <input type="tel" id="cpTrackPhone" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="मोबाइल नम्बर · Mobile" aria-label="Mobile number used at booking">
             <button type="submit" class="cp-btn o" data-cp="trkGo">बस हेर्नुहोस्</button>
-            <small data-cp="trkNote">टिकटको PNR हाल्नुहोस् - बस कहाँ छ, अर्को बिसौनी र पुग्ने समय देखिन्छ।</small>
+            <small data-cp="trkNote">टिकटको PNR र बुक गर्दाको मोबाइल हाल्नुहोस् - टिकट डाउनलोड, बस कहाँ छ र परिवारलाई लोकेसन।</small>
+            <div id="cpTrkOut" role="status" aria-live="polite" hidden></div>
           </form>
         </div>
         <!-- decorative (alt="", aria-hidden): the caption is for sighted visitors only;
@@ -3098,6 +3163,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <span><span class="lg sel"></span><span data-i18n="lgSel">Selected</span></span>
         <span><span class="lg bkd"></span><span data-i18n="lgBkd">Booked</span></span>
         <span><span class="lg u-fem"></span><span data-i18n="lgWomenOnly">Women only</span></span>
+        <span><span class="lg fem"></span><span data-i18n="lgFem">Women-only berth</span></span>
         <span class="lg-emerg-item"><span class="lg lg-emerg"></span><span data-i18n="lgEmergency">🚨 Emergency Seat</span></span>
         <span class="lg-rec-item"><span class="lg lg-rec"></span><span data-i18n="lgRec">Recommended</span></span>
         <!-- 19 Sep 2026 (owner: "too many options on top, keep it simple"): four
@@ -3106,7 +3172,6 @@ s.addEventListener('click',function(e){e.preventDefault();
              icon (✕ ⏳ ♀ ♂ 🔒), so nothing is told by this key alone. Phones keep
              the one-line swipe strip (views.css) and never see the button. -->
         <button type="button" class="lg-more-btn" aria-expanded="false" onclick="var l=this.parentNode,o=l.classList.toggle('lg-open');this.setAttribute('aria-expanded',o?'true':'false')"><span data-i18n="lgSigns">More signs</span> ▾</button>
-        <span class="lg-x"><span class="lg fem"></span><span data-i18n="lgFem">Women-only berth</span></span>
         <span class="lg-x"><span class="lg u-male"></span><span data-i18n="lgMenOnly">Men only</span></span>
         <span class="lg-x"><span class="lg hold"></span>⏳ <span data-i18n="lgHeld">Held by someone else</span></span>
         <span class="lg-x"><span class="lg pvt"></span>🔒 <span data-i18n="lgPrivate">Private cabin</span></span>
@@ -4013,13 +4078,17 @@ s.addEventListener('click',function(e){e.preventDefault();
         </label>
       </div>
       <p class="wa-req-hint" id="waReqPhoneHint" data-i18n="waReqPhoneHint">Use the number you will send from on WhatsApp. For someone else's ticket, ask the office.</p>
-      <div class="wa-req-journey" id="waReqJourney">
+      <!-- 25 Nov 2026 (wx1-c2): short WhatsApp booking - name, phone and passengers are enough;
+           date / pickup are optional and folded (sent only when opened or changed). Switch
+           wa_short_booking_on off and 05-router.js opens this and asks for both again. -->
+      <details class="wa-req-journey" id="waReqJourney">
+        <summary style="cursor:pointer;min-height:44px;padding:11px 0;box-sizing:border-box;font-size:13.5px;font-weight:800">मिति / चढ्ने ठाउँ (ऐच्छिक) · Date / pickup (optional)</summary>
         <div class="wa-req-row">
-          <label class="wa-req-field" for="waReqDate"><span data-i18n="sDate">Journey date</span><input id="waReqDate" type="date" required></label>
+          <label class="wa-req-field" for="waReqDate"><span data-i18n="sDate">Journey date</span><input id="waReqDate" type="date"></label>
           <label class="wa-req-field" for="waReqDirection"><span data-i18n="waReqDirection">Direction</span><select id="waReqDirection"><option value="toNepal">Gujarat → Rupaidiha</option><option value="toIndia">Rupaidiha → Gujarat</option></select></label>
         </div>
-        <label class="wa-req-field" for="waReqPoint"><span id="waReqPointLabel" data-i18n="sBoard">Boarding town (Gujarat)</span><select id="waReqPoint" required></select></label>
-      </div>
+        <label class="wa-req-field" for="waReqPoint"><span id="waReqPointLabel" data-i18n="sBoard">Boarding town (Gujarat)</span><select id="waReqPoint"></select></label>
+      </details>
       <label class="wa-req-field" id="waReqPnrRow" for="waReqPnr" hidden><span data-i18n="waReqPnr">Booking number (PNR)</span><input id="waReqPnr" maxlength="40" autocomplete="off" autocapitalize="characters"></label>
       <div class="wa-req-row wa-req-pax" id="waReqPaxRow"><label for="waReqPax" data-i18n="waReqPax">Passengers</label>
         <select id="waReqPax"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
@@ -4152,21 +4221,46 @@ s.addEventListener('click',function(e){e.preventDefault();
   var T = {
     ne: { offEb: 'कार्यालय · Offices', offH: 'हाम्रो कार्यालय, सम्पर्क र भाडा', offSub: 'भारत र नेपालका कार्यालय - एक ट्यापमा कल वा नक्सा।', offAll: 'सबै कार्यालय र पार्किङ नक्सा →',
           agEb: 'आधिकारिक एजेन्ट · Verified agents', agH: 'कम्पनीबाट प्रमाणित एजेन्ट', agSub: 'यी व्यक्तिबाट मात्र टिकट लिनुहोस्। शंका लागे कार्यालयमा फोन गर्नुहोस्।', agLoad: 'लोड हुँदैछ…', agMore: 'सबै एजेन्ट देखाउनुहोस्', agNone: 'एजेन्ट लिस्ट छिट्टै। अहिले कार्यालयमा फोन गर्नुहोस्।',
-          trkGo: 'बस हेर्नुहोस्', trkNote: 'टिकटको PNR हाल्नुहोस् - बस कहाँ छ, अर्को बिसौनी र पुग्ने समय देखिन्छ।',
+          trkGo: 'बस हेर्नुहोस्', trkNote: 'टिकटको PNR र बुक गर्दाको मोबाइल हाल्नुहोस् - टिकट डाउनलोड, बस कहाँ छ र परिवारलाई लोकेसन।',
+          /* 25 Nov 2026 (wx1-c2) */
+          agVid: "एजेन्टको ID कार्डको QR स्क्यान गर्नुहोस् वा नम्बर जाँच्नुहोस् · Check an agent's ID card", partner: 'साझेदार · Partner', other: 'अन्य ठाउँ',
+          stEb: 'बस स्टाफ · Bus crew', stH: 'चालक, सह-चालक र स्टाफ', stMore: 'सबै हेर्नुहोस् · Show all', waEasy: 'WhatsApp बाट सजिलो बुकिङ · Easy WhatsApp booking',
+          gdEb: 'यात्रा गाइड · Travel guide', gdH: 'सीमा पार र आगेको यात्रा', gdDocs: 'सीमा पार गर्दा चाहिने कागजात · Border documents', gdOnw: 'आगेको बस · Onward buses',
+          lgEb: 'सामान र बसका सुविधा · Luggage & facilities', lgH: 'कति सामान लैजान मिल्छ?', lgRule: 'प्रति यात्री निःशुल्क: १ झोला {F} किलोसम्म + १ ह्यान्ड झोला {C} किलोसम्म। पैसा, गहना र कागजात आफूसँगै राख्नुहोस्।',
+          trkDl: 'टिकट डाउनलोड · Download ticket', trkBus: 'बस कहाँ छ · Track bus', trkShare: 'परिवारलाई लोकेसन पठाउनुहोस् · Share live location', trkBusy: 'खोज्दै…', trkOk: 'टिकट भेटियो',
+          trkNotFound: 'यो PNR भेटिएन। टिकटमा छापिएको नम्बर जाँच्नुहोस्।', trkPhoneBad: 'PNR र बुक गर्दाको मोबाइल नम्बर मिलेन।', trkPhoneShort: 'पूरा १० अंकको मोबाइल नम्बर लेख्नुहोस्।',
+          trkMany: 'धेरै पटक प्रयास भयो - केही बेरपछि फेरि गर्नुहोस् वा कार्यालयमा फोन गर्नुहोस्।', trkErr: 'अहिले जाँच गर्न सकिएन - इन्टरनेट जाँचेर फेरि प्रयास गर्नुहोस्।',
+          trkPending: 'टिकट अझै पुष्टि भएको छैन - पुष्टि भएपछि डाउनलोड र ट्र्याक खुल्छ।', trkCancel: 'यो टिकट रद्द भइसकेको छ।', shareTx: 'मेरो S Hari Global बस लाइभ यहाँ हेर्नुहोस्:',
           call: 'कल', map: 'नक्सा', wa: 'WhatsApp', head: 'मुख्य कार्यालय', soon: 'छिट्टै', ok: 'प्रमाणित',
           fGo: 'गुजरात → नेपाल', fBack: 'नेपाल → गुजरात', fPriv: 'प्राइभेट केबिन', office: 'अफिस',
           geoAsk: 'टिकट काटेको स्थान र नजिकको बोर्डिङ पोइन्ट देखाउन लोकेशन अनुमति दिनुहोस्।',
           payWait: 'भुक्तानी जाँच हुँदैछ…', payWaitSub: 'पैसा आएपछि टिकट आफैँ CONFIRMED हुन्छ।', payOk: 'भुक्तानी पुष्टि भयो!', payOkSub: 'टिकट CONFIRMED - टिकट हेर्नुहोस्।', open: 'टिकट हेर्नुहोस्' },
     hi: { offEb: 'ऑफ़िस · Offices', offH: 'हमारे ऑफ़िस, संपर्क और किराया', offSub: 'भारत और नेपाल के ऑफ़िस - एक टैप में कॉल या नक्शा।', offAll: 'सभी ऑफ़िस और पार्किंग नक्शा →',
           agEb: 'आधिकारिक एजेंट · Verified agents', agH: 'कंपनी से प्रमाणित एजेंट', agSub: 'टिकट सिर्फ़ इन्हीं से लें। शक हो तो ऑफ़िस को फ़ोन करें।', agLoad: 'लोड हो रहा है…', agMore: 'सभी एजेंट दिखाएँ', agNone: 'एजेंट सूची जल्द। अभी ऑफ़िस को फ़ोन करें।',
-          trkGo: 'बस देखें', trkNote: 'टिकट का PNR डालें - बस कहाँ है, अगला स्टॉप और पहुँचने का समय दिखेगा।',
+          trkGo: 'बस देखें', trkNote: 'टिकट का PNR और बुकिंग वाला मोबाइल डालें - टिकट डाउनलोड, बस कहाँ है और परिवार को लोकेशन।',
+          agVid: 'एजेंट के ID कार्ड का QR स्कैन करें या नंबर जाँचें · Check an agent\'s ID card', partner: 'पार्टनर · Partner', other: 'अन्य जगह',
+          stEb: 'बस स्टाफ · Bus crew', stH: 'ड्राइवर, सह-ड्राइवर और स्टाफ', stMore: 'सभी देखें · Show all', waEasy: 'WhatsApp से आसान बुकिंग · Easy WhatsApp booking',
+          gdEb: 'यात्रा गाइड · Travel guide', gdH: 'बॉर्डर पार और आगे की यात्रा', gdDocs: 'बॉर्डर पार करने के कागज़ · Border documents', gdOnw: 'आगे की बसें · Onward buses',
+          lgEb: 'सामान और बस की सुविधाएँ · Luggage & facilities', lgH: 'कितना सामान ले जा सकते हैं?', lgRule: 'हर यात्री के लिए मुफ़्त: 1 बैग {F} किलो तक + 1 हैंड बैग {C} किलो तक। पैसे, गहने और कागज़ अपने पास रखें।',
+          trkDl: 'टिकट डाउनलोड · Download ticket', trkBus: 'बस कहाँ है · Track bus', trkShare: 'परिवार को लोकेशन भेजें · Share live location', trkBusy: 'खोज रहे हैं…', trkOk: 'टिकट मिल गया',
+          trkNotFound: 'यह PNR नहीं मिला। टिकट पर छपा नंबर जाँचें।', trkPhoneBad: 'PNR और बुकिंग वाला मोबाइल नंबर मेल नहीं खाता।', trkPhoneShort: 'पूरा 10 अंकों का मोबाइल नंबर लिखें।',
+          trkMany: 'बहुत बार कोशिश हुई - थोड़ी देर बाद फिर करें या ऑफ़िस को फ़ोन करें।', trkErr: 'अभी जाँच नहीं हो पाई - इंटरनेट देखकर फिर कोशिश करें।',
+          trkPending: 'टिकट अभी पक्का नहीं हुआ - पक्का होने पर डाउनलोड और ट्रैक खुलेगा।', trkCancel: 'यह टिकट रद्द हो चुका है।', shareTx: 'मेरी S Hari Global बस यहाँ लाइव देखें:',
           call: 'कॉल', map: 'नक्शा', wa: 'WhatsApp', head: 'मुख्य ऑफ़िस', soon: 'जल्द', ok: 'प्रमाणित',
           fGo: 'गुजरात → नेपाल', fBack: 'नेपाल → गुजरात', fPriv: 'प्राइवेट केबिन', office: 'ऑफ़िस',
           geoAsk: 'टिकट बुक करने की जगह और पास का बोर्डिंग पॉइंट दिखाने के लिए लोकेशन की अनुमति दें।',
           payWait: 'भुगतान जाँच हो रहा है…', payWaitSub: 'पैसा आते ही टिकट अपने-आप CONFIRMED होगा।', payOk: 'भुगतान पक्का हुआ!', payOkSub: 'टिकट CONFIRMED - टिकट देखें।', open: 'टिकट देखें' },
     en: { offEb: 'Offices', offH: 'Our offices, contacts and fares', offSub: 'Offices in India and Nepal - call or open the map in one tap.', offAll: 'All offices and parking maps →',
           agEb: 'Verified agents', agH: 'Agents verified by the company', agSub: 'Buy tickets only from these people. In doubt, call the office.', agLoad: 'Loading…', agMore: 'Show all agents', agNone: 'Agent list coming soon. Call the office for now.',
-          trkGo: 'Show my bus', trkNote: 'Type the ticket PNR - see where the bus is, the next stop and the arrival time.',
+          trkGo: 'Show my bus', trkNote: 'Type the ticket PNR and the booking mobile - download the ticket, see the bus, share the live location.',
+          agVid: "Scan the QR on an agent's ID card or check the number", partner: 'Partner', other: 'Other places',
+          stEb: 'Bus crew', stH: 'Drivers, co-drivers and staff', stMore: 'Show all', waEasy: 'Easy WhatsApp booking',
+          gdEb: 'Travel guide', gdH: 'Crossing the border and travelling on', gdDocs: 'Documents for the border', gdOnw: 'Onward buses',
+          lgEb: 'Luggage & facilities', lgH: 'How much luggage can I bring?', lgRule: 'Free per passenger: 1 bag up to {F} kg + 1 cabin bag up to {C} kg. Keep money, jewellery and documents with you.',
+          trkDl: 'Download ticket', trkBus: 'Track bus', trkShare: 'Share live location', trkBusy: 'Checking…', trkOk: 'Ticket found',
+          trkNotFound: 'This PNR was not found. Check the number printed on the ticket.', trkPhoneBad: 'The PNR and the booking mobile do not match.', trkPhoneShort: 'Type the full 10-digit mobile number.',
+          trkMany: 'Too many tries - try again in a while or call the office.', trkErr: 'Could not check right now - check the internet and try again.',
+          trkPending: 'The ticket is not confirmed yet - download and tracking open once it is.', trkCancel: 'This ticket has been cancelled.', shareTx: 'Follow my S Hari Global bus live here:',
           call: 'Call', map: 'Map', wa: 'WhatsApp', head: 'Head office', soon: 'Soon', ok: 'Verified',
           fGo: 'Gujarat → Nepal', fBack: 'Nepal → Gujarat', fPriv: 'Private cabin', office: 'Office',
           geoAsk: 'Allow location to record where the ticket was booked and show the nearest boarding point.',
@@ -4210,36 +4304,165 @@ s.addEventListener('click',function(e){e.preventDefault();
   }
 
   /* ---- 4. verified agents (names + area + phone only) ---- */
+  /* 25 Nov 2026 (wx1-c2, owner: "ek jana agent ko matra naam aauchha"): every listed agent AND
+     partner (agent_kind 'org' comes back as kind 'partner' - it used to be dropped), grouped by
+     town, a small partner badge + its logo, WhatsApp when the API gives a.wa, call only with the
+     full (consented) phone. The API shape is unchanged. */
   var agents = [], agAll = false;
+  function dialOf(p) {
+    var full = p && String(p.phone || '').indexOf('•') < 0, dial = full ? String(p.tel || p.phone || '').replace(/[^\d+]/g, '') : '';
+    if (dial && dial.charAt(0) !== '+') dial = (dial.length === 10 ? (/^9[678]/.test(dial) ? '+977' : '+91') : '+') + dial;
+    return /^\+\d{8,15}$/.test(dial) ? dial : '';
+  }
+  function waOf(p) { var w = String((p && p.wa) || '').replace(/\D/g, ''); return /^[1-9]\d{9,14}$/.test(w) ? w : ''; }
+  function avatar(src, nm) {
+    var ini = String(nm || '').trim().charAt(0).toUpperCase() || 'S';
+    return src && /^\/api\//.test(String(src)) ? '<img src="' + esc(src) + '" alt="" loading="lazy" width="40" height="40">' : esc(ini);
+  }
+  function personRow(nm, pic, badge, smallHtml, dial, wa) {
+    return '<li><span class="av" aria-hidden="true">' + pic + '</span><span class="tx"><b>' + badge + '</b>'
+      + '<small>' + smallHtml + '</small></span>'
+      + (wa ? '<a class="wa" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener" aria-label="' + esc(t('wa') + ' ' + nm) + '">💬</a>' : '')
+      + (dial ? '<a class="call" href="tel:' + esc(dial) + '" aria-label="' + esc(t('call') + ' ' + nm) + '">📞</a>' : '') + '</li>';
+  }
   function drawAgents() {
     var ul = D.getElementById('cpAgList'), mp = D.getElementById('cpAgMoreP'); if (!ul) return;
     if (!agents.length) { ul.innerHTML = '<li><span class="tx"><small>' + esc(t('agNone')) + '</small></span></li>'; if (mp) mp.hidden = true; return; }
-    var list = agAll ? agents : agents.slice(0, 8);
-    ul.innerHTML = list.map(function (a) {
-      var nm = String(a.name || ''), ini = nm.trim().charAt(0).toUpperCase() || 'S';
-      var full = a.phone && String(a.phone).indexOf('•') < 0, dial = full ? String(a.tel || a.phone).replace(/[^\d+]/g, '') : '';
-      if (dial && dial.charAt(0) !== '+') dial = (dial.length === 10 ? (/^9[78]/.test(dial) ? '+977' : '+91') : '+') + dial;
-      var ph = a.photo && /^\/api\//.test(String(a.photo)) ? '<img src="' + esc(a.photo) + '" alt="" loading="lazy" width="40" height="40">' : esc(ini);
-      return '<li><span class="av" aria-hidden="true">' + ph + '</span><span class="tx"><b>' + esc(nm) + (a.verified ? ' <span class="ok" title="' + esc(t('ok')) + '">✔</span>' : '') + '</b>'
-        + '<small>' + esc([a.area, a.phone].filter(Boolean).join(' · ')) + '</small></span>'
-        + (dial ? '<a class="call" href="tel:' + esc(dial) + '" aria-label="' + esc(t('call') + ' ' + nm) + '">📞</a>' : '') + '</li>';
-    }).join('');
+    var list = agAll ? agents : agents.slice(0, 8), last = null, out = [];
+    list.forEach(function (a) {
+      var area = String(a.area || '').trim(), nm = String(a.name || ''), part = a.kind === 'partner';
+      if (area.toLowerCase() !== last) { last = area.toLowerCase(); out.push('<li class="grp">📍 ' + esc(area || t('other')) + '</li>'); }
+      var pic = avatar(part && a.logo ? a.logo : a.photo, nm);
+      var badge = esc(nm) + (a.verified ? ' <span class="ok" title="' + esc(t('ok')) + '">✔</span>' : '');
+      out.push(personRow(nm, pic, badge, (part ? '<span class="pt">' + esc(t('partner')) + '</span> ' : '') + esc([a.addr, a.phone].filter(Boolean).join(' · ')), dialOf(a), waOf(a)));
+    });
+    ul.innerHTML = out.join('');
     if (mp) mp.hidden = agAll || agents.length <= 8;
   }
   function loadAgents() {
     fetch('/api/agent-directory.php', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (r) { return r.json(); })
-      .then(function (j) { agents = (j && j.ok && Array.isArray(j.items)) ? j.items.filter(function (a) { return a && a.kind !== 'partner' && a.name; }) : []; drawAgents(); })
+      .then(function (j) {
+        agents = (j && j.ok && Array.isArray(j.items)) ? j.items.filter(function (a) { return a && a.name; }) : [];
+        // by town (no town last), then verified first, then name - a stable, readable list
+        agents.sort(function (a, b) {
+          var x = String(a.area || '').trim().toLowerCase(), y = String(b.area || '').trim().toLowerCase();
+          if (!x !== !y) return x ? -1 : 1;
+          return x < y ? -1 : x > y ? 1 : (b.verified ? 1 : 0) - (a.verified ? 1 : 0) || String(a.name).localeCompare(String(b.name));
+        });
+        drawAgents();
+      })
       .catch(function () { agents = []; drawAgents(); });
   }
 
-  /* ---- 3. live bus: PNR -> My Tickets opens it with its tracker ---- */
+  /* ---- wx1-c2: switches from SHG_BOOT.settings (rows: database/upgrade-2026-11-25-wx1-c2.sql, public) - missing = ON ---- */
+  function sOn(k) { try { var s = (window.SHG_BOOT && SHG_BOOT.settings) || {}, v = s[k]; return !(v === false || v === 0 || v === '0'); } catch (e) { return true; } }
+  function sVal(k) { try { return ((window.SHG_BOOT && SHG_BOOT.settings) || {})[k]; } catch (e) { return undefined; } }
+  function ne(n) { return lang() === 'ne' ? String(n).replace(/\d/g, function (d) { return '०१२३४५६७८९'.charAt(+d); }) : String(n); }
+
+  /* ---- wx1-c2: the bus crew - only /api/staff-list.php (the office's consent-filtered website list) ---- */
+  var crew = [], crewAll = false;
+  function crewRank(r) { r = String(r || '').toLowerCase().replace(/[\s_-]+/g, ''); return r === 'driver' ? 0 : (r === 'codriver' || r === 'helper') ? 1 : r === 'conductor' ? 2 : 3; }
+  function drawStaff() {
+    var sec = D.getElementById('cpStaff'), ul = D.getElementById('cpStList'), mp = D.getElementById('cpStMoreP'); if (!sec || !ul) return;
+    if (!crew.length) { sec.hidden = true; return; }
+    var L = lang(), list = crewAll ? crew : crew.slice(0, 8);
+    ul.innerHTML = list.map(function (p) {
+      var nm = String(p.name || ''), role = L === 'en' ? (p.roleEn || p.roleNe || '') : [p.roleNe, p.roleEn].filter(Boolean).join(' · ');
+      return personRow(nm, avatar(p.photo, nm), esc(nm), esc([role, p.loc || p.district, p.phone].filter(Boolean).join(' · ')), dialOf(p), waOf(p));
+    }).join('');
+    if (mp) mp.hidden = crewAll || crew.length <= 8;
+    sec.hidden = false;
+  }
+  function loadStaff() {
+    if (!sOn('home_staff_list_on')) return;
+    fetch('/api/staff-list.php?for=home', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        crew = (j && j.ok && Array.isArray(j.items)) ? j.items.filter(function (p) { return p && p.name; }) : [];
+        crew = crew.map(function (p, i) { return { p: p, i: i }; })
+          .sort(function (a, b) { return crewRank(a.p.role) - crewRank(b.p.role) || a.i - b.i; })
+          .map(function (x) { return x.p; });
+        drawStaff();
+      })
+      .catch(function () { crew = []; drawStaff(); });
+  }
+
+  /* ---- wx1-c2: travel guide, luggage + facilities, easy WhatsApp booking (each one switch) ---- */
+  function extras() {
+    var g = D.getElementById('cpGuide'), w = D.getElementById('cpWaEasy'), l = D.getElementById('cpLuggage');
+    if (g) g.hidden = !sOn('home_travel_guide_on');
+    if (w) w.hidden = !sOn('home_wa_easy_on');
+    if (!l) return;
+    if (!sOn('home_luggage_card_on')) { l.hidden = true; return; }
+    var f = parseInt(sVal('luggage_free_kg'), 10), c = parseInt(sVal('cabin_bag_kg'), 10);
+    f = f >= 1 && f <= 100 ? f : 20; c = c >= 0 && c <= 50 ? c : 7;
+    var rule = D.getElementById('cpLugRule'); if (rule) rule.textContent = '🧳 ' + t('lgRule').replace('{F}', ne(f)).replace('{C}', ne(c));
+    var fac = sVal('bus_facilities_json');
+    if (typeof fac === 'string') { try { fac = JSON.parse(fac); } catch (e) { fac = null; } }
+    if (!Array.isArray(fac)) fac = ['AC स्लिपर · AC sleeper', 'मोबाइल चार्जिङ · Mobile charging', 'पिउने पानी · Drinking water', 'CCTV सुरक्षा · CCTV security'];
+    var ul = D.getElementById('cpFacList');
+    if (ul) { ul.innerHTML = fac.slice(0, 12).filter(function (x) { return typeof x === 'string' && x.trim(); }).map(function (x) { return '<li>✔ ' + esc(x.trim().slice(0, 60)) + '</li>'; }).join(''); ul.hidden = !ul.innerHTML; }
+  }
+
+  /* ---- 3. live bus: PNR -> My Tickets opens it with its tracker ----
+     25 Nov 2026 (wx1-c2): PNR + the booking mobile -> /api/track.php (as 07-checkout.js
+     recoverBooking does) -> download ticket, track bus, share live location. PNR alone
+     never downloads: without a mobile it opens My Tickets as before (it asks there).
+     Switch cp_track_download_on off = the old PNR-only box. */
+  function trkSay(html) { var o = D.getElementById('cpTrkOut'); if (!o) return; o.innerHTML = html; o.hidden = !html; }
+  function trkFail(k) { trkSay('<p class="bad">⚠️ ' + esc(t(k)) + '</p>'); }
+  function trkShow(d, phone) {
+    var st = String(d.status || '');
+    if (st === 'cancelled') { trkFail('trkCancel'); return; }
+    if (st !== 'confirmed') { trkSay('<p>⏳ ' + esc(d.pnr || '') + ' · ' + esc(t('trkPending')) + '</p>'); return; }
+    var dl = typeof d.ticketUrl === 'string' && /\/download-ticket\.php\?/.test(d.ticketUrl) ? d.ticketUrl : '';
+    var tr = typeof d.trackUrl === 'string' && /\/track\.php\?/.test(d.trackUrl) ? d.trackUrl : '';
+    trkSay('<p>✅ ' + esc(t('trkOk')) + ' · ' + esc(d.pnr || '') + '</p>'
+      + (dl ? '<a class="cp-btn" href="' + esc(dl) + '" download>⬇️ ' + esc(t('trkDl')) + '</a>' : '')
+      + (tr ? '<a class="cp-btn l" href="' + esc(tr) + '" target="_blank" rel="noopener">🚌 ' + esc(t('trkBus')) + '</a>'
+            : '<a class="cp-btn l" href="#/my?pnr=' + encodeURIComponent(d.pnr || '') + '">🚌 ' + esc(t('trkBus')) + '</a>')
+      + (tr ? '<button type="button" class="cp-btn g" data-cp-share="' + esc(tr) + '">📍 ' + esc(t('trkShare')) + '</button>' : ''));
+    /* keep it in My Tickets too, the way recoverBooking() does (07-checkout.js) */
+    try {
+      // DB is a script-level const (02-config.js), not window.DB
+      if (typeof bookingFromServer === 'function' && typeof persist === 'function' && typeof DB !== 'undefined' && DB && Array.isArray(DB.bookings)) {
+        var b = bookingFromServer(d, phone), at = DB.bookings.findIndex(function (x) { return x && x.id === b.id; });
+        if (at >= 0) DB.bookings[at] = Object.assign({}, DB.bookings[at], b); else DB.bookings.unshift(b);
+        persist('bookings');
+      }
+    } catch (e) {}
+  }
   function wireTrack() {
     var f = D.getElementById('cpTrackForm'); if (!f) return;
+    var ph = D.getElementById('cpTrackPhone'), dlOn = sOn('cp_track_download_on');
+    if (ph && !dlOn) ph.hidden = true;
     f.addEventListener('submit', function (e) {
       e.preventDefault();
       var v = String((D.getElementById('cpTrackPnr') || {}).value || '').trim().toUpperCase().replace(/\s+/g, '');
-      if (v) location.hash = '#/my?pnr=' + encodeURIComponent(v);
+      var phone = String((ph && ph.value) || '').replace(/[०-९]/g, function (d) { return String(d.charCodeAt(0) - 0x0966); }).replace(/\D/g, '');
+      if (!v) return;
+      if (!dlOn || !phone) { trkSay(''); location.hash = '#/my?pnr=' + encodeURIComponent(v); return; }
+      if (phone.length < 10) { trkFail('trkPhoneShort'); return; }
+      var btn = f.querySelector('button[type="submit"]'); if (btn) btn.disabled = true;
+      trkSay('<p>' + esc(t('trkBusy')) + '</p>');
+      var call = (typeof shgApi !== 'undefined' && shgApi && typeof shgApi.post === 'function')
+        ? shgApi.post('/track.php', { pnr: v, phone: phone })
+        : fetch('/api/track.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (window.SHG_BOOT && SHG_BOOT.csrf) || '' }, body: JSON.stringify({ pnr: v, phone: phone }) })
+            .then(function (r) { return r.json().then(function (j) { if (!j || j.ok !== true) { var er = new Error('x'); er.status = r.status; throw er; } return j.data; }); });
+      call.then(function (d) {
+        if (!d || d.partial) { trkFail('trkPhoneBad'); return; }
+        trkShow(d, phone);
+      }).catch(function (err) {
+        var s = err && err.status;
+        trkFail((s === 404 || s === 422) ? 'trkNotFound' : s === 429 ? 'trkMany' : s === 403 ? 'trkPhoneBad' : 'trkErr');
+      }).then(function () { if (btn) btn.disabled = false; });
+    });
+    D.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-cp-share]') : null; if (!b) return;
+      var u = b.getAttribute('data-cp-share'), tx = t('shareTx');
+      if (navigator.share) { navigator.share({ title: 'S Hari Global', text: tx, url: u }).catch(function () {}); return; }
+      window.open('https://wa.me/?text=' + encodeURIComponent(tx + ' ' + u), '_blank', 'noopener');
     });
   }
 
@@ -4388,12 +4611,13 @@ s.addEventListener('click',function(e){e.preventDefault();
     var F = window.FACTS || (window.SHG_BOOT && SHG_BOOT.facts) || null;
     words(); wireTrack();
     if (!CP) return;
-    fares(F); offices(F); loadAgents();
+    fares(F); offices(F); loadAgents(); loadStaff(); extras();
     var more = D.getElementById('cpAgMore'); if (more) more.addEventListener('click', function () { agAll = true; drawAgents(); });
+    var smore = D.getElementById('cpStMore'); if (smore) smore.addEventListener('click', function () { crewAll = true; drawStaff(); });
   }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
   /* the language buttons re-draw the words */
-  D.addEventListener('click', function (e) { if (e.target && e.target.closest && e.target.closest('.lang-btn,[data-lang]')) setTimeout(function () { words(); if (CP) { var F = window.FACTS || (window.SHG_BOOT && SHG_BOOT.facts); fares(F); offices(F); drawAgents(); } }, 150); });
+  D.addEventListener('click', function (e) { if (e.target && e.target.closest && e.target.closest('.lang-btn,[data-lang]')) setTimeout(function () { words(); if (CP) { var F = window.FACTS || (window.SHG_BOOT && SHG_BOOT.facts); fares(F); offices(F); drawAgents(); drawStaff(); extras(); } }, 150); });
 })();
 </script>
 </body>

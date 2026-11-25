@@ -31,6 +31,14 @@ try {
     }
     Security::requireRateLimit('staff_list', Security::clientIp(), 60, 60);
 
+    /* 25 Nov 2026 (wx1-c2): the customer home's "Bus crew" card asks with ?for=home;
+       switch home_staff_list_on (default ON) off and that card gets an empty list.
+       The other callers (Our team, /agreements) are not touched by the switch. */
+    if ((string) ($_GET['for'] ?? '') === 'home' && !Settings::getBool('home_staff_list_on', true)) {
+        Response::$publicCacheSeconds = 60;
+        Response::json(['ok' => true, 'count' => 0, 'roles' => [], 'items' => []]);
+    }
+
     $items = StaffApps::directory();
     try {
         $items = ApWeb::merge(ApWeb::staffDirectory(), $items);

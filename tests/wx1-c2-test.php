@@ -1,0 +1,230 @@
+<?php
+/**
+ * =====================================================================
+ *  wx1-c2-test.php — 25 Nov 2026 (wx1-c2): people + passenger extras.
+ *
+ *    - TravelGuide: onward rows need a town AND a real detail (no made-up
+ *      data is ever shown), phones are cleaned, luggage 20 + 7 kg by default
+ *      and range-checked, the owner's 4 facilities by default
+ *    - the route pages' a6 answer (also the WhatsApp bot's luggage answer)
+ *      reads luggage_free_kg / cabin_bag_kg (Devanagari digits in Nepali)
+ *    - /travel-info: the onward card, the "ask the Nepalgunj office" line when
+ *      empty, the rows when filled, gone with travel_onward_on off; the
+ *      checklist luggage line follows the settings
+ *    - /api/staff-list.php?for=home is empty with home_staff_list_on off
+ *    - admin/owner-setup.php act=onward / act=luggage save, CSRF refused
+ *    - app.template.html + 05-router.js: partners kept, crew card, guide,
+ *      luggage, easy WhatsApp, PNR + phone, women legend always shown,
+ *      date / pickup folded and optional
+ *    - the migration inserts its rows (inside a rolled-back transaction)
+ *
+ *  shari_test only; every settings row it touches is put back exactly.
+ *
+ *    php -c .claude/php-dev.ini tests/wx1-c2-test.php
+ * =====================================================================
+ */
+declare(strict_types=1);
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
+
+if (($argv[1] ?? '') === '--child') {
+    $cfg = json_decode((string) base64_decode((string) ($argv[2] ?? '')), true) ?: [];
+    $_SERVER['HTTP_HOST'] = 'localhost';
+    $_GET = (array) ($cfg['get'] ?? []);
+    $page = (string) ($cfg['page'] ?? '');
+    $_SERVER['SCRIPT_NAME'] = $_SERVER['REQUEST_URI'] = '/' . $page;
+    $post = (array) ($cfg['post'] ?? []);
+    $_SERVER['REQUEST_METHOD'] = $post === [] ? 'GET' : 'POST';
+    if (str_starts_with($page, 'api/')) {   // api/_init.php boots by itself
+        require dirname(__DIR__) . '/' . $page;
+        exit(0);
+    }
+    define('SHG_APP', true);
+    require_once dirname(__DIR__) . '/includes/bootstrap.php';
+    if (!empty($cfg['admin'])) {
+        $a = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => (int) $cfg['admin']]);
+        if ($a === null) { fwrite(STDERR, "no admin\n"); exit(2); }
+        $_SESSION[ADMIN_SESSION_KEY] = [
+            'id' => (int) $a['id'], 'username' => (string) $a['username'], 'full_name' => (string) ($a['full_name'] ?? ''),
+            'role' => (string) $a['role'], 'permissions' => jsonColumn($a['permissions'] ?? null), 'last_seen' => time(),
+        ];
+    }
+    if ($post !== []) {
+        $_POST = $post;
+        if (empty($cfg['no_csrf'])) { $_POST[CSRF_TOKEN_NAME] = Security::csrfToken(); }
+    }
+    require dirname(__DIR__) . '/' . $page;
+    exit(0);
+}
+
+define('SHG_APP', true);
+require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/travelguide.php';
+require_once INCLUDE_PATH . '/routepages.php';
+$PASS = 0; $FAIL = 0;
+function check(string $l, bool $ok, string $extra = ''): void {
+    global $PASS, $FAIL;
+    if ($ok) { $PASS++; echo "  PASS  $l\n"; } else { $FAIL++; echo "  FAIL  $l" . ($extra !== '' ? " — $extra" : '') . "\n"; }
+}
+function page(array $cfg): string {
+    $ini = php_ini_loaded_file();
+    $cmd = escapeshellarg(PHP_BINARY) . ($ini ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__)
+         . ' --child ' . escapeshellarg(base64_encode((string) json_encode($cfg)));
+    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($p)) { return ''; }
+    $out = (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]); proc_close($p);
+    return $out;
+}
+
+echo "\n=== wx1-c2: people + passenger extras ===\n\n";
+if (!defined('DB_NAME') || DB_NAME !== 'shari_test') { echo "  SKIP  not shari_test\n0 passed, 0 failed\n"; exit(0); }
+
+$TOUCH = ['onward_buses_json', 'travel_onward_on', 'luggage_free_kg', 'cabin_bag_kg', 'bus_facilities_json', 'home_staff_list_on', 'nepal_phone'];
+$saved = [];
+foreach ($TOUCH as $k) { $saved[$k] = Database::fetch('SELECT * FROM settings WHERE skey = :k', ['k' => $k]); }
+$restore = static function () use ($saved): void {
+    foreach ($saved as $k => $row) {
+        Database::query('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+        if ($row !== null) {
+            unset($row['id']);
+            $cols = array_keys($row);
+            Database::query('INSERT INTO settings (' . implode(',', $cols) . ') VALUES (:' . implode(',:', $cols) . ')', $row);
+        }
+    }
+    Settings::flush();
+};
+$auditFrom = (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM audit_logs', [], 0);
+
+try {
+    foreach (['onward_buses_json', 'luggage_free_kg', 'cabin_bag_kg', 'bus_facilities_json', 'travel_onward_on', 'home_staff_list_on'] as $k) {
+        Database::query('DELETE FROM settings WHERE skey = :k', ['k' => $k]);
+    }
+    Settings::flush();
+
+    /* ---- TravelGuide ---- */
+    check('onward empty by default', TravelGuide::onward() === []);
+    $c = TravelGuide::clean([
+        ['to' => 'Surkhet', 'to_ne' => 'सुर्खेत'],                                   // name only -> dropped
+        ['to' => 'Dang', 'times' => '07:00', 'phone' => '+977 98(1)-x'],
+        ['to' => '', 'times' => '08:00'],                                              // no town -> dropped
+        'junk',
+    ]);
+    check('clean keeps only a town with a detail', count($c) === 1 && $c[0]['to'] === 'Dang', json_encode($c));
+    check('clean strips a phone to digits + - /', ($c[0]['phone'] ?? '') === '+977 981-', (string) ($c[0]['phone'] ?? ''));
+    check('clean caps at 20 rows', count(TravelGuide::clean(array_fill(0, 30, ['to' => 'X', 'note' => 'n']))) === 20);
+    check('dial: Nepali mobile gets +977', TravelGuide::dial('9812345678') === '+9779812345678');
+    check('dial: first of several numbers', TravelGuide::dial('+977 81-520000 / 9800000000') === '+97781520000');
+    check('luggage 20 + 7 by default', TravelGuide::luggage() === ['free' => 20, 'cabin' => 7]);
+    check('facilities: the owner\'s 4 by default', TravelGuide::facilities() === TravelGuide::FACILITIES && count(TravelGuide::FACILITIES) === 4);
+    check('six onward towns, names only', count(TravelGuide::TOWNS) === 6 && TravelGuide::TOWNS[0][0] === 'Surkhet' && TravelGuide::TOWNS[5][0] === 'Dhangadhi');
+    Settings::set('luggage_free_kg', '500', 'int', 'booking'); Settings::flush();
+    check('luggage out of range falls back to 20', TravelGuide::luggage()['free'] === 20);
+
+    /* ---- the route pages' a6 (the WhatsApp bot's luggage answer) ---- */
+    Database::query("DELETE FROM settings WHERE skey = 'luggage_free_kg'"); Settings::flush();
+    $en = RoutePages::faqAnswer('a6', 'en');
+    check('a6 en says 20 kg + 7 kg', str_contains($en, '20 kg') && str_contains($en, '7 kg') && !str_contains($en, '{'), $en);
+    $neA = RoutePages::faqAnswer('a6', 'ne');
+    check('a6 ne in Devanagari digits', str_contains($neA, '२० किलो') && str_contains($neA, '७ किलो'), $neA);
+    Settings::set('luggage_free_kg', '25', 'int', 'booking'); Settings::set('cabin_bag_kg', '5', 'int', 'booking'); Settings::flush();
+    $hi = RoutePages::faqAnswer('a6', 'hi');
+    check('a6 follows the settings', str_contains($hi, '25 किलो') && str_contains($hi, '5 किलो'), $hi);
+
+    /* ---- /travel-info ---- */
+    $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'ne']]);
+    check('travel-info renders', str_contains($html, '</html>'), substr($html, 0, 200));
+    check('travel-info: checklist luggage from settings', str_contains($html, '25 kg') && str_contains($html, '२५ किलो') && !str_contains($html, '{LUG'));
+    check('travel-info: onward card + ask-the-office line when empty', str_contains($html, 'id="onward"') && str_contains($html, 'नेपालगञ्ज कार्यालयलाई सोध्नुहोस्'));
+    Settings::set('nepal_phone', '+977 9800000001', 'string', 'company'); Settings::flush();
+    $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
+    check('travel-info: ask line carries the saved Nepal office number', str_contains($html, 'tel:+9779800000001'));
+    Settings::set('onward_buses_json', [['to' => 'Pokhara', 'to_ne' => 'पोखरा', 'times' => 'TEST 05:30', 'operator' => 'TEST <b>Op</b>', 'phone' => '9800000002', 'note' => '']], 'json', 'company');
+    Settings::flush();
+    $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
+    check('travel-info: a filled row is shown, escaped', str_contains($html, 'TEST 05:30') && str_contains($html, 'TEST &lt;b&gt;Op&lt;/b&gt;') && str_contains($html, 'tel:+9779800000002'));
+    check('travel-info: no ask line once a row exists', !str_contains($html, 'ask our Nepalgunj office'));
+    Settings::set('travel_onward_on', '0', 'bool', 'company'); Settings::flush();
+    $html = page(['page' => 'travel-info.php', 'get' => ['lang' => 'en']]);
+    check('travel-info: travel_onward_on off hides the card', !str_contains($html, 'id="onward"') && str_contains($html, '</html>'));
+
+    /* ---- /api/staff-list.php?for=home ---- */
+    Settings::set('home_staff_list_on', '0', 'bool', 'general'); Settings::flush();
+    Database::query("DELETE FROM rate_limits WHERE bucket = 'staff_list'");
+    $j = json_decode(trim(page(['page' => 'api/staff-list.php', 'get' => ['for' => 'home']])), true);
+    check('staff-list for=home empty when the switch is off', is_array($j) && ($j['ok'] ?? false) === true && ($j['count'] ?? -1) === 0 && ($j['items'] ?? null) === []);
+    $j2 = json_decode(trim(page(['page' => 'api/staff-list.php'])), true);
+    check('staff-list without for=home is not touched by the switch', is_array($j2) && ($j2['ok'] ?? false) === true && array_key_exists('items', $j2));
+    Settings::set('home_staff_list_on', '1', 'bool', 'general'); Settings::flush();
+    $j3 = json_decode(trim(page(['page' => 'api/staff-list.php', 'get' => ['for' => 'home']])), true);
+    check('staff-list for=home answers the normal list when on', is_array($j3) && ($j3['ok'] ?? false) === true && ($j3['count'] ?? -1) === ($j2['count'] ?? -2));
+    $first = is_array($j3['items'][0] ?? null) ? array_keys($j3['items'][0]) : ['name', 'role', 'roleEn', 'roleNe', 'district', 'loc', 'photo', 'phone', 'tel', 'wa'];
+    check('staff-list item keys unchanged', $first === ['name', 'role', 'roleEn', 'roleNe', 'district', 'loc', 'photo', 'phone', 'tel', 'wa'], implode(',', $first));
+    Database::query("DELETE FROM rate_limits WHERE bucket = 'staff_list'");
+
+    /* ---- admin/owner-setup.php ---- */
+    $super = (int) Database::scalar("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = 1 AND must_change_pw = 0 ORDER BY id LIMIT 1", [], 0);
+    if ($super > 0) {
+        Settings::set('onward_buses_json', [], 'json', 'company'); Settings::flush();
+        $out = page(['page' => 'admin/owner-setup.php', 'admin' => $super]);
+        check('owner-setup shows the onward form with the 6 towns', str_contains($out, 'id="onward"') && str_contains($out, 'value="Surkhet"') && str_contains($out, 'value="Dhangadhi"') && str_contains($out, 'name="act" value="onward"'));
+        check('owner-setup shows the luggage form', str_contains($out, 'name="act" value="luggage"') && str_contains($out, 'name="luggage_free_kg"'));
+        page(['page' => 'admin/owner-setup.php', 'admin' => $super, 'post' => ['act' => 'onward', 'onw' => [
+            ['to' => 'Surkhet', 'to_ne' => 'सुर्खेत', 'times' => 'TEST 06:00', 'operator' => '', 'phone' => '', 'note' => ''],
+            ['to' => 'Dang', 'to_ne' => 'दाङ', 'times' => '', 'operator' => '', 'phone' => '', 'note' => ''],
+        ]]]);
+        Settings::flush();
+        $rows = TravelGuide::onward();
+        check('act=onward stores only the filled town', count($rows) === 1 && $rows[0]['to'] === 'Surkhet' && $rows[0]['times'] === 'TEST 06:00', json_encode($rows, JSON_UNESCAPED_UNICODE));
+        page(['page' => 'admin/owner-setup.php', 'admin' => $super, 'no_csrf' => true, 'post' => ['act' => 'onward', 'onw' => [['to' => 'Dang', 'times' => 'X']]]]);
+        Settings::flush();
+        check('act=onward without CSRF writes nothing', (TravelGuide::onward()[0]['to'] ?? '') === 'Surkhet' && count(TravelGuide::onward()) === 1);
+        page(['page' => 'admin/owner-setup.php', 'admin' => $super, 'post' => ['act' => 'luggage', 'luggage_free_kg' => '30', 'cabin_bag_kg' => '8', 'bus_facilities' => "Wi-Fi TEST\n\n  AC TEST  "]]);
+        Settings::flush();
+        check('act=luggage saves kg + facilities', TravelGuide::luggage() === ['free' => 30, 'cabin' => 8] && TravelGuide::facilities() === ['Wi-Fi TEST', 'AC TEST'], json_encode(TravelGuide::facilities()));
+        page(['page' => 'admin/owner-setup.php', 'admin' => $super, 'post' => ['act' => 'luggage', 'luggage_free_kg' => '0', 'cabin_bag_kg' => '8', 'bus_facilities' => '']]);
+        Settings::flush();
+        check('act=luggage refuses 0 kg', TravelGuide::luggage()['free'] === 30);
+        check('the saves are audited', (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE id > :i AND action IN ('settings.onward_buses','settings.luggage')", ['i' => $auditFrom], 0) >= 2);
+    } else {
+        echo "  SKIP  owner-setup (no super-admin)\n";
+    }
+
+    /* ---- the migration ---- */
+    $sql = (string) file_get_contents(dirname(__DIR__) . '/database/upgrade-2026-11-25-wx1-c2.sql');
+    check('migration is INSERT IGNORE only', str_contains($sql, 'INSERT IGNORE INTO settings') && !preg_match('/\b(DELETE|UPDATE|DROP|ALTER)\b/i', preg_replace('/^--.*$/m', '', $sql) ?? ''));
+    check('migration starts onward_buses_json empty', str_contains($sql, "('onward_buses_json',    '[]'"));
+    $pdo = Database::pdo();
+    $pdo->beginTransaction();
+    try {
+        Database::query("DELETE FROM settings WHERE skey IN ('home_wa_easy_on','luggage_free_kg')");
+        $body = preg_replace('/^--.*$/m', '', $sql) ?? '';
+        for ($run = 0; $run < 2; $run++) {   // the second run must be a no-op, not an error
+            foreach (array_filter(array_map('trim', explode(';', $body))) as $stmt) { $pdo->exec($stmt); }
+        }
+        $r = Database::fetch("SELECT svalue, is_public FROM settings WHERE skey = 'home_wa_easy_on'");
+        $lk = Database::fetch("SELECT svalue, is_public FROM settings WHERE skey = 'luggage_free_kg'");
+        check('migration rows land public, re-run safe', $r !== null && (int) $r['is_public'] === 1 && $r['svalue'] === '1' && $lk !== null && $lk['svalue'] === '20');
+    } finally {
+        $pdo->rollBack();
+    }
+
+    /* ---- the customer page + the WhatsApp sheet ---- */
+    $tpl = (string) file_get_contents(dirname(__DIR__) . '/app.template.html');
+    $rt  = (string) file_get_contents(dirname(__DIR__) . '/assets/js/05-router.js');
+    check('template keeps CRLF + BOM', str_starts_with($tpl, "\xEF\xBB\xBF") && substr_count($tpl, "\n") === substr_count($tpl, "\r\n"));
+    check('agents: partners are no longer dropped', !str_contains($tpl, "a.kind !== 'partner'") && str_contains($tpl, "t('partner')"));
+    check('agents: ID check link', str_contains($tpl, 'href="/verify-id.php" data-cp="agVid"'));
+    check('crew card on the whitelist + hidden off cp1', str_contains($tpl, ':not(#cpStaff)') && str_contains($tpl, 'html:not(.cp1) #cpStaff') && str_contains($tpl, "/api/staff-list.php?for=home"));
+    check('crew card hidden until the list has people', (bool) preg_match('/<section[^>]+id="cpStaff"[^>]*\shidden>/', $tpl));
+    check('guide + luggage + easy WhatsApp on the home', str_contains($tpl, 'href="/travel-info?lang=ne#onward"') && str_contains($tpl, 'id="cpLugRule"') && (bool) preg_match('/id="cpWaEasy"[\s\S]{0,200}data-wa-open="booking"/', $tpl));
+    check('PNR box asks the mobile and calls track.php', str_contains($tpl, 'id="cpTrackPhone"') && str_contains($tpl, "shgApi.post('/track.php'") && str_contains($tpl, 'data-cp-share'));
+    check('women berth sign always shown (not in the fold)', str_contains($tpl, '<span><span class="lg fem"></span>') && !str_contains($tpl, '<span class="lg-x"><span class="lg fem">'));
+    check('date / pickup folded, not required', (bool) preg_match('/<details class="wa-req-journey" id="waReqJourney">/', $tpl) && !preg_match('/id="waReqDate" type="date" required/', $tpl) && !str_contains($tpl, '<select id="waReqPoint" required>'));
+    check('router: short booking behind wa_short_booking_on', str_contains($rt, 'wa_short_booking_on') && str_contains($rt, 'function journeyUsed()') && str_contains($rt, "body.date = journeyUsed() ? val('waReqDate') : ''"));
+} finally {
+    $restore();
+    Database::query("DELETE FROM audit_logs WHERE id > :i AND action IN ('settings.onward_buses','settings.luggage')", ['i' => $auditFrom]);
+}
+
+echo "\n$PASS passed, $FAIL failed\n";
+exit($FAIL === 0 ? 0 : 1);
