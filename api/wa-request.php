@@ -52,7 +52,9 @@ try {
 
     $lines = [];
     if ($type === 'booking') {
-        $dir   = (string) Response::field('direction', '') === 'back' ? 'Rupaidiha → Gujarat' : 'Gujarat → Rupaidiha';
+        // wx1-c2: a blank direction (short form, journey never opened) stays blank — never a guessed side
+        $dirRaw = (string) Response::field('direction', '');
+        $dir   = $dirRaw === 'back' ? 'Rupaidiha → Gujarat' : ($dirRaw === 'go' ? 'Gujarat → Rupaidiha' : '—');
         $date  = Security::clean((string) Response::field('date', ''), 10);
         $point = Security::clean((string) Response::field('point', ''), 80);
         $pax   = max(1, min(20, (int) Response::field('pax', 1)));
@@ -62,7 +64,7 @@ try {
         $lines[] = '📱 +' . $intl;
         $lines[] = '🚌 ' . $dir;
         $lines[] = '📅 ' . $dateTxt;
-        $lines[] = '📍 ' . ($dir === 'Gujarat → Rupaidiha' ? 'Boarding' : 'Drop') . ': ' . ($point !== '' ? $point : '—');
+        $lines[] = '📍 ' . ($dir === 'Gujarat → Rupaidiha' ? 'Boarding' : ($dir === '—' ? 'Boarding/Drop' : 'Drop')) . ': ' . ($point !== '' ? $point : '—');
         $lines[] = '👥 ' . $pax . ' passenger' . ($pax > 1 ? 's' : '');
     } else {
         $lines[] = '🆘 वेबसाइटबाट सहायता अनुरोध · Help request';

@@ -3788,7 +3788,7 @@ if (store.local && !store.remote) {
       var note = val('waReqNote');
       if (reqType === 'correction') note = 'Correct my ticket. PNR: ' + val('waReqPnr').toUpperCase() + '\n' + note;
       var body = { type: reqType === 'booking' ? 'booking' : 'help', name: val('waReqName'), phone: contactPhone(), note: note.slice(0, 300) };
-      if (reqType === 'booking') { body.direction = val('waReqDirection') === 'toIndia' ? 'back' : 'go'; body.date = journeyUsed() ? val('waReqDate') : ''; body.point = journeyUsed() ? val('waReqPoint') : ''; body.pax = val('waReqPax') || '1'; }
+      if (reqType === 'booking') { body.direction = journeyUsed() ? (val('waReqDirection') === 'toIndia' ? 'back' : 'go') : ''; body.date = journeyUsed() ? val('waReqDate') : ''; body.point = journeyUsed() ? val('waReqPoint') : ''; body.pax = val('waReqPax') || '1'; }
       var label = go ? go.textContent : '';
       if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
       shgApi.post('/wa-request.php', body).then(function (d) {

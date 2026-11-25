@@ -221,6 +221,10 @@ try {
     check('women berth sign always shown (not in the fold)', str_contains($tpl, '<span><span class="lg fem"></span>') && !str_contains($tpl, '<span class="lg-x"><span class="lg fem">'));
     check('date / pickup folded, not required', (bool) preg_match('/<details class="wa-req-journey" id="waReqJourney">/', $tpl) && !preg_match('/id="waReqDate" type="date" required/', $tpl) && !str_contains($tpl, '<select id="waReqPoint" required>'));
     check('router: short booking behind wa_short_booking_on', str_contains($rt, 'wa_short_booking_on') && str_contains($rt, 'function journeyUsed()') && str_contains($rt, "body.date = journeyUsed() ? val('waReqDate') : ''"));
+    check('router: folded direction is not sent unseen', str_contains($rt, "body.direction = journeyUsed() ? (val('waReqDirection') === 'toIndia' ? 'back' : 'go') : ''"));
+    $wr = (string) file_get_contents(dirname(__DIR__) . '/api/wa-request.php');
+    check('wa-request: blank direction prints a neutral dash', str_contains($wr, "\$dirRaw === 'go' ? 'Gujarat → Rupaidiha' : '—'") && str_contains($wr, "'Boarding/Drop'"));
+    check('PNR box: pending / completed / expired / rejected each have a line', str_contains($tpl, "if (st === 'pending')") && str_contains($tpl, "if (st === 'completed')") && str_contains($tpl, "trkFail('trkExpired')") && str_contains($tpl, "trkFail('trkRejected')") && substr_count($tpl, 'trkRejected:') === 3 && substr_count($tpl, 'trkDone:') === 3);
 } finally {
     $restore();
     Database::query("DELETE FROM audit_logs WHERE id > :i AND action IN ('settings.onward_buses','settings.luggage')", ['i' => $auditFrom]);
