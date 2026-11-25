@@ -8,10 +8,12 @@
  *
  * THE NUMBERS are CounterBook's rules (includes/counterbook.php), scoped to
  * one person instead of one desk, so the bot, the evening message, Counters
- * and the Day book never tell two different stories:
+ * and the Day book never tell two different stories. Every booking belongs to
+ * exactly ONE person, the one who cut it (self::cutBy: booked_by, else
+ * sold_by; admin/desk-day.php's $cutSql), so the people's figures add up to
+ * CounterBook's and never count one ticket or one rupee twice:
  *   tickets / seats / pax / inr - confirmed or completed bookings by
- *                 confirmed_at, on this person's code (sold_by) or cut by
- *                 them (booked_by)
+ *                 confirmed_at, cut by this person
  *   cash        - VERIFIED cash + cod payments (नगद) by verified_at on those
  *                 bookings; cashLocal = the drawer in the person's desk money
  *                 (NPR at a Nepal desk: local_amount, else amount x the rate
@@ -19,9 +21,13 @@
  *   online      - every other verified method (UPI, eSewa, bank, gateway)
  *   pending     - ड्यू बाँकी: today's tickets whose latest payment is still
  *                 cod_pending (to collect)
- *   commission  - agent_ledger commission + commission_void created today
+ *   commission  - agent_ledger commission + commission_void created today for
+ *                 this person (agent_admin_id): an agent whose code a clerk
+ *                 used still sees his commission, never the clerk's cash
  * For a seller with no desk this is exactly CounterBook's 'AG:<id>' line; for
- * the only clerk at a desk it is exactly that desk's line
+ * the only clerk at a desk it is exactly that desk's line, his tickets cut on
+ * an agent's code included - all but commission, which CounterBook files on
+ * the desk line and this file gives to the agent who earned it
  * (tests/mp1-dayreport-test.php).
  *
  * THE EVENING REPORT (cron/seller-day.php) goes only FREE: inside the
@@ -35,7 +41,8 @@
  *   seller_day_wa_on        (1) the bot's "aaja / hisab" reply in this format
  *   seller_day_report_on    (1) the evening report to each seller
  *   seller_day_report_hour (20) the IST hour it starts (cron every 15 min)
- *   seller_day_admin_on     (1) the owner's one evening total, all desks
+ *   seller_day_admin_on     (off while counter_day_report_on sends the 21:30
+ *                           all-desk report, so the owner gets ONE evening total)
  *   seller_day_push_on      (1) web push when the window is closed
  *
  * Read-only on the books: never writes a booking, a payment or a ledger row.
@@ -69,6 +76,20 @@ final class SellerDay
     }
 
     /**
+     * WHO a booking belongs to, one person only: the one who CUT it (the
+     * clerk, booked_by), else the seller whose code it is on (sold_by) when no
+     * clerk was recorded. admin/desk-day.php's $cutSql. A clerk cutting on an
+     * agent's code (Booking::attributeDeskSale) keeps the ticket and the cash
+     * he took; the agent keeps only the commission (agent_ledger).
+     */
+    public static function cutBy(): string
+    {
+        return CounterDesk::hasColumn('bookings', 'booked_by_admin_id')
+            ? 'COALESCE(b.booked_by_admin_id, b.sold_by_admin_id)'
+            : 'b.sold_by_admin_id';
+    }
+
+    /**
      * One person's day (Y-m-d, IST app clock). Zeros when nothing happened.
      *
      * @return array<string,mixed>
@@ -88,9 +109,7 @@ final class SellerDay
             return $out;
         }
         $w    = ['f' => $day, 't1' => addDaysISO($day, 1), 'a' => $adminId];
-        $mine = CounterDesk::hasColumn('bookings', 'booked_by_admin_id')
-            ? ':a IN (b.sold_by_admin_id, b.booked_by_admin_id)'
-            : 'b.sold_by_admin_id = :a';
+        $mine = self::cutBy() . ' = :a';
 
         try {
             $r = Database::fetch(
@@ -253,24 +272,18 @@ final class SellerDay
      * ----------------------------------------------------------------- */
 
     /**
-     * People with at least one ticket today (on their code or cut by them),
-     * active accounts only.
+     * People who CUT at least one ticket today (self::cutBy, the same rule as
+     * figures), active accounts only.
      *
      * @return list<array{id:int,name:string,phone:string}>
      */
     public static function sellersOn(string $day): array
     {
         $w = ['f' => $day, 't1' => addDaysISO($day, 1)];
-        $by = CounterDesk::hasColumn('bookings', 'booked_by_admin_id');
-        $sql = "SELECT b.sold_by_admin_id AS id FROM bookings b
+        $cut = self::cutBy();
+        $sql = "SELECT DISTINCT $cut AS id FROM bookings b
                  WHERE b.status IN ('confirmed','completed') AND b.confirmed_at >= :f AND b.confirmed_at < :t1
-                   AND b.sold_by_admin_id IS NOT NULL"
-            . ($by ? " UNION SELECT b.booked_by_admin_id AS id FROM bookings b
-                 WHERE b.status IN ('confirmed','completed') AND b.confirmed_at >= :f2 AND b.confirmed_at < :t2
-                   AND b.booked_by_admin_id IS NOT NULL" : '');
-        if ($by) {
-            $w += ['f2' => $day, 't2' => addDaysISO($day, 1)];
-        }
+                   AND $cut IS NOT NULL";
         $ids = [];
         try {
             foreach (Database::fetchAll($sql, $w) as $r) {
@@ -442,7 +455,7 @@ final class SellerDay
             $out['failed']++;
         }
 
-        if (Settings::getBool('seller_day_admin_on', true)) {
+        if (Settings::getBool('seller_day_admin_on', !Settings::getBool('counter_day_report_on', true))) {
             $out['admin'] = self::adminEvening($day, $wa);
         }
         return $out;

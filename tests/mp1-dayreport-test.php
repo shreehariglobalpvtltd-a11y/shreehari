@@ -6,6 +6,8 @@
  *   A a seeded day for an agent with no desk = CounterBook's 'AG:<id>' line
  *     (tickets, INR, cash + cod = नगद, online, ड्यू बाँकी, commission);
  *     a Nepal desk clerk = that desk's line, the drawer in NPR (cashLocal)
+ *   A2 a clerk cuts a cash ticket on the agent's code: ticket + cash are the
+ *     clerk's once (agent + clerk = CounterBook's lines), commission the agent's
  *   B AiTools agent_day carries the same figures (cash counts cod)
  *   C the message: "नमस्ते <name> जी, आज <BS / AD>: टिकट N, नगद ₹X, अनलाइन Y,
  *     ड्यू बाँकी Z, तपाईंको कमिसन W"; रू at an NPR desk
@@ -78,6 +80,7 @@ function cleanup(): void {
     try { Database::run("DELETE FROM kv_store WHERE kscope = 'wa_inbound' AND kkey LIKE :k", ['k' => '%' . DY_PH . '%']); } catch (Throwable $e) {}
     try { Database::run('DELETE FROM message_logs WHERE to_number LIKE :k', ['k' => '%' . DY_PH . '%']); } catch (Throwable $e) {}
     try { Database::run("DELETE FROM ap_wa_state WHERE phone LIKE :k", ['k' => '%' . DY_PH . '%']); } catch (Throwable $e) {}
+    try { Database::run("DELETE FROM wa_identity_links WHERE phone LIKE :k", ['k' => '%' . DY_PH . '%']); } catch (Throwable $e) {}
     try { Database::run("DELETE FROM counter_locations WHERE code = :c", ['c' => DY_DESK]); } catch (Throwable $e) {}
     if (class_exists('CounterDesk')) { CounterDesk::flush(); }
     foreach ($keep as $k => $row) {
@@ -100,6 +103,7 @@ foreach (['ap_wa_on' => '1', 'ap_ai_on' => '0', 'ap_wa_sell' => '1', 'agent_kyc_
           'seller_day_report_on' => '1', 'seller_day_push_on' => '1', 'seller_day_admin_on' => '0'] as $k => $v) { setKeep($k, $v, 'bool'); }
 setKeep('seller_day_report_hour', '0', 'int');
 setKeep('wa_admin_number', '91' . DY_ADM);
+setKeep('wa_ops_stepup_on', '0', 'bool');   // live gates other tools, not agent_day; a local test may leave it on
 
 /* ---- fixtures ---- */
 Database::insert('counter_locations', ['code' => DY_DESK, 'name' => 'ZZ DY Test Desk', 'country' => 'NP', 'currency' => 'NPR',
@@ -157,6 +161,44 @@ foreach (['tickets', 'inr', 'cash', 'cashLocal', 'online', 'pending', 'commissio
 }
 check('A desk clerk: NPR desk, drawer रू 4800', $fc['currency'] === 'NPR' && $fc['cashLocal'] == 4800.0, json_encode($fc));
 check('A an idle agent reads zeros', SellerDay::figures($B, $TODAY)['tickets'] === 0);
+
+/* ---- A2: the clerk cuts a ₹2,000 cash ticket on the agent's code (Booking::attributeDeskSale:
+   sold_by = agent, booked_by = clerk, counter_code = desk) and verifies the cash himself.
+   The ticket and the cash are the clerk's, ONCE; the agent keeps only the commission. ---- */
+$sumOf = static fn(array $x, array $y, string $f): float => round((float) $x[$f] + (float) $y[$f], 2);
+$la0 = CounterBook::line($TODAY, 'AG:' . $A);
+$lc0 = CounterBook::line($TODAY, DY_DESK);
+$x = (int) Database::insert('bookings', ['pnr' => 'ZZDY-' . date('His') . '-X' . random_int(100, 999), 'contact_phone' => DY_PH . '39',
+    'status' => 'confirmed', 'total_amount' => 2000, 'sold_by_admin_id' => $A, 'booked_by_admin_id' => $C,
+    'counter_code' => DY_DESK, 'confirmed_at' => $NOW, 'created_at' => $NOW]);
+Database::insert('payments', ['booking_id' => $x, 'payment_ref' => 'ZZDY' . $x . 'X', 'amount' => 2000, 'currency' => 'INR',
+    'local_currency' => 'NPR', 'local_amount' => 3200] + $ver('cash', $C));
+Database::insert('agent_ledger', ['agent_admin_id' => $A, 'booking_id' => $x, 'account' => 'commission', 'entry_type' => 'commission', 'amount' => 80, 'note' => 'mp1 dy test']);
+$fa2 = SellerDay::figures($A, $TODAY);
+$fc2 = SellerDay::figures($C, $TODAY);
+$la2 = CounterBook::line($TODAY, 'AG:' . $A);
+$lc2 = CounterBook::line($TODAY, DY_DESK);
+check('A2 clerk on agent code: the agent is NOT told the ticket or the cash', $fa2['tickets'] === 4 && $fa2['cash'] == 1700.0 && $fa2['inr'] == $fa['inr'], json_encode($fa2));
+check('A2   the clerk who cut it has it: +1 ticket, +₹2,000 नगद, drawer +रू 3,200',
+    $fc2['tickets'] === $fc['tickets'] + 1 && abs($fc2['cash'] - $fc['cash'] - 2000) < 0.005 && abs($fc2['cashLocal'] - $fc['cashLocal'] - 3200) < 0.005, json_encode($fc2));
+check('A2   the ₹2,000 appears exactly once: people +2,000 = CounterBook lines +2,000',
+    abs($sumOf($fa2, $fc2, 'cash') - $sumOf($fa, $fc, 'cash') - 2000) < 0.005
+    && abs($sumOf($la2, $lc2, 'cash') - $sumOf($la0, $lc0, 'cash') - 2000) < 0.005, json_encode([$sumOf($fa2, $fc2, 'cash'), $sumOf($la2, $lc2, 'cash')]));
+foreach (['tickets', 'inr', 'cash', 'online', 'pending'] as $f) {
+    check("A2   agent + clerk '$f' = CounterBook AG line + desk line", abs($sumOf($fa2, $fc2, $f) - $sumOf($la2, $lc2, $f)) < 0.005,
+        json_encode([$sumOf($fa2, $fc2, $f), $sumOf($la2, $lc2, $f)]));
+}
+check('A2   the clerk still equals his desk line (all but commission)', $fc2['tickets'] === (int) $lc2['tickets'] && abs($fc2['cash'] - (float) $lc2['cash']) < 0.005
+    && abs($fc2['cashLocal'] - (float) $lc2['cashLocal']) < 0.005, json_encode([$fc2, $lc2]));
+check('A2   the commission stays the agent\'s (300 + 80), never the clerk\'s', $fa2['commission'] == 380.0 && $fc2['commission'] == 0.0, json_encode([$fa2['commission'], $fc2['commission']]));
+$ids2 = array_map(static fn(array $s): int => $s['id'], SellerDay::sellersOn($TODAY));
+check('A2   the evening list names each person once', count(array_keys($ids2, $A, true)) === 1 && count(array_keys($ids2, $C, true)) === 1, json_encode($ids2));
+$day2 = AiTools::run('agent_day', [], ['role' => 'staff', 'adminId' => $A, 'scopeAdminId' => $A, 'name' => 'MP1 DY Agent', 'phone' => DY_A,
+    'channel' => 'whatsapp', 'admin' => ['id' => $A, 'role' => 'agent']]);
+check('A2   agent_day for the agent: same 4 tickets, नगद 1700, commission 380', (int) ($day2['data']['tickets'] ?? -1) === 4
+    && (float) ($day2['data']['cashTakenToday'] ?? -1) == 1700.0 && (float) ($day2['data']['commissionToday'] ?? -1) == 380.0, json_encode($day2['data'] ?? []));
+foreach (['payments', 'agent_ledger'] as $t) { Database::run("DELETE FROM $t WHERE booking_id = :b", ['b' => $x]); }
+Database::delete('bookings', 'id = :i', ['i' => $x]);
 
 /* =========================== B: agent_day =========================== */
 $ctxA = ['role' => 'staff', 'adminId' => $A, 'scopeAdminId' => $A, 'name' => 'MP1 DY Agent', 'phone' => DY_A, 'channel' => 'whatsapp', 'admin' => ['id' => $A, 'role' => 'agent']];

@@ -2990,7 +2990,7 @@ final class AiTools
         if (SellerDay::numbersOn()) {
             $f = SellerDay::figures($adminId, $date);
             $cancelled = (int) Database::scalar(
-                "SELECT COUNT(*) FROM bookings b WHERE " . self::sellerSql($adminId, 'a') . " AND DATE(b.created_at) = :d AND b.status IN ('cancelled','rejected')",
+                "SELECT COUNT(*) FROM bookings b WHERE " . SellerDay::cutBy() . " = :a AND DATE(b.created_at) = :d AND b.status IN ('cancelled','rejected')",
                 ['a' => $adminId, 'd' => $date],
                 0
             );

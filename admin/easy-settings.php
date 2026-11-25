@@ -181,6 +181,8 @@ $ES_NEW = [
     '🧾 Chalani / Reports' => [
         'counter_day_close_on'         => ['🔒 Counter दिन बन्द · Counter day close', 'bool', 'One close per desk per day, totals frozen; office only.', ['def' => true]],
         'counter_day_report_on'        => ['📊 Counter दिनको report · Counter day report on WhatsApp', 'bool', 'Each counter\'s day totals go to the office numbers once per evening.', ['def' => true]],
+        'seller_day_report_on'         => ['📲 साँझको हिसाब · Evening day report to each seller', 'bool', 'Agents / staff / counters who sold today get their own tickets, cash, online, due and commission on WhatsApp (only inside the free 24 h window) or web push.', ['def' => true]],
+        'seller_day_report_hour'       => ['🕗 साँझको हिसाब कति बजे · Evening report hour (IST)', 'int', 'Hour of day (0-23) the evening seller report starts. Default 20.', ['def' => 20, 'min' => 0, 'max' => 23, 'unit' => 'h']],
         'counter_day_report_time'      => ['🕘 Report समय · Report time (IST)', 'text', 'HH:MM, e.g. 21:30.', ['def' => '21:30', 're' => '/^([01]\d|2[0-3]):[0-5]\d$/', 'need' => true, 'max' => 5]],
         'counter_day_report_numbers'   => ['📞 थप नम्बर · Extra report numbers', 'phones', 'Comma list of WhatsApp numbers WITH the country code: 91 + 10 digits (India) or 977 + 10 digits (Nepal); a leading + is fine. A bare 10-digit number is refused (it would go to India). Besides the office numbers.', ['def' => '', 'max' => 400]],
         'office_report_email_fallback' => ['📧 WhatsApp नपुगे Email · Email fallback', 'bool', 'E-mail the report only when every WhatsApp copy failed.', ['def' => true]],
