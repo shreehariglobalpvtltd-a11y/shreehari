@@ -1093,7 +1093,12 @@ final class ContentPages
                     . (($o['inchargePhone'] ?? '') !== '' && ($o['inchargeTel'] ?? '') !== '' ? ' · <a href="' . $e($o['inchargeTel']) . '">' . $e($o['inchargePhone']) . '</a>' : '')
                     . '</small></span></p>';
             }
+            // 25 Nov 2026 (wx5): the office's own photo (building / signboard) on top; none = the card as before
+            $offPh = ($o['officePhoto'] ?? '') !== ''
+                ? '<img class="off-ph" src="' . $e($o['officePhoto']) . '" alt="' . $e($nm) . '" width="640" height="360" loading="lazy" decoding="async">'
+                : '';
             $cards .= '<article class="card off rv' . ($o['kind'] === 'head' ? ' head' : ($o['country'] === 'NP' ? ' np' : '')) . '" id="office-' . $e(strtolower($o['code'] !== '' ? $o['code'] : preg_replace('/\W+/', '-', $o['city']))) . '">'
+                . $offPh
                 . '<div class="off-top">' . PublicLayout::flag($o['country'], 24) . '<span class="badge">' . $e($kindLabel) . '</span>' . ($o['code'] !== '' ? '<span class="code">' . $e($o['code']) . '</span>' : '') . '</div>'
                 // 25 Nov 2026 (wx1): the company is the title, the town / branch the line under it
                 . (($o['brand'] ?? '') !== ''
@@ -1844,6 +1849,7 @@ html.rv-on .tl-i .tl-dot{transform:scale(.3);transition:transform .5s cubic-bezi
 /* offices */
 .offices .off{display:flex;flex-direction:column;gap:6px;position:relative;overflow:hidden}
 .off-top{display:flex;align-items:center;gap:10px}
+.off-ph{display:block;flex:none;width:100%;height:auto;aspect-ratio:16/9;max-height:150px;object-fit:cover;border-radius:14px;background:var(--md-sc-high)}
 .badge{font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;background:var(--md-sc-high);color:var(--md-on-surface-variant)}
 .code{margin-left:auto;font:800 12px ui-monospace,monospace;color:var(--md-on-surface-variant)}
 .off-name{font-size:22px;margin:4px 0 0}

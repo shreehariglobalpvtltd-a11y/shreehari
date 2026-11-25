@@ -298,6 +298,9 @@ final class PublicLayout
                     : (trim((string) ($o['inchargePhone'] ?? '')) !== '' ? self::telHref((string) $o['inchargePhone']) : ''),
                 'inchargePhoto' => preg_match('#^/uploads/[A-Za-z0-9/_.-]+\.(?:webp|jpe?g|png)$#', (string) ($o['inchargePhoto'] ?? '')) === 1
                     && !str_contains((string) $o['inchargePhoto'], '..') ? (string) $o['inchargePhoto'] : '',
+                // 25 Nov 2026 (wx5): the office's own photo (building / signboard), same same-origin rule
+                'officePhoto' => preg_match('#^/uploads/[A-Za-z0-9/_.-]+\.(?:webp|jpe?g|png)$#', (string) ($o['officePhoto'] ?? '')) === 1
+                    && !str_contains((string) $o['officePhoto'], '..') ? (string) $o['officePhoto'] : '',
             ];
         }
         // Head office first, then the order given.

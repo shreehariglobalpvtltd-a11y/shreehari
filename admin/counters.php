@@ -34,21 +34,28 @@ $base    = '';
 $flash   = null;
 $canEdit = Auth::isSuperadmin();
 $ready   = CounterDesk::hasTable();
-/* The real in-charge photo limit: the 8 MB re-encode cap or PHP's own upload / post limit, whichever is smaller. */
-$photoLimitMb = (static function (): int {
+/* PHP ini size ("14M", "512K", "0" = no limit) in bytes; 0 = no limit / unreadable. */
+$iniBytes = static function (string $k): int {
+    $v = trim((string) ini_get($k));
+    if ($v === '' || !preg_match('/^(\d+)\s*([kmg]?)/i', $v, $m)) {
+        return 0;
+    }
+    return (int) $m[1] * ['' => 1, 'k' => 1024, 'm' => 1048576, 'g' => 1073741824][strtolower($m[2])];
+};
+$postMaxBytes = $iniBytes('post_max_size');
+/* The real limit for ONE photo: the 8 MB re-encode cap or PHP's own upload / post limit, whichever is smaller. */
+$photoLimitMb = (static function () use ($iniBytes, $postMaxBytes): int {
     $mb = 8;
-    foreach (['upload_max_filesize', 'post_max_size'] as $k) {
-        $v = trim((string) ini_get($k));
-        if ($v === '' || !preg_match('/^(\d+)\s*([kmg]?)/i', $v, $m)) {
-            continue;
-        }
-        $bytes = (int) $m[1] * ['' => 1, 'k' => 1024, 'm' => 1048576, 'g' => 1073741824][strtolower($m[2])];
+    foreach ([$iniBytes('upload_max_filesize'), $postMaxBytes] as $bytes) {
         if ($bytes > 0) {
             $mb = min($mb, max(1, (int) floor($bytes / 1048576)));
         }
     }
     return $mb;
 })();
+/* review (wx5): post_max_size counts the WHOLE form, so the in-charge photo and the office
+   photo together must stay under it - 0 = no whole-form limit known. */
+$photoTotalMb = $postMaxBytes > 0 ? max(1, (int) floor($postMaxBytes / 1048576)) : 0;
 
 /* Which halves of the migration are in place. The page must render, and be
    honest about what it cannot show, on a database where the SQL has not
@@ -68,7 +75,13 @@ try {
    POST — add / edit a desk, close or reopen one.
    ============================================================ */
 if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    if (!Security::verifyCsrf()) {
+    /* review (wx5): a form bigger than post_max_size reaches PHP with $_POST and $_FILES both
+       empty - say so plainly instead of the misleading "session expired" from the CSRF check. */
+    if ($_POST === [] && $_FILES === [] && $postMaxBytes > 0
+        && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMaxBytes) {
+        $flash = ['bad', 'फोटो मिलेर धेरै ठूलो भयो (दुवै मिलेर ' . $photoTotalMb . ' MB सम्म) — केही पनि सेभ भएन, एक पटकमा एउटा फोटो राख्नुहोस्। · '
+            . 'The photos together are over ' . $photoTotalMb . ' MB — nothing was saved. Upload one photo at a time.'];
+    } elseif (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again. / फेरि प्रयास गर्नुहोस्।'];
     } elseif (!$ready) {
         $flash = ['bad', 'Run database/upgrade-2026-10-04-counter-desks.sql first — the desk table is not there yet.'];
@@ -119,6 +132,26 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         $site['incharge_photo'] = '';
                     }
                 }
+                /* 25 Nov 2026 (wx5, owner: a photo for each office): the OFFICE photo (building /
+                   signboard) - the same rules as the in-charge photo above, its own file prefix. */
+                $newOffPhoto = '';
+                if ($site !== [] && CounterDesk::hasColumn('counter_locations', 'office_photo')) {
+                    $upOff  = $_FILES['office_photo'] ?? null;
+                    $offErr = is_array($upOff) ? (int) ($upOff['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
+                    if ($offErr === UPLOAD_ERR_INI_SIZE || $offErr === UPLOAD_ERR_FORM_SIZE) {
+                        $photoWarn .= ($photoWarn !== '' ? ' ' : '') . 'कार्यालयको फोटो धेरै ठूलो भयो (server limit ' . $photoLimitMb . ' MB) · Office photo too big (server limit ' . $photoLimitMb . ' MB) — the office photo was not changed.';
+                    } elseif ($offErr !== UPLOAD_ERR_NO_FILE) {
+                        try {
+                            require_once INCLUDE_PATH . '/contentpages.php';
+                            $newOffPhoto = ContentPages::saveUpload($upOff, 'locations', 'office-' . strtolower((string) ($_POST['code'] ?? '')));
+                            $site['office_photo'] = $newOffPhoto;
+                        } catch (Throwable $photoErr) {
+                            $photoWarn .= ($photoWarn !== '' ? ' ' : '') . 'कार्यालयको फोटो राख्न सकिएन · Office photo not saved: ' . $photoErr->getMessage();
+                        }
+                    } elseif (!empty($_POST['office_photo_remove'])) {
+                        $site['office_photo'] = '';
+                    }
+                }
                 $code = CounterDesk::save($site + [
                     'entity'     => $_POST['entity'] ?? '',
                     'lang'       => $_POST['lang'] ?? '',
@@ -167,8 +200,10 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 }
             }
         } catch (Throwable $e) {
-            if (isset($newPhoto) && $newPhoto !== '' && str_starts_with($newPhoto, 'uploads/locations/')) {
-                @unlink(rtrim(defined('UPLOAD_PATH') ? UPLOAD_PATH : ROOT_PATH . '/uploads', '/\\') . '/locations/' . basename($newPhoto));
+            foreach ([$newPhoto ?? '', $newOffPhoto ?? ''] as $orphan) {   // wx5: the office photo too
+                if ($orphan !== '' && str_starts_with($orphan, 'uploads/locations/')) {
+                    @unlink(rtrim(defined('UPLOAD_PATH') ? UPLOAD_PATH : ROOT_PATH . '/uploads', '/\\') . '/locations/' . basename($orphan));
+                }
             }
             $flash = ['bad', $e->getMessage()];
         }
@@ -358,7 +393,7 @@ $e = static fn($v): string => Security::e((string) $v);
         <input type="text" name="code" maxlength="16" required placeholder="NPJ"
                value="<?= $e($editing['code'] ?? '') ?>" <?= $editing ? 'readonly' : '' ?>>
       </label>
-      <label>Place / town
+      <label>कार्यालयको नाम · Office name (place / town)
         <input type="text" name="name" maxlength="120" required placeholder="Nepalgunj — Bus Park"
                value="<?= $e($editing['name'] ?? '') ?>">
       </label>
@@ -412,10 +447,10 @@ $e = static fn($v): string => Security::e((string) $v);
           <?php endforeach; ?>
         </select>
       </label>
-      <label>Phone <input type="text" name="phone" maxlength="40" value="<?= $e($editing['phone'] ?? '') ?>"></label>
+      <label>कार्यालयको फोन · Office phone <input type="text" name="phone" maxlength="40" value="<?= $e($editing['phone'] ?? '') ?>"></label>
       <label>Opening hours <input type="text" name="hours" maxlength="120" placeholder="local time, as you would write it" value="<?= $e($editing['hours'] ?? '') ?>"></label>
-      <label>Map link <input type="url" name="map_url" maxlength="255" placeholder="https://maps…" value="<?= $e($editing['map_url'] ?? '') ?>"></label>
-      <label>Address <input type="text" name="address" maxlength="190" value="<?= $e($editing['address'] ?? '') ?>"></label>
+      <label>नक्सा लिंक · Map link <input type="url" name="map_url" maxlength="255" placeholder="https://maps…" value="<?= $e($editing['map_url'] ?? '') ?>"></label>
+      <label>ठेगाना · Address <input type="text" name="address" maxlength="190" value="<?= $e($editing['address'] ?? '') ?>"></label>
       <label>Order <input type="number" name="sort_order" value="<?= (int) ($editing['sort_order'] ?? 0) ?>"></label>
       <label class="chk"><input type="checkbox" name="is_active" value="1" <?= ($editing === null || (int) $editing['is_active'] === 1) ? 'checked' : '' ?>> Open for new sales</label>
     </div>
@@ -427,7 +462,7 @@ $e = static fn($v): string => Security::e((string) $v);
     <input type="hidden" name="site_block" value="1">
     <h3 style="margin:16px 0 8px">🌐 On the website — office list · वेबसाइटको कार्यालय सूची</h3>
     <div class="row">
-      <label class="chk"><input type="checkbox" name="show_public" value="1" <?= (int) ($editing['show_public'] ?? 0) === 1 ? 'checked' : '' ?>> Show this office on the website</label>
+      <label class="chk"><input type="checkbox" name="show_public" value="1" <?= (int) ($editing['show_public'] ?? 0) === 1 ? 'checked' : '' ?>> वेबसाइटमा देखाउने · Show this office on the website</label>
       <label>Kind
         <select name="office_kind">
           <?php foreach (['' => 'Auto (India branch / Nepal partner)', 'head' => '🏛️ Head office', 'branch' => 'Branch office', 'partner' => 'Partner office (Nepal)', 'border' => 'Border point'] as $kv => $kl): ?>
@@ -446,8 +481,8 @@ $e = static fn($v): string => Security::e((string) $v);
     </div>
     <div class="row">
       <label>Address in Nepali <input type="text" name="address_ne" maxlength="255" value="<?= $e($editing['address_ne'] ?? '') ?>"></label>
-      <label>WhatsApp (if the office has one) <input type="text" name="whatsapp" maxlength="40" inputmode="tel" value="<?= $e($editing['whatsapp'] ?? '') ?>"></label>
-      <label>कार्यालय प्रमुख (In-charge) नाम <input type="text" name="contact_person" maxlength="80" value="<?= $e($editing['contact_person'] ?? '') ?>"></label>
+      <label>कार्यालयको WhatsApp · WhatsApp (if the office has one) <input type="text" name="whatsapp" maxlength="40" inputmode="tel" value="<?= $e($editing['whatsapp'] ?? '') ?>"></label>
+      <label>कार्यालय प्रमुखको नाम · In-charge name <input type="text" name="contact_person" maxlength="80" value="<?= $e($editing['contact_person'] ?? '') ?>"></label>
       <?php if (CounterDesk::hasColumn('counter_locations', 'incharge_phone')): ?>
       <label>प्रमुखको फोन · In-charge phone <input type="text" name="incharge_phone" maxlength="40" inputmode="tel" value="<?= $e($editing['incharge_phone'] ?? '') ?>"></label>
       <?php endif; ?>
@@ -468,12 +503,32 @@ $e = static fn($v): string => Security::e((string) $v);
       <?php endif; ?>
     </div>
     <?php endif; ?>
+    <?php if (CounterDesk::hasColumn('counter_locations', 'office_photo')): ?>
+    <?php $offPhoto = CounterDesk::cleanPhotoPath((string) ($editing['office_photo'] ?? '')); ?>
+    <!-- 25 Nov 2026 (wx5): the office's own photo (building / signboard), shown on top of the office card -->
+    <div class="row">
+      <label>कार्यालयको फोटो · Office photo — building / signboard (PNG / JPG / WebP, <?= (int) $photoLimitMb ?> MB)
+        <?php if ($photoTotalMb > 0 && $photoTotalMb < 2 * $photoLimitMb && CounterDesk::hasColumn('counter_locations', 'incharge_photo')): ?>
+        <small style="display:block;font-weight:400">दुवै फोटो मिलेर <?= (int) $photoTotalMb ?> MB सम्म · Both photos together up to <?= (int) $photoTotalMb ?> MB — bigger? upload one at a time.</small>
+        <?php endif; ?>
+        <input type="file" name="office_photo" accept="image/png,image/jpeg,image/webp">
+      </label>
+      <?php if ($offPhoto !== ''): ?>
+      <span style="display:flex;align-items:center;gap:10px">
+        <img src="/<?= $e($offPhoto) ?>" alt="" width="96" height="54" style="width:96px;height:54px;border-radius:8px;object-fit:cover;border:1px solid #d6dbe6">
+        <label class="chk"><input type="checkbox" name="office_photo_remove" value="1"> हटाउनुहोस् · Remove</label>
+      </span>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
     <p class="ctr-note" style="margin:0 0 10px">
       The home page, the search-engine card and the offices page list every desk ticked here, head office first.
       Its <b>phone</b> is the Phone box above; left blank, the town's number from Company details
       (company counters line) is used, so the website and the printed ticket always agree. These website boxes
       never change an issued ticket. WhatsApp left blank = the office phone gets the WhatsApp button;
       the in-charge name, phone and photo show on the office card (switch <code>home_office_incharge_on</code>).
+      The <b>office photo</b> (building / signboard) shows on top of the card (switch <code>home_office_photo_on</code>).
+      <br>कार्यालयको नाम, ठेगाना, नक्सा लिंक र फोन माथिका बाकसमा · Office name, address, map link and office phone are the boxes at the top of this form.
     </p>
     <?php endif; ?>
     <div style="display:flex;gap:8px;justify-content:flex-end">
