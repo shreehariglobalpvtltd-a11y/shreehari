@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-tools/fx1-contrast-check.py - WCAG contrast check for assets/css/fx1-tokens.css
+tests/fx1-contrast-check.py - WCAG contrast check for assets/css/fx1-tokens.css
 
 CLI only, Python standard library only, no network, writes nothing.
 
-  python tools/fx1-contrast-check.py                 # checks assets/css/fx1-tokens.css
-  python tools/fx1-contrast-check.py path/to/file.css
-  python tools/fx1-contrast-check.py --quiet         # only failures + summary
+  python tests/fx1-contrast-check.py                 # checks assets/css/fx1-tokens.css
+  python tests/fx1-contrast-check.py path/to/file.css
+  python tests/fx1-contrast-check.py --quiet         # only failures + summary
 
 What it does
   1. Reads every "pair:" line from the CSS comments, e.g.

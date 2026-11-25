@@ -29,7 +29,7 @@
      dark    :root[data-theme="dark"]            (the switch every page already has)
      auto    <html data-fx-theme="auto">         follows the phone's dark setting,
                                                  unless data-theme="light" is set
-   The two dark blocks must stay identical: tools/fx1-contrast-check.py fails
+   The two dark blocks must stay identical: tests/fx1-contrast-check.py fails
    when they differ.
 
    Rules of use
@@ -40,7 +40,7 @@
        chips or status.
      - Status = text colour + its -soft background, or -solid + --fx-on-*-solid.
 
-   Contrast pairs (checked by: python tools/fx1-contrast-check.py)
+   Contrast pairs (checked by: python tests/fx1-contrast-check.py)
    Text needs 4.5:1. "@3" marks large text / UI borders / icons, which need 3:1.
    Each pair is checked in light and in dark.
 
