@@ -630,6 +630,8 @@ function admin_header(string $title, string $active = ''): void
     if ($showGroups) { echo '<script>' . admin_nav_js() . '</script>'; }
 
     echo '<main class="wrap"><h1>' . Security::e(admin_plain($title)) . '</h1>';
+    // 25 Nov 2026 (op5-credit): an agent near / at their credit limit (or stopped by the office) sees it on every desk page
+    if (Auth::isCounterAgent() && is_file(INCLUDE_PATH . '/agentcredit.php')) { require_once INCLUDE_PATH . '/agentcredit.php'; echo AgentCredit::bannerHtml((int) (Auth::admin()['id'] ?? 0)); }
 }
 
 /**

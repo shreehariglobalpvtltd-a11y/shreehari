@@ -1933,6 +1933,12 @@ final class AgentWallet
                 );
             }
         }
+
+        /* 25 Nov 2026 (op5-credit): credit limit + the office's "Stop selling"
+           hold (agent_credit_block_on, default on; no limit and no hold = no
+           change). The rule lives in AgentCredit; this is only its door. */
+        require_once INCLUDE_PATH . '/agentcredit.php';
+        AgentCredit::assertRoom($adminId);
     }
 
 
