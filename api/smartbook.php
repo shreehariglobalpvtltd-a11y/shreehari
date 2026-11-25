@@ -77,6 +77,9 @@ try {
             // 16 Oct 2026: Cash (pay at boarding) asks a customer for verification details.
             'codVerify'  => $mode === 'customer' && Settings::getBool('cod_verify_on', true),
             'idTypes'    => (static function (): array { require_once INCLUDE_PATH . '/customerprofile.php'; return CustomerProfile::ID_TYPES; })(),
+            // 25 Nov 2026 (op5): the optional per-passenger ID box (staff desk only, never required)
+            'paxIdOn'   => $mode !== 'customer' && PaxId::enabled(),
+            'paxIdTypes' => $mode !== 'customer' ? PaxId::choices() : [],
             'prefill'    => $mode === 'customer' ? SmartBook::verifyPrefill() : null,
             'qrSeconds'  => max(30, min(600, Settings::getInt('smartbook_qr_seconds', 60))),
             // 6 Nov 2026 (owner: "automatic bhanda seat selection prefer"): the berths are chosen on the map before a sale

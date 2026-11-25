@@ -266,6 +266,7 @@ const CORE_SUITES = [
     'payauto-test.php'                => 'auto-confirm only from a signed provider success: amount / currency / txn / duplicates (19 Nov)',
     'aihub-test.php'                  => 'AI Command Center + the VPS model as the last rung of the AI ladder (19 Nov)',
     'i4-easy-settings-test.php'       => 'Easy Settings: the 19 Nov settings card - whitelist only, CSRF, ranges, JSON / roles / map checks, audited',
+    'op5-pax-parcel-reminder-test.php' => 'optional border ID on the desk card + chalani tag, parcel register (CRUD / totals / gate), 2 h reminder pickup map once (25 Nov)',
 ];
 
 /**
