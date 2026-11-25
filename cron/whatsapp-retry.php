@@ -203,7 +203,7 @@ $parkAlerts = 0;
 if ($parkOn) {
     try {
         $parkRows = Database::fetchAll(
-            "SELECT b.id, b.pnr, b.contact_phone, b.contact_country_code, m.error
+            "SELECT b.id, b.pnr, b.contact_phone, b.contact_country_code, m.error, m.to_number
                FROM bookings b
                JOIN message_logs m
                  ON m.id = (SELECT m2.id FROM message_logs m2

@@ -2310,11 +2310,24 @@ final class WaBooking
             $frozen = strtoupper((string) ($b['fx_currency'] ?? '')) === 'NPR' && (float) ($b['fx_total'] ?? 0) > 0;
             $nepal  = ($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP' || $frozen
                    || in_array(strtoupper(trim($country)), ['NP', '977'], true);
+            /* 26 Nov 2026 (mp4 review fix, money): the payee + wallet word of THE one resolver
+               (PayQr::resolve - the ticket's / pay.php's QR row), never "eSewa" over another wallet. */
+            $kind = 'eSewa';
+            if ($nepal) {
+                try {
+                    require_once __DIR__ . '/payqr.php';
+                    $npR   = PayQr::resolve($b !== [] ? $b : null, 'NP', $esewa);
+                    $esewa = trim((string) $npR['payee']);
+                    $kind  = (string) $npR['kind'];
+                } catch (Throwable $e) {
+                    // keep the company's own eSewa id
+                }
+            }
             if (!$nepal || $esewa === '') {
                 return '';
             }
             $npr = $frozen ? round((float) $b['fx_total']) : round($total * Settings::getFloat('npr_per_inr', 1.6));
-            return $npr > 0 ? 'eSewa: ' . $esewa . ' · रू ' . indianNumber((float) $npr) : '';
+            return $npr > 0 ? $kind . ': ' . $esewa . ' · रू ' . indianNumber((float) $npr) : '';
         } catch (Throwable $e) {
             return '';
         }

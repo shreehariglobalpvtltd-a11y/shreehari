@@ -812,10 +812,12 @@ async function downloadTicketPDF(b) {
   var gpay = (typeof tkGoldPay === 'function') ? tkGoldPay(b) : null;
   if (gpay) {
     var gcur = b.currency || 'INR';
-    var gcap = gpay.kind === 'npr' ? 'eSewa / Fonepay  NPR ' + Number(gpay.npr || 0).toLocaleString('en-IN')
+    /* mp4 (26 Nov 2026): the QR row's own wallet word (tkGoldPay esewaKind), never "eSewa" over a Khalti QR */
+    var gkind = gpay.esewaKind || 'eSewa / Fonepay';
+    var gcap = gpay.kind === 'npr' ? gkind + '  NPR ' + Number(gpay.npr || 0).toLocaleString('en-IN')
       : gpay.kind === 'due' ? 'SCAN & PAY ' + gcur + ' ' + Number(gpay.due).toLocaleString('en-IN')
       : (gpay.kind === 'office' ? 'PAY VIA OFFICE' : 'COMPANY UPI');
-    qrCard(164, gcap, gpay.kind === 'office' ? 'WhatsApp the office' : (gpay.kind === 'npr' ? (gpay.esewa ? 'eSewa ' + gpay.esewa : 'Nepal QR') : gpay.upi));
+    qrCard(164, gcap, gpay.kind === 'office' ? 'WhatsApp the office' : (gpay.kind === 'npr' ? (gpay.esewa ? (gkind === 'eSewa / Fonepay' ? 'eSewa' : gkind) + ' ' + gpay.esewa : 'Nepal QR') : gpay.upi));
     try {
       /* mp1 tk (25 Nov 2026): the Nepal QR is the office's own image, drawn as it is (never re-encoded) */
       if (gpay.img) {

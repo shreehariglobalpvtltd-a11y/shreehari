@@ -231,7 +231,14 @@ $co        = Settings::companyFor((string) ($booking['counter_code'] ?? ''), (st
 $esewaId   = trim((string) ($co['payEsewa'] ?? ''));
 $frozenNpr = strtoupper((string) ($booking['fx_currency'] ?? '')) === 'NPR'
     && (float) ($booking['fx_total'] ?? 0) > 0 && (float) ($booking['total_amount'] ?? 0) > 0;
-$nepalSale = $esewaId !== '' && (($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP' || $frozenNpr);
+$npSaleish = ($co['saleEntity'] ?? 'IN') === 'NP' || ($co['entity'] ?? 'IN') === 'NP' || $frozenNpr;
+/* 26 Nov 2026 (mp4 review fix): a Nepal sale whose QR library row (this desk's, else the NP
+   default) is set up gets the Nepal box even with no eSewa id typed in settings - the same
+   rule the ticket prints by (Ticket::paymentQr), so the ticket's "pay" link never lands on a
+   page without the QR the ticket showed. */
+require_once INCLUDE_PATH . '/payadapter.php';
+$npLibRow  = $npSaleish && ManualQrAdapter::nepalQr($booking, $esewaId)['row'] !== null;
+$nepalSale = ($esewaId !== '' || $npLibRow) && $npSaleish;
 
 /* The page (not the 302) for a pending / rejected online booking: when the office turned the
    chooser on for everyone (pay_app_chooser_on, default off), or - spec gap fix - for a NEPAL
@@ -460,7 +467,7 @@ if ($chooser && $claim === null && !$proofIn) {
             $upiQr = '';
         }
     }
-    if ($esewaId !== '') {
+    if ($esewaId !== '' || $npLibRow) {
         $npr = $frozenNpr
             ? round((float) $booking['fx_total'] * $due / (float) $booking['total_amount'])
             : round($due * Settings::getFloat('npr_per_inr', 1.6));
@@ -630,7 +637,7 @@ $bizWa = Settings::officeWhatsApp();
             . (($esewa['qr'] ?? '') !== '' ? '      <div class="qrbox"><img class="qr" src="' . $e($esewa['qr']) . '" alt="' . $e($esKind) . ' QR" width="300" height="300"></div>' . "\n" : '')
             . (($esewa['id'] ?? '') !== '' ? '      <div class="row">' . $e($esKind) . ' ID: <code>' . $e($esewa['id']) . '</code>' . (($esewa['name'] ?? '') !== '' ? ' · ' . $e($esewa['name']) : '') . '</div>' . "\n" : '')
             . '      <div class="row">रकम · Amount: <b class="npr">रू ' . $e(number_format((float) ($esewa['npr'] ?? 0))) . '</b> (₹' . $e(number_format($total, 2)) . ')</div>' . "\n"
-            . '      <div class="note">eSewa एपबाट पठाउँदा remarks मा ' . $e($pnr) . ' लेख्नुहोस्। · Put ' . $e($pnr) . ' in the eSewa remarks.</div>' . "\n"
+            . '      <div class="note">' . $e($esKind) . ' बाट पठाउँदा remarks मा ' . $e($pnr) . ' लेख्नुहोस्। · Put ' . $e($pnr) . ' in the ' . $e($esKind) . ' remarks.</div>' . "\n"
             . '    </div>' . "\n";
     }
     if ($nepalSale) {
@@ -661,7 +668,7 @@ $bizWa = Settings::officeWhatsApp();
       <div class="seg" role="radiogroup" aria-labelledby="paidBy">
         <label><input type="radio" name="method" value="upi"<?= ($_POST['method'] ?? 'upi') !== 'esewa' ? ' checked' : '' ?>> UPI</label>
 <?php if (is_array($esewa) && (($esewa['id'] ?? '') !== '' || ($esewa['qr'] ?? '') !== '')): ?>
-        <label><input type="radio" name="method" value="esewa"<?= ($_POST['method'] ?? '') === 'esewa' ? ' checked' : '' ?>> eSewa</label>
+        <label><input type="radio" name="method" value="esewa"<?= ($_POST['method'] ?? '') === 'esewa' ? ' checked' : '' ?>> <?= $e((string) ($esewa['kind'] ?? 'eSewa')) ?></label>
 <?php endif; ?>
       </div>
       <label class="f" for="utr">UTR / कारोबार नम्बर · Transaction no.</label>

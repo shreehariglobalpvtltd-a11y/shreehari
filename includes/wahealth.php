@@ -249,7 +249,15 @@ final class WaHealth
             foreach (['ticket', 'wasend', 'adminalerts'] as $f) {
                 require_once __DIR__ . '/' . $f . '.php';
             }
-            $to   = WaSend::intl((string) ($b['contact_phone'] ?? ''), (string) ($b['contact_country_code'] ?? ''));
+            /* review fix: the number the ticket was ACTUALLY sent to (message_logs.to_number), else
+               Notify's own rule (contact_country_code, then a Nepal id_type, then the account's
+               country) - never a bare "+91" guess, which once sent Nepali tickets to strangers. */
+            $to = preg_replace('/\D+/', '', (string) ($b['to_number'] ?? '')) ?? '';
+            if (strlen($to) < 11) {
+                require_once __DIR__ . '/notify.php';
+                $full = Database::fetch('SELECT * FROM bookings WHERE id = :b LIMIT 1', ['b' => $bid]);
+                $to   = is_array($full) ? Notify::whatsappNumberFor($full) : '';
+            }
             $link = Ticket::downloadUrl($pnr);
             $text = 'Your S Hari Global ticket ' . $pnr . ': ' . $link;   // plain words: the alert body holds 500 characters
             $why  = match ($code) {
@@ -267,7 +275,7 @@ final class WaHealth
                   . 'टिकट link: ' . $link . "\n"
                   . ($to !== '' ? 'हातले पठाउन: ' . WaSend::waMe($to, $text) : '');
             return AdminAlerts::push('wa_route', '📵 Ticket not delivered · ' . $pnr, $body,
-                '/admin/booking-view.php?pnr=' . rawurlencode($pnr), '📵', 'wa_perm:' . $bid) > 0;
+                '/admin/booking-view.php?pnr=' . rawurlencode($pnr), '📵', 'wa_perm:' . $bid . ':' . self::fixedAt()) > 0;   // review fix: one alert per "Meta fixed" cycle
         } catch (Throwable $e) {
             Logger::warning('WaHealth office alert failed: ' . $e->getMessage(), [], 'whatsapp');
             return false;

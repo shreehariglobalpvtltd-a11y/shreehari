@@ -147,7 +147,10 @@ final class ManualQrAdapter implements PaymentAdapter
         /* review fix (money): picture, id and wallet word from ONE resolver (the ticket's own) - a
            library row prints ITS payee and kind, never nepal_esewa_id beside another wallet's QR.
            Only when an eSewa is offered at all (as before). */
-        $npQ = $esewaId !== '' ? self::nepalQr($booking, $esewaId, $esewaNm) : null;
+        $npQ = $esewaId !== '' || $nepal ? self::nepalQr($booking, $esewaId, $esewaNm) : null;
+        if ($npQ !== null && $esewaId === '' && $npQ['row'] === null) {
+            $npQ = null;   // mp4 review fix: no eSewa id and no library QR for this Nepal sale - nothing offered (as before)
+        }
         return [
             'kind'  => 'qr',
             'upi'   => $upiId === '' ? null : [

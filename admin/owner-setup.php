@@ -197,6 +197,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     } elseif ((string) ($_POST['act'] ?? '') === 'facts') {
         $changed = [];
+        $oldNpId = Settings::getString('nepal_esewa_id', '');
         foreach ($keys as $k => $spec) {
             if (!array_key_exists($k, $_POST)) { continue; }
             $v = trim((string) $_POST[$k]);
@@ -230,6 +231,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $changed[] = $k;
         }
         Settings::flush();
+        if (in_array('nepal_esewa_id', $changed, true)) {
+            /* mp4 review fix: the QR library's NP default eSewa row follows the new id (tickets print it) */
+            require_once INCLUDE_PATH . '/payqr.php';
+            PayQr::followLegacyId($oldNpId, Settings::getString('nepal_esewa_id', ''));
+        }
         // mp1 tk: a company / Nepal line (PAN, eSewa id, office, map pins) prints on the ticket - cached tickets redraw
         if (array_filter($changed, static fn(string $k): bool => !str_starts_with($k, 'icici') && !str_starts_with($k, 'android')) !== []) {
             Settings::touchTicketIdentity();
@@ -432,16 +438,16 @@ admin_header('बाँकी भर्ने ठाउँ · Owner setup', 'own
 <?php
     /* review fix: once the QR library's Nepal default has its own payee, that id (the picture's
        own) is what tickets and the pay page print - say so here instead of a silent no-op. */
-    $libNpPayee = '';
+    $libNpNow = null;
     try {
         require_once INCLUDE_PATH . '/payqr.php';
-        $libNp = PayQr::defaultFor('NP');
-        $libNpPayee = $libNp !== null ? trim((string) ($libNp['payee'] ?? '')) : '';
+        $libNpNow = PayQr::resolve(null, 'NP');
+        $libNpNow = $libNpNow['source'] === 'default' ? $libNpNow : null;
     } catch (Throwable $ex) {
-        $libNpPayee = '';
+        $libNpNow = null;
     }
-    if ($libNpPayee !== ''): ?>
-    <p class="hint">ℹ️ टिकट र pay page मा <b>Payment QR library</b> को मुख्य नेपाल QR सँगको ID छापिन्छ: <code><?= $e($libNpPayee) ?></code> — बदल्न <a href="payment-center.php">Payment Management → QR कोडहरू</a> मा जानुहोस्। · Tickets print the QR library's Nepal default payee; edit it there.</p>
+    if ($libNpNow !== null): ?>
+    <p class="hint">ℹ️ टिकट र pay page मा <b>Payment QR library</b> को मुख्य नेपाल QR सँगको ID छापिन्छ: <b><?= $e($libNpNow['kind']) ?></b><?= $libNpNow['payee'] !== '' ? ' <code>' . $e($libNpNow['payee']) . '</code>' : ' (ID छैन · no id)' ?> — बदल्न <a href="payment-center.php?tab=np">Payment Management → QR कोडहरू</a> मा जानुहोस्। यहाँको eSewa ID मुख्य eSewa QR सँग मात्र मिल्छ · Tickets print the QR library's Nepal default payee; this eSewa ID follows only a default eSewa QR.</p>
 <?php endif; ?>
 
     <h2 style="margin-top:16px">5 · 📱 Play Store App signing SHA-256</h2>

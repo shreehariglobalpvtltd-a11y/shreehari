@@ -505,7 +505,8 @@ final class WaRoute
         }
         // 15 Oct 2026: the office's daily cap on paid messages - except a
         // login code: a customer outside the 24 h window could not sign in.
-        $cap = self::isLoginTemplate($templateName) ? '' : self::paidRefusal();
+        // mp4 review fix: false = no Meta-WABA billing hold (131042) here - AiSensy has its own billing
+        $cap = self::isLoginTemplate($templateName) ? '' : self::paidRefusal(false);
         if ($cap !== '') {
             return $cap;
         }
@@ -563,19 +564,26 @@ final class WaRoute
         return self::counter(date('Y-m-d') . ':paid') + self::counter(date('Y-m-d') . ':meta_tpl');
     }
 
-    /** '' when a paid message may go now, else why not. */
-    public static function paidRefusal(): string
+    /**
+     * '' when a paid message may go now, else why not.
+     * $metaCloud = the send goes through OUR Meta WABA (the default for every caller but
+     * AiSensy): only then does the 131042 billing hold apply - AiSensy bills from its own
+     * wallet / BSP, so a missing payment method on our WABA never stops its templates.
+     */
+    public static function paidRefusal(bool $metaCloud = true): string
     {
         /* 25 Nov 2026 (mp4): Meta answered 131042 (no payment method on the WABA) - every template
            would fail at delivery, so none is attempted until billing works (includes/wahealth.php). */
-        try {
-            require_once __DIR__ . '/wahealth.php';
-            $hold = WaHealth::billingHold();
-            if ($hold !== '') {
-                return $hold;
+        if ($metaCloud) {
+            try {
+                require_once __DIR__ . '/wahealth.php';
+                $hold = WaHealth::billingHold();
+                if ($hold !== '') {
+                    return $hold;
+                }
+            } catch (Throwable $e) {
+                // the cap below still applies
             }
-        } catch (Throwable $e) {
-            // the cap below still applies
         }
         $cap = self::paidLimit();
         if ($cap === null) {

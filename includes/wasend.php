@@ -255,12 +255,10 @@ final class WaSend
             if ($t['name'] !== '') {
                 return ['name' => $t['name'], 'lang' => $t['lang']];
             }
-            /* 25 Nov 2026 (mp4): Meta has just refused the configured ticket template (132001) -
-               not sent again for a few hours; the ticket waits for a free window / the office link. */
-            $set = trim(Settings::getString('whatsapp_template_name', ''));
-            if ($set !== '' && WaTplMeta::refusedRecently($set)) {
-                return ['name' => '', 'lang' => trim(Settings::getString('whatsapp_template_lang', 'en')) ?: 'en'];
-            }
+            /* mp4 review fix: no early "refused recently -> no template" return here any more - it
+               left every later ticket outside the window with no template, so the px3 132000/132001
+               rescue in process() (shg_booking_received, which does deliver) never ran. The
+               configured template is tried and a refusal falls through to the rescue, as at base. */
         } catch (Throwable $e) {
         }
         return [
@@ -366,6 +364,24 @@ final class WaSend
             require_once __DIR__ . '/wahealth.php';
             $ts = $at !== '' ? (int) strtotime($at) : PHP_INT_MAX;
             return WaHealth::on() && in_array(WaHealth::codeIn($error), WaHealth::PERMANENT, true) && $ts > WaHealth::fixedAt();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * review fix: a row that failed on 132001 (template refused) or 131042 (billing) can still go
+     * as a FREE message once the passenger's 24 h window is open - neither code touches a free
+     * message. 131070 (another app owns the chat) and a closed window keep it parked.
+     */
+    private static function freeNowPossible(array $row, string $to): bool
+    {
+        try {
+            require_once __DIR__ . '/wahealth.php';
+            $code = WaHealth::codeIn((string) ($row['error'] ?? ''));
+            return in_array($code, [WaHealth::TEMPLATE, WaHealth::BILLING], true)
+                && (int) ($row['no_free'] ?? 0) !== 1 && trim((string) ($row['body'] ?? '')) !== ''
+                && self::windowOpen($to) && !WaHealth::threadBlocked($to);
         } catch (Throwable $e) {
             return false;
         }
@@ -521,7 +537,7 @@ final class WaSend
         $now = self::stamp();
 
         if ($key !== null) {
-            $have = Database::fetch('SELECT id, state, wamid, error, attempts, purpose, updated_at FROM wa_outbox WHERE dedupe = :d', ['d' => $key]);
+            $have = Database::fetch('SELECT id, state, wamid, error, attempts, purpose, updated_at, no_free, body FROM wa_outbox WHERE dedupe = :d', ['d' => $key]);
             if ($have !== null) {
                 $out = ['id' => (int) $have['id'], 'state' => (string) $have['state'], 'dupe' => true,
                         'wamid' => (string) ($have['wamid'] ?? ''), 'error' => (string) ($have['error'] ?? '')];
@@ -534,7 +550,8 @@ final class WaSend
                 }
                 /* 25 Nov 2026 (mp4): failed for good on a Meta-side code (131070 / 131042 / 132001) -
                    the same message again fails the same way; it waits for "Meta ठीक भयो". */
-                if ($have['state'] === 'failed' && self::permanentFailure((string) ($have['error'] ?? ''), (string) ($have['updated_at'] ?? ''))) {
+                if ($have['state'] === 'failed' && self::permanentFailure((string) ($have['error'] ?? ''), (string) ($have['updated_at'] ?? ''))
+                    && !self::freeNowPossible($have, $to)) {
                     return $out;
                 }
                 if (($have['state'] === 'failed' && (int) $have['attempts'] < self::MAX_ATTEMPTS * 2) || $have['state'] === 'waiting') {

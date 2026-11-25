@@ -3187,9 +3187,24 @@ final class Notify
             $esewa     = trim((string) ($coSale['payEsewa'] ?? ''));
             $frozenNpr = strtoupper((string) ($booking['fx_currency'] ?? '')) === 'NPR' && (float) ($booking['fx_total'] ?? 0) > 0;
             $nepalSale = ($coSale['saleEntity'] ?? 'IN') === 'NP' || ($coSale['entity'] ?? 'IN') === 'NP' || $frozenNpr || $hint === 'NP';
+            /* 26 Nov 2026 (mp4 review fix, money): the payee + wallet word come from THE one
+               resolver (PayQr::resolve - the ticket's and pay.php's answer: the issuing desk's QR,
+               else the NP default, else this company's eSewa id), so WhatsApp never says
+               "eSewa: 98…" while the ticket's QR is another wallet's. */
+            $npKind = 'eSewa';
+            if ($nepalSale && $total > 0) {
+                try {
+                    require_once __DIR__ . '/payqr.php';
+                    $npR    = PayQr::resolve($booking, 'NP', $esewa);
+                    $esewa  = trim((string) $npR['payee']);
+                    $npKind = (string) $npR['kind'];
+                } catch (Throwable $e) {
+                    // keep the company's own eSewa id
+                }
+            }
             if ($nepalSale && $esewa !== '' && $total > 0) {
                 $npr = $frozenNpr ? round((float) $booking['fx_total']) : round($total * Settings::getFloat('npr_per_inr', 1.6));
-                $text .= "eSewa: " . $esewa . " · रू " . indianNumber((float) $npr) . "\n\n";
+                $text .= $npKind . ": " . $esewa . " · रू " . indianNumber((float) $npr) . "\n\n";
             }
 
             $text .= "भुक्तानी पछि प्रमाण अपलोड गर्नुहोस्:\n"

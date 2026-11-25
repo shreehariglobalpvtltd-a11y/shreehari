@@ -150,7 +150,7 @@ function mp4_cleanup(): void {
     foreach ($kvKeep as $r) { Database::insert('kv_store', $r); }
     Database::run("DELETE FROM kv_store WHERE kscope = 'wa_outbox' AND kkey LIKE :d", ['d' => date('Y-m-d') . '%']);
     Database::run('DELETE FROM notifications WHERE id > :f AND (title LIKE :t OR body LIKE :p)', ['f' => $bellFloor, 't' => '%SHG-2099-%', 'p' => '%' . MP4_PHONE . '%']);
-    foreach ($bookingIds as $b) { try { Database::run('DELETE FROM automation_log WHERE dedupe_key = :k', ['k' => 'alert:wa_perm:' . $b]); } catch (Throwable $e) {} }
+    foreach ($bookingIds as $b) { try { Database::run('DELETE FROM automation_log WHERE dedupe_key = :k OR dedupe_key LIKE :p', ['k' => 'alert:wa_perm:' . $b, 'p' => 'alert:wa_perm:' . $b . ':%']); } catch (Throwable $e) {} }
     Database::run("DELETE FROM audit_logs WHERE id > :f AND (action LIKE 'pay_qr.%' OR action IN ('whatsapp.meta_fixed', 'whatsapp.phone_health', 'settings.google_oauth'))", ['f' => $auditFloor]);
     try { Database::delete('counter_locations', 'code = :c', ['c' => MP4_DESK]); } catch (Throwable $e) {}
     foreach ($madeAdmins as $a) { try { Database::delete('admin_profiles', 'admin_id = :i', ['i' => $a]); } catch (Throwable $e) {} Database::delete('admins', 'id = :i', ['i' => $a]); }
@@ -362,7 +362,57 @@ try {
     PayQr::delete($firstDesk);
     PayQr::setDefault($fpId);
     check('D (default restored)', (int) (PayQr::defaultFor('NP')['id'] ?? 0) === $fpId && Settings::getString('nepal_esewa_qr', '') === $f2 && !is_file(ROOT_PATH . '/' . $f5));
-    check('D the drawn ticket layout is unchanged (PNG_LAYOUT_CHANGED not bumped)', str_contains((string) file_get_contents($ROOT . '/includes/ticket.php'), "private const PNG_LAYOUT_CHANGED = '2026-11-25 13:45:00';"));
+    /* review fix: the clean v2 ticket (the renderer that runs, ticket_clean_v2_on) prints the row's own wallet word too */
+    $csrc = (string) file_get_contents($ROOT . '/includes/ticketclean.php');
+    check('D the clean v2 pay card prints the QR row\'s wallet word (no fixed "eSewa: " / "eSewa / Fonepay ID:" left); cached tickets redraw on deploy (staleBefore reads ticketclean.php\'s own mtime; the 25 Nov stamp stays)',
+        str_contains($csrc, "\$npKind . ': ' . self::latin(") && str_contains($csrc, "\$npHead . ' ID: '") && str_contains($csrc, "(string) (\$payQ['esewaKind'] ?? 'eSewa') . ': '")
+        && !str_contains($csrc, "'eSewa: ' . self::latin(") && !str_contains($csrc, "'eSewa / Fonepay ID: '")
+        && str_contains((string) file_get_contents($ROOT . '/includes/ticket.php'), "(int) @filemtime(__DIR__ . '/ticketclean.php'));"));
+    /* review fix: the app (boot + track.php) gets the resolver's picture URL + ITS payee + kind */
+    $pi = PayQr::publicInfo(null);
+    check('D PayQr::publicInfo (app boot / track.php): the NP default picture as a site URL with its payee and wallet word',
+        $pi['url'] === '/' . $f2 && $pi['payee'] === '0123 4567 8901' && $pi['kind'] === 'Global IME' && $pi['source'] === 'default', json_encode($pi));
+    $isrc = (string) file_get_contents($ROOT . '/index.php');
+    $jsrc = (string) file_get_contents($ROOT . '/assets/js/07-checkout.js');
+    check('D the app ticket pairs the picture and the id from ONE source (boot = PayQr::publicInfo; a sale\'s own npPay from track.php wins)',
+        str_contains($isrc, 'PayQr::publicInfo(null)') && str_contains($isrc, "\$boot['settings']['nepal_pay_qr_kind']")
+        && str_contains((string) file_get_contents($ROOT . '/api/track.php'), "\$payload['npPay']") && str_contains($jsrc, 'const npP = (b.npPay && b.npPay.url) ? b.npPay : null;')
+        && str_contains($jsrc, 'esewa: npId, esewaKind:'));
+    /* review fix: an NP default eSewa row with no id of its own keeps printing nepal_esewa_id (as before
+       the library); saving a new id there follows into that row; another wallet's row never borrows it */
+    $lgRow = PayQr::get($legacyId) ?? [];
+    $lgFields = ['country' => 'NP', 'kind' => 'esewa', 'label' => 'MP4TEST legacy', 'payee' => '', 'desk_code' => null, 'is_active' => 1, 'sort' => 0];
+    PayQr::update($legacyId, $lgFields);
+    PayQr::setDefault($legacyId);
+    $rL = PayQr::resolve(null, 'NP');
+    check('D the NP default eSewa QR typed without an id: tickets keep printing the eSewa id from settings (nepal_esewa_id)',
+        $lgRow !== [] && $rL['source'] === 'default' && $rL['payee'] === '9800000777' && $rL['kind'] === 'eSewa' && $rL['name'] === 'MP4 Branch', json_encode($rL));
+    setKeep('nepal_esewa_id', '9800000888', 'string');
+    $fol = PayQr::followLegacyId('9800000777', '9800000888');
+    check('D the eSewa id changed (Payment Management / Owner Setup): the default eSewa row follows it, so the saved id is the printed one',
+        $fol && (string) (PayQr::get($legacyId)['payee'] ?? '') === '9800000888' && PayQr::resolve(null, 'NP')['payee'] === '9800000888');
+    PayQr::setDefault($fpId);
+    check('D the GIBL default (another wallet, its own payee) never follows / borrows the eSewa id',
+        !PayQr::followLegacyId('9800000888', '9800000999') && (string) (PayQr::get($fpId)['payee'] ?? '') === '0123 4567 8901' && PayQr::resolve(null, 'NP')['payee'] === '0123 4567 8901');
+    setKeep('nepal_esewa_id', '9800000777', 'string');
+    PayQr::update($legacyId, ['payee' => '9800000777'] + $lgFields);
+    check('D (GIBL default restored)', (int) (PayQr::defaultFor('NP')['id'] ?? 0) === $fpId && Settings::getString('nepal_esewa_qr', '') === $f2);
+    $pcsrc = (string) file_get_contents($ROOT . '/admin/payment-center.php');
+    check('D Payment Management: np_save makes the library follow the id, the ID card says what tickets print; Owner Setup does the same',
+        str_contains($pcsrc, "PayQr::followLegacyId(\$oldNpId, Settings::getString('nepal_esewa_id', ''))") && str_contains($pcsrc, "\$npNow = PayQr::resolve(null, 'NP');")
+        && str_contains((string) file_get_contents($ROOT . '/admin/owner-setup.php'), 'PayQr::followLegacyId($oldNpId,'));
+    /* review fix: WhatsApp texts follow the same resolver; pay.php / smartpay never name the wrong wallet */
+    $nsrc = (string) file_get_contents($ROOT . '/includes/notify.php');
+    $wbsrc = (string) file_get_contents($ROOT . '/includes/wabooking.php');
+    $spsrc = (string) file_get_contents($ROOT . '/smartpay.php');
+    check('D the WhatsApp booking texts (Notify::bookingPlaced, WaBooking) print the resolver\'s payee + wallet word',
+        str_contains($nsrc, "PayQr::resolve(\$booking, 'NP', \$esewa)") && str_contains($nsrc, '$text .= $npKind . ": " . $esewa')
+        && str_contains($wbsrc, "PayQr::resolve(\$b !== [] ? \$b : null, 'NP', \$esewa)") && str_contains($wbsrc, "\$kind . ': ' . \$esewa"));
+    check('D pay.php + smartpay name the row\'s wallet in the note / radio / copy button, and the Nepal box shows for a library QR without a settings id',
+        str_contains($psrc, "\$e(\$esKind) . ' बाट पठाउँदा") && !str_contains($psrc, 'Put \' . $e($pnr) . \' in the eSewa remarks') && str_contains($psrc, "> <?= \$e((string) (\$esewa['kind'] ?? 'eSewa')) ?></label>")
+        && str_contains($psrc, "if (\$esewaId !== '' || \$npLibRow) {") && str_contains($spsrc, 'data-w="<?= $e($npW) ?>"') && !str_contains($spsrc, '>Copy eSewa ID<'));
+    $stL = (new ManualQrAdapter())->start(['counter_code' => ''] + $fake, 500.0);
+    check('D ManualQrAdapter: a Nepal sale with the library QR shows it (same as the ticket)', ($stL['esewa']['kind'] ?? '') === 'Global IME' && ($stL['esewa']['id'] ?? '') === '0123 4567 8901');
 
     /* ================= G. Google JSON ================= */
     echo "\n-- G Google client_secret JSON\n";
@@ -515,12 +565,24 @@ try {
     $CALLS = [];
     $r = WaSend::ticket($pnr, ['to' => $to3, 'purpose' => 'ticket_resend', 'admin_id' => 1]);
     check('W the same message again (same bucket): failed for good on a Meta code -> NOT re-queued, no HTTP call', $r['state'] === 'failed' && $CALLS === [], json_encode($r));
+    /* review fix (px3 rescue regression): a template refused a moment ago must NOT leave the next
+       tickets without any template - the configured one is tried and its refusal falls to the
+       rescue template (shg_booking_received), which delivers on live. */
     $to4 = $num('04');
     $CALLS = [];
+    $NEXT = [$meta(404, 132001, 'Template name does not exist in the translation')];
     $r = $send($to4);
-    $w4 = Database::fetch('SELECT state, error FROM wa_outbox WHERE to_number = :t ORDER BY id DESC LIMIT 1', ['t' => $to4]) ?? [];
-    check('W template refused, window closed -> no template is sent, the ticket WAITS (wa.me for the office) - nothing sent to Meta',
-        $r['state'] === 'waiting' && $CALLS === [] && str_contains((string) ($w4['error'] ?? ''), 'wa.me'), json_encode([$r, $w4]));
+    check('W the template refused recently, the next ticket outside the window: still tried, and the 132001 rescue (shg_booking_received) delivers it - no silent wait',
+        $r['state'] === 'sent' && count($CALLS) === 2 && ($CALLS[0]['template']['name'] ?? '') === 'mp4_ticket_tpl' && ($CALLS[1]['template']['name'] ?? '') === 'shg_booking_received',
+        json_encode([$r, $CALLS], JSON_UNESCAPED_UNICODE));
+    check('W WaSend::ticketTemplate has no "refused recently -> no template" early return', !str_contains((string) file_get_contents($ROOT . '/includes/wasend.php'), "WaTplMeta::refusedRecently(\$set)"));
+    /* review fix: a 132001 / 131042 failure can still go FREE once the passenger opens the 24 h window */
+    $OPEN[$to3] = true;
+    $CALLS = [];
+    $r = WaSend::ticket($pnr, ['to' => $to3, 'purpose' => 'ticket_resend', 'admin_id' => 1]);
+    check('W the 132001-failed ticket again after the passenger wrote in (window open): re-queued and sent as the FREE picture',
+        $r['state'] !== 'failed' && ($CALLS[0]['type'] ?? '') === 'image', json_encode([$r, $CALLS[0]['type'] ?? null]));
+    unset($OPEN[$to3]);
     Database::run("DELETE FROM kv_store WHERE kscope = 'wa_tpl_meta' AND kkey = 'refused.mp4_ticket_tpl'");
 
     echo "\n-- W 131042 billing hold\n";
@@ -529,6 +591,8 @@ try {
         'error' => 'WhatsApp failed (code 131042) - payment method problem on the WhatsApp Business Account']);
     $hold = WaHealth::billingHold();
     check('W one 131042 in the log -> "Meta billing missing" hold; WaRoute::paidRefusal holds every template', str_contains($hold, 'Meta billing missing (held 131042)') && str_contains(WaRoute::paidRefusal(), '131042'), $hold);
+    check('W the hold is for OUR Meta WABA only: AiSensy (own wallet / BSP) is not held - aisensyRefusal uses paidRefusal(false)',
+        WaRoute::paidRefusal(false) === '' && str_contains((string) file_get_contents($ROOT . '/includes/waroute.php'), "self::isLoginTemplate(\$templateName) ? '' : self::paidRefusal(false);"));
     $to6 = $num('06');
     $CALLS = [];
     $r = $send($to6);
@@ -595,7 +659,19 @@ try {
     check('W ONE office alert per parked booking (asked twice): the reason, the ticket link and a wa.me link to the passenger, opens the booking',
         $a1 && !$a2 && $nBell === 1 && str_contains((string) ($bell['body'] ?? ''), '131070') && str_contains((string) ($bell['body'] ?? ''), 'https://wa.me/' . $num('00'))
         && str_contains((string) ($bell['body'] ?? ''), $pnr) && (string) ($bell['link'] ?? '') === '/admin/booking-view.php?pnr=' . rawurlencode($pnr), json_encode($bell, JSON_UNESCAPED_UNICODE));
+    /* review fix: the wa.me link goes to the number the ticket was SENT to (message_logs.to_number) */
+    $bkNp = ['id' => $bid, 'pnr' => $pnr, 'contact_phone' => MP4_PHONE . '00', 'contact_country_code' => null, 'to_number' => '977' . MP4_PHONE . '00'];
+    $fx0 = WaHealth::fixedAt();
+    WaHealth::$clock = static fn(): int => max(time(), $fx0 + 1);   // a later "Meta fixed" moment, never the same second
+    WaHealth::markFixed();
+    WaHealth::$clock = null;
+    $a3 = WaHealth::officeAlert($bkNp, 132001);
+    $bell3 = Database::fetch('SELECT * FROM notifications WHERE id > :f AND title LIKE :t ORDER BY id DESC LIMIT 1', ['f' => $bellFloor, 't' => '%' . $pnr . '%']) ?? [];
+    check('W after "Meta fixed" a new failure gets a NEW alert, and its wa.me link is the number actually sent to (977…, never a +91 guess)',
+        $a3 && str_contains((string) ($bell3['body'] ?? ''), 'https://wa.me/977' . MP4_PHONE . '00') && !str_contains((string) ($bell3['body'] ?? ''), 'https://wa.me/91' . MP4_PHONE . '00'),
+        json_encode($bell3, JSON_UNESCAPED_UNICODE));
     $cron = (string) file_get_contents($ROOT . '/cron/whatsapp-retry.php');
+    check('W the cron hands the sent-to number to the alert', str_contains($cron, 'm.error, m.to_number'));
     check('W the retry cron parks 131070 / 131042 / 132001 (no resend loop) and alerts the office BEFORE the sender brake can stop the run',
         str_contains($cron, '$alreadyHasTicket . $parkSql') && str_contains($cron, 'WaHealth::officeAlert(') && strpos($cron, 'WaHealth::officeAlert(') < strpos($cron, '$lastFail = Database::fetch('));
     WaHealth::markFixed();

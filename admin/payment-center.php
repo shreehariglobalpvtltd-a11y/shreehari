@@ -113,8 +113,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($act === 'np_save') {
         /* the eSewa / bank id + name (the Gmail boxes have their own card since mp2) */
         $tab = 'np';
+        $oldNpId = Settings::getString('nepal_esewa_id', '');
         $changed = $saveKeys(['nepal_esewa_id' => ['text', 80], 'nepal_esewa_name' => ['text', 120]]);
         if ($changed !== []) {
+            /* review fix: the id prints on tickets - the library's NP eSewa default follows it, cached tickets redraw */
+            if (in_array('nepal_esewa_id', $changed, true) && PayQr::followLegacyId($oldNpId, Settings::getString('nepal_esewa_id', ''))) {
+                $changed[] = 'pay_qr_codes(NP default payee)';
+            }
+            Settings::touchTicketIdentity();
+            Settings::flush();
             Logger::audit('settings.payment_center', 'settings', 'payment-center', null, ['tab' => 'np', 'changed' => $changed], 'Payment Management (Nepal)');
             $flash[] = ['ok', 'सेभ भयो · saved: ' . implode(', ', $changed)];
         } else {
@@ -410,6 +417,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $pj = GoogleOAuth::parseClientJson($raw, GoogleOAuth::redirectUri());
         if (!$pj['ok']) {
             $flash[] = ['bad', $pj['error']];
+        } elseif ($pj['type'] === 'installed' || (!$pj['redirect_ok'] && GoogleOAuth::configured()
+            && $pj['client_id'] !== Settings::getString('google_oauth_client_id', ''))) {
+            /* review fix: a Desktop-app client never works for our sign-in, and a different client
+               whose redirect URI does not match would break the token refresh of the connected bank
+               Gmail boxes - neither overwrites the saved client. Only the warning is shown. */
+            Logger::audit('settings.google_oauth', 'settings', 'payment-center', null,
+                ['changed' => [], 'refused' => true, 'from' => 'client_secret json', 'type' => $pj['type'], 'redirect_ok' => $pj['redirect_ok']], 'Google sign-in client JSON refused (kept the saved client)');
+            $flash[] = ['bad', 'सेभ गरिएन — पुरानो client नै राखियो · not saved, the current client is kept. ' . $pj['warn']];
         } else {
             $changed = [];
             if ($pj['client_id'] !== Settings::getString('google_oauth_client_id', '')) {
@@ -987,6 +1002,9 @@ function pcCopy(b){var i=b.previousElementSibling;if(!i)return;i.select();try{if
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_save"><input type="hidden" name="tab" value="np">
     <h2>🪪 eSewa / bank ID</h2>
+    <?php $npNow = PayQr::resolve(null, 'NP'); if ($npNow['source'] === 'default'): ?>
+    <p class="pc-warn">ℹ️ टिकट र pay page मा अहिले छापिन्छ · tickets print now: <b><?= $e($npNow['kind']) ?></b><?= $npNow['payee'] !== '' ? ': <code>' . $e($npNow['payee']) . '</code>' : ' (ID छैन · no id)' ?> — माथिको QR card को ID ले जित्छ; यहाँको ID मुख्य eSewa QR सँग मात्र मिल्छ · the QR card's own ID wins; this id follows only the default eSewa QR.</p>
+    <?php endif; ?>
     <div class="pc-f">
       <label>eSewa / bank ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa / खाता नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>

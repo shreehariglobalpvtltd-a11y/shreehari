@@ -278,13 +278,27 @@ final class PayQr
     {
         $row = self::pick($booking, $country);
         if ($row !== null) {
+            $isDesk = trim((string) ($row['desk_code'] ?? '')) !== '';
+            $payee  = trim((string) ($row['payee'] ?? ''));
+            $name   = '';
+            /* review fix: the NP default eSewa row with no id of its own keeps printing the old
+               eSewa id (nepal_esewa_id), as the ticket did before the library - only for an
+               eSewa row (an eSewa id under a Khalti / bank QR would send money to the wrong wallet). */
+            if ($payee === '' && !$isDesk && $country === 'NP' && (string) ($row['kind'] ?? '') === 'esewa') {
+                $payee = trim($fallbackId);
+                $name  = $payee !== '' ? trim($fallbackName) : '';
+                if ($payee === '') {
+                    $payee = trim(Settings::getString('nepal_esewa_id', ''));
+                    $name  = $payee !== '' ? trim(Settings::getString('nepal_esewa_name', '')) : '';
+                }
+            }
             return [
                 'file'   => self::absPath($row),
-                'payee'  => trim((string) ($row['payee'] ?? '')),
-                'name'   => '',
+                'payee'  => $payee,
+                'name'   => $name,
                 'kind'   => self::printLabel((string) ($row['kind'] ?? '')),
                 'row'    => $row,
-                'source' => trim((string) ($row['desk_code'] ?? '')) !== '' ? 'desk' : 'default',
+                'source' => $isDesk ? 'desk' : 'default',
             ];
         }
         if ($country !== 'NP') {
@@ -299,6 +313,25 @@ final class PayQr
         }
         return ['file' => $file, 'payee' => $id, 'name' => $name, 'kind' => 'eSewa', 'row' => null,
                 'source' => $file !== '' || $id !== '' ? 'legacy' : ''];
+    }
+
+    /**
+     * review fix: resolve() for the app (index.php boot, api/track.php) - the picture as a
+     * site URL, with ITS payee and wallet word, so the in-app ticket never pairs one source's
+     * picture with another's id. url '' = nothing under the web root to show.
+     * @return array{url: string, payee: string, kind: string, source: string}
+     */
+    public static function publicInfo(?array $booking, string $fallbackId = ''): array
+    {
+        try {
+            $r = self::resolve($booking, 'NP', $fallbackId);
+        } catch (Throwable $e) {
+            return ['url' => '', 'payee' => '', 'kind' => 'eSewa', 'source' => ''];
+        }
+        $root = rtrim(str_replace('\\', '/', ROOT_PATH), '/') . '/';
+        $file = str_replace('\\', '/', (string) $r['file']);
+        $url  = $file !== '' && str_starts_with($file, $root) ? '/' . ltrim(substr($file, strlen($root)), '/') : '';
+        return ['url' => $url, 'payee' => (string) $r['payee'], 'kind' => (string) $r['kind'], 'source' => (string) $r['source']];
     }
 
     /**
@@ -686,6 +719,38 @@ final class PayQr
         } catch (Throwable $e) {
             Logger::warning('pay QR legacy import failed: ' . $e->getMessage(), [], 'payments');
             return null;
+        }
+    }
+
+    /**
+     * review fix: the office changed the old eSewa id (Payment Management Nepal tab / Owner
+     * Setup). The NP default eSewa row that carried the OLD id (or none) follows it, so the
+     * saved id is the one tickets and the pay page print - not a silent no-op. A row with a
+     * different payee of its own (another wallet / account) is left alone.
+     * @return bool true when a library row changed
+     */
+    public static function followLegacyId(string $oldId, string $newId): bool
+    {
+        try {
+            if (!self::ready() || trim($oldId) === trim($newId)) {
+                return false;
+            }
+            $def = self::defaultFor('NP');
+            if ($def === null || (string) ($def['kind'] ?? '') !== 'esewa' || trim((string) ($def['desk_code'] ?? '')) !== '') {
+                return false;
+            }
+            $cur = trim((string) ($def['payee'] ?? ''));
+            if ($cur !== '' && $cur !== trim($oldId)) {
+                return false;
+            }
+            Database::update(self::TABLE, ['payee' => mb_substr(trim($newId), 0, 160), 'updated_at' => date('Y-m-d H:i:s')],
+                'id = :i', ['i' => (int) $def['id']]);
+            self::$rows = null;
+            self::afterChange();
+            return true;
+        } catch (Throwable $e) {
+            Logger::warning('pay QR id follow failed: ' . $e->getMessage(), [], 'payments');
+            return false;
         }
     }
 
