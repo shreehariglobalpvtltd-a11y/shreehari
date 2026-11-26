@@ -169,10 +169,11 @@ a{color:var(--primary)}
       foreach ($methods as $m) {
           if ($m['data']['kind'] === 'qr') { $hasUpi = $m['data']['upi'] !== null; $hasEsewa = $m['data']['esewa'] !== null; $qr = $m['data']; }
           else { $gw[] = $m; }
-      } ?>
+      }
+      $npW = $hasEsewa ? (string) ($qr['esewa']['kind'] ?? 'eSewa') : 'eSewa';   // mp4 review fix: the QR row's own wallet word ?>
     <div class="tabs" role="tablist">
       <?php if ($hasUpi): ?><button type="button" class="on" data-pane="upi" role="tab">🇮🇳 UPI</button><?php endif; ?>
-      <?php if ($hasEsewa): ?><button type="button" class="<?= $hasUpi ? '' : 'on' ?>" data-pane="esewa" role="tab">🇳🇵 eSewa</button><?php endif; ?>
+      <?php if ($hasEsewa): ?><button type="button" class="<?= $hasUpi ? '' : 'on' ?>" data-pane="esewa" role="tab">🇳🇵 <?= $e($npW) ?></button><?php endif; ?>
       <?php if ($gw !== []): ?><button type="button" data-pane="gw" role="tab" data-t="card">Card / Bank</button><?php endif; ?>
     </div>
     <?php if ($hasUpi): ?>
@@ -187,12 +188,12 @@ a{color:var(--primary)}
     <?php endif; ?>
     <?php if ($hasEsewa): ?>
     <div class="pane" id="p-esewa" <?= $hasUpi ? 'hidden' : '' ?>>
-      <?php if ($qr['esewa']['qr'] !== ''): ?><img class="qr" src="<?= $e($qr['esewa']['qr']) ?>" alt="eSewa QR" width="260" height="260"><?php endif; ?>
-      <div class="row"><span>eSewa ID</span><code id="esewaId"><?= $e($qr['esewa']['id']) ?></code></div>
-      <div class="row"><span data-t="payee">Payee</span><b><?= $e($qr['esewa']['name']) ?></b></div>
+      <?php if ($qr['esewa']['qr'] !== ''): ?><img class="qr" src="<?= $e($qr['esewa']['qr']) ?>" alt="<?= $e($npW) ?> QR" width="260" height="260"><?php endif; ?>
+      <?php if ($qr['esewa']['id'] !== ''): /* mp4: a library QR without a payee shows the picture only */ ?><div class="row"><span><?= $e((string) ($qr['esewa']['kind'] ?? 'eSewa')) ?> ID</span><code id="esewaId"><?= $e($qr['esewa']['id']) ?></code></div><?php endif; ?>
+      <?php if ($qr['esewa']['name'] !== ''): ?><div class="row"><span data-t="payee">Payee</span><b><?= $e($qr['esewa']['name']) ?></b></div><?php endif; ?>
       <div class="row"><span data-t="amtNpr">Amount (NPR)</span><b>NPR <?= $e(number_format((float) $qr['esewa']['npr'])) ?></b></div>
-      <p class="note" data-t="esewaNote">Send this amount from the eSewa app with your PNR in the remarks.</p>
-      <button type="button" class="btn alt" data-copy="esewaId" data-t="copyEsewa">Copy eSewa ID</button>
+      <p class="note" data-t="esewaNote" data-w="<?= $e($npW) ?>">Send this amount from the <?= $e($npW) ?> app with your PNR in the remarks.</p>
+      <?php if ($qr['esewa']['id'] !== ''): ?><button type="button" class="btn alt" data-copy="esewaId" data-t="copyEsewa" data-w="<?= $e($npW) ?>">Copy <?= $e($npW) ?> ID</button><?php endif; ?>
     </div>
     <?php endif; ?>
     <?php if ($gw !== []): ?>
@@ -257,7 +258,8 @@ a{color:var(--primary)}
   function tr(k) { return (W[lang] && W[lang][k]) || EN[k] || k; }
   function apply() {
     document.documentElement.lang = lang;
-    document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = tr(el.getAttribute('data-t')); });
+    /* mp4: data-w = the QR row's own wallet word (Khalti, Global IME) - never "eSewa" over another wallet */
+    document.querySelectorAll('[data-t]').forEach(function (el) { var t = tr(el.getAttribute('data-t')), w = el.getAttribute('data-w'); el.textContent = w ? t.split('eSewa').join(w) : t; });
     document.querySelectorAll('.lang button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-l') === lang); });
   }
   document.querySelectorAll('.lang button').forEach(function (b) { b.addEventListener('click', function () { lang = b.getAttribute('data-l'); try { localStorage.setItem('shg:lang', lang); } catch (e) {} apply(); }); });

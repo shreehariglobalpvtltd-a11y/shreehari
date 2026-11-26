@@ -37,6 +37,7 @@ require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/counterdesk.php';
 require_once INCLUDE_PATH . '/bankmail.php';   // + BankMailAccounts, GoogleOAuth, SecretBox
 require_once INCLUDE_PATH . '/bankapi.php';
+require_once INCLUDE_PATH . '/payqr.php';      // mp4: the QR library (🔳 QR कोडहरू)
 
 $admin = admin_boot('payments.view');
 $e     = static fn($v): string => Security::e((string) $v);
@@ -112,8 +113,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($act === 'np_save') {
         /* the eSewa / bank id + name (the Gmail boxes have their own card since mp2) */
         $tab = 'np';
+        $oldNpId = Settings::getString('nepal_esewa_id', '');
         $changed = $saveKeys(['nepal_esewa_id' => ['text', 80], 'nepal_esewa_name' => ['text', 120]]);
         if ($changed !== []) {
+            /* review fix: the id prints on tickets - the library's NP eSewa default follows it, cached tickets redraw */
+            if (in_array('nepal_esewa_id', $changed, true) && PayQr::followLegacyId($oldNpId, Settings::getString('nepal_esewa_id', ''))) {
+                $changed[] = 'pay_qr_codes(NP default payee)';
+            }
+            Settings::touchTicketIdentity();
+            Settings::flush();
             Logger::audit('settings.payment_center', 'settings', 'payment-center', null, ['tab' => 'np', 'changed' => $changed], 'Payment Management (Nepal)');
             $flash[] = ['ok', 'सेभ भयो · saved: ' . implode(', ', $changed)];
         } else {
@@ -293,6 +301,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $oldQr = Settings::getString('nepal_esewa_qr', '');
                 Settings::set('nepal_esewa_qr', '', 'string', 'company');
                 Settings::flush();
+                PayQr::legacyRemoved($oldQr);   // mp4: the library stops printing it as the Nepal default
                 Logger::audit('settings.esewa_qr', 'settings', 'payment-center', ['file' => $oldQr], ['file' => ''], 'Nepal eSewa QR removed');
                 $flash[] = ['ok', 'eSewa QR हटाइयो · removed'];
             } else {
@@ -327,11 +336,113 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $oldQr = Settings::getString('nepal_esewa_qr', '');
                 Settings::set('nepal_esewa_qr', 'uploads/payqr/' . $name, 'string', 'company');
                 Settings::flush();
+                PayQr::importLegacy($me, true);   // mp4: it becomes the Nepal default in the QR library too
                 Logger::audit('settings.esewa_qr', 'settings', 'payment-center', ['file' => $oldQr], ['file' => 'uploads/payqr/' . $name], 'Nepal eSewa QR uploaded');
                 $flash[] = ['ok', 'eSewa QR सेभ भयो · saved — टिकट, pay पेज र QR पेजमा यही देखिन्छ'];
             }
         } catch (Throwable $ex) {
             $flash[] = ['bad', $ex->getMessage()];
+        }
+    } elseif (in_array($act, ['qr_add', 'qr_edit', 'qr_file', 'qr_default', 'qr_delete'], true)) {
+        /* 25 Nov 2026 (mp4): the QR library (includes/payqr.php) - super-admin only (this page), CSRF above, audited */
+        $tab = ($_POST['tab'] ?? '') === 'in' ? 'in' : 'np';
+        try {
+            if (!PayQr::ready()) {
+                throw new RuntimeException('Migration database/upgrade-2026-11-25-mp4-qr-library.sql बाँकी · run the migration first');
+            }
+            if ($act === 'qr_add') {
+                [$fields, $bad] = PayQr::clean($_POST + ['is_active' => '1']);
+                if ($bad !== []) {
+                    throw new RuntimeException(implode(' · ', $bad));
+                }
+                $file = PayQr::storeUpload($_FILES['qr_file'] ?? []);
+                $qid  = PayQr::create($fields, $file, $me, !empty($_POST['is_default']));
+                $row  = PayQr::get($qid) ?? [];
+                Logger::audit('pay_qr.add', 'pay_qr', (string) $qid, null,
+                    ['country' => $fields['country'], 'kind' => $fields['kind'], 'label' => $fields['label'], 'payee' => $fields['payee'],
+                     'desk' => $fields['desk_code'], 'file' => $file, 'default' => (int) ($row['is_default'] ?? 0)], 'Payment QR uploaded');
+                $tab = $fields['country'] === 'IN' ? 'in' : 'np';
+                $flash[] = ['ok', '✅ QR थपियो · added: ' . $fields['label'] . ((int) ($row['is_default'] ?? 0) === 1 ? ' — 🎫 टिकटमा यही छापिन्छ · prints on tickets' : '')];
+            } else {
+                $qid = (int) ($_POST['id'] ?? 0);
+                $row = PayQr::get($qid);
+                if ($row === null) {
+                    throw new RuntimeException('QR भेटिएन · not found');
+                }
+                $tab = (string) $row['country'] === 'IN' ? 'in' : 'np';
+                if ($act === 'qr_edit') {
+                    [$fields, $bad] = PayQr::clean($_POST + ['country' => $row['country']]);
+                    if ($bad !== []) {
+                        throw new RuntimeException(implode(' · ', $bad));
+                    }
+                    $changed = PayQr::update($qid, $fields);
+                    /* a desk's own QR is never the country default (PayQr::setDefault refuses it) */
+                    if (!empty($_POST['is_default']) && (int) $row['is_default'] !== 1 && $fields['desk_code'] === null) {
+                        PayQr::setDefault($qid);
+                        $changed[] = 'is_default';
+                    }
+                    if ($changed !== []) {
+                        Logger::audit('pay_qr.edit', 'pay_qr', (string) $qid, array_intersect_key($row, array_flip($changed)),
+                            array_intersect_key($fields + ['is_default' => 1], array_flip($changed)), 'Payment QR edited');
+                    }
+                    $flash[] = ['ok', $changed !== [] ? 'सेभ भयो · saved: ' . implode(', ', $changed) : 'केही बदलिएन · nothing changed'];
+                } elseif ($act === 'qr_file') {
+                    $file = PayQr::storeUpload($_FILES['qr_file'] ?? []);
+                    $old  = PayQr::replaceFile($qid, $file);
+                    Logger::audit('pay_qr.replace', 'pay_qr', (string) $qid, ['file' => $old], ['file' => $file], 'Payment QR picture replaced');
+                    $flash[] = ['ok', '🔁 नयाँ फोटो राखियो · picture replaced: ' . (string) $row['label']];
+                } elseif ($act === 'qr_default') {
+                    PayQr::setDefault($qid);
+                    Logger::audit('pay_qr.default', 'pay_qr', (string) $qid, null, ['country' => (string) $row['country']], 'Payment QR = ticket default');
+                    $flash[] = ['ok', '🎫 ' . (string) $row['label'] . ' — अब ' . ((string) $row['country'] === 'IN' ? 'India' : 'Nepal') . ' को मुख्य QR · now the default'];
+                } else {
+                    PayQr::delete($qid);
+                    Logger::audit('pay_qr.delete', 'pay_qr', (string) $qid, ['country' => (string) $row['country'], 'kind' => (string) $row['kind'], 'label' => (string) $row['label'],
+                        'payee' => (string) $row['payee'], 'file' => (string) $row['file'], 'default' => (int) $row['is_default']], null, 'Payment QR deleted (file removed)');
+                    $flash[] = ['ok', '🗑 हटाइयो · deleted: ' . (string) $row['label'] . ((int) $row['is_default'] === 1 ? ' — यो देशको मुख्य QR छैन अब, अर्को छान्नुहोस् · pick a new default' : '')];
+                }
+            }
+        } catch (Throwable $ex) {
+            $flash[] = ['bad', $ex->getMessage()];
+        }
+    } elseif ($act === 'google_json') {
+        /* mp4: the client_secret_….json Google gives when the OAuth client is made - read, never stored */
+        $tab = ($_POST['tab'] ?? '') === 'in' ? 'in' : 'np';
+        $f = $_FILES['google_json'] ?? [];
+        $raw = '';
+        if (($f['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file((string) ($f['tmp_name'] ?? '')) && (int) ($f['size'] ?? 0) <= 64 * 1024) {
+            $raw = (string) file_get_contents((string) $f['tmp_name']);
+        }
+        @unlink((string) ($f['tmp_name'] ?? ''));   // the uploaded file is never kept
+        $pj = GoogleOAuth::parseClientJson($raw, GoogleOAuth::redirectUri());
+        if (!$pj['ok']) {
+            $flash[] = ['bad', $pj['error']];
+        } elseif ($pj['type'] === 'installed' || (!$pj['redirect_ok'] && GoogleOAuth::configured()
+            && $pj['client_id'] !== Settings::getString('google_oauth_client_id', ''))) {
+            /* review fix: a Desktop-app client never works for our sign-in, and a different client
+               whose redirect URI does not match would break the token refresh of the connected bank
+               Gmail boxes - neither overwrites the saved client. Only the warning is shown. */
+            Logger::audit('settings.google_oauth', 'settings', 'payment-center', null,
+                ['changed' => [], 'refused' => true, 'from' => 'client_secret json', 'type' => $pj['type'], 'redirect_ok' => $pj['redirect_ok']], 'Google sign-in client JSON refused (kept the saved client)');
+            $flash[] = ['bad', 'सेभ गरिएन — पुरानो client नै राखियो · not saved, the current client is kept. ' . $pj['warn']];
+        } else {
+            $changed = [];
+            if ($pj['client_id'] !== Settings::getString('google_oauth_client_id', '')) {
+                Settings::set('google_oauth_client_id', $pj['client_id'], 'string', 'payments');
+                $changed[] = 'google_oauth_client_id';
+            }
+            if ($pj['client_secret'] !== Settings::getString('google_oauth_client_secret', '')) {
+                Settings::set('google_oauth_client_secret', $pj['client_secret'], 'string', 'payments');
+                $changed[] = 'google_oauth_client_secret';
+            }
+            Settings::flush();
+            Logger::audit('settings.google_oauth', 'settings', 'payment-center', null,
+                ['changed' => $changed, 'from' => 'client_secret json', 'type' => $pj['type'], 'redirect_ok' => $pj['redirect_ok']], 'Google sign-in client from the JSON file');
+            $flash[] = ['ok', 'Google JSON पढियो · read (' . $pj['type'] . '): ' . ($changed !== [] ? 'सेभ · saved ' . implode(', ', $changed) : 'केही बदलिएन · nothing changed')
+                . (GoogleOAuth::configured() ? ' — अब "🔐 Google बाट Login" थिच्नुहोस्' : '')];
+            if ($pj['warn'] !== '') {
+                $flash[] = ['bad', $pj['warn']];
+            }
         }
     } elseif ($act === 'in_save') {
         $tab = 'in';
@@ -447,6 +558,108 @@ $lastHook = BankApi::lastWebhook();
 if ($mailReady && $tab !== 'cash') {
     BankMailAccounts::migrateLegacy();   // the old single Gmail settings become account #1, once
 }
+if ($tab !== 'cash' && PayQr::ready()) {
+    PayQr::importLegacy($me);            // mp4: the old single Nepal QR becomes the NP default, once
+}
+
+/* ---------------- 🔳 the QR library card (mp4) ---------------- */
+$qrCard = static function (string $country) use ($e): void {
+    $tabKey = $country === 'IN' ? 'in' : 'np';
+    $desks = [];
+    try {
+        foreach (CounterDesk::all(true) as $code => $d) {
+            $desks[(string) $code] = (string) ($d['name'] ?? $code);
+        }
+    } catch (Throwable $ex) {
+        $desks = [];
+    }
+    $kindOpts = static function (string $sel) use ($e, $country): string {
+        $h = '';
+        foreach (PayQr::KINDS as $k => $l) {
+            if ($country === 'NP' && $k === 'upi') { continue; }
+            $h .= '<option value="' . $e($k) . '"' . ($k === $sel ? ' selected' : '') . '>' . $e($l) . '</option>';
+        }
+        return $h;
+    };
+    $deskOpts = static function (string $sel) use ($e, $desks): string {
+        $h = '<option value="">— कुनै पनि काउन्टर · any desk —</option>';
+        foreach ($desks as $c => $n) {
+            $h .= '<option value="' . $e($c) . '"' . ($c === $sel ? ' selected' : '') . '>' . $e($n . ' (' . $c . ')') . '</option>';
+        }
+        if ($sel !== '' && !isset($desks[$sel])) {
+            $h .= '<option value="' . $e($sel) . '" selected>' . $e($sel) . ' (बन्द · closed)</option>';
+        }
+        return $h;
+    };
+    $hid = static fn(string $act, int $id = 0): string => Security::csrfField() . '<input type="hidden" name="act" value="' . $e($act) . '"><input type="hidden" name="tab" value="' . $e($tabKey) . '">'
+        . ($id > 0 ? '<input type="hidden" name="id" value="' . $id . '">' : '');
+    echo '<div class="pc-card" id="pc-qr-' . $e($country) . '">'
+       . '<h2>🔳 QR कोडहरू · Payment QR codes</h2>'
+       . ($country === 'NP'
+           ? '<p class="hint">🇳🇵 नेपाली QR — eSewa, Fonepay, Khalti, Global IME bank … जति पनि। <b>🎫 मुख्य (default)</b> QR टिकट, pay पेज र QR पेजमा देखिन्छ; कुनै काउन्टरको आफ्नै QR भए त्यो काउन्टरको टिकटमा त्यही छापिन्छ। Customer लाई <b>Remarks मा PNR</b> लेख्न भन्नुहोस्।</p>'
+           : '<p class="hint">🇮🇳 India: टिकटमा <b>UPI QR रकम + PNR सहित</b> आफैं बन्छ (UPI ID बाट) — त्यो पहिलो। यहाँको मुख्य QR फोटो pay पेजमा UPI QR बन्न नसके मात्र देखिन्छ।</p>');
+    if (!PayQr::ready()) {
+        echo '<p class="pc-warn">⚠️ Migration <b>database/upgrade-2026-11-25-mp4-qr-library.sql</b> बाँकी — अहिले पुरानै एउटा QR चल्छ · run the migration to upload more.</p></div>';
+        return;
+    }
+    $rows = PayQr::all($country);
+    $pick = PayQr::pick(null, $country);
+    if ($rows === []) {
+        echo '<p class="muted">अहिलेसम्म कुनै QR छैन · no QR yet.</p>';
+    } else {
+        echo '<div class="pc-qrgrid">';
+        foreach ($rows as $r) {
+            $id = (int) $r['id'];
+            $src = PayQr::dataUri($r);
+            $isPrint = $pick !== null && (int) $pick['id'] === $id;
+            $desk = (string) ($r['desk_code'] ?? '');
+            echo '<div class="pc-qr' . ((int) $r['is_active'] === 1 ? '' : ' off') . '" id="pc-qr-row-' . $id . '">'
+               . ($src !== '' ? '<img src="' . $e($src) . '" alt="' . $e($r['label']) . '" loading="lazy">' : '<div class="pc-qr-miss">⚠️ फोटो छैन · picture missing</div>')
+               . '<b class="pc-qr-label">' . $e($r['label']) . '</b>'
+               . '<small class="pc-qr-meta">' . $e(PayQr::kindLabel((string) $r['kind'])) . ((string) $r['payee'] !== '' ? ' · <code>' . $e($r['payee']) . '</code>' : '') . '</small>'
+               . '<div class="pc-chips" style="margin-top:4px">'
+               . ($isPrint ? '<span class="pc-chip ok">' . ($country === 'NP' ? '🎫 टिकटमा छापिन्छ · prints on tickets' : '🎫 मुख्य · default (pay page fallback)') . '</span>'
+                   : ((int) $r['is_default'] === 1 ? '<span class="pc-chip warn">मुख्य · default</span>' : ''))
+               . ($desk !== '' ? '<span class="pc-chip info">🏪 ' . $e($desk) . ($country === 'NP' ? ' को टिकटमा · on this desk tickets only' : ' · pay पेज (UPI QR नबने मात्र) · pay page fallback') . '</span>' : '')
+               . ((int) $r['is_active'] === 1 ? '' : '<span class="pc-chip mut">⏸ बन्द · off</span>')
+               . '</div>'
+               . '<details class="pc-adv"><summary>✏️ Edit</summary>'
+               . '<form method="post" class="pc-f" autocomplete="off">' . $hid('qr_edit', $id)
+               . '<label>नाम · label<input name="label" maxlength="80" value="' . $e($r['label']) . '"></label>'
+               . '<label>किसिम · kind<select name="kind">' . $kindOpts((string) $r['kind']) . '</select></label>'
+               . '<label>ID / नम्बर / VPA (' . ($country === 'NP' ? 'QR मुनि छापिन्छ' : 'pay पेजमा QR मुनि देखिन्छ') . ')<input name="payee" maxlength="160" value="' . $e($r['payee']) . '"></label>'
+               . '<label>काउन्टर · desk<select name="desk_code">' . $deskOpts($desk) . '</select></label>'
+               . '<label>क्रम · order<input name="sort" type="number" min="0" max="999" value="' . (int) $r['sort'] . '"></label>'
+               . '<label class="pc-chk"><input type="checkbox" name="is_active" value="1"' . ((int) $r['is_active'] === 1 ? ' checked' : '') . '> चालु · active</label>'
+               . ($desk === '' ? '<label class="pc-chk"><input type="radio" name="is_default" value="1"' . ((int) $r['is_default'] === 1 ? ' checked' : '') . '> 🎫 यो देशको मुख्य QR · ' . ($country === 'NP' ? 'ticket default' : 'default') . '</label>'
+                   : '<p class="hint" style="grid-column:1/-1;margin:0">🏪 काउन्टरको आफ्नै QR मुख्य (default) बन्दैन · a desk QR is never the country default</p>')
+               . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn" type="submit">सेभ · Save</button></div></form>'
+               . '<form method="post" enctype="multipart/form-data" class="pc-inline" style="margin-top:8px">' . $hid('qr_file', $id)
+               . '<input type="file" name="qr_file" accept="image/png,image/jpeg,image/webp" required aria-label="New QR picture">'
+               . '<button class="btn" type="submit">🔁 फोटो बदल्नुहोस् · Replace</button></form>'
+               . '<div class="pc-btns">'
+               . ((int) $r['is_default'] === 1 || $desk !== '' ? '' : '<form method="post" class="pc-inline">' . $hid('qr_default', $id) . '<button class="btn" type="submit">🎫 मुख्य बनाउनुहोस् · Make default</button></form>')
+               . '<form method="post" class="pc-inline" onsubmit="return confirm(' . $e((string) json_encode('यो QR र यसको फोटो मेटाउने? · Delete ' . $r['label'] . '?', JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)) . ')">'
+               . $hid('qr_delete', $id) . '<button class="btn" type="submit">🗑 हटाउनुहोस् · Delete</button></form>'
+               . '</div></details></div>';
+        }
+        echo '</div>';
+        if ($pick === null) {
+            echo '<p class="pc-warn" style="margin-top:8px">⚠️ यो देशको <b>मुख्य QR</b> छैन — "🎫 मुख्य बनाउनुहोस्" थिच्नुहोस्' . ($country === 'NP' ? ' (नत्र काउन्टरको आफ्नै QR नभएको टिकटमा library बाहिरको पुरानो esewa-qr फोटो मात्र, त्यो पनि नभए QR बिना · else only an old esewa-qr file outside the library, or no QR)' : '') . '।</p>';
+        }
+    }
+    echo '<details class="pc-adv"' . ($rows === [] ? ' open' : '') . '><summary>➕ QR थप्नुहोस् · Add a QR</summary>'
+       . '<form method="post" enctype="multipart/form-data" class="pc-f" autocomplete="off">' . $hid('qr_add')
+       . '<input type="hidden" name="country" value="' . $e($country) . '">'
+       . '<label>QR फोटो (PNG / JPG / WebP, 3 MB)<input type="file" name="qr_file" accept="image/png,image/jpeg,image/webp" required></label>'
+       . '<label>किसिम · kind<select name="kind">' . $kindOpts($country === 'IN' ? 'upi' : 'esewa') . '</select></label>'
+       . '<label>नाम · label<input name="label" maxlength="80" placeholder="' . ($country === 'IN' ? 'ICICI UPI' : 'NPJ counter eSewa') . '"></label>'
+       . '<label>ID / नम्बर / VPA<input name="payee" maxlength="160" placeholder="' . ($country === 'IN' ? 'shreehari@icici' : '98XXXXXXXX') . '"></label>'
+       . '<label>काउन्टर · desk (optional)<select name="desk_code">' . $deskOpts('') . '</select></label>'
+       . '<label class="pc-chk"><input type="checkbox" name="is_default" value="1"' . (PayQr::defaultFor($country) === null ? ' checked' : '') . '> 🎫 मुख्य QR बनाउनुहोस् · make it the ' . ($country === 'NP' ? 'ticket ' : '') . 'default (काउन्टर नछानेमा मात्र · only without a desk)</label>'
+       . '<div class="pc-btns" style="grid-column:1/-1;margin:0"><button class="btn btn-orange" type="submit">⬆️ अपलोड · Upload</button></div>'
+       . '</form></details></div>';
+};
 
 $stateTxt = [
     'new' => ['नयाँ · new', '#185bed'], 'matched' => ['✔ Auto PAID', '#0a7c2f'], 'linked' => ['✔ Linked', '#0a7c2f'],
@@ -561,8 +774,13 @@ $googleSetup = static function (string $tabKey, bool $open) use ($e): void {
        . '<li><b>Clients</b> → <b>Create client</b> (वा Credentials → Create credentials → <b>OAuth client ID</b>) → <b>Web application</b> → Authorized redirect URIs मा ठ्याक्कै यो राख्नुहोस्:'
        . '<span class="pc-copy"><input class="pc-url" readonly value="' . $e($uri) . '" onclick="this.select()" aria-label="Redirect URI">'
        . '<button class="btn" type="button" onclick="pcCopy(this)">📋 Copy</button></span></li>'
-       . '<li><b>Client ID</b> र <b>Client Secret</b> तल राखेर Save गर्नुहोस्।</li>'
+       . '<li>Google ले दिएको <b>client_secret_….json</b> file तल upload गर्नुहोस् (सजिलो) — वा <b>Client ID</b> र <b>Client Secret</b> हातले राखेर Save गर्नुहोस्।</li>'
        . '</ol>'
+       . '<form method="post" enctype="multipart/form-data" class="pc-gjson" autocomplete="off">' . Security::csrfField()
+       . '<input type="hidden" name="act" value="google_json"><input type="hidden" name="tab" value="' . $e($tabKey) . '">'
+       . '<label style="font-size:12px;color:var(--mut,#637491);display:block">📄 client_secret JSON file (Google Cloud → Clients → ⬇ Download JSON) — पढेर ID + Secret मात्र सेभ हुन्छ, file राखिँदैन'
+       . '<input type="file" name="google_json" accept="application/json,.json" required style="display:block;width:100%;margin-top:6px"></label>'
+       . '<div class="pc-btns" style="margin:8px 0 0"><button class="btn btn-orange" type="submit">⬆️ JSON upload</button></div></form>'
        . '<p class="hint">Login गर्दा Google ले <b>"Google hasn\'t verified this app"</b> देखाउँछ — <b>Advanced</b> → <b>Go to … (unsafe)</b> थिच्नुहोस् (यो तपाईंकै app हो)। Gmail पढ्न मात्र (read-only) अनुमति माग्छ; mailbox मा केही बदलिँदैन।</p>'
        . '<details class="pc-adv"' . ($open ? ' open' : '') . '><summary>🔧 Google Client ID / Secret</summary>'
        . '<form method="post" class="pc-f" autocomplete="off">' . Security::csrfField()
@@ -725,6 +943,15 @@ details.pc-adv summary{cursor:pointer;font-weight:700;margin:10px 0 6px}
 .pc-loglist{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:12.5px}
 .pc-loglist li{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-bottom:1px solid var(--line,#e0e8f2);padding:4px 0;min-width:0}
 .pc-subj{flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
+.pc-qrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.pc-qr{border:1px solid var(--line,#e0e8f2);border-radius:12px;padding:8px;min-width:0;overflow-wrap:anywhere;background:var(--card,#fff);color:var(--ink,#0b1220)}
+.pc-qr.off{opacity:.6}
+.pc-qr img{display:block;width:100%;max-width:220px;aspect-ratio:1/1;object-fit:contain;background:#fff;border:1px solid var(--line,#e0e8f2);border-radius:10px;margin:0 auto 6px}
+.pc-qr-miss{width:100%;max-width:220px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--mut,#637491);border:1px dashed var(--line,#e0e8f2);border-radius:10px;margin:0 auto 6px}
+.pc-qr-label{display:block;font-size:14px}.pc-qr-meta{display:block;font-size:12px;color:var(--mut,#637491)}
+.pc-qr details .pc-f{grid-template-columns:1fr}
+.pc-qr .pc-inline input[type=file]{flex:1 1 100%;min-width:0;font-size:12px}
+.pc-gjson{border:1px dashed var(--line,#e0e8f2);border-radius:10px;padding:8px 10px;margin:8px 0}
 :root[data-theme="dark"] .pc-chip.info{color:#9CC0FF;border-color:rgba(59,130,246,.35)}
 :root[data-theme="dark"] .pc-chip.warn{background:rgba(245,158,11,.14);color:#FBC56B;border-color:rgba(245,158,11,.35)}
 :root[data-theme="dark"] .pc-chip.no{color:#FCA5A5;border-color:rgba(220,38,38,.35)}
@@ -757,6 +984,7 @@ function pcCopy(b){var i=b.previousElementSibling;if(!i)return;i.select();try{if
           : 'बन्द: सबै मिलेको credit 💡 सुझाव मात्र हुन्छ, टिकट PAID हुँदैन — बैंक app मा हेरेर तल Confirm थिच्नुहोस्। यहाँबाट खोलिँदैन; साँचो Global IME alert को नमुना मिलाएपछि मात्र Settings → Payments मा खोल्नुहोस्।' ?></p>
     </div>
   </div>
+  <?php if (PayQr::ready()): $qrCard('NP'); else: ?>
   <form method="post" enctype="multipart/form-data" class="pc-card">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_qr"><input type="hidden" name="tab" value="np">
     <h2>🇳🇵 नेपाली QR · Nepal eSewa / Fonepay / bank QR</h2>
@@ -767,11 +995,16 @@ function pcCopy(b){var i=b.previousElementSibling;if(!i)return;i.select();try{if
     <div class="pc-f"><label>QR फोटो (PNG / JPG / WebP, 3 MB)<input type="file" name="esewa_qr" accept="image/png,image/jpeg,image/webp"></label></div>
     <div class="pc-btns"><button class="btn btn-orange" type="submit">अपलोड · Upload</button>
       <?php if ($val('nepal_esewa_qr') !== ''): ?><button class="btn" type="submit" name="remove" value="1">हटाउ · Remove</button><?php endif; ?></div>
+    <p class="pc-warn" style="margin-top:8px">⚠️ धेरै QR राख्न migration <b>upgrade-2026-11-25-mp4-qr-library.sql</b> चलाउनुहोस् · run the migration for the QR library.</p>
   </form>
+  <?php endif; ?>
 
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="np_save"><input type="hidden" name="tab" value="np">
     <h2>🪪 eSewa / bank ID</h2>
+    <?php $npNow = PayQr::resolve(null, 'NP'); if ($npNow['source'] === 'default'): ?>
+    <p class="pc-warn">ℹ️ टिकट र pay page मा अहिले छापिन्छ · tickets print now: <b><?= $e($npNow['kind']) ?></b><?= $npNow['payee'] !== '' ? ': <code>' . $e($npNow['payee']) . '</code>' : ' (ID छैन · no id)' ?> — माथिको QR card को ID ले जित्छ; यहाँको ID मुख्य eSewa QR सँग मात्र मिल्छ · the QR card's own ID wins; this id follows only the default eSewa QR.</p>
+    <?php endif; ?>
     <div class="pc-f">
       <label>eSewa / bank ID<input name="nepal_esewa_id" value="<?= $e($val('nepal_esewa_id')) ?>" placeholder="98XXXXXXXX"></label>
       <label>eSewa / खाता नाम · name<input name="nepal_esewa_name" value="<?= $e($val('nepal_esewa_name')) ?>"></label>
@@ -796,6 +1029,7 @@ function pcCopy(b){var i=b.previousElementSibling;if(!i)return;i.select();try{if
     <p class="hint" style="margin:0"><b>💡</b> बैंक API credential नआउन्जेल Gmail bank alert बाट पैसा आएको हेर्न सकिन्छ (सुझाव + Confirm)। · Until the bank API credentials come, Indian bank alerts in Gmail show the money (suggestion + Confirm).</p>
   </div>
   <?php $mailCard('IN'); ?>
+  <?php $qrCard('IN'); ?>
   <form method="post" class="pc-card" autocomplete="off">
     <?= Security::csrfField() ?><input type="hidden" name="act" value="in_save"><input type="hidden" name="tab" value="in">
     <h2>🇮🇳 UPI + bank API</h2>

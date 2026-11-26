@@ -396,13 +396,24 @@ final class WaTplMeta
      *
      * @return array{name: string, lang: string}
      */
+    /**
+     * 25 Nov 2026 (mp4): the EXACT language code the sending WABA has this template in
+     * (the last sync's 'language', e.g. en / en_US / ne), else $fallback - a template is
+     * sent in the language Meta holds it in, never a guess.
+     */
+    public static function langOf(string $name, string $fallback = self::LANG): string
+    {
+        $l = trim((string) (self::info($name)['language'] ?? ''));
+        return preg_match('/^[a-z]{2,3}(_[A-Za-z]{2,4})?$/', $l) === 1 ? $l : ($fallback !== '' ? $fallback : self::LANG);
+    }
+
     public static function ticketTemplate(): array
     {
         $set  = trim(Settings::getString('whatsapp_template_name', ''));
         $lang = trim(Settings::getString('whatsapp_template_lang', 'en')) ?: 'en';
         foreach (array_unique(array_filter([$set, self::TICKET_V2])) as $cand) {
             if (self::ready($cand)) {
-                return ['name' => $cand, 'lang' => $cand === $set ? $lang : self::LANG];
+                return ['name' => $cand, 'lang' => self::langOf($cand, $cand === $set ? $lang : self::LANG)];
             }
         }
         if ($set !== '' && self::status($set) === '' && !self::refusedRecently($set)) {
@@ -531,7 +542,7 @@ final class WaTplMeta
             } elseif (($btn['type'] ?? '') === 'FLOW') {
                 $buttons[] = ['sub_type' => 'flow', 'index' => 0, 'token' => (string) ($ctx['flow_token'] ?? 'unused')];
             }
-            return ['name' => $name, 'lang' => self::LANG, 'vars' => $vars, 'header' => $header, 'buttons' => $buttons];
+            return ['name' => $name, 'lang' => self::langOf($name), 'vars' => $vars, 'header' => $header, 'buttons' => $buttons];
         } catch (Throwable $e) {
             Logger::warning('WaTplMeta forPurpose failed: ' . $e->getMessage(), ['purpose' => $purpose], 'whatsapp');
             return null;
@@ -900,6 +911,71 @@ final class WaTplMeta
             $out['error'] = $e->getMessage();
         }
         return $out;
+    }
+
+    /**
+     * 25 Nov 2026 (mp4): the sending number's own health from Meta (a GET, free): display
+     * name + its approval, quality, messaging tier, sending status (health_status) - kept in
+     * kv 'phone' for the "Meta स्वास्थ्य" card. Only on the office's button (never from a test
+     * without $graphHook). @return array{ok: bool, error: string, phone: array<string, mixed>}
+     */
+    public static function phoneHealth(): array
+    {
+        $out = ['ok' => false, 'error' => '', 'phone' => []];
+        try {
+            if (!self::configured()) {
+                $out['error'] = 'Meta token / WABA id not configured.';
+                return $out;
+            }
+            $pid = defined('META_PHONE_NUMBER_ID') ? (string) META_PHONE_NUMBER_ID : '';
+            if ($pid === '') {
+                $pid = preg_replace('/\D/', '', Settings::getString('whatsapp_phone_id', '')) ?? '';
+            }
+            if ($pid === '') {
+                $out['error'] = 'whatsapp_phone_id not configured.';
+                return $out;
+            }
+            $base = 'display_phone_number,verified_name,name_status,quality_rating,messaging_limit_tier,code_verification_status,status,platform_type';
+            $r = self::graph('GET', '/' . rawurlencode($pid) . '?fields=' . $base . ',health_status');
+            if ($r['http'] !== 200) {
+                $r = self::graph('GET', '/' . rawurlencode($pid) . '?fields=' . $base);   // an older Graph version without health_status
+            }
+            if ($r['http'] !== 200) {
+                $out['error'] = self::err($r);
+                return $out;
+            }
+            $j = $r['json'];
+            $can = (string) ($j['health_status']['can_send_message'] ?? '');
+            $why = [];
+            foreach ((array) ($j['health_status']['entities'] ?? []) as $en) {
+                foreach ((array) ($en['errors'] ?? []) as $er) {
+                    $why[] = mb_substr(trim((string) ($er['error_description'] ?? '') . ' ' . (string) ($er['possible_solution'] ?? '')), 0, 200);
+                }
+            }
+            $p = [
+                'number' => (string) ($j['display_phone_number'] ?? ''), 'name' => (string) ($j['verified_name'] ?? ''),
+                'name_status' => (string) ($j['name_status'] ?? ''), 'quality' => (string) ($j['quality_rating'] ?? ''),
+                'tier' => (string) ($j['messaging_limit_tier'] ?? ''), 'verification' => (string) ($j['code_verification_status'] ?? ''),
+                'status' => (string) ($j['status'] ?? ''), 'can_send' => $can, 'notes' => array_values(array_unique(array_filter($why))), 'at' => time(),
+            ];
+            self::kvSet('phone', $p);
+            $out = ['ok' => true, 'error' => '', 'phone' => $p];
+        } catch (Throwable $e) {
+            $out['error'] = $e->getMessage();
+        }
+        return $out;
+    }
+
+    /** The last stored number health (phoneHealth), or null. */
+    public static function phoneInfo(): ?array
+    {
+        return self::kvGet('phone');
+    }
+
+    /** The last 132001 / paused refusal of one template (code + time), or null. */
+    public static function refusedInfo(string $name): ?array
+    {
+        return self::kvGet('refused.' . $name);
     }
 
     /**

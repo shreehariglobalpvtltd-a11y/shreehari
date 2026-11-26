@@ -167,6 +167,20 @@ $boot['settings']['nepal_esewa_qr_url']       = (static function (): string {
     }
     return '';
 })();
+/* 26 Nov 2026 (mp4 review fix, money): the app's Nepal pay QR, its payee and its wallet word
+   from THE one resolver (PayQr::resolve - the server ticket / pay.php answer), so the picture
+   and the id under it always come from the same QR row. Works before the migration (legacy). */
+try {
+    require_once INCLUDE_PATH . '/payqr.php';
+    $npPay0 = PayQr::publicInfo(null);
+    if ($npPay0['source'] !== '') {
+        $boot['settings']['nepal_esewa_qr_url'] = $npPay0['url'];
+        $boot['settings']['nepal_esewa_id']     = $npPay0['payee'];
+    }
+    $boot['settings']['nepal_pay_qr_kind'] = $npPay0['kind'];
+} catch (Throwable $e) {
+    $boot['settings']['nepal_pay_qr_kind'] = 'eSewa';
+}
 /* 25 Nov 2026 (wx1): no pay QR on a pay-at-boarding ticket (Ticket::paymentQr 'cod'), the
    pickup map QR on the app's fallback PDF (ticket_maps_qr, like the server ticket), a Nepal
    -> India customer picks only the route's own pickups, the big family-share button. */

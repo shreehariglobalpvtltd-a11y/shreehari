@@ -156,7 +156,10 @@ html.sb-on.sb-home #view-home{padding-bottom:calc(var(--sb-bar-h,66px) + 8px)}
 /* seat sheet + ticket modal */
 #smartBook .sb-sheet,#smartBook .sb-modal{position:fixed;inset:0;z-index:120;background:rgba(6,11,21,.55);display:flex;align-items:flex-end;justify-content:center}
 #smartBook .sb-sheet[hidden],#smartBook .sb-modal[hidden]{display:none}
-#smartBook .sb-sheet-in,#smartBook .sb-modal-in{background:var(--sb-panel);color:var(--sb-text);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px))}
+/* 26 Nov 2026 (fx2): max-height in dvh after the vh fallback, here and on .sb-cv-in / .sb-py below. On a phone vh is the
+   screen with the address bar hidden, so a bottom sheet capped in vh stood taller than the visible box and its top
+   (Close key, PNR line) went off screen where nothing scrolls to it. */
+#smartBook .sb-sheet-in,#smartBook .sb-modal-in{background:var(--sb-panel);color:var(--sb-text);width:100%;max-width:560px;max-height:92vh;max-height:92dvh;overflow:auto;border-radius:20px 20px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px))}
 #smartBook .sb-sheet-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 #smartBook .sb-x{width:44px;height:44px;border:0;background:var(--sb-chip);border-radius:50%;cursor:pointer;color:var(--sb-text);font-size:16px}
 #smartBook .sb-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:11.5px;color:var(--sb-muted);margin:0 0 8px}
@@ -210,6 +213,10 @@ html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-h
 @media (max-width:859px){
   #smartBook{padding-top:4px}
   #smartBook .sb-head,#smartBook .sb-l{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  /* 26 Nov 2026 (fx2): the two required boxes were placeholder-only for the eye (the clip above keeps every label for
+     screen readers). Customer card only: mobile + name show their caption again, one compact line. No font-size here
+     on purpose: 11.5px from .sb-l, or the 14px that index.php's site-min block sets for phones. */
+  #smartBook:not([data-staff]) .sb-f-phone .sb-l,#smartBook:not([data-staff]) .sb-f-name .sb-l{position:static;width:auto;height:auto;clip:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0 0 2px;line-height:1.35;letter-spacing:0;text-transform:none}
   #smartBook .sb-card{padding:9px 10px 6px;border-radius:18px}
   #smartBook{--sb-h:41px}
   #smartBook .sb-bot,#smartBook .sb-dir{margin-bottom:7px}
@@ -356,7 +363,7 @@ html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-h
 /* Cash verification sheet */
 #smartBook .sb-cv,#smartBook .sb-pyo{position:fixed;inset:0;z-index:1250;background:rgba(4,10,24,.62);display:flex;align-items:flex-end;justify-content:center;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 #smartBook .sb-cv[hidden],#smartBook .sb-pyo[hidden]{display:none}
-#smartBook .sb-cv-in{width:100%;max-width:520px;max-height:94vh;overflow:auto;background:var(--sb-panel);color:var(--sb-text);border-radius:22px 22px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;animation:sbUp .22s ease-out}
+#smartBook .sb-cv-in{width:100%;max-width:520px;max-height:94vh;max-height:94dvh;overflow:auto;background:var(--sb-panel);color:var(--sb-text);border-radius:22px 22px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;animation:sbUp .22s ease-out}
 /* transform only: a frozen first frame (background tab, slow phone) must still be fully readable */
 @keyframes sbUp{from{transform:translateY(24px)}to{transform:none}}
 #smartBook .sb-cv-hd{display:flex;align-items:flex-start;gap:10px}
@@ -382,7 +389,7 @@ html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-h
 #smartBook .sb-cv-alt{min-height:44px;border:0;background:transparent;color:var(--sb-primary);font:inherit;font-weight:700;cursor:pointer}
 
 /* Online QR popup */
-#smartBook .sb-py{width:100%;max-width:420px;max-height:96vh;overflow:auto;background:var(--sb-panel);color:var(--sb-text);border-radius:22px 22px 0 0;box-shadow:0 24px 70px rgba(0,0,0,.4);animation:sbUp .22s ease-out;display:flex;flex-direction:column}
+#smartBook .sb-py{width:100%;max-width:420px;max-height:96vh;max-height:96dvh;overflow:auto;background:var(--sb-panel);color:var(--sb-text);border-radius:22px 22px 0 0;box-shadow:0 24px 70px rgba(0,0,0,.4);animation:sbUp .22s ease-out;display:flex;flex-direction:column}
 #smartBook .sb-py-hd{display:flex;align-items:center;gap:10px;padding:14px 14px 12px;background:linear-gradient(120deg,#0a2a8f,#1a44c8);color:#fff}
 #smartBook .sb-py-logo{width:38px;height:38px;flex:0 0 38px;border-radius:11px;background:#fff;color:#0a2a8f;display:grid;place-items:center;font-weight:900;font-size:14px;letter-spacing:.02em;box-shadow:inset 0 -3px 0 var(--sb-orange)}
 #smartBook .sb-py-who{flex:1;min-width:0;line-height:1.2}
@@ -640,6 +647,13 @@ html #view-home > #sbDesk{order:-1 !important}
 #smartBook .sb-py-main{transition:transform .15s var(--sb-ease),filter .2s}
 @media (hover:hover){#smartBook .sb-py-main:hover{transform:translateY(-1px);filter:brightness(1.05)}}
 #smartBook .sb-py-send{background:var(--sb-ograd)}
+/* 26 Nov 2026 (fx2): white on --sb-ograd was 2.0-4.1:1 on the two last buttons (Confirm Booking + total, Send for
+   verification). Customer card only: the brand deep orange, same family as the Cash key in polish.css - white is
+   4.9:1 and up (4.5 under the hover brightness). A fixed orange on purpose (the gold palette's --sb-ograd is lighter
+   still). The staff desk (data-staff, no polish.css) keeps its colours. */
+#smartBook:not([data-staff]) .sb-cv-go,#smartBook:not([data-staff]) .sb-py-send{background:linear-gradient(120deg,#bf4c00 0%,#b8440c 55%,#a33a09 100%)}
+/* same pass: the WhatsApp ticket button, white on #25d366 was 2.0:1 (its second line is 11.5px) - now 5.2:1 and up */
+#smartBook:not([data-staff]) .sb-tk-wa{background:linear-gradient(120deg,#0f7d42,#0b6b38)}
 #smartBook .sb-py-tabs button.on{color:var(--sb-blue);box-shadow:0 2px 10px rgba(26,68,200,.15),inset 0 -2px 0 var(--sb-org)}
 
 /* sheets glide in (transform only: a frozen first frame must stay readable) */
@@ -707,6 +721,9 @@ html #view-home > #sbDesk{order:-1 !important}
   /* 20 Nov 2026: the date chips (Today / Tomorrow / calendar) were 38px on the staff desk, which does not load
      polish.css (the customer page gets 44px there); line 225 sets 38px for small screens */
   #smartBook .sb-chips .sb-chip{min-height:44px}
+  /* 26 Nov 2026 (fx2): pay popup - Copy (34px) and the UPI / eSewa tabs (40px) carry their own min-height from
+     (1,1,1) rules above, which beat the floor on line 1 of this block. Height only; .sb-py scrolls. */
+  #smartBook .sb-py .sb-py-id button,#smartBook .sb-py .sb-py-tabs button{min-height:44px}
 }
 
 /* ===================================================================

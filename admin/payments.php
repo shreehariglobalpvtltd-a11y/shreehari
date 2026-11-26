@@ -710,8 +710,11 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
      system. payments.php was the only page in the panel with its own
      .sum-card/.sc-* language — and it is the screen staff look at most, so
      the odd one out was the most-seen one. data-stat hooks are unchanged:
-     the AJAX approve/reject flow updates these counters in place. */ ?>
-<div class="dash-hero<?= $isQueue ? ' pq-compact' : '' ?>" id="summaryCards">
+     the AJAX approve/reject flow updates these counters in place.
+     26 Nov 2026 (fx2): pq-compact on every tab, not only Pending - its rules
+     exist only at <=820px, so desktop is unchanged and a phone gets the
+     one-line strip on Cash Due / Approved / Rejected / All too. */ ?>
+<div class="dash-hero pq-compact" id="summaryCards">
   <div class="hcard hc-orange">
     <span class="hicon">⏳</span>
     <div class="hk">Pending Payments</div>
@@ -772,7 +775,7 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
 <?php endif; ?>
 
 <!-- Filter Bar -->
-<details class="pay-filter-box"<?= $hasFilters || !$isQueue ? ' open' : '' ?>>
+<details class="pay-filter-box" id="payFilterBox"<?= $hasFilters || !$isQueue ? ' open' : '' ?>>
 <summary>🔎 Search &amp; filters<?= $hasFilters ? ' · on' : '' ?></summary>
 <form class="pay-filter" method="get">
   <input type="hidden" name="tab" value="<?= Security::e($tab) ?>">
@@ -837,6 +840,9 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
   </div>
 </form>
 </details>
+<?php /* 26 Nov 2026 (fx2): the table tabs print the filter open (right for a desktop, one row);
+     on a phone it is 8 stacked rows above the list, so fold it there unless a filter is in use. */ ?>
+<?php if (!$hasFilters && !$isQueue): ?><script>if(window.matchMedia&&matchMedia('(max-width:820px)').matches){document.getElementById('payFilterBox').removeAttribute('open');}</script><?php endif; ?>
 
 <?php
   /* Who opened the QR / tapped the pay link, per booking — one query

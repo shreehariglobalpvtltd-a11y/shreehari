@@ -583,7 +583,10 @@ admin_header('Dashboard', 'index');
     <!-- KPI 3: Cash vs Online Collection -->
     <div class="ek-card ek-border-green">
       <div class="ek-label">Collection (Cash vs Online)</div>
-      <div class="ek-val" style="font-size:20px"><?= Security::e(inr($stats['revenueToday'])) ?></div>
+      <?php /* 26 Nov 2026 (fx2): the headline is the sum of the two lines under it (payments
+               received today). It used to print revenueToday = bookings CONFIRMED today,
+               a different figure, so the card could read "₹0" above "Cash: ₹15,400". */ ?>
+      <div class="ek-val" style="font-size:20px"><?= Security::e(inr($collCashToday + $collOnlineToday)) ?></div>
       <div class="ek-sub">
         <span title="Counter/Agent Cash">💵 Cash: <strong><?= Security::e(inr($collCashToday)) ?></strong></span>
         <span title="UPI / eSewa Online">💳 UPI/eSewa: <strong><?= Security::e(inr($collOnlineToday)) ?></strong></span>

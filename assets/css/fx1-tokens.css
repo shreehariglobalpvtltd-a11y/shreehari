@@ -1,0 +1,446 @@
+/* =====================================================================
+   assets/css/fx1-tokens.css - S Hari Global design tokens (fx1, 26 Nov 2026)
+
+   ONE source of truth for colour, space, type, motion and layers.
+   This file only declares custom properties on :root (plus the .fx-num
+   helper), all prefixed --fx-. Adding it to a page changes nothing until a
+   rule uses a token.
+
+   Where the values come from (nothing here is a new brand colour):
+     admin/_guard.php  admin_css()   --navy #12264E, --blue #2E5FA8, --orange #F07C1F,
+                                     dark: #0B1220 / #111D33 / #22314A / #E8F0FB / #93A4BE
+     assets/css/app.css :root        --blue #0054A8, --blue-deep #0C306C, --orange #F07800,
+                                     --blue-100 #D9E7FA, --blue-50 #EEF4FC, --orange-100 #FFE4C7
+     assets/css/ds.css  :root        --royal-strong #003C90, neutrals, status colours and
+                                     their dark set (the values the status chips use today)
+     assets/css/premium.css :root    --brand-navy-950 #06163A, saffron 700/800/900,
+                                     amber #FFB547, gold #FFD08A, cream #FFF3D9
+     includes/brand.php FLAGS        the flag fills (kept as --fx-flag-* only)
+
+   Two oranges live in the code: #F07C1F (132 uses in 44 files) and #F07800
+   (37 uses in 14 files, the value measured from the logo). They are 1 step
+   apart to the eye; the token is the dominant #F07C1F.
+   Two navies live in the code: #12264E (80 uses, the admin bar) and #0C306C
+   (52 uses, the logo navy and the manifest theme_color). Both are kept:
+   --fx-blue-900 and --fx-blue-800.
+
+   Themes
+     light   :root
+     dark    :root[data-theme="dark"]            (the switch every page already has)
+     auto    <html data-fx-theme="auto">         follows the phone's dark setting,
+                                                 unless data-theme="light" is set
+   The two dark blocks must stay identical: tests/fx1-contrast-check.py fails
+   when they differ.
+
+   Rules of use
+     - --fx-accent (orange 500) is a FILL. White text on it is 2.76:1, so text
+       on it is --fx-on-accent (dark ink). For orange TEXT use --fx-accent-text,
+       for an orange keyline or icon on a light page use --fx-accent-line.
+     - --fx-flag-* are for drawing the two flags only, never for buttons,
+       chips or status.
+     - Status = text colour + its -soft background, or -solid + --fx-on-*-solid.
+
+   Contrast pairs (checked by: python tests/fx1-contrast-check.py)
+   Text needs 4.5:1. "@3" marks large text / UI borders / icons, which need 3:1.
+   Each pair is checked in light and in dark.
+
+   pair: --fx-text on --fx-bg
+   pair: --fx-text on --fx-surface
+   pair: --fx-text on --fx-surface-2
+   pair: --fx-text on --fx-surface-hover
+   pair: --fx-text-2 on --fx-bg
+   pair: --fx-text-2 on --fx-surface
+   pair: --fx-muted on --fx-bg
+   pair: --fx-muted on --fx-surface
+   pair: --fx-muted on --fx-surface-2
+   pair: --fx-muted on --fx-surface-hover
+   pair: --fx-link on --fx-bg
+   pair: --fx-link on --fx-surface
+   pair: --fx-on-primary on --fx-primary
+   pair: --fx-on-primary on --fx-primary-strong
+   pair: --fx-primary-strong on --fx-primary-soft
+   pair: --fx-primary on --fx-primary-tint
+   pair: --fx-on-navy on --fx-navy
+   pair: --fx-on-navy-muted on --fx-navy
+   pair: --fx-accent on --fx-navy
+   pair: --fx-on-accent on --fx-accent
+   pair: --fx-on-accent-strong on --fx-accent-strong
+   pair: --fx-accent-text on --fx-bg
+   pair: --fx-accent-text on --fx-surface
+   pair: --fx-accent-text on --fx-accent-soft
+   pair: --fx-success on --fx-bg
+   pair: --fx-success on --fx-surface
+   pair: --fx-success on --fx-success-soft
+   pair: --fx-on-success-solid on --fx-success-solid
+   pair: --fx-warn on --fx-bg
+   pair: --fx-warn on --fx-surface
+   pair: --fx-warn on --fx-warn-soft
+   pair: --fx-on-warn-solid on --fx-warn-solid
+   pair: --fx-danger on --fx-bg
+   pair: --fx-danger on --fx-surface
+   pair: --fx-danger on --fx-danger-soft
+   pair: --fx-on-danger-solid on --fx-danger-solid
+   pair: --fx-hold on --fx-bg
+   pair: --fx-hold on --fx-surface
+   pair: --fx-hold on --fx-hold-soft
+   pair: --fx-on-hold-solid on --fx-hold-solid
+   pair: --fx-info on --fx-bg
+   pair: --fx-info on --fx-surface
+   pair: --fx-info on --fx-info-soft
+   pair: --fx-on-info-solid on --fx-info-solid
+   pair: --fx-paid on --fx-paid-soft
+   pair: --fx-due on --fx-due-soft
+   pair: --fx-cancelled on --fx-cancelled-soft
+   pair: --fx-line-control on --fx-bg @3
+   pair: --fx-line-control on --fx-surface @3
+   pair: --fx-focus on --fx-bg @3
+   pair: --fx-focus on --fx-surface @3
+   pair: --fx-accent-line on --fx-bg @3
+   pair: --fx-accent-line on --fx-surface @3
+   pair: --fx-white on --fx-blue-950
+   pair: --fx-white on --fx-blue-900
+   pair: --fx-white on --fx-blue-800
+   pair: --fx-white on --fx-blue-700
+   pair: --fx-white on --fx-blue-600
+   pair: --fx-white on --fx-blue-500
+   pair: --fx-white on --fx-orange-900
+   pair: --fx-white on --fx-orange-800
+   pair: --fx-white on --fx-orange-700
+   pair: --fx-ink on --fx-orange-500
+   pair: --fx-ink on --fx-orange-400
+   pair: --fx-ink on --fx-orange-300
+   pair: --fx-orange-300 on --fx-blue-900
+   pair: --fx-orange-800 on --fx-orange-50
+   pair: --fx-blue-700 on --fx-blue-100
+   ===================================================================== */
+
+:root {
+  /* ---- Brand blue: the globe's navy into royal ---------------------- */
+  --fx-blue-950: #06163A;   /* premium.css --brand-navy-950 */
+  --fx-blue-900: #12264E;   /* admin --navy: top bar, active menu row */
+  --fx-blue-800: #0C306C;   /* logo navy, manifest theme_color, hero */
+  --fx-blue-700: #003C90;   /* ds.css --royal-strong: pressed / text on soft */
+  --fx-blue-600: #0054A8;   /* PRIMARY royal blue (logo-measured) */
+  --fx-blue-500: #2E5FA8;   /* admin --blue: links, table accents */
+  --fx-blue-400: #5B9BE8;   /* primary on dark */
+  --fx-blue-300: #8FBFFF;   /* strong primary / focus on dark */
+  --fx-blue-200: #B9C9E6;   /* muted text on navy */
+  --fx-blue-100: #D9E7FA;   /* soft fill */
+  --fx-blue-50:  #EEF4FC;   /* tint */
+
+  /* ---- Brand orange: the arrow ------------------------------------- */
+  --fx-orange-900: #943A00;
+  --fx-orange-800: #A84300; /* orange TEXT on light */
+  --fx-orange-700: #BF4C00; /* orange fill that carries white text */
+  --fx-orange-600: #D96A10; /* keyline / icon on light (3:1) */
+  --fx-orange-500: #F07C1F; /* PRIMARY orange: fill only, dark ink on it */
+  --fx-orange-400: #FF8A1F; /* orange on dark */
+  --fx-orange-300: #FFB547; /* highlight on navy */
+  --fx-orange-200: #FFD08A;
+  --fx-orange-100: #FFE4C7; /* soft fill */
+  --fx-orange-50:  #FFF3D9; /* cream */
+
+  /* ---- Fixed inks --------------------------------------------------- */
+  --fx-white: #FFFFFF;
+  --fx-ink:   #16233C;      /* the dark text ink, same in both themes */
+
+  /* ---- Flags: for drawing the flags ONLY, never for UI -------------- */
+  --fx-flag-np-crimson: #DC143C;
+  --fx-flag-np-blue:    #003893;
+  --fx-flag-in-saffron: #FF9933;
+  --fx-flag-in-white:   #FFFFFF;
+  --fx-flag-in-green:   #138808;
+  --fx-flag-in-chakra:  #000080;
+
+  /* ---- Neutrals (light) --------------------------------------------- */
+  --fx-bg:            #F4F6FB;
+  --fx-surface:       #FFFFFF;
+  --fx-surface-2:     #F8FAFD;   /* sunken: table head, input well */
+  --fx-surface-hover: #EEF2FA;
+  --fx-line:          #E4E9F1;   /* decorative divider */
+  --fx-line-strong:   #D5DCE8;
+  --fx-line-control:  #7D8AA0;   /* input / control border, 3:1 */
+  --fx-text:          #16233C;
+  --fx-text-2:        #2B3A55;
+  --fx-muted:         #5C6B85;
+  --fx-scrim:         rgba(11, 18, 32, 0.55);
+
+  /* ---- Brand roles (light) ------------------------------------------ */
+  --fx-primary:          var(--fx-blue-600);
+  --fx-primary-strong:   var(--fx-blue-700);
+  --fx-on-primary:       #FFFFFF;
+  --fx-primary-soft:     var(--fx-blue-100);
+  --fx-primary-tint:     var(--fx-blue-50);
+  --fx-link:             var(--fx-blue-600);
+  --fx-focus:            var(--fx-blue-600);
+  --fx-navy:             var(--fx-blue-900);
+  --fx-on-navy:          #FFFFFF;
+  --fx-on-navy-muted:    var(--fx-blue-200);
+  --fx-accent:           var(--fx-orange-500);
+  --fx-on-accent:        #16233C;
+  --fx-accent-strong:    var(--fx-orange-700);
+  --fx-on-accent-strong: #FFFFFF;
+  --fx-accent-text:      var(--fx-orange-800);
+  --fx-accent-line:      var(--fx-orange-600);
+  --fx-accent-soft:      var(--fx-orange-100);
+
+  /* ---- Status (light): text / soft background / solid fill ---------- */
+  --fx-success:          #11703F;
+  --fx-success-soft:     #E4F6EC;
+  --fx-success-solid:    #11703F;
+  --fx-on-success-solid: #FFFFFF;
+  --fx-warn:             var(--fx-orange-800);
+  --fx-warn-soft:        var(--fx-orange-50);
+  --fx-warn-solid:       var(--fx-orange-700);
+  --fx-on-warn-solid:    #FFFFFF;
+  --fx-danger:           #B42525;
+  --fx-danger-soft:      #FBE3E3;
+  --fx-danger-solid:     #B42525;
+  --fx-on-danger-solid:  #FFFFFF;
+  --fx-hold:             #536079;
+  --fx-hold-soft:        #E6EBF2;
+  --fx-hold-solid:       #536079;
+  --fx-on-hold-solid:    #FFFFFF;
+  --fx-info:             var(--fx-blue-600);
+  --fx-info-soft:        var(--fx-blue-50);
+  --fx-info-solid:       var(--fx-blue-600);
+  --fx-on-info-solid:    #FFFFFF;
+  /* the words the desks use, same colours */
+  --fx-paid:             var(--fx-success);
+  --fx-paid-soft:        var(--fx-success-soft);
+  --fx-due:              var(--fx-warn);
+  --fx-due-soft:         var(--fx-warn-soft);
+  --fx-cancelled:        var(--fx-danger);
+  --fx-cancelled-soft:   var(--fx-danger-soft);
+
+  /* ---- Space: 4 / 8 scale ------------------------------------------- */
+  --fx-space-0:  0;
+  --fx-space-1:  4px;
+  --fx-space-2:  8px;
+  --fx-space-3:  12px;
+  --fx-space-4:  16px;
+  --fx-space-5:  20px;
+  --fx-space-6:  24px;
+  --fx-space-8:  32px;
+  --fx-space-10: 40px;
+  --fx-space-12: 48px;
+  --fx-space-16: 64px;
+
+  /* ---- Radius (ds.css values) --------------------------------------- */
+  --fx-radius-xs:   8px;
+  --fx-radius-sm:   10px;
+  --fx-radius-md:   14px;
+  --fx-radius-lg:   18px;
+  --fx-radius-xl:   22px;
+  --fx-radius-pill: 999px;
+
+  /* ---- Touch --------------------------------------------------------- */
+  --fx-tap-min:     44px;   /* smallest tap target anywhere */
+  --fx-tap-comfort: 48px;   /* main buttons, bottom bar, seat cells */
+
+  /* ---- Shadows (ds.css ramp, navy-tinted) ---------------------------- */
+  --fx-shadow-1: 0 1px 2px rgba(18, 38, 78, 0.06), 0 1px 6px rgba(18, 38, 78, 0.05);
+  --fx-shadow-2: 0 4px 14px rgba(18, 38, 78, 0.08), 0 2px 6px rgba(18, 38, 78, 0.05);
+  --fx-shadow-3: 0 14px 34px rgba(18, 38, 78, 0.14), 0 4px 12px rgba(18, 38, 78, 0.06);
+  --fx-focus-ring: 0 0 0 3px rgba(0, 84, 168, 0.35);
+
+  /* ---- Layers: the ladder the pages already climb -------------------- */
+  --fx-z-base:     0;
+  --fx-z-raised:   10;
+  --fx-z-sticky:   30;      /* admin .tb, sticky table head */
+  --fx-z-dropdown: 40;      /* search suggestions, select lists */
+  --fx-z-nav:      60;      /* app bar, bottom bar, side drawer */
+  --fx-z-fab:      90;      /* WhatsApp / SOS / AI buttons */
+  --fx-z-overlay:  120;     /* scrim */
+  --fx-z-sheet:    130;     /* bottom sheet over the scrim */
+  --fx-z-modal:    1250;    /* .shg-modal */
+  --fx-z-toast:    9999;
+  --fx-z-boot:     2147483000; /* splash / boot scene only */
+
+  /* ---- Motion: 150-250 ms -------------------------------------------- */
+  --fx-dur-fast:   150ms;   /* press, hover, chip */
+  --fx-dur-base:   200ms;   /* most transitions */
+  --fx-dur-slow:   250ms;   /* sheet, drawer, page glide */
+  --fx-ease:       cubic-bezier(.2, 0, 0, 1);     /* standard */
+  --fx-ease-out:   cubic-bezier(0, 0, 0, 1);      /* things arriving */
+  --fx-ease-in:    cubic-bezier(.3, 0, 1, 1);     /* things leaving */
+  --fx-ease-soft:  cubic-bezier(.22, 1, .36, 1);  /* no-overshoot settle */
+
+  /* ---- Type ----------------------------------------------------------
+     Devanagari is named first for mixed UI: "FX Deva" only covers the
+     Devanagari ranges (unicode-range in fx1-fonts.css), so Latin letters
+     fall through to "FX Latin" (Poppins) and never to a system fallback
+     that lacks one of the two scripts. */
+  --fx-font-deva:  "FX Deva", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", "Mangal", sans-serif;
+  --fx-font-latin: "FX Latin", "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fx-font-ui:    "FX Deva", "FX Latin", "Noto Sans Devanagari", "Nirmala UI", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Money and tables. Poppins digits are proportional (1 is 320 units,
+     0 is 628) and the font has no tnum feature, so tabular-nums alone does
+     nothing in it. "FX Num" is the Noto face limited to digits, ₹ and the
+     separators, whose digits are all one width. */
+  --fx-font-num:   "FX Num", "FX Deva", "FX Latin", "Noto Sans Devanagari", "Nirmala UI", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --fx-font-brand: "Cinzel", Georgia, serif;      /* the wordmark only */
+  --fx-font-mono:  ui-monospace, "SF Mono", SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* sizes 12 / 14 / 16 / 20 / 24 / 32 px; line-heights leave room for
+     matras above and below the line */
+  --fx-fs-xs:  0.75rem;    --fx-lh-xs:  1.5;     /* 12 / 18 */
+  --fx-fs-sm:  0.875rem;   --fx-lh-sm:  1.5715;  /* 14 / 22 */
+  --fx-fs-md:  1rem;       --fx-lh-md:  1.625;   /* 16 / 26 */
+  --fx-fs-lg:  1.25rem;    --fx-lh-lg:  1.5;     /* 20 / 30 */
+  --fx-fs-xl:  1.5rem;     --fx-lh-xl:  1.4167;  /* 24 / 34 */
+  --fx-fs-2xl: 2rem;       --fx-lh-2xl: 1.375;   /* 32 / 44 */
+
+  --fx-weight-regular:  400;
+  --fx-weight-medium:   500;
+  --fx-weight-semibold: 600;
+  --fx-weight-bold:     700;
+
+  --fx-num: tabular-nums;  /* font-variant-numeric: var(--fx-num) */
+}
+
+/* Tabular numbers: fares, seat counts, statements, times. */
+.fx-num {
+  font-family: var(--fx-font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ---- Dark -------------------------------------------------------------
+   Values = the dark set ds.css and the admin panel already use. */
+:root[data-theme="dark"] {
+  --fx-bg:            #0B1220;
+  --fx-surface:       #111D33;
+  --fx-surface-2:     #0F1A2E;
+  --fx-surface-hover: #182741;
+  --fx-line:          #22314A;
+  --fx-line-strong:   #2C3D5A;
+  --fx-line-control:  #6B7D9B;
+  --fx-text:          #E8F0FB;
+  --fx-text-2:        #C9D4E6;
+  --fx-muted:         #93A4BE;
+  --fx-scrim:         rgba(0, 0, 0, 0.65);
+
+  --fx-primary:          var(--fx-blue-400);
+  --fx-primary-strong:   var(--fx-blue-300);
+  --fx-on-primary:       #0B1220;
+  --fx-primary-soft:     #1B2F55;
+  --fx-primary-tint:     #152645;
+  --fx-link:             var(--fx-blue-400);
+  --fx-focus:            var(--fx-blue-300);
+  --fx-navy:             #0F1A2E;
+  --fx-on-navy:          #FFFFFF;
+  --fx-on-navy-muted:    var(--fx-blue-200);
+  --fx-accent:           var(--fx-orange-400);
+  --fx-on-accent:        #0B1220;
+  --fx-accent-strong:    var(--fx-orange-400);
+  --fx-on-accent-strong: #0B1220;
+  --fx-accent-text:      var(--fx-orange-300);
+  --fx-accent-line:      var(--fx-orange-400);
+  --fx-accent-soft:      #3B2610;
+
+  --fx-success:          #5FD39A;
+  --fx-success-soft:     #12321F;
+  --fx-success-solid:    #5FD39A;
+  --fx-on-success-solid: #0B1220;
+  --fx-warn:             var(--fx-orange-300);
+  --fx-warn-soft:        #3B2610;
+  --fx-warn-solid:       var(--fx-orange-400);
+  --fx-on-warn-solid:    #0B1220;
+  --fx-danger:           #FF8A8A;
+  --fx-danger-soft:      #3B1717;
+  --fx-danger-solid:     #FF8A8A;
+  --fx-on-danger-solid:  #0B1220;
+  --fx-hold:             #8B9AB3;
+  --fx-hold-soft:        #1A253B;
+  --fx-hold-solid:       #8B9AB3;
+  --fx-on-hold-solid:    #0B1220;
+  --fx-info:             var(--fx-blue-300);
+  --fx-info-soft:        #152645;
+  --fx-info-solid:       var(--fx-blue-400);
+  --fx-on-info-solid:    #0B1220;
+
+  --fx-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --fx-shadow-2: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --fx-shadow-3: 0 14px 34px rgba(0, 0, 0, 0.5);
+  --fx-focus-ring: 0 0 0 3px rgba(143, 191, 255, 0.45);
+}
+
+/* Same dark set, for a page that opts in with <html data-fx-theme="auto">
+   and has not been switched to light by hand. Keep in step with the block
+   above (the contrast script compares the two). */
+@media (prefers-color-scheme: dark) {
+  :root[data-fx-theme="auto"]:not([data-theme="light"]) {
+    --fx-bg:            #0B1220;
+    --fx-surface:       #111D33;
+    --fx-surface-2:     #0F1A2E;
+    --fx-surface-hover: #182741;
+    --fx-line:          #22314A;
+    --fx-line-strong:   #2C3D5A;
+    --fx-line-control:  #6B7D9B;
+    --fx-text:          #E8F0FB;
+    --fx-text-2:        #C9D4E6;
+    --fx-muted:         #93A4BE;
+    --fx-scrim:         rgba(0, 0, 0, 0.65);
+
+    --fx-primary:          var(--fx-blue-400);
+    --fx-primary-strong:   var(--fx-blue-300);
+    --fx-on-primary:       #0B1220;
+    --fx-primary-soft:     #1B2F55;
+    --fx-primary-tint:     #152645;
+    --fx-link:             var(--fx-blue-400);
+    --fx-focus:            var(--fx-blue-300);
+    --fx-navy:             #0F1A2E;
+    --fx-on-navy:          #FFFFFF;
+    --fx-on-navy-muted:    var(--fx-blue-200);
+    --fx-accent:           var(--fx-orange-400);
+    --fx-on-accent:        #0B1220;
+    --fx-accent-strong:    var(--fx-orange-400);
+    --fx-on-accent-strong: #0B1220;
+    --fx-accent-text:      var(--fx-orange-300);
+    --fx-accent-line:      var(--fx-orange-400);
+    --fx-accent-soft:      #3B2610;
+
+    --fx-success:          #5FD39A;
+    --fx-success-soft:     #12321F;
+    --fx-success-solid:    #5FD39A;
+    --fx-on-success-solid: #0B1220;
+    --fx-warn:             var(--fx-orange-300);
+    --fx-warn-soft:        #3B2610;
+    --fx-warn-solid:       var(--fx-orange-400);
+    --fx-on-warn-solid:    #0B1220;
+    --fx-danger:           #FF8A8A;
+    --fx-danger-soft:      #3B1717;
+    --fx-danger-solid:     #FF8A8A;
+    --fx-on-danger-solid:  #0B1220;
+    --fx-hold:             #8B9AB3;
+    --fx-hold-soft:        #1A253B;
+    --fx-hold-solid:       #8B9AB3;
+    --fx-on-hold-solid:    #0B1220;
+    --fx-info:             var(--fx-blue-300);
+    --fx-info-soft:        #152645;
+    --fx-info-solid:       var(--fx-blue-400);
+    --fx-on-info-solid:    #0B1220;
+
+    --fx-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --fx-shadow-2: 0 4px 14px rgba(0, 0, 0, 0.35);
+    --fx-shadow-3: 0 14px 34px rgba(0, 0, 0, 0.5);
+    --fx-focus-ring: 0 0 0 3px rgba(143, 191, 255, 0.45);
+  }
+}
+
+/* ---- Less motion -------------------------------------------------------
+   The phone's "reduce motion" setting, and the app's own switch
+   (<html data-motion="reduced">, saved as shg:motion). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fx-dur-fast: 1ms;
+    --fx-dur-base: 1ms;
+    --fx-dur-slow: 1ms;
+  }
+}
+:root[data-motion="reduced"] {
+  --fx-dur-fast: 1ms;
+  --fx-dur-base: 1ms;
+  --fx-dur-slow: 1ms;
+}

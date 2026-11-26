@@ -36,6 +36,7 @@ require_once INCLUDE_PATH . '/opshub.php';   // 6 Nov 2026: recent-first menu, c
 require_once __DIR__ . '/_pro.php';             // 7 Nov 2026: the professional look (pc-* components, no emoji in the chrome)
 require_once __DIR__ . '/_compat.php';
 require_once INCLUDE_PATH . '/staffavatar.php';   // 25 Nov 2026 (mp1-lg): photo / initials + mode badge in the top bar
+require_once INCLUDE_PATH . '/rolemenu.php';      // 26 Nov 2026 (fx1): 8 hubs, role menus, tab strip, phone bottom bar
 
 /**
  * Require a signed-in admin (optionally with a permission) and return them.
@@ -151,7 +152,8 @@ function admin_nav(): array
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat / Berth Layout Map','perm' => 'schedules.view',   'section' => $S3],
         ['href' => 'extra-seats.php',  'icon' => 'seat',      'label' => 'Extra Seats',            'perm' => 'bookings.view',    'section' => $S3],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani',     'perm' => 'bookings.view',    'section' => $S3],
-        ['href' => 'parcels.php',      'icon' => 'clipboard', 'label' => '📦 पार्सल · Parcels',      'perm' => 'bookings.edit', 'section' => $S3],   // 25 Nov 2026 (op5): small register per bus
+        // 25 Nov 2026 (op5): small register per bus. 26 Nov 2026 (fx1, owner: "parcel hatdeu"): the link shows only while parcel_book_on = 1
+        ...(admin_parcels_on() ? [['href' => 'parcels.php', 'icon' => 'clipboard', 'label' => '📦 पार्सल · Parcels', 'perm' => 'bookings.edit', 'section' => $S3]] : []),
         ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Boarding QR',       'perm' => 'tickets.scan',     'section' => $S3],
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts',     'perm' => 'payments.view',    'section' => $S3],
         ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customer CRM',           'perm' => 'customers.view',   'section' => $S3],
@@ -178,6 +180,8 @@ function admin_nav(): array
 
         // 5. Settings & Configuration — company, WhatsApp AI, logs, backups
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => $S5],
+        // 26 Nov 2026 (fx1): which menu rows each role sees - the super-admin's page
+        ...(Auth::isSuperadmin() && is_file(__DIR__ . '/menu-setup.php') ? [['href' => 'menu-setup.php', 'icon' => 'grid', 'label' => '🧭 मेनु मिलाउने · Menu setup', 'perm' => 'staff.manage', 'section' => $S5]] : []),
         // 16 Nov 2026 (v2.0): the weekly colours customers see (read-only), the same gate as easy-settings.php
         ['href' => 'themes.php',       'icon' => 'theme',     'label' => 'रङ र थिम · Colours & Themes', 'perm' => 'dashboard.view', 'section' => $S5],
         // 16 Nov 2026 (v2.0): the AI assistant page had no menu entry; the server scopes every answer (ai-copilot.php)
@@ -243,6 +247,478 @@ function admin_nav(): array
        saw the link and got a 403 on the tap. */
     return array_values(array_filter($keyed, static fn(array $i): bool => ($i['perm'] === '' || Auth::can($i['perm']))
         && (($i['also'] ?? '') === '' || Auth::can((string) $i['also']))));
+}
+
+/** 26 Nov 2026 (fx1): is the parcel register switched on? (parcel_book_on, default on in code; live = 0) */
+function admin_parcels_on(): bool
+{
+    try {
+        return Settings::getBool('parcel_book_on', true);
+    } catch (Throwable $e) {
+        return true;
+    }
+}
+
+/**
+ * 26 Nov 2026 (fx1) — the href of the page being drawn, in the menu's own
+ * spelling: "bookings.php" for /admin/bookings.php, "/me/" for /me/index.php,
+ * "/routine.php" for a root page.
+ */
+function admin_current_href(): string
+{
+    $script = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+    if (str_starts_with($script, '/admin/') && substr_count($script, '/') === 2) {
+        return substr($script, 7);
+    }
+    if (str_ends_with($script, '/index.php')) {
+        return substr($script, 0, -9);
+    }
+    return $script;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — the hub menu of the signed-in person (RoleMenu::build),
+ * built once per request; admin_header() and admin_footer() both read it.
+ *
+ * @param array<int, array<string, mixed>>|null $items admin_nav(), when the caller already has it
+ * @return array{main:array, more:array, pages:array}
+ */
+function admin_hub_menu(?array $items = null, bool $fresh = false): array
+{
+    static $built = null;
+    if ($built === null || $fresh) {   // $fresh: a test that signs in as one role after another
+        $me = Auth::admin() ?? [];
+        $npDesk = false;
+        try {
+            $dc = (string) (CounterDesk::forAdmin((int) ($me['id'] ?? 0))['code'] ?? '');
+            $npDesk = $dc !== '' && CounterDesk::currency($dc) === 'NPR';
+        } catch (Throwable $e) {
+            $npDesk = false;
+        }
+        $items ??= admin_nav();
+        if ((string) ($me['role'] ?? '') === 'viewer') {
+            /* requireAdmin() sends a view-only login back to the dashboard from every admin/ page outside
+               Auth::VIEWER_PAGES - so a row, a tab or a search hit to such a page would only bounce. Root-relative
+               links (/me/) are not behind that gate. */
+            $items = array_values(array_filter($items, static fn(array $i): bool =>
+                str_starts_with((string) $i['href'], '/') || in_array((string) $i['href'], Auth::VIEWER_PAGES, true)));
+        }
+        $built = RoleMenu::build($items, (string) ($me['role'] ?? ''), ['np_desk' => $npDesk]);
+        $built['np_desk'] = $npDesk;
+    }
+    return $built;
+}
+
+/** 26 Nov 2026 (fx1): "नेपाली · English" - the one name the hub menu uses for a page (RoleMenu::pageLabels). */
+function admin_hub_label(array $item): string
+{
+    [$ne, $en] = RoleMenu::pageLabel($item, 'admin_plain');
+    return $ne !== '' && $ne !== $en ? $ne . ' · ' . $en : $en;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — where the page being drawn sits in the hub menu: its hub and its tab, or null.
+ * ONE answer for the sidebar, the tab strip and the phone bar, so the three always agree:
+ *   1. the page itself, or the menu page it belongs to (RoleMenu::canon - booking-view.php -> bookings.php);
+ *   2. else the menu row the page names by hand ($active of admin_header): the exact file first, a part of
+ *      the name only after that ("agent" must not light agents.php when agent.php is in the menu).
+ * admin_header() asks first (with $active, $fresh); the tab strip and the bar read the remembered answer.
+ *
+ * @return array{hub:array<string,mixed>, tab:string}|null
+ */
+function admin_hub_at(?string $active = null, bool $fresh = false): ?array
+{
+    static $known = false, $at = null;
+    if ($known && !$fresh) {
+        return $at;
+    }
+    $built = admin_hub_menu();
+    $at = RoleMenu::locate($built, RoleMenu::canon(admin_current_href()));
+    $active = (string) $active;
+    if ($at === null && $active !== '') {
+        $exact = null;
+        $part  = null;
+        foreach ($built['pages'] as $p) {
+            $href = (string) $p['href'];
+            if (str_starts_with($href, '/')) {
+                continue;
+            }
+            if ($href === $active || $href === $active . '.php') {
+                $exact = $href;
+                break;
+            }
+            if ($part === null && str_contains($href, $active)) {
+                $part = $href;
+            }
+        }
+        if (($exact ?? $part) !== null) {
+            $at = RoleMenu::locate($built, (string) ($exact ?? $part));
+        }
+    }
+    $known = true;
+    return $at;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — the sidebar as hubs: a "what do you want to do?" box,
+ * the role's main rows (max 7, the super-admin 8), every other hub under
+ * "＋ थप · More", the last pages under "हालै · Recent". Same links, same
+ * permissions as admin_nav(); admin_hub_menu_on = 0 draws the old tree.
+ *
+ * @param array<int, array<string, mixed>> $items admin_nav()
+ */
+function admin_hub_side(array $items, string $active): void
+{
+    $built = admin_hub_menu($items);
+    $at    = admin_hub_at($active, true);
+    $onKey = $at['hub']['key'] ?? '';
+
+    // the menu search: every page this person may open, hidden ones too
+    $find = [];
+    foreach ($built['pages'] as $p) {
+        $label = admin_hub_label($p);
+        $entry = ['u' => RoleMenu::url((string) $p['href']), 'l' => $label,
+            'g' => (string) $p['hub_label'] . ((string) $p['tab_label'] !== '' ? ' › ' . (string) $p['tab_label'] : '')];
+        $old = admin_plain((string) $p['label']);   // the page's older menu name, so people still find it by the word they know
+        if ($old !== '' && !str_contains(mb_strtolower($label, 'UTF-8'), mb_strtolower($old, 'UTF-8'))) {
+            $entry['a'] = $old;
+        }
+        $find[] = $entry;
+    }
+    echo '<div class="hm-find"><input type="search" id="hmFind" placeholder="कुन काम? · What do you want to do?" autocomplete="off" aria-label="Find a page">'
+       . '<div class="hm-find-out" id="hmFindOut" hidden></div></div>';
+
+    /* A hub's other pages are normally one tap away in the tab strip. Two cases have no strip: the page being
+       drawn keeps its whole screen (SmartBook, Nepal counter, Home, Scan), or the row opens a page outside the
+       staff chrome (/me/). There the hub's other pages are listed under the row instead - else Bulk tickets or
+       an agent's own dashboard would have no click path at all. */
+    $noTabs = RoleMenu::fullScreen(admin_current_href());
+    $office = !empty($built['np_desk']) || Auth::isSuperadmin() || Auth::can('reports.view');   // the Nepal counter home is the office's and the Nepal desk's
+    $row = static function (array $hub, bool $on) use ($noTabs, $office): void {
+        $badge = $hub['key'] === 'money' ? '<span class="navbadge" id="navBadgePayments" style="display:none"></span>' : '';
+        echo '<a class="hm-row' . ($on ? ' on' : '') . ($hub['key'] === 'book' ? ' hot' : '') . '" href="' . Security::e(RoleMenu::url((string) $hub['href'])) . '">'
+           . '<span><svg class="a-ic"><use href="#a-' . Security::e((string) $hub['icon']) . '"/></svg></span>'
+           . '<b class="sl"><i class="hm-ne">' . Security::e((string) $hub['ne']) . '</i><i class="hm-en">' . Security::e((string) $hub['en']) . '</i></b>' . $badge . '</a>';
+        $bare = str_starts_with((string) $hub['href'], '/');
+        if ((int) $hub['count'] > 1 && ($bare || ($on && $noTabs))) {
+            $kids = '';
+            foreach ($hub['tabs'] as $tab) {
+                foreach ($tab['items'] as $it) {
+                    $href = (string) $it['href'];
+                    if ($href === (string) $hub['href'] || ($href === 'nepal-counter.php' && !$office) || (!$bare && str_starts_with($href, '/'))) {
+                        continue;
+                    }
+                    $kids .= '<a class="hm-kid" href="' . Security::e(RoleMenu::url($href)) . '"><span><svg class="a-ic"><use href="#a-' . Security::e((string) $it['icon']) . '"/></svg></span>'
+                           . '<b class="sl">' . Security::e(admin_hub_label($it)) . '</b></a>';
+                }
+            }
+            if ($kids !== '') {
+                echo '<div class="hm-kids">' . $kids . '</div>';
+            }
+        }
+    };
+    foreach ($built['main'] as $hub) {
+        $row($hub, $hub['key'] === $onKey);
+    }
+    if ($built['more'] !== []) {
+        $moreOpen = false;
+        foreach ($built['more'] as $hub) { if ($hub['key'] === $onKey) { $moreOpen = true; } }
+        echo '<details class="side-more hm-more"' . ($moreOpen ? ' open' : '') . '><summary>＋ थप · More (' . count($built['more']) . ')</summary>';
+        foreach ($built['more'] as $hub) {
+            $row($hub, $hub['key'] === $onKey);
+        }
+        echo '</details>';
+    }
+    $recent = array_slice(admin_nav_recent($items, 8), 0, 4);
+    if (count($recent) >= 2) {
+        echo '<details class="side-more hm-more hm-recent"><summary>हालै खोलेका · Recent</summary>';
+        foreach ($recent as $item) {
+            echo '<a href="' . Security::e(RoleMenu::url((string) $item['href'])) . '"><span><svg class="a-ic"><use href="#a-' . Security::e((string) $item['icon']) . '"/></svg></span>'
+               . '<b class="sl">' . Security::e(admin_hub_label($item)) . '</b></a>';
+        }
+        echo '</details>';
+    }
+    echo '<script>window.SHG_MENU_FIND=' . json_encode($find, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';' . admin_hub_find_js() . '</script>';
+}
+
+/** 26 Nov 2026 (fx1): the menu search - type a Nepali or English word, Enter opens the first match; "/" or Ctrl+K puts the cursor in it. */
+function admin_hub_find_js(): string
+{
+    return <<<'JS'
+(function(){
+  var inp=document.getElementById('hmFind'),out=document.getElementById('hmFindOut'),all=window.SHG_MENU_FIND||[],byKey=false;
+  // the search key is built here, not sent: name + old name + hub + link, lower case
+  all.forEach(function(p){p.k=(p.l+' '+(p.a||'')+' '+p.g+' '+p.u).toLowerCase();});
+  if(!inp||!out)return;
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function draw(){
+    var q=inp.value.trim().toLowerCase(),side=inp.closest('.side');
+    if(side)side.classList.toggle('hm-finding',q!=='');
+    if(q===''){out.hidden=true;out.innerHTML='';return;}
+    var words=q.split(/\s+/),hits=all.filter(function(p){return words.every(function(w){return p.k.indexOf(w)>=0;});}).slice(0,12);
+    out.innerHTML=hits.length?hits.map(function(p){return '<a href="'+esc(p.u)+'"><b>'+esc(p.l)+'</b><small>'+esc(p.g)+'</small></a>';}).join(''):'<p>भेटिएन · Nothing found</p>';
+    out.hidden=false;
+  }
+  inp.addEventListener('input',draw);
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){var a=out.querySelector('a');if(a){e.preventDefault();location.href=a.getAttribute('href');}}
+    if(e.key==='Escape'){inp.value='';draw();inp.blur();if(byKey){document.body.classList.remove('nav-open');byKey=false;}}
+  });
+  document.addEventListener('keydown',function(e){
+    var t=e.target,typing=t&&(/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.isContentEditable);
+    if((e.key==='k'&&(e.ctrlKey||e.metaKey))||(e.key==='/'&&!typing&&!e.ctrlKey&&!e.metaKey&&!e.altKey)){
+      e.preventDefault();
+      // the drawer exists only on a narrow screen; on a desk the menu is always there (nav-open would hide the AI button)
+      if(window.matchMedia&&matchMedia('(max-width:820px)').matches){document.body.classList.add('nav-open');byKey=true;}
+      inp.focus();inp.select();
+    }
+  });
+})();
+JS;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — "same job = one place with tabs": under the page title,
+ * the tabs of the hub this page belongs to, and the pages of the open tab.
+ * Links only - no page is merged or moved. Not drawn on the full-screen
+ * selling pages, on a hub with a single page, or with admin_hub_tabs_on = 0.
+ */
+function admin_hub_tabs(string $active): string
+{
+    if (!RoleMenu::tabsOn()) {
+        return '';
+    }
+    $here = admin_current_href();
+    if (RoleMenu::fullScreen($here)) {
+        return '';
+    }
+    $at = admin_hub_at($active);
+    if ($at === null || (int) $at['hub']['count'] < 2) {
+        return '';
+    }
+    $html = '';
+    if (count($at['hub']['tabs']) > 1) {
+        $html .= '<nav class="hm-tabs" aria-label="' . Security::e((string) $at['hub']['en']) . '">';
+        foreach ($at['hub']['tabs'] as $tk => $tab) {
+            $html .= '<a' . ((string) $tk === $at['tab'] ? ' class="on" aria-current="true"' : '') . ' href="' . Security::e(RoleMenu::url((string) $tab['items'][0]['href'])) . '">'
+                   . '<b>' . Security::e((string) $tab['ne']) . '</b><small>' . Security::e((string) $tab['en']) . '</small></a>';
+        }
+        $html .= '</nav>';
+    }
+    $pages = $at['hub']['tabs'][$at['tab']]['items'] ?? [];
+    if (count($pages) > 1) {
+        $html .= '<nav class="hm-sub" aria-label="Pages">';
+        foreach ($pages as $p) {
+            $html .= '<a' . ((string) $p['href'] === $here ? ' class="on" aria-current="page"' : '') . ' href="' . Security::e(RoleMenu::url((string) $p['href'])) . '">'
+                   . Security::e(admin_hub_label($p)) . '</a>';
+        }
+        $html .= '</nav>';
+    }
+    if ($html !== '') {   // a phone shows 3-4 tabs: bring the open one into view (scrollLeft, so the page itself never jumps)
+        $html .= '<script>document.querySelectorAll(".hm-tabs .on,.hm-sub .on").forEach(function(a){var n=a.parentNode;n.scrollLeft=Math.max(0,a.offsetLeft-n.offsetLeft-12);});</script>';
+    }
+    return $html;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — phones: the role's first four rows as a bottom bar, the
+ * fifth button opens the whole menu. Not on the full-screen selling pages
+ * (SmartBook has its own Pay bar there) and not with admin_bottom_bar_on = 0.
+ */
+function admin_hub_bar(): string
+{
+    if (!RoleMenu::bottomBarOn() || RoleMenu::fullScreen(admin_current_href())) {
+        return '';
+    }
+    try {
+        $built = admin_hub_menu();
+    } catch (Throwable $e) {
+        return '';
+    }
+    if (count($built['main']) < 2) {
+        return '';
+    }
+    $at = admin_hub_at();
+    $onKey = $at['hub']['key'] ?? '';
+    $html = '<nav class="hm-bar" aria-label="Main menu">';
+    foreach (array_slice($built['main'], 0, 4) as $hub) {
+        $html .= '<a' . ($hub['key'] === $onKey ? ' class="on" aria-current="true"' : '') . ' href="' . Security::e(RoleMenu::url((string) $hub['href'])) . '" aria-label="' . Security::e($hub['ne'] . ' · ' . $hub['en']) . '">'
+               . '<svg class="a-ic"><use href="#a-' . Security::e((string) $hub['icon']) . '"/></svg><b>' . Security::e((string) $hub['ne']) . '</b></a>';
+    }
+    $html .= '<button type="button" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="More"><svg class="a-ic"><use href="#a-grid"/></svg><b>थप</b></button>';
+    return $html . '</nav><script>document.body.classList.add("hm-has-bar");</script>';
+}
+
+/**
+ * 26 Nov 2026 (fx1) — the staff opening scene: the logo is revealed and the
+ * real coach (the same cut-out photo as the customer boot scene) glides in on
+ * its road, 1.2 s in all, then the page is simply there underneath.
+ *
+ * Once per browser session (sessionStorage), one tap or any key skips it, and
+ * it is never shown to someone who asked for less motion (the system setting
+ * or the app's own shg:motion = reduced), on a print view or inside a frame.
+ * It is an overlay over a page that has already loaded - it delays nothing.
+ * staff_boot_scene_on = 0 switches it off.
+ */
+function admin_boot_scene(): string
+{
+    try {
+        if (!Settings::getBool('staff_boot_scene_on', true)) {
+            return '';
+        }
+    } catch (Throwable $e) {
+        return '';
+    }
+    return <<<'HTML'
+<div id="shgStaffBoot" aria-hidden="true" hidden><div class="sbt-in"><span class="sbt-logo"><img data-src="/assets/img/logo-mark-tm.webp" width="439" height="228" alt="" decoding="async"></span>
+<span class="sbt-bus"><i class="sbt-road"></i><img data-src="/assets/img/hd/bus-cutout-t.webp" width="480" height="240" alt="" decoding="async"></span><b>S Hari Manage</b></div></div>
+<style>
+/* shown ONLY by the script's sbt-on class: an author display rule would beat the hidden attribute and cover every page */
+#shgStaffBoot{display:none}
+#shgStaffBoot.sbt-on{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 35%,#FFFFFF 0%,#EEF3FB 70%);transition:opacity .22s ease}
+#shgStaffBoot.sbt-out{opacity:0;pointer-events:none}
+#shgStaffBoot .sbt-in{text-align:center;color:#13244A}
+#shgStaffBoot .sbt-logo{display:block;width:min(46vw,190px);margin:0 auto}
+#shgStaffBoot img{visibility:hidden}
+#shgStaffBoot.sbt-go img{visibility:visible}
+#shgStaffBoot .sbt-logo img{display:block;width:100%;height:auto;clip-path:inset(0 100% 0 0)}
+#shgStaffBoot.sbt-go .sbt-logo img{animation:sbtDraw .55s .05s cubic-bezier(.55,.1,.35,1) forwards}
+#shgStaffBoot .sbt-bus{display:block;position:relative;width:min(62vw,250px);margin:8px auto 4px;padding-bottom:10px;overflow:hidden}
+#shgStaffBoot .sbt-bus img{display:block;width:100%;height:auto;transform:translateX(-115%);will-change:transform}
+#shgStaffBoot.sbt-go .sbt-bus img{animation:sbtGlide .8s .25s cubic-bezier(.2,.8,.25,1) forwards}
+#shgStaffBoot .sbt-road{position:absolute;left:0;right:0;bottom:0;height:10px;border-radius:5px;background:linear-gradient(#3b4252,#2b303c)}
+#shgStaffBoot b{display:block;font-size:17px;letter-spacing:.5px;opacity:0}
+#shgStaffBoot.sbt-go b{animation:sbtUp .3s .6s ease-out forwards}
+@keyframes sbtDraw{to{clip-path:inset(0 0 0 0)}}
+@keyframes sbtGlide{to{transform:none}}
+@keyframes sbtUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media print{#shgStaffBoot,#shgStaffBoot.sbt-on{display:none!important}}
+</style>
+<script>(function(){var s=document.getElementById('shgStaffBoot');if(!s)return;
+function drop(){if(s.parentNode)s.parentNode.removeChild(s);}
+try{if(window.top!==window.self)return drop();if(sessionStorage.getItem('shg_staff_boot'))return drop();sessionStorage.setItem('shg_staff_boot','1');
+if((window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches)||localStorage.getItem('shg:motion')==='reduced')return drop();
+if(window.matchMedia&&matchMedia('print').matches)return drop();}catch(e){return drop();}
+var done=false,gone=false,left=0,imgs=s.querySelectorAll('img[data-src]');function out(){if(done)return;done=true;s.classList.add('sbt-out');setTimeout(function(){if(s.parentNode)s.parentNode.removeChild(s);},260);}
+function go(){if(gone)return;gone=true;s.classList.add('sbt-go');setTimeout(out,1200);}
+/* the pictures first (cached after the first time); the scene starts when both are in, or after 0.5 s without them */
+Array.prototype.forEach.call(imgs,function(i){left++;i.onload=i.onerror=function(){if(--left<=0)go();};i.src=i.getAttribute('data-src');});
+s.hidden=false;s.classList.add('sbt-on');setTimeout(go,500);s.addEventListener('pointerdown',out);document.addEventListener('keydown',out,{once:true});})();</script>
+HTML;
+}
+
+/**
+ * 26 Nov 2026 (fx1) — a soft nudge for someone still signing in with the
+ * office's starter password (FirstName@2026, admins.pw_is_default = 1): one
+ * line under the page title with a link to "change password". It never
+ * blocks anything, hides for the day when closed, and is not shown on the
+ * full-screen selling pages. The answer is remembered in the session for ten
+ * minutes, so it costs one tiny query now and then, not one per page.
+ * default_pw_nudge_on = 0 switches it off.
+ */
+function admin_default_pw_nudge(): string
+{
+    try {
+        if (!Settings::getBool('default_pw_nudge_on', true) || RoleMenu::fullScreen(admin_current_href())) {
+            return '';
+        }
+        $me = Auth::admin() ?? [];
+        $id = (int) ($me['id'] ?? 0);
+        if (basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) === 'change-password.php') {
+            unset($_SESSION['fx1_pwdef']);   // they are changing it now: ask the database again on the next page
+            return '';
+        }
+        // a door where no password is typed (WhatsApp code, PIN ...) has nothing to nudge about; the easy door is the one
+        // that takes FirstName@2026, and Auth marks its session via_otp too - so it is let through by name
+        if ($id <= 0 || (string) ($me['role'] ?? '') === 'superadmin' || (!empty($me['via_otp']) && (string) ($me['via'] ?? '') !== 'easy')) {
+            return '';
+        }
+        $memo = $_SESSION['fx1_pwdef'] ?? null;
+        if (!is_array($memo) || (int) ($memo['id'] ?? 0) !== $id || (int) ($memo['at'] ?? 0) < time() - 600) {
+            $on = false;
+            if (is_file(INCLUDE_PATH . '/easylogin.php')) {
+                require_once INCLUDE_PATH . '/easylogin.php';
+                $row = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $id]);
+                $on  = is_array($row) && array_key_exists('pw_is_default', $row) && (int) $row['pw_is_default'] === 1
+                    && EasyLogin::defaultOn() && EasyLogin::adminDefaultActive($row);
+            }
+            $memo = ['id' => $id, 'at' => time(), 'on' => $on];
+            $_SESSION['fx1_pwdef'] = $memo;
+        }
+        if (empty($memo['on'])) {
+            return '';
+        }
+    } catch (Throwable $e) {
+        return '';
+    }
+    return '<style>.hm-nudge{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px;padding:10px 14px;border:1px solid #f5c98a;border-radius:12px;background:#fff7ea;color:#5b3200;font-size:14px;line-height:1.45}'
+         . '.hm-nudge[hidden]{display:none}.hm-nudge>span{flex:1 1 220px}.hm-nudge .btn{min-height:40px}.hm-nudge button{min-height:40px;padding:6px 12px;border:0;border-radius:10px;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}'
+         . ':root[data-theme="dark"] .hm-nudge{background:#3a2a10;border-color:#7a5a20;color:#ffe2b0}@media print{.hm-nudge{display:none!important}}</style>'
+         . '<div class="hm-nudge" id="hmPwNudge" hidden><span>🔑 <b>आफ्नो पासवर्ड बनाउनुहोस्</b> — अहिले कार्यालयले दिएको सुरुको पासवर्ड चल्दैछ। '
+         . '<span lang="en">You are still on the starter password.</span></span>'
+         . '<a class="btn" href="/admin/change-password.php">पासवर्ड बदल्ने · Change</a>'
+         . '<button type="button" aria-label="Later" onclick="try{localStorage.setItem(\'shg_pw_nudge\',new Date().toDateString());}catch(e){}this.parentNode.hidden=true">पछि · Later</button></div>'
+         . '<script>try{if(localStorage.getItem("shg_pw_nudge")!==new Date().toDateString())document.getElementById("hmPwNudge").hidden=false;}catch(e){document.getElementById("hmPwNudge").hidden=false;}</script>';
+}
+
+/** 26 Nov 2026 (fx1): the look of the hub menu, its search, the tab strip and the phone bottom bar. */
+function admin_hub_css(): string
+{
+    return <<<'CSS'
+.hm-find{position:relative;margin:2px 2px 8px}
+.hm-find input{width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg,#f4f6fb);color:var(--ink);font:inherit;font-size:13.5px}
+.hm-find input:focus{outline:2px solid var(--navy);outline-offset:1px}
+.hm-find-out{margin-top:6px}
+.hm-find-out a{display:block!important;padding:8px 10px!important}
+.hm-find-out a b{display:block;font-weight:650}
+.hm-find-out a small{display:block;font-size:11.5px;color:var(--mut)}
+.hm-find-out p{margin:8px 10px;font-size:13px;color:var(--mut)}
+.side.hm-finding>.hm-row,.side.hm-finding>.hm-more,.side.hm-finding>.hm-kids{display:none}
+.hm-kids{margin:0 0 4px 20px;border-left:1px solid var(--line)}
+.side .hm-kids a{padding:7px 10px;font-size:13px;min-height:36px}
+.side a.hm-row{padding:10px 10px;font-size:14px;font-weight:600;min-height:44px}
+.side a.hm-row .sl{display:flex;flex-direction:column;line-height:1.2}
+.hm-row .hm-ne,.hm-row .hm-en{font-style:normal}
+.hm-row .hm-en{font-size:11.5px;font-weight:500;color:var(--mut)}
+.hm-more{margin-top:6px;border-top:1px solid var(--line);padding-top:4px}
+.hm-tabs,.hm-sub{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:0 0 10px;padding:2px 0}
+.hm-tabs::-webkit-scrollbar,.hm-sub::-webkit-scrollbar{display:none}
+.hm-tabs a{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;min-height:44px;padding:5px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;line-height:1.2}
+.hm-tabs a b{font-size:14px;font-weight:650}
+.hm-tabs a small{font-size:11px;color:var(--mut)}
+.hm-tabs a.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.hm-tabs a.on small{color:rgba(255,255,255,.82)}
+.hm-sub{margin-top:-4px;border-bottom:1px solid var(--line)}
+.hm-sub a{flex:0 0 auto;display:flex;align-items:center;min-height:40px;padding:6px 12px;color:var(--mut);text-decoration:none;font-size:13.5px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap}
+.hm-sub a.on{color:var(--navy);border-bottom-color:#F07C1F}
+:root[data-theme="dark"] .hm-tabs a.on{background:#9cc0ff;border-color:#9cc0ff;color:#0B1220}
+:root[data-theme="dark"] .hm-tabs a.on small{color:#0B1220}
+:root[data-theme="dark"] .hm-sub a.on{color:#cfe0ff}
+.hm-bar{display:none}
+@media(max-width:600px){
+  .hm-find{margin:2px 6px 10px}
+  .hm-find input{height:48px;font-size:16px}
+  .side a.hm-row{font-size:17px;min-height:54px}
+  .side .hm-kids a{font-size:15px;min-height:46px}
+  .hm-row .hm-en{font-size:13px}
+  .hm-bar{position:fixed;left:0;right:0;bottom:0;z-index:28;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--line);box-shadow:0 -8px 22px -14px rgba(0,0,0,.35)}
+  .hm-bar a,.hm-bar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;padding:4px 2px;border:0;border-radius:12px;background:none;color:var(--mut);font:inherit;text-decoration:none;cursor:pointer}
+  .hm-bar .a-ic{width:22px;height:22px}
+  .hm-bar b{font-size:12px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .hm-bar a.on{color:var(--navy);background:rgba(29,79,163,.10)}
+  :root[data-theme="dark"] .hm-bar a.on{color:#cfe0ff;background:rgba(156,192,255,.14)}
+  .hm-bar a:active,.hm-bar button:active{transform:scale(.94)}
+  body.hm-has-bar main.wrap{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  body.hm-has-bar{--admin-fab-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+  body.hm-has-bar .bulk-bar{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  /* pages with their own sticky action bar: payments / agent ranking read --mnav-h, the three save bars sat on bottom:0 */
+  body.hm-has-bar{--mnav-h:calc(66px + env(safe-area-inset-bottom,0px))}
+  body.hm-has-bar .ap-save,body.hm-has-bar .co-save,body.hm-has-bar .ct-save,body.hm-has-bar [data-adm-bottom-bar]{bottom:calc(68px + env(safe-area-inset-bottom,0px))}
+  body.nav-open .hm-bar{display:none}
+}
+@media print{.hm-tabs,.hm-sub,.hm-bar,.hm-find{display:none!important}}
+@media (prefers-reduced-motion:reduce){.hm-bar a:active,.hm-bar button:active{transform:none}}
+CSS;
 }
 
 /**
@@ -414,8 +890,24 @@ function admin_header(string $title, string $active = ''): void
     // the same session token the admin POST forms carry (Security::csrfField / verifyCsrf),
     // for staff JS that posts JSON with an X-CSRF-Token header (inline edit, AI bubble)
     echo '<meta name="shg-admin-csrf" content="' . Security::e(Security::csrfToken()) . '">';
-    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css()
-       . ($av !== null ? StaffAvatar::css() . ($av['phone'] ? StaffAvatar::phoneCss() : '') : '') . '</style>';
+    echo '<style>' . admin_css() . admin_pro_css() . admin_side_css() . admin_phone_css() . (RoleMenu::on() ? admin_hub_css() : '')
+       // fx1: the drawer's mode badge is a <span> inside a menu link - without this the 18px icon-slot rule above squeezed it to a dot
+       . ($av !== null ? StaffAvatar::css() . ($av['phone'] ? StaffAvatar::phoneCss() : '') . '.side a.side-me-h .sa-mode,.side a.side-me-h:hover .sa-mode{width:auto;color:#fff}' : '') . '</style>';
+    /* 26 Nov 2026 (fx1): the brand's own fonts on every staff page - Noto Sans Devanagari for नेपाली / हिन्दी,
+       Poppins for Latin, and Noto's one-width digits so money columns line up (assets/css/fx1-fonts.css,
+       self-hosted WOFF2, font-display: swap; a file is fetched only when its script and weight are on the page).
+       Before this the panel used whatever the phone had, so Devanagari looked different on every device.
+       fx1-tokens.css only declares --fx-* variables. admin_brand_font_on = 0 gives the system font back. */
+    try {
+        if (Settings::getBool('admin_brand_font_on', true) && is_file(dirname(__DIR__) . '/assets/css/fx1-fonts.css') && is_file(dirname(__DIR__) . '/assets/css/fx1-tokens.css')) {
+            echo '<link rel="preload" href="/assets/fonts/fx1-latin-400.woff2" as="font" type="font/woff2" crossorigin>'
+               . '<link rel="stylesheet" href="' . Security::e(admin_asset_url('assets/css/fx1-fonts.css')) . '">'
+               . '<link rel="stylesheet" href="' . Security::e(admin_asset_url('assets/css/fx1-tokens.css')) . '">'
+               . '<style>body,button,input,select,textarea,optgroup{font-family:var(--fx-font-num)}.mono,code,pre,kbd{font-family:var(--fx-font-mono)}</style>';
+        }
+    } catch (Throwable $e) {
+        // fonts are decoration: never let them break a page
+    }
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
@@ -448,6 +940,7 @@ function admin_header(string $title, string $active = ''): void
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
     // draw from this. Kept here so every admin page inherits it without
     // shipping a separate stylesheet or an extra HTTP request.
+    echo admin_boot_scene();   // fx1: 1.2 s logo + coach, once per session, skippable (staff_boot_scene_on)
     echo admin_sprite();
     echo admin_pro_sprite();
 
@@ -557,7 +1050,26 @@ function admin_header(string $title, string $active = ''): void
     // "+ New Booking" must never sit under a collapsed group header.
     $showGroups = count($namedSections) >= 2 && !Auth::isCounterAgent();
 
-    if (!$showGroups) {
+    /* 26 Nov 2026 (fx1, owner: "duniya dherai option, chalauna garo"): the menu as 8 hubs
+       (includes/rolemenu.php) - max 7 main rows per role, the rest under More, a search box on
+       top. Buffered: if anything in it fails, the old tree below is drawn instead.
+       admin_hub_menu_on = 0 gives the old tree back without a deploy. */
+    $hubDrawn = false;
+    if (RoleMenu::on()) {
+        ob_start();
+        try {
+            admin_hub_side($items, $active);
+            echo ob_get_clean();
+            $hubDrawn = true;
+        } catch (Throwable $e) {
+            ob_end_clean();
+            Logger::error('hub menu failed: ' . $e->getMessage());
+        }
+    }
+
+    if ($hubDrawn) {
+        // drawn above
+    } elseif (!$showGroups) {
         foreach ($items as $item) { $renderLink($item); }
     } else {
         // Which section holds the current page? That group starts expanded so
@@ -666,9 +1178,13 @@ function admin_header(string $title, string $active = ''): void
     echo '<a class="side-site" href="' . rtrim(APP_URL, '/') . '/" target="_blank" rel="noopener">'
        . '<span><svg class="a-ic"><use href="#a-globe"/></svg></span>View site</a>';
     echo '</nav>';
-    if ($showGroups) { echo '<script>' . admin_nav_js() . '</script>'; }
+    if ($showGroups && !$hubDrawn) { echo '<script>' . admin_nav_js() . '</script>'; }
 
     echo '<main class="wrap"><h1>' . Security::e(admin_plain($title)) . '</h1>';
+    if ($hubDrawn) {   // fx1: the tabs of this page's hub, under the title
+        try { echo admin_hub_tabs($active); } catch (Throwable $e) { /* a tab strip never breaks a page */ }
+    }
+    echo admin_default_pw_nudge();   // fx1: still on the starter password? one soft line (default_pw_nudge_on)
     // 25 Nov 2026 (op5-credit): an agent near / at their credit limit (or stopped by the office) sees it on every desk page
     if (Auth::isCounterAgent() && is_file(INCLUDE_PATH . '/agentcredit.php')) { require_once INCLUDE_PATH . '/agentcredit.php'; echo AgentCredit::bannerHtml((int) (Auth::admin()['id'] ?? 0)); }
 }
@@ -710,12 +1226,12 @@ function admin_phone_css(): string
   body.nav-open,body.nav-open:not(:has(.tb-search)){padding-top:52px}
   #newPaymentBanner{top:60px!important;font-size:15px!important}
   #newBookingsPill{top:124px!important;font-size:15px!important}
-  .side-me{display:block;padding:14px 14px 12px;margin:0 0 6px;border-bottom:1px solid rgba(255,255,255,.12)}
-  .side-me b{display:block;font-size:18px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .side-me{display:block;padding:14px 14px 12px;margin:0 0 6px;border-bottom:1px solid var(--line)}
+  .side-me b{display:block;font-size:18px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .side-me em{font-style:normal;font-size:13px;color:var(--orange)}
   .side-me-b{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-top:10px}
-  .side-me-b a,.side-me-b button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:6px 2px;border:0;border-radius:16px;background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:20px;text-decoration:none;cursor:pointer;transition:transform .12s,background .15s}
-  .side-me-b a:active,.side-me-b button:active{transform:scale(.94);background:rgba(255,255,255,.18)}
+  .side-me-b a,.side-me-b button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px;padding:6px 2px;border:0;border-radius:16px;background:rgba(127,138,160,.16);color:var(--ink);font:inherit;font-size:20px;text-decoration:none;cursor:pointer;transition:transform .12s,background .15s}
+  .side-me-b a:active,.side-me-b button:active{transform:scale(.94);background:rgba(127,138,160,.30)}
   .side-me-b small{font-size:12px;font-weight:600;opacity:.85}
   .side{width:min(310px,86vw)}
   .side a{font-size:16px;min-height:50px}
@@ -816,6 +1332,7 @@ function admin_footer(): void
         // never let the lock timer break a page
     }
     echo '<div class="scrim" onclick="document.body.classList.remove(\'nav-open\')"></div>';
+    try { echo admin_hub_bar(); } catch (Throwable $e) { /* fx1: the phone bottom bar never breaks a page */ }
 
     // Live pending-payments badge + chime, so staff don't have to keep
     // hitting refresh. Only for roles that can actually act on payments.
@@ -1336,6 +1853,9 @@ function admin_poll_js(): string
             // nav group, open that group so the pending count is never hidden.
             var grp = badge.closest && badge.closest('.side-group');
             if (grp) { grp.classList.add('open'); }
+            // fx1 hub menu: the Money row may sit in the More fold - open it once per page, the person may close it again
+            var det = badge.closest && badge.closest('details.hm-more');
+            if (det && !det.open && !det.hasAttribute('data-pay-open')) { det.open = true; det.setAttribute('data-pay-open', '1'); }
           } else { badge.style.display = 'none'; }
         }
         var last = parseInt(sessionStorage.getItem(KEY_LAST) || '-1', 10);
@@ -1505,6 +2025,11 @@ function admin_sprite(): string
 <symbol id="a-calendar-plus" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v5M9.5 16.5h5"/></symbol>
 <symbol id="a-ledger" viewBox="0 0 24 24"><path d="M6 2h11a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h4"/></symbol>
 <symbol id="a-building" viewBox="0 0 24 24"><path d="M3 21V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v16"/><path d="M3 21h18"/><path d="M9 7h1M9 11h1M9 15h1M14 7h1M14 11h1M14 15h1"/></symbol>
+<symbol id="a-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="a-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7z"/></symbol>
+<symbol id="a-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1"/><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2"/><path d="M16 13.5h2"/></symbol>
+<symbol id="a-id-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M5 16c.6-1.6 5.4-1.6 6 0M14 10h5M14 14h4"/></symbol>
+<symbol id="a-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
 </defs>
 </svg>
 SVG;

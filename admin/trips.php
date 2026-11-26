@@ -159,7 +159,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $viewKey = (string) ($_GET['view'] ?? 'upcoming');
 $views   = [
     'today'    => 'Today',
-    'upcoming' => 'Upcoming',
+    'upcoming' => 'Next 7 days',
+    'month'    => 'Next 30 days',
     'running'  => 'On the road',
     'arrived'  => 'Arrived',
     'all'      => 'All',
@@ -173,6 +174,15 @@ switch ($viewKey) {
         $where  = ["s.travel_date = :today", "s.status <> 'cancelled'"];
         break;
     case 'upcoming':
+        /* 26 Nov 2026 (fx2): the nightly cron pre-creates 30 days of trips for
+           every route, so the default board was ~190 rows / 1.2 MB. It now
+           shows today + 7 days; "Next 30 days" is the old full list. A second
+           placeholder because PDO here does not allow :today twice. */
+        $where[] = "s.status = 'scheduled'";
+        $where[] = 's.travel_date <= :until';
+        $params['until'] = date('Y-m-d', strtotime($today . ' +7 day'));
+        break;
+    case 'month':
         $where[] = "s.status = 'scheduled'";
         break;
     case 'running':
@@ -407,6 +417,10 @@ $slotOf  = array_flip($rot['buses']);   // busId => index (0-based)
 $preview = Fleet::upcoming(7);
 $csrfT   = Security::e(Security::csrfToken());
 $kT      = CSRF_TOKEN_NAME;
+/* 26 Nov 2026 (fx2): the rotation panel is built here but PRINTED under the
+   departures list (see $rotationPanelHtml below), so on a phone the
+   Started / Border / Arrived buttons come first. Nothing is hidden. */
+ob_start();
 ?>
 <?php if ($canManage): ?>
 <div class="panel">
@@ -462,19 +476,23 @@ $kT      = CSRF_TOKEN_NAME;
                    value="<?= isset($slotOf[$bid]) ? (int) $slotOf[$bid] + 1 : '' ?>" placeholder="—"
                    style="width:70px;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
           </td>
-          <td colspan="3" style="padding:0">
-            <!-- Renaming/renumbering is its own form so it saves without
-                 touching the rotation slots the operator may be mid-edit on. -->
-            <div style="display:flex;gap:8px;align-items:center;padding:6px 8px">
+          <?php /* Renaming/renumbering is its own form (busf<id>) so it saves without
+                   touching the rotation slots the operator may be mid-edit on.
+                   26 Nov 2026 (fx2): three real cells (was one colspan=3 flex cell),
+                   so the row has 5 cells like the header and turns into a card on a phone. */ ?>
+          <td>
               <input form="busf<?= $bid ?>" type="text" name="bus_name" value="<?= Security::e((string) $b['bus_name']) ?>" maxlength="120"
-                     style="flex:1;min-width:150px;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
-              <input form="busf<?= $bid ?>" type="text" name="bus_number" value="<?= Security::e((string) $b['bus_number']) ?>" maxlength="30"
-                     style="width:150px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-family:var(--f-code,monospace)">
-              <span class="muted" style="font-size:12px;width:70px"><?= Security::e((string) $b['coach_type']) ?></span>
-              <button form="busf<?= $bid ?>" class="btn ghost" type="submit">💾</button>
-            </div>
+                     style="width:100%;min-width:150px;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
           </td>
           <td>
+              <input form="busf<?= $bid ?>" type="text" name="bus_number" value="<?= Security::e((string) $b['bus_number']) ?>" maxlength="30"
+                     style="width:150px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-family:var(--f-code,monospace)">
+          </td>
+          <td>
+              <span class="muted" style="font-size:12px"><?= Security::e((string) $b['coach_type']) ?></span>
+              <button form="busf<?= $bid ?>" class="btn ghost" type="submit">💾</button>
+          </td>
+          <td data-label="Routes">
             <?php foreach (['out' => 'toNepal', 'back' => 'toIndia'] as $leg => $dir): $cur = (int) ($rot['routes'][$bid][$leg] ?? 0); ?>
               <select name="rt_<?= $leg ?>[<?= $bid ?>]" style="display:block;margin:2px 0;padding:6px 8px;border:1px solid var(--line);border-radius:8px;max-width:240px">
                 <option value="0" <?= $cur === 0 ? 'selected' : '' ?>><?= $leg === 'out' ? '→ Nepal: any route' : '→ India: any route' ?></option>
@@ -539,12 +557,13 @@ $kT      = CSRF_TOKEN_NAME;
       </div>
       <p class="muted" style="font-size:12px;margin:10px 0 0">
         Applies to trips created from now on. A date whose trip already exists keeps the bus it was given —
-        change that one from the departures list below.
+        change that one from the departures list above.
       </p>
     </div>
   <?php endif; ?>
 </div>
 <?php endif; /* $canManage — rotation / bus-details panel */ ?>
+<?php $rotationPanelHtml = (string) ob_get_clean(); ?>
 
 <div class="panel">
   <h2><?= Security::e($views[$viewKey]) ?> departures <span class="muted" style="font-weight:400">· auto-refreshing</span></h2>
@@ -552,7 +571,7 @@ $kT      = CSRF_TOKEN_NAME;
     <thead><tr><th>Departs</th><th>Route</th><th>Bus</th><th>Driver</th><th>Sold / Total</th><th>Who's selling</th><th>Journey</th><th></th></tr></thead>
     <tbody>
     <?php if ($schedules === []): ?>
-      <tr><td colspan="8" class="muted" style="padding:26px;text-align:center">Nothing here. A trip appears once it has a booking or a seat hold.</td></tr>
+      <tr><td colspan="8" class="muted" style="padding:26px;text-align:center">No departures in this view.</td></tr>
     <?php else: foreach ($schedules as $s):
       $sid   = (int) $s['schedule_id'];
       $h     = hoursUntil((string) $s['travel_date'], (string) $s['dep_time']);
@@ -665,6 +684,10 @@ $kT      = CSRF_TOKEN_NAME;
     <?php endforeach; endif; ?>
     </tbody>
   </table>
+  <?php if ($viewKey === 'upcoming'): /* 26 Nov 2026 (fx2): the default list stops after 7 days */ ?>
+    <p class="muted" style="padding:10px 18px 14px;margin:0">Showing today + 7 days · आज र आउने ७ दिन।
+      <a href="?view=month">Next 30 days → · आउने ३० दिन</a></p>
+  <?php endif; ?>
 </div>
 <p class="muted">
   Urgency: <span class="pill" style="background:#ffe6b0;color:#7a5200">within 24h</span> then
@@ -675,6 +698,8 @@ $kT      = CSRF_TOKEN_NAME;
     The 12-hour and 2-hour reminders go out on their own via <span class="mono">cron/reminders.php</span>.
   <?php endif; ?>
 </p>
+
+<?= $rotationPanelHtml /* 26 Nov 2026 (fx2): bus rotation panel, built above */ ?>
 
 <script>
 (function () {
