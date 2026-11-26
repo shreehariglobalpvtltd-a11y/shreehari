@@ -73,7 +73,7 @@
     return ctx;
   }
   function unlock() {
-    gestured = true;
+    gestured = true; ssSet('shg_ring_tap', '1');
     var c = audio();
     if (c && c.state === 'suspended' && c.resume) { try { c.resume(); } catch (e) {} }
     sndChip();
@@ -89,10 +89,9 @@
     if (!api.active || !soundOn() || !cfg.sound) { return false; }
     if (ctx) { return ctx.state !== 'running'; }
     var ua = navigator.userActivation;
-    return !!(ua && !ua.hasBeenActive && !gestured);
+    return !!(ua && !ua.hasBeenActive && !gestured && !ss('shg_ring_tap'));
   }
-  /* a small button on every panel page while the ring could not sound (an office PC left on a freshly
-     loaded page would otherwise ring silently); the card and the slim bar carry their own hint, so not while they show */
+  /* a button while the ring could not sound (not while the card / bar shows); asked once per session, above the phone bar */
   function sndChip() {
     var want = needTap() && !(el && api.ringing);
     if (!want) { if (chip) { chip.style.display = 'none'; } return; }
@@ -101,7 +100,7 @@
       chip = document.createElement('button');
       chip.type = 'button'; chip.id = 'shgRingSnd';
       chip.textContent = '🔊 घण्टीको आवाज खोल्न ट्याप गर्नुहोस् · Tap to enable ring sound';
-      chip.setAttribute('style', 'position:fixed;left:8px;bottom:12px;z-index:2147482970;max-width:calc(100% - 16px);min-height:44px;'
+      chip.setAttribute('style', 'position:fixed;left:8px;bottom:calc(var(--mnav-h,0px) + 12px);z-index:2147482970;max-width:calc(100% - 16px);min-height:44px;'
         + 'padding:8px 14px;border-radius:14px;border:1px solid #e0c46c;background:#FFF3CD;color:#5c4400;font:inherit;font-size:14px;'
         + 'font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.25);text-align:left');
       chip.addEventListener('click', function () { unlock(); play('pop'); setTimeout(function () { sndChip(); paint(); }, 150); });

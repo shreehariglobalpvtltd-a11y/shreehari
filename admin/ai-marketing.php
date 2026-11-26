@@ -250,8 +250,10 @@ admin_page_head('The AI picks who to message (festival, return trip, long-gone c
       <label>भाषा थाहा नभएकालाई · Language when unknown<select name="mk_auto_lang"><option value="ne" <?= $defLangNow === 'ne' ? 'selected' : '' ?>>नेपाली</option><option value="hi" <?= $defLangNow === 'hi' ? 'selected' : '' ?>>हिन्दी</option><option value="en" <?= $defLangNow === 'en' ? 'selected' : '' ?>>English</option></select></label>
       <label>एकएकको भाषामा लेख्ने · Write each person's line in
         <span style="display:flex;gap:12px;flex-wrap:wrap;font-weight:500">
-          <?php foreach (['ne' => 'नेपाली', 'hi' => 'हिन्दी', 'en' => 'English'] as $lc => $ll): ?>
-            <span style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" name="mk_auto_langs[]" value="<?= $lc ?>" <?= in_array($lc, $langsNow, true) ? 'checked' : '' ?>><?= $ll ?></span>
+          <?php /* fx4: the loop variable was $lc, which overwrote the AI-learning counts ($lc = AiLearn::counts()) and
+                   made the "AI ले सिकेको" panel below fatal ("offset of type string on string") */ ?>
+          <?php foreach (['ne' => 'नेपाली', 'hi' => 'हिन्दी', 'en' => 'English'] as $langCode => $ll): ?>
+            <span style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" name="mk_auto_langs[]" value="<?= $langCode ?>" <?= in_array($langCode, $langsNow, true) ? 'checked' : '' ?>><?= $ll ?></span>
           <?php endforeach; ?>
         </span>
         <small style="color:var(--mut);font-weight:400">The language each person writes to us on WhatsApp (or picked on the website). Others get the line above.</small></label>
