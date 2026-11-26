@@ -62,11 +62,16 @@ $ini = (string) php_ini_loaded_file();
 /** @return array{0: string, 1: array<string, mixed>} the PDF bytes and what ChalaniPdf::$drawn said */
 $render = static function (int $n, int $x) use ($child, $root, $ini): array {
     $cmd = array_merge([PHP_BINARY], $ini !== '' ? ['-c', $ini] : [], [$child, $root, (string) $n, (string) $x]);
-    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-    if (!is_resource($p)) { return ['', []]; }
+    /* 26 Nov 2026 (fx4): stderr goes to a file, not a pipe. ChalaniPdf::$drawn grew past 4 KB for 45+ rows; on
+       Windows a pipe holds 4 KB, so the child blocked writing stderr while this side waited for stdout to end -
+       the battery hung here for 40+ minutes. A file never fills. */
+    $errFile = tempnam(sys_get_temp_dir(), 'shg_u10e');
+    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes);
+    if (!is_resource($p)) { @unlink($errFile); return ['', []]; }
     $out = (string) stream_get_contents($pipes[1]);
-    $err = (string) stream_get_contents($pipes[2]);
-    fclose($pipes[1]); fclose($pipes[2]); proc_close($p);
+    fclose($pipes[1]); proc_close($p);
+    $err = (string) @file_get_contents($errFile);
+    @unlink($errFile);
     $j = strrpos($err, '{"rows"');
     return [$out, $j !== false ? (array) json_decode(substr($err, $j), true) : ['err' => substr($err, 0, 300)]];
 };
