@@ -242,9 +242,14 @@ if ($route !== null) {
         // click-to-chat link — but the TO NUMBER is the whole point: it must be the
         // Nepali +977 number, not a +91 stranger. message_logs is also the proof
         // that a miss is now recorded (it used to sit at 0 rows) and recoverable.
+        /* 26 Nov 2026 (fx2): bookingConfirmed() also sends the office a copy (purpose
+           booking_office_confirmed, to the admin_whatsapp setting) when that setting is filled.
+           It is logged AFTER the customer's message, so "the newest row" was the office copy
+           whenever another run had left admin_whatsapp set in the shared test database. The
+           check is about the CUSTOMER's message, so read that one. */
         $waRow = Database::fetch(
             "SELECT to_number, status FROM message_logs
-              WHERE booking_id = :b AND channel = 'whatsapp'
+              WHERE booking_id = :b AND channel = 'whatsapp' AND COALESCE(purpose, '') NOT LIKE 'booking\\_office%'
               ORDER BY id DESC LIMIT 1",
             ['b' => $bid]
         );
