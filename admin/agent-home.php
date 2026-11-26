@@ -93,7 +93,8 @@ $isNpDesk = (string) $h['desk']['currency'] !== 'INR';
 $local    = static fn(float $inr): string => SellerDay::money($inr, $h['desk']);
 $office   = $h['office'];
 $telHref  = 'tel:' . (preg_replace('/[^0-9+]/', '', (string) $office['call']) ?? '');
-$waHref   = 'https://wa.me/' . (string) $office['wa'];
+$waDigits = preg_replace('/\D/', '', (string) $office['wa']) ?? '';
+$waHref   = $waDigits !== '' ? 'https://wa.me/' . $waDigits : '';   // fx4: no office WhatsApp set -> no button (a bare wa.me/ opened an empty chat)
 $netCls   = $net > 0.5 ? 'owes' : ($net < -0.5 ? 'credit' : 'square');
 $kycText  = ['submitted' => 'KYC जाँच हुँदैछ · KYC being checked', 'rejected' => 'KYC मिलेन — फेरि पठाउनुहोस् · KYC rejected, send again'][(string) $h['kyc']]
     ?? 'KYC बाँकी · KYC pending';
@@ -166,7 +167,7 @@ if (!$isOwn) { echo AgentCredit::bannerHtml($viewId); }
     <div class="ah-book off" id="ahBook" role="status">⛔ अहिले टिकट काट्न मिल्दैन <small>Selling is stopped</small></div>
     <div class="ah-row">
       <a class="ah-btn go" href="<?= $e($telHref) ?>">📞 अफिसमा फोन<small style="color:#fff;opacity:.85"><?= $e($office['call']) ?></small></a>
-      <a class="ah-btn" href="<?= $e($waHref) ?>" target="_blank" rel="noopener">💬 WhatsApp<small>अफिस · office</small></a>
+      <?php if ($waHref !== ''): ?><a class="ah-btn" href="<?= $e($waHref) ?>" target="_blank" rel="noopener">💬 WhatsApp<small>अफिस · office</small></a><?php endif; ?>
     </div>
   <?php endif; ?>
 
@@ -267,7 +268,7 @@ if (!$isOwn) { echo AgentCredit::bannerHtml($viewId); }
       <a class="ah-btn" id="ahPayout" href="/admin/agent.php?tab=wallet#payoutRequest">💸 कमिसन माग्नुहोस्<small>Request payout</small></a>
     <?php endif; ?>
     <?php if ($isOwn && !($canBook && $blocked)): ?>
-      <a class="ah-btn" href="<?= $e($waHref) ?>" target="_blank" rel="noopener">💬 अफिसलाई WhatsApp<small>Help · <?= $e($office['call']) ?></small></a>
+      <?php if ($waHref !== ''): ?><a class="ah-btn" href="<?= $e($waHref) ?>" target="_blank" rel="noopener">💬 अफिसलाई WhatsApp<small>Help · <?= $e($office['call']) ?></small></a><?php endif; ?>
     <?php endif; ?>
   </div>
 </div>

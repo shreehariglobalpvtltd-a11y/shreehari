@@ -1047,8 +1047,14 @@ final class AlertBus
         }
     }
 
-    /** Seen on a merged notification / the card's "Seen all": every open ring this person can see. */
-    public static function ackAll(array $admin, string $via = 'panel', ?int $now = null): int
+    /**
+     * Seen on a merged notification / the card's "Seen all": the open rings this person can see,
+     * up to and including alert $upTo (the newest one the person was actually shown). 26 Nov 2026
+     * (fx4 review): without the cap, tapping an old "N new alerts" notification minutes later also
+     * silenced alerts that came AFTER it - for an office role, for the whole office. A driver SOS
+     * (LOUD) is never silenced by "Seen all": only its own Seen stops it.
+     */
+    public static function ackAll(array $admin, string $via = 'panel', ?int $now = null, int $upTo = 0): int
     {
         $n = 0;
         try {
@@ -1057,7 +1063,14 @@ final class AlertBus
             }
             $matrix = self::matrix();
             foreach (self::openRings($now ?? time()) as $r) {
-                if (self::visibleTo($admin, $r, $matrix) && self::ack((int) $r['id'], $admin, $via, $now)['first']) {
+                $rid = (int) $r['id'];
+                if ($upTo > 0 && $rid > $upTo) {
+                    continue;
+                }
+                if (in_array((string) ($r['event'] ?? ''), self::LOUD, true) && $rid !== $upTo) {
+                    continue;
+                }
+                if (self::visibleTo($admin, $r, $matrix) && self::ack($rid, $admin, $via, $now)['first']) {
                     $n++;
                 }
             }
@@ -1402,8 +1415,8 @@ final class AlertBus
                     $many = count($vis) > $cfg['burst'];
                     foreach ($vis as $i => $e) {
                         $att = self::attempt($e, $now, $cfg);
-                        if ($att === null || ($many && $i > 0 && $att['k'] > 0)) {
-                            continue;                      // a burst repeats only its newest alert
+                        if ($att === null || ($many && $i > 0)) {
+                            continue;                      // a burst sends ONE merged push ("N new alerts"), for its newest alert only
                         }
                         if ($sends >= $maxSends) {
                             break 2;
@@ -1488,15 +1501,17 @@ final class AlertBus
             if (Database::exists("SELECT 1 FROM alert_deliveries WHERE alert_id = :a AND admin_id = 0 AND channel = 'whatsapp'", ['a' => (int) $e['id']])) {
                 continue;
             }
-            if (!Security::rateLimit('alert_wa', 'office', 6, 3600)) {
-                break;
-            }
+            /* claim first, then the hourly limit: a duplicate claim (two pollers at once) must not use up a slot */
             $claim = Database::insertIgnore('alert_deliveries', [
                 'alert_id' => (int) $e['id'], 'admin_id' => 0, 'channel' => 'whatsapp', 'attempt' => 0,
                 'ok' => 1, 'detail' => 'office number', 'created_at' => date('Y-m-d H:i:s', $now),
             ]);
             if ($claim <= 0) {
                 continue;
+            }
+            if (!Security::rateLimit('alert_wa', 'office', 6, 3600)) {
+                Database::run('DELETE FROM alert_deliveries WHERE id = :i', ['i' => $claim]);   // our own claim row, so a later pass may send it
+                break;
             }
             $facts = array_values(array_filter([(string) $e['body']], static fn(string $s): bool => $s !== ''));
             $bid   = !empty($e['booking_id']) ? (int) $e['booking_id'] : null;
@@ -1523,10 +1538,10 @@ final class AlertBus
     {
         try {
             if (!isset(self::EVENTS[$event])) {
-                return ['ok' => false, 'detail' => 'Unknown alert.'];
+                return ['ok' => false, 'detail' => 'थाहा नभएको सूचना · Unknown alert.'];
             }
             if (!self::on()) {
-                return ['ok' => false, 'detail' => 'The alert bus is off (alert_bus_on) or its tables are missing - run database/upgrade-2026-11-26-fx1-alertbus.sql.'];
+                return ['ok' => false, 'detail' => 'सूचना प्रणाली बन्द छ वा यसको तालिका छैन · The alert bus is off (alert_bus_on) or its tables are missing - run database/upgrade-2026-11-26-fx1-alertbus.sql.'];
             }
             $now = $now ?? time();
             $def = self::EVENTS[$event];
@@ -1538,13 +1553,13 @@ final class AlertBus
                         require_once INCLUDE_PATH . '/notify.php';
                     }
                     if (!Notify::adminWhatsappReady()) {
-                        return ['ok' => false, 'detail' => 'Office WhatsApp is not set (admin_whatsapp) or whatsapp_notify_admin is off.'];
+                        return ['ok' => false, 'detail' => 'अफिस WhatsApp नम्बर राखिएको छैन वा बन्द छ · Office WhatsApp is not set (admin_whatsapp) or whatsapp_notify_admin is off.'];
                     }
                     Notify::adminNote($title, ['यो नमुना मात्र हो · This is only a test.']);
                 } else {
                     (self::$waSender)($title, ['test'], null);
                 }
-                return ['ok' => true, 'detail' => 'Handed to WhatsApp for the office number. Check that phone.'];
+                return ['ok' => true, 'detail' => 'अफिस नम्बरमा WhatsApp पठाइयो, त्यो फोन हेर्नुहोस् · Handed to WhatsApp for the office number. Check that phone.'];
             }
             $id = self::raise($event, [
                 'title' => $title,
@@ -1554,11 +1569,11 @@ final class AlertBus
                 'ring'  => $via === 'push' ? true : self::matrix()[$event]['ring'],
             ], 'test:' . $aid . ':' . bin2hex(random_bytes(6)), $now);
             if ($id <= 0) {
-                return ['ok' => false, 'detail' => 'Could not store the test alert.'];
+                return ['ok' => false, 'detail' => 'नमुना सूचना राख्न सकिएन · Could not store the test alert.'];
             }
             if ($via === 'push') {
                 if (!self::pushReady()) {
-                    return ['ok' => false, 'id' => $id, 'detail' => 'Push is off (alert_push_on / push_enabled) or not available on this server.'];
+                    return ['ok' => false, 'id' => $id, 'detail' => 'फोन घण्टी (push) बन्द छ वा यो सर्भरमा छैन · Push is off (alert_push_on / push_enabled) or not available on this server.'];
                 }
                 $prev = self::$recipients;
                 self::$recipients = [['id' => $aid, 'role' => (string) ($admin['role'] ?? ''), 'full_name' => (string) ($admin['full_name'] ?? '')]];
@@ -1568,13 +1583,13 @@ final class AlertBus
                     self::$recipients = $prev;
                 }
                 return $r['push'] > 0
-                    ? ['ok' => true, 'id' => $id, 'detail' => 'Sent to your subscribed phone(s). Tap Seen on the notification.']
-                    : ['ok' => false, 'id' => $id, 'detail' => 'No phone of yours rings yet - tap "Ring on this phone" on that phone first (or the push service refused).'];
+                    ? ['ok' => true, 'id' => $id, 'detail' => 'तपाईंको फोनमा पठाइयो, सूचनामा "देखेँ" थिच्नुहोस् · Sent to your subscribed phone(s). Tap Seen on the notification.']
+                    : ['ok' => false, 'id' => $id, 'detail' => 'तपाईंको कुनै फोनमा घण्टी खुलेको छैन, पहिले त्यो फोनमा "यो फोनमा घण्टी बजाउनुहोस्" थिच्नुहोस् · No phone of yours rings yet - tap "Ring on this phone" on that phone first (or the push service refused).'];
             }
-            return ['ok' => true, 'id' => $id, 'detail' => 'Test alert stored - it shows on your open panel within a few seconds.'];
+            return ['ok' => true, 'id' => $id, 'detail' => 'नमुना सूचना राखियो, केही सेकेन्डमा खुला प्यानलमा देखिन्छ · Test alert stored - it shows on your open panel within a few seconds.'];
         } catch (Throwable $e) {
             self::warn('test failed', $e);
-            return ['ok' => false, 'detail' => 'The test could not run (server error).'];
+            return ['ok' => false, 'detail' => 'नमुना चलाउन सकिएन (सर्भर त्रुटि) · The test could not run (server error).'];
         }
     }
 

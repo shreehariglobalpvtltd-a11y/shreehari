@@ -45,7 +45,7 @@ try {
         Security::requireRateLimit('alert_ack_t', Security::clientIp(), 120, 60);
         $aid = (int) Response::field('admin', 0);
         if (!AlertBus::checkAckToken($id, $aid, $token, $all)) {
-            Response::forbidden('This link is not valid.');
+            Response::forbidden('यो लिङ्क मान्य छैन · This link is not valid.');
         }
         /* The signature names ONE alert (`id`). A list sent along with it is not signed and is
            dropped - otherwise any old notification's token could mark every later alert seen. */
@@ -57,31 +57,37 @@ try {
         }
         $row = AlertBus::adminById($aid);
         if ($row === null) {
-            Response::forbidden('This account is not active.');
+            Response::forbidden('यो खाता सक्रिय छैन · This account is not active.');
         }
         $who = ['id' => (int) $row['id'], 'role' => (string) $row['role']];
         $via = 'push';
     } elseif ($admin !== null) {
-        Response::error('Security token expired. Please refresh the page and try again.', 419);
+        Response::error('सुरक्षा टोकन सकियो, पेज रिफ्रेस गर्नुहोस् · Security token expired. Please refresh the page and try again.', 419);
     } else {
         Response::unauthorized();
     }
 
     if ($who['role'] === 'viewer') {
-        Response::forbidden('A view-only account cannot mark alerts seen.');
+        Response::forbidden('हेर्ने मात्र खाताले "देखेँ" थिच्न मिल्दैन · A view-only account cannot mark alerts seen.');
     }
     if (!Security::rateLimit('alert_ack', 'admin:' . $who['id'], 60, 60)) {
-        Response::error('Too many requests.', 429);
+        Response::error('धेरै पटक थिचियो, एकछिन पर्खनुहोस् · Too many requests.', 429);
     }
 
     if ($all) {
-        Response::success(['acked' => AlertBus::ackAll($who, $via)]);
+        /* fx4: "Seen all" covers alerts up to the one shown - the signed alert of a push, or the newest
+           ring the panel had on screen (upto). Never later alerts, never a driver SOS by itself. */
+        $upTo = $via === 'push' ? $id : max(0, (int) Response::field('upto', 0));
+        if ($upTo <= 0) {
+            Response::invalid(['upto' => 'कुन सूचनासम्म? · Seen up to which alert?']);
+        }
+        Response::success(['acked' => AlertBus::ackAll($who, $via, null, $upTo)]);
     }
     if ($ids === [] && $id > 0) {
         $ids = [$id];
     }
     if ($ids === []) {
-        Response::invalid(['id' => 'Which alert?']);
+        Response::invalid(['id' => 'कुन सूचना? · Which alert?']);
     }
     $n = 0;
     $refused = 0;
@@ -94,7 +100,7 @@ try {
         }
     }
     if ($refused > 0 && $refused === count($ids)) {
-        Response::forbidden('That alert is not for your account.');
+        Response::forbidden('यो सूचना तपाईंको खाताको लागि होइन · That alert is not for your account.');
     }
     Response::success(['acked' => $n]);
 } catch (Throwable $e) {

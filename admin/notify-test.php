@@ -37,7 +37,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || !Security::verifyCsrf())
 if (strtolower((string) ($_POST['channel'] ?? '')) === 'alert') {
     if (!Auth::isSuperadmin()) {
         http_response_code(403);
-        echo json_encode(['ok' => false, 'detail' => 'Only the super-admin can send a test alert.']);
+        echo json_encode(['ok' => false, 'detail' => 'नमुना सूचना सुपर-एडमिनले मात्र पठाउन सक्छ · Only the super-admin can send a test alert.']);
         exit;
     }
     try {
@@ -45,7 +45,7 @@ if (strtolower((string) ($_POST['channel'] ?? '')) === 'alert') {
         $ev  = Security::clean((string) ($_POST['event'] ?? ''), 40);
         $via = strtolower(Security::clean((string) ($_POST['via'] ?? 'inapp'), 12));
         if (!isset(AlertBus::EVENTS[$ev]) || !in_array($via, ['inapp', 'push', 'whatsapp'], true)) {
-            $res = ['ok' => false, 'detail' => 'Unknown alert or channel.'];
+            $res = ['ok' => false, 'detail' => 'थाहा नभएको सूचना वा माध्यम · Unknown alert or channel.'];
         } else {
             $res = AlertBus::test($ev, $via, ['id' => (int) ($admin['id'] ?? 0), 'role' => (string) ($admin['role'] ?? ''),
                                               'full_name' => (string) ($admin['full_name'] ?? '')]);
@@ -53,7 +53,7 @@ if (strtolower((string) ($_POST['channel'] ?? '')) === 'alert') {
         }
     } catch (Throwable $e) {
         Logger::exception($e);
-        $res = ['ok' => false, 'detail' => 'The test could not run (server error). Check logs/.'];
+        $res = ['ok' => false, 'detail' => 'नमुना चलाउन सकिएन (सर्भर त्रुटि) · The test could not run (server error). Check logs/.'];
     }
     echo json_encode($res, JSON_UNESCAPED_UNICODE);
     exit;

@@ -2,7 +2,7 @@
 --  upgrade-2026-11-26-fx1-aiwa.sql  (fx1, 26 Nov 2026 - S Hari AI +
 --  WhatsApp gap pass)
 --
---  Seven switches. The code reads every one with the same default it is
+--  Ten switches (seven fx1 + three fx4). The code reads every one with the same default it is
 --  seeded with here, so nothing behaves differently whether this file has
 --  run or not; it only makes the switches visible in Admin -> Settings ->
 --  WhatsApp, so each change can be rolled back with one click.
@@ -42,6 +42,22 @@
 --                                    before. Super-admin only. (The tool itself
 --                                    stays OFF unless wa_agent_admin_write = 1.)
 --
+--  fx4 (26 Nov 2026) - three more, same rule (seeded = the code's default):
+--    wa_nepal_no_upi_qr_on     1     a NEPAL unpaid booking (NPR frozen / Nepal
+--                                    desk or entity) never gets the India UPI QR
+--                                    picture from the bot: its wallet id + the
+--                                    pay page (which shows the Nepal QR);
+--                                    0 = the UPI picture for every booking.
+--    wa_cod_pay_link_on        0     the "status" answer for a confirmed
+--                                    pay-at-boarding ticket says "pay on boarding"
+--                                    only; 1 = also the optional free pay page
+--                                    link (pay.php, owner 16 Nov P1).
+--    wa_office_ask_verify_on   0     1 = the owner's company-figure questions on
+--                                    WhatsApp wait for a fresh staff-panel
+--                                    verification even while wa_ops_stepup_on is
+--                                    off; 0 = as before (number match + the
+--                                    global step-up).
+--
 --  Additive and safe to re-run: INSERT IGNORE keeps any value already stored.
 -- =====================================================================
 
@@ -54,4 +70,7 @@ INSERT IGNORE INTO settings (skey, svalue, stype, sgroup, label, is_public) VALU
   ('wa_welcome_menu_on', '1', 'bool', 'whatsapp', 'WhatsApp bot: a bare hello gets the order menu (book / my ticket / office) under the welcome', 0),
   ('wa_date_change_mode', 'self', 'string', 'whatsapp', 'WhatsApp date change after the 6-digit code: self = changed at once; request = only a request for the office (Ticket requests)', 0),
   ('ai_cancel_request_all_on', '1', 'bool', 'whatsapp', 'S Hari AI never cancels a ticket for a passenger on any channel (WhatsApp, website, Messenger): a request to the office only. Super-admin only', 0),
-  ('wa_confirm_super_only_on', '1', 'bool', 'whatsapp', 'Confirming a payment from WhatsApp: super-admin only, always behind a fresh verification link. Super-admin only', 0);
+  ('wa_confirm_super_only_on', '1', 'bool', 'whatsapp', 'Confirming a payment from WhatsApp: super-admin only, always behind a fresh verification link. Super-admin only', 0),
+  ('wa_nepal_no_upi_qr_on', '1', 'bool', 'whatsapp', 'WhatsApp bot / S Hari AI: a Nepal unpaid booking gets its Nepal wallet id + the pay page (Nepal QR), never the India UPI QR picture', 0),
+  ('wa_cod_pay_link_on', '0', 'bool', 'whatsapp', 'WhatsApp "status" for a confirmed pay-at-boarding ticket: also send the optional free pay page link (off = "pay on boarding" only)', 0),
+  ('wa_office_ask_verify_on', '0', 'bool', 'whatsapp', 'WhatsApp: the owner''s company-figure questions always wait for a fresh staff-panel verification (even with the global step-up off)', 0);

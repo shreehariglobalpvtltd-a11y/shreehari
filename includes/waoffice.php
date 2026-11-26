@@ -258,7 +258,12 @@ final class WaOffice
         try {
             require_once INCLUDE_PATH . '/aiverify.php';
             $ctx = $who + ['channel' => 'whatsapp'];
-            if (!AiVerify::needs('office_day', $ctx) || AiVerify::isFresh($ctx)) {
+            /* fx4 (26 Nov 2026): wa_office_ask_verify_on (default 0) = the company figures here wait for a
+               fresh staff-panel verification even while the global step-up (wa_ops_stepup_on) is off -
+               "staff / owner questions after a code login" without changing the desk's own gate. */
+            $forced = Settings::getBool('wa_office_ask_verify_on', false)
+                && (string) ($ctx['role'] ?? 'customer') !== 'customer' && (int) ($ctx['adminId'] ?? 0) > 0;
+            if ((!$forced && !AiVerify::needs('office_day', $ctx)) || AiVerify::isFresh($ctx)) {
                 return null;
             }
             $c = AiVerify::challenge($ctx);

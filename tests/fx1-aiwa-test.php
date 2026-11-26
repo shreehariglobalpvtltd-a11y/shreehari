@@ -81,7 +81,9 @@ $OVR = ['whatsapp_driver' => 'click_to_chat', 'wa_cloud_fallback_on' => '0', 'ai
     'admin_whatsapp' => '', 'ceo_whatsapp' => '', 'office_report_numbers' => '',
     // the fx1 switches (their code defaults, stated here so a stored row can never change the test)
     'wa_change_words_on' => '1', 'wa_human_ask_on' => '1', 'wa_office_ask_on' => '1', 'ai_cancel_request_all_on' => '1',
-    'wa_confirm_super_only_on' => '1', 'wa_date_change_mode' => 'self', 'wa_welcome_menu_on' => '1'];
+    'wa_confirm_super_only_on' => '1', 'wa_date_change_mode' => 'self', 'wa_welcome_menu_on' => '1',
+    // the fx4 switches (code defaults)
+    'wa_nepal_no_upi_qr_on' => '1', 'wa_cod_pay_link_on' => '0', 'wa_office_ask_verify_on' => '0'];
 function applyOverrides(): void {
     global $OVR;
     Settings::get('company_name');
@@ -518,6 +520,23 @@ $r = wa($listed, 'revenue');
 check('C …a number that is only on the office-report list has no account to verify: unchanged', WaBot::$lastRouter === 'office' && str_contains(txt($r), '💰'), WaBot::$lastRouter . ' :: ' . txt($r));
 setOvr('office_report_numbers', '');
 setOvr('wa_ops_stepup_on', '0');
+// fx4: wa_office_ask_verify_on (default 0) = the figures wait for the verification even with the global step-up off
+$r = wa(MGR, 'revenue');
+check('C fx4 default (wa_office_ask_verify_on = 0, step-up off): the manager number is answered as before', WaBot::$lastRouter === 'office' && str_contains(txt($r), '💰') && !str_contains(txt($r), '🔐'), WaBot::$lastRouter . ' :: ' . txt($r));
+setOvr('wa_office_ask_verify_on', '1');
+foreach (['revenue', 'pending payment?'] as $q) {
+    $r = wa(MGR, $q);
+    check('C fx4 wa_office_ask_verify_on = 1, step-up OFF, unverified manager "' . $q . '": the verification step, no figure',
+        WaBot::$lastRouter === 'office' && str_contains(txt($r), '🔐') && !$leak(txt($r)), WaBot::$lastRouter . ' :: ' . txt($r));
+}
+$r = wa(MGR, 'bus kaha cha?');
+check('C fx4 …where the bus is still answered (no money)', WaBot::$lastRouter === 'office' && !str_contains(txt($r), '🔐'), WaBot::$lastRouter . ' :: ' . txt($r));
+Database::run('INSERT INTO wa_identity_links (phone, admin_id, verified_at, verified_via) VALUES (:p, :a, NOW(), :v)
+               ON DUPLICATE KEY UPDATE admin_id = :a2, verified_at = NOW(), verified_via = :v2', ['p' => MGR, 'a' => $mgrId, 'v' => 'fx1aiwa', 'a2' => $mgrId, 'v2' => 'fx1aiwa']);
+$r = wa(MGR, 'revenue');
+check('C fx4 …verified in the panel: the figures are answered', WaBot::$lastRouter === 'office' && str_contains(txt($r), '💰') && !str_contains(txt($r), '🔐'), WaBot::$lastRouter . ' :: ' . txt($r));
+Database::run('DELETE FROM wa_identity_links WHERE phone = :p', ['p' => MGR]);
+setOvr('wa_office_ask_verify_on', '0');
 setOvr('wa_office_ask_on', '0');
 $r = wa(OWN, 'kun agent le kati kate?');
 check('C switch wa_office_ask_on = 0: the desk answers as before', WaBot::$lastRouter === 'apwa' && !str_contains(txt($r), 'Top sellers'), WaBot::$lastRouter . ' :: ' . txt($r));
@@ -663,6 +682,58 @@ check('F the old bare-PNR card (answer-first off): no QR for pay-at-boarding, th
     && str_contains((string) ($rj['media'] ?? ''), 'pay-image.php'), txt($r));
 setOvr('wa_answer_first_on', '1');
 setOvr('wa_lookup_on', '1');
+
+// fx4: a pay-at-boarding ticket never gets a pay LINK either (QR, pay.php, "send the screenshot")
+$r = wa(C3, 'kasari tirne?');
+check('F fx4 "kasari tirne?" on a pay-at-boarding booking: no pay.php link, no screenshot ask, says it is paid on boarding',
+    WaBot::$lastRouter === 'walocal' && !str_contains(txt($r), 'pay.php') && stripos(txt($r), 'screenshot') === false
+    && (str_contains(txt($r), 'boarding') || str_contains(txt($r), 'बसमा') || str_contains(txt($r), 'बस में')), txt($r));
+$r = wa('9812395575', 'kasari tirne?');
+check('F fx4 …an ordinary pending booking still gets the pay.php link', WaBot::$lastRouter === 'walocal' && str_contains(txt($r), 'pay.php?pnr=' . $B7['pnr']), txt($r));
+check('F fx4 payment_info for pay-at-boarding: no payLink / UPI id / eSewa id in the data, the model is told not to send one',
+    !empty($pi['ok']) && !isset($pi['data']['payLink']) && !isset($pi['data']['upiId']) && !isset($pi['data']['esewaId'])
+    && str_contains((string) $pi['say'], 'Do not send'), json_encode($pi, JSON_UNESCAPED_UNICODE));
+check('F fx4 payment_info for an ordinary pending booking: payLink + UPI id', str_contains((string) ($pj['data']['payLink'] ?? ''), 'pay.php') && (string) ($pj['data']['upiId'] ?? '') === 'fx1test@upi');
+$pk = AiTools::run('payment_info', ['pnr' => $B2['pnr']], $ctxOf(C2, 1));
+check('F fx4 payment_info for a CONFIRMED (paid) booking: no payLink, no QR', !empty($pk['ok']) && !isset($pk['data']['payLink']) && $pk['media'] === null, json_encode($pk, JSON_UNESCAPED_UNICODE));
+// the "status" word on a confirmed pay-at-boarding ticket that still owes money
+$B9 = $book('9812395576', 0, ['Fxcod Confirmed Karki'], 'confirmed', 1);
+$r = wa('9812395576', 'status');
+check('F fx4 "status" on a confirmed pay-at-boarding ticket: "pay on boarding", no pay link (wa_cod_pay_link_on = 0)',
+    str_contains(txt($r), $B9['pnr']) && str_contains(txt($r), 'Pay on boarding') && !str_contains(txt($r), 'pay.php'), WaBot::$lastRouter . ' :: ' . txt($r));
+setOvr('wa_cod_pay_link_on', '1');
+$r = wa('9812395576', 'status');
+check('F fx4 …wa_cod_pay_link_on = 1: the owner\'s optional free pay page link is added', str_contains(txt($r), 'pay.php?pnr=' . $B9['pnr']), WaBot::$lastRouter . ' :: ' . txt($r));
+setOvr('wa_cod_pay_link_on', '0');
+// a NEPAL unpaid online booking never gets the India UPI QR picture
+$B10 = $book('9812395577', 0, ['Fxnepal Pending Shrestha'], 'pending', 0);
+$npOk = true;
+try {
+    Database::run("UPDATE bookings SET fx_currency = 'NPR', fx_rate = 1.6, fx_total = 3520 WHERE id = :b", ['b' => $B10['id']]);
+} catch (Throwable $e) {
+    $npOk = false;
+}
+check('(harness) the bookings table has the NPR columns (fx_currency / fx_total)', $npOk);
+if ($npOk) {
+    $r = wa('9812395577', 'kasari tirne?');
+    check('F fx4 "kasari tirne?" on a Nepal (NPR) pending booking: no UPI QR picture, the pay page (Nepal QR) link',
+        WaBot::$lastRouter === 'walocal' && ($r['media'] ?? null) === null && str_contains(txt($r), 'pay.php?pnr=' . $B10['pnr'])
+        && (str_contains(txt($r), 'Nepal QR') || str_contains(txt($r), 'नेपालको QR') || str_contains(txt($r), 'नेपाल का QR')), txt($r));
+    $pn = AiTools::run('payment_info', ['pnr' => $B10['pnr']], $ctxOf('9812395577', 1));
+    check('F fx4 payment_info for a Nepal booking: no UPI QR, no UPI id, the pay link', !empty($pn['ok']) && $pn['media'] === null && !isset($pn['data']['upiId'])
+        && str_contains((string) ($pn['data']['payLink'] ?? ''), 'pay.php') && str_contains((string) $pn['say'], 'Never an India UPI QR'), json_encode($pn, JSON_UNESCAPED_UNICODE));
+    setOvr('wa_answer_first_on', '0');
+    setOvr('wa_lookup_on', '0');
+    $r = wa('9812395577', $B10['pnr']);
+    check('F fx4 the old bare-PNR card for a Nepal booking: no UPI QR picture, the pay page link', WaBot::$lastRouter === 'pnr' && ($r['media'] ?? null) === null
+        && str_contains(txt($r), 'pay.php?pnr=' . $B10['pnr']), txt($r));
+    setOvr('wa_answer_first_on', '1');
+    setOvr('wa_lookup_on', '1');
+    setOvr('wa_nepal_no_upi_qr_on', '0');
+    $r = wa('9812395577', 'kasari tirne?');
+    check('F fx4 …wa_nepal_no_upi_qr_on = 0: the old UPI picture again (the switch rolls it back)', str_contains((string) ($r['media'] ?? ''), 'pay-image.php'), txt($r));
+    setOvr('wa_nepal_no_upi_qr_on', '1');
+}
 setOvr('upi_id', '');
 
 // parcels are leaving the product: nothing in the bot offers them

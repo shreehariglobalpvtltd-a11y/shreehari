@@ -14,7 +14,17 @@ for every ring:
   "देखेँ · Seen" and "खोल्नुहोस् · Open", vibrates with a long pattern, and comes again
   every `alert_ring_repeat_min` minutes up to `alert_ring_repeat_max` times;
 - "Seen" on the notification stops the ring on every phone and panel
-  (POST `/api/alert-ack.php` with the signed token that came inside the push).
+  (POST `/api/alert-ack.php` with the signed token that came inside the push):
+  no more repeats are sent and every open panel drops its card within one poll.
+  **Limitation:** a notification that is ALREADY on screen on another staff phone stays
+  there until that person taps or swipes it - nothing closes it remotely yet (that would
+  need a second, silent push with the same tag, or the native `ring_stop` message in
+  step 2 below).
+- a flood (more open rings than `alert_ring_burst`) sends ONE merged "N new alerts" push
+  per pass for the newest alert only, not one per alert.
+- the push for "nobody has a panel open" needs the every-minute cron on the VPS:
+  `* * * * * php /path/to/public_html/cron/alert-ring.php`. Without it, pushes leave only
+  while some panel is open (after its poll, php-fpm only).
 
 What a web push can **not** do on Android: play a looping custom ringtone, wake the
 screen with a full-screen call card, or bypass Do-Not-Disturb. It uses the sound and

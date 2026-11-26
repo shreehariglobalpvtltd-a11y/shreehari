@@ -439,6 +439,27 @@ try {
     Settings::flush();
     check('  …default (no row) is ON', ChalaniPng::bsOn() === true || $bsKeep !== null);
 
+    /* 26 Nov 2026 (fx4): switch chalani_png_v20_on - off = the v19 row / head layout, a rollback without a code revert */
+    check('v20 layout: page 1 above was drawn with it (default on)', ($d['v20'] ?? null) === true || Settings::getBool('chalani_png_v20_on', true) === false, json_encode($d['v20'] ?? null));
+    $v20Keep = Database::fetch('SELECT svalue, stype, sgroup FROM settings WHERE skey = :k', ['k' => 'chalani_png_v20_on']);
+    $fpV20 = ChalaniPng::fingerprint($trip, $rows, $date, $totals, $fmt);
+    Settings::set('chalani_png_v20_on', '0', 'bool', 'booking', false); Settings::flush();
+    $fpV19 = ChalaniPng::fingerprint($trip, $rows, $date, $totals, $fmt);
+    check('switch chalani_png_v20_on = 0: the cached pages redraw (fingerprint moves)', $fpV19 !== $fpV20);
+    $p19 = $drawFresh(1);
+    $d19 = ChalaniPng::$drawn;
+    $keep('whole-p1-v19.png', $p19['path']);
+    $sz19 = @getimagesize($p19['path']);
+    check('  …the v19 page still draws (A4 picture, its own file)', is_array($sz19) && $sz19[0] === ChalaniPng::WIDTH && $sz19[1] === ChalaniPng::HEIGHT && $p19['fingerprint'] === $fpV19, $p19['file']);
+    check('  …with the v19 layout: driver "name · phone" on one line, no two-line place list',
+        ($d19['v20'] ?? null) === false && count((array) $d19['driver']) === 1 && str_starts_with((string) ($d19['driver'][0] ?? ''), 'Ramesh') && (array) $d19['places'] === [], json_encode([$d19['driver'] ?? null, $d19['places'] ?? null]));
+    check('  …the copy-safe parts stay on (the number, flags by direction)', $d19['chalaniNo'] === FX1_NO && $d19['flagFirst'] === 'IN' && count((array) $d19['names']) > 0);
+    if ($v20Keep === null) { Database::delete('settings', 'skey = :k', ['k' => 'chalani_png_v20_on']); }
+    else { Settings::set('chalani_png_v20_on', (string) $v20Keep['svalue'], (string) $v20Keep['stype'], (string) $v20Keep['sgroup'], false); }
+    Settings::flush();
+    check('  …back on: the same hash as before (the default seed has no v20 key)', ChalaniPng::fingerprint($trip, $rows, $date, $totals, $fmt) === $fpV20);
+    check('  …default (no row) is ON', ChalaniPng::v20On() === true || $v20Keep !== null);
+
     /* seat chart: extra seats + lap infants */
     [$tripX, $rowsX, , $totalsX, $fmtX] = fx1_sheet($SID, 12, ['extras' => 3, 'infant' => true, 'copy' => ['kind' => 'desk', 'tag' => 'DEXT', 'label' => 'Extras', 'no' => FX1_NO . '-EXT']]);
     $cx = ChalaniPng::renderChart($tripX, $rowsX, $date, $totalsX, $fmtX, 2, 2);
@@ -584,6 +605,9 @@ try {
         check('A4 sheet: the page footer rule (chalani no. · page / pages)', str_contains($sheet, '@bottom-right') && str_contains($sheet, 'counter(pages)') && str_contains($sheet, (string) $sh['totals']['chalaniNo'] . ' · " counter(page)'));
         check('A4 sheet: name, then the border ID, then the number - each its own piece (the name takes the "…")', (bool) preg_match('#<span class="nmw"><span class="nmn">ZZTEST fx1 Ram Bahadur</span>' . (PaxId::enabled() ? '<small class="pid">🪪 CTZ \*\*8901</small>' : '') . '<small>ZZFX1-[0-9A-F]+</small></span>#u', $sheet)
             && substr_count($sheet, '<td class="c n">') >= 25);
+        check('A4 sheet: the name cell never wraps the ID / number away (one line, only the name shrinks)',
+            (bool) preg_match('#table\.ps td \.nmw \{[^}]*flex-wrap:nowrap[^}]*\}#', $sheet) && !preg_match('#table\.ps td \.nmw \{[^}]*flex-wrap:wrap#', $sheet)
+            && (bool) preg_match('#table\.ps td \.nmw \.nmn \{[^}]*flex:0 1 auto; min-width:0#', $sheet) && (bool) preg_match('#table\.ps td \.nmw small, table\.ps td \.nmw b\.inf \{ flex:0 0 auto#', $sheet));
         check('A4 sheet: the lap-infant mark on the booking\'s first row, between the name and the number', (bool) preg_match('#<span class="nmn"><b class="wsb">♀</b> ZZTEST fx1 सीता कुमारी</span><b class="inf">\+ शिशु १</b><small>ZZFX1-#u', $sheet)
             || (bool) preg_match('#<span class="nmn">ZZTEST fx1 सीता कुमारी</span><b class="inf">\+ शिशु १</b><small>ZZFX1-#u', $sheet));
         check('A4 sheet: no GPS line under the mobile number any more (it doubled the row)', !str_contains($sheet, '<br><a class="geo"'));

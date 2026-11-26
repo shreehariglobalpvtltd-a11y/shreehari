@@ -302,6 +302,20 @@ try {
     check('a page with its own .pc header keeps ONE title although the tab strip now sits between them',
         str_contains((string) file_get_contents(dirname(__DIR__) . '/admin/_pro.php'), '.wrap>h1:has(~.pc>.pc-head:first-child)'));
 
+    echo "\n  fx4: agent home + ring settings in the menu\n";
+    $asAdmin(999500, 'agent', 'fx1_agent');
+    $agHome = array_column(RoleMenu::build(admin_nav(), 'agent')['main'], 'href', 'key');
+    if (is_file(dirname(__DIR__) . '/admin/agent-home.php')) {
+        check('agent: the Home row opens the agent\'s own wallet home (agent-home.php)', ($agHome['home'] ?? '') === 'agent-home.php', json_encode($agHome));
+    }
+    $asAdmin(1, 'superadmin', 'fx1_superadmin');
+    $saHrefs = array_column(admin_nav(), 'href');
+    check('the office does not get the agent home in its menu', !in_array('agent-home.php', $saHrefs, true));
+    if (is_file(dirname(__DIR__) . '/admin/alert-settings.php')) {
+        check('super-admin: Ring & alerts sits in Settings with its own tab', in_array('alert-settings.php', $saHrefs, true)
+            && (RoleMenu::index()['alert-settings.php'] ?? []) === ['settings', 'alerts']);
+    }
+
     echo "\n  The brand fonts\n";
     $fontKeep = Settings::get('admin_brand_font_on', null);
     Settings::set('admin_brand_font_on', '1', 'bool', 'admin');

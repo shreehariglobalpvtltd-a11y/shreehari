@@ -331,8 +331,10 @@ S Hari Global Pvt Ltd. Reply STOP to stop these messages.</div>
   <?php if ($hist !== []): ?>
     <p class="am-note" style="margin-top:12px"><b>Daily runs</b></p>
     <?php foreach (array_slice($hist, 0, 7) as $h): ?>
-      <div class="am-q"><?= $e($h['at']) ?> · <?= $e(strtoupper((string) $h['mode'])) ?> · wallet <?= $e($money($h['wallet'] ?? null)) ?> · allowed <?= (int) $h['allowed'] ?> ·
-        <?= (int) array_sum(array_column($h['campaigns'] ?? [], 'people')) ?> queued<?= ($h['note'] ?? '') !== '' ? ' — <small>' . $e($h['note']) . '</small>' : '' ?></div>
+      <?php /* fx4: a half-written history row (missing keys, campaigns not a list) never breaks the page */
+            $hNote = is_scalar($h['note'] ?? null) ? (string) $h['note'] : ''; ?>
+      <div class="am-q"><?= $e(is_scalar($h['at'] ?? null) ? (string) $h['at'] : '') ?> · <?= $e(strtoupper(is_scalar($h['mode'] ?? null) ? (string) $h['mode'] : '')) ?> · wallet <?= $e($money($h['wallet'] ?? null)) ?> · allowed <?= (int) (is_scalar($h['allowed'] ?? null) ? $h['allowed'] : 0) ?> ·
+        <?= (int) array_sum(array_map('floatval', array_filter(array_column(is_array($h['campaigns'] ?? null) ? $h['campaigns'] : [], 'people'), 'is_numeric'))) ?> queued<?= $hNote !== '' ? ' — <small>' . $e($hNote) . '</small>' : '' ?></div>
     <?php endforeach; ?>
   <?php endif; ?>
 </div>

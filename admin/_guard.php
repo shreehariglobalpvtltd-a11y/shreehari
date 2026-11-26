@@ -92,6 +92,8 @@ function admin_nav(): array
         ['href' => 'hub.php',          'icon' => 'grid',      'label' => 'Control Center',   'perm' => 'dashboard.view', 'section' => ''],
         ['href' => 'team.php',         'icon' => 'id-card',   'label' => 'Team & ID Cards',  'perm' => 'commissions.view', 'section' => 'Agents'],
         ['href' => '/me/',             'icon' => 'wallet',    'label' => 'My ID & Wallet',   'perm' => '', 'section' => 'Agents'],
+        // 26 Nov 2026 (fx4): an agent's own wallet-style home - today's sales, commission, due, credit, one big Book button (agent_home_on)
+        ...($agentView && is_file(__DIR__ . '/agent-home.php') && admin_flag('agent_home_on') ? [['href' => 'agent-home.php', 'icon' => 'wallet', 'label' => '🏠 मेरो घर · My home', 'perm' => 'bookings.view', 'section' => 'Agents']] : []),
         ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents Register (CRM)', 'perm' => 'customers.view', 'section' => $S1],
         ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Agent Dashboard' : 'Master & Sub-Agent Portal', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => $S1],
         ['href' => 'staff.php',        'icon' => 'users',      'label' => 'Staff Logins & Passwords', 'perm' => 'staff.manage',   'section' => $S1],
@@ -180,6 +182,8 @@ function admin_nav(): array
 
         // 5. Settings & Configuration — company, WhatsApp AI, logs, backups
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'System Settings',        'perm' => 'dashboard.view',   'section' => $S5],
+        // 26 Nov 2026 (fx4): the call-style ring - who hears what, quiet hours, test buttons (the page itself decides who may change it)
+        ...(is_file(__DIR__ . '/alert-settings.php') && is_file(INCLUDE_PATH . '/alertbus.php') ? [['href' => 'alert-settings.php', 'icon' => 'cog', 'label' => '🔔 घण्टी र सूचना · Ring & alerts', 'perm' => 'dashboard.view', 'section' => $S5]] : []),
         // 26 Nov 2026 (fx1): which menu rows each role sees - the super-admin's page
         ...(Auth::isSuperadmin() && is_file(__DIR__ . '/menu-setup.php') ? [['href' => 'menu-setup.php', 'icon' => 'grid', 'label' => '🧭 मेनु मिलाउने · Menu setup', 'perm' => 'staff.manage', 'section' => $S5]] : []),
         // 16 Nov 2026 (v2.0): the weekly colours customers see (read-only), the same gate as easy-settings.php
@@ -247,6 +251,16 @@ function admin_nav(): array
        saw the link and got a 403 on the tap. */
     return array_values(array_filter($keyed, static fn(array $i): bool => ($i['perm'] === '' || Auth::can($i['perm']))
         && (($i['also'] ?? '') === '' || Auth::can((string) $i['also']))));
+}
+
+/** 26 Nov 2026 (fx4): a settings switch that defaults ON, read without ever breaking the menu. */
+function admin_flag(string $key, bool $default = true): bool
+{
+    try {
+        return Settings::getBool($key, $default);
+    } catch (Throwable $e) {
+        return $default;
+    }
 }
 
 /** 26 Nov 2026 (fx1): is the parcel register switched on? (parcel_book_on, default on in code; live = 0) */
@@ -1841,7 +1855,7 @@ function admin_poll_js(): string
         if (window.SHG_NEW_TICKET_ALERT && typeof j.maxBooking === 'number') {
           var lastB = parseInt(sessionStorage.getItem('shg_admin_last_maxb') || '-1', 10);
           var selling = !!document.getElementById('smartBook') || /quick-ticket|new-booking/.test(location.pathname);
-          var ringing = !!(window.SHGRing && window.SHGRing.active);   // fx1: the ring card speaks instead, never both
+          var ringing = !!(window.SHGRing && window.SHGRing.ringing);   // fx4: only while a ring card / bar is sounding - the old chime stays for everyone else
           if (lastB >= 0 && j.maxBooking > lastB && !selling && !ringing) { chime(); showTicketBanner(j.maxBooking - lastB); }
           sessionStorage.setItem('shg_admin_last_maxb', String(j.maxBooking));
         }

@@ -39,7 +39,12 @@
   var uiTimer = null, lastFetch = 0, loopTimer = null, looping = '', wake = null;
   var peers = {}, bc = null, softSeen = -1, softTimer = null;
   var pushHave = null;       // does THIS handset ring for the person signed in? null = not known yet
-  var api = { active: true };
+  var lastGood = 0;          // Date.now() of the last feed answer that worked
+  var gestured = false;      // has this page had a tap / key yet (the browser's sound lock)
+  var chip = null;           // the small "tap to enable ring sound" button
+  /* active  = the ring feature is on for this person (the server said on + ring)
+     ringing = an alert is on the card / slim bar right now (unseen here) */
+  var api = { active: true, ringing: false };
 
   function ls(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} }
@@ -68,13 +73,42 @@
     return ctx;
   }
   function unlock() {
+    gestured = true;
     var c = audio();
     if (c && c.state === 'suspended' && c.resume) { try { c.resume(); } catch (e) {} }
+    sndChip();
+    setTimeout(sndChip, 250);      // resume() settles a moment later
   }
   ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
     window.addEventListener(ev, unlock, { passive: true, capture: true });
   });
   function locked() { return !ctx || ctx.state !== 'running'; }
+  /* Would a ring be silent right now because nobody has touched this page yet? Before the first ring
+     no AudioContext is made (the browser would only warn): the page's own activation flag answers. */
+  function needTap() {
+    if (!api.active || !soundOn() || !cfg.sound) { return false; }
+    if (ctx) { return ctx.state !== 'running'; }
+    var ua = navigator.userActivation;
+    return !!(ua && !ua.hasBeenActive && !gestured);
+  }
+  /* a small button on every panel page while the ring could not sound (an office PC left on a freshly
+     loaded page would otherwise ring silently); the card and the slim bar carry their own hint, so not while they show */
+  function sndChip() {
+    var want = needTap() && !(el && api.ringing);
+    if (!want) { if (chip) { chip.style.display = 'none'; } return; }
+    if (!chip) {
+      if (!document.body) { return; }
+      chip = document.createElement('button');
+      chip.type = 'button'; chip.id = 'shgRingSnd';
+      chip.textContent = '🔊 घण्टीको आवाज खोल्न ट्याप गर्नुहोस् · Tap to enable ring sound';
+      chip.setAttribute('style', 'position:fixed;left:8px;bottom:12px;z-index:2147482970;max-width:calc(100% - 16px);min-height:44px;'
+        + 'padding:8px 14px;border-radius:14px;border:1px solid #e0c46c;background:#FFF3CD;color:#5c4400;font:inherit;font-size:14px;'
+        + 'font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.25);text-align:left');
+      chip.addEventListener('click', function () { unlock(); play('pop'); setTimeout(function () { sndChip(); paint(); }, 150); });
+      document.body.appendChild(chip);
+    }
+    chip.style.display = 'block';
+  }
   function level() { return Math.max(0, Math.min(1, (cfg.volume || 0) / 100)); }
 
   /* one note: type, frequency (or [from, to] glide), start offset, length, peak gain, optional tremolo Hz */
@@ -233,6 +267,8 @@
     + '#shgRingBar button{font:inherit;cursor:pointer;border:0;border-radius:12px;min-height:44px;min-width:64px;padding:6px 12px;font-size:15px;font-weight:800;'
     + 'background:#fff;color:#0a6b3b}'
     + '#shgRingBar button.rb-open{background:rgba(255,255,255,.18);color:#fff}'
+    + '#shgRingBar button.rb-snd{display:none;min-width:44px;padding:6px 8px;background:#FFF3CD;color:#5c4400}'
+    + '#shgRingBar.locked button.rb-snd{display:inline-block}'
     + '#shgRingSoft{position:fixed;left:8px;right:8px;bottom:12px;z-index:2147482980;display:none;max-width:440px;margin:0 auto;padding:12px 14px;'
     + 'border-radius:14px;background:var(--card,#fff);color:var(--ink,#12264E);border:1px solid var(--line,#d9e0ee);box-shadow:0 10px 28px rgba(0,0,0,.3);'
     + 'font-size:15px;font-weight:700;text-decoration:none;overflow-wrap:anywhere}'
@@ -246,7 +282,7 @@
     + '#shgRing.sos.ringing .rg-ico{animation-name:shgRingPulseSos}'
     + '@keyframes shgRingPulseSos{0%{box-shadow:0 0 0 0 rgba(198,40,40,.6);transform:scale(1)}60%{box-shadow:0 0 0 22px rgba(198,40,40,0);transform:scale(1.06)}'
     + '100%{box-shadow:0 0 0 0 rgba(198,40,40,0);transform:scale(1)}}}'
-    + '@media print{#shgRing,#shgRingBar,#shgRingSoft{display:none!important}}';
+    + '@media print{#shgRing,#shgRingBar,#shgRingSoft,#shgRingSnd{display:none!important}}';
 
   function mk(tag, cls, text) {
     var n = document.createElement(tag);
@@ -292,18 +328,22 @@
     var bt = mk('span', 'rb-t');
     var bSeen = mk('button', 'rb-seen', 'देखेँ'); bSeen.type = 'button'; bSeen.setAttribute('aria-label', 'देखेँ · Seen');
     var bOpen = mk('button', 'rb-open', 'खोल्नुहोस्'); bOpen.type = 'button'; bOpen.setAttribute('aria-label', 'खोल्नुहोस् · Open');
-    bar.appendChild(bi); bar.appendChild(bt); bar.appendChild(bSeen); bar.appendChild(bOpen);
+    /* the browser still holds the sound back: the slim bar says so too (selling screen, quiet hours, minimised) */
+    var bSnd = mk('button', 'rb-snd', '🔊'); bSnd.type = 'button';
+    bSnd.setAttribute('aria-label', 'आवाज खोल्न ट्याप गर्नुहोस् · Tap for sound'); bSnd.setAttribute('title', 'आवाज खोल्न ट्याप गर्नुहोस् · Tap for sound');
+    bar.appendChild(bi); bar.appendChild(bt); bar.appendChild(bSnd); bar.appendChild(bSeen); bar.appendChild(bOpen);
 
     var soft = mk('a'); soft.id = 'shgRingSoft'; soft.setAttribute('role', 'status');
 
     document.body.appendChild(root); document.body.appendChild(bar); document.body.appendChild(soft);
     el = { root: root, card: card, ico: ico, t: t, b: b, m: m, more: more, seen: seen, open: open, min: min, push: push, stop: stop,
-           bar: bar, bi: bi, bt: bt, soft: soft, shown: false };
+           bar: bar, bi: bi, bt: bt, bSnd: bSnd, soft: soft, shown: false };
 
     seen.addEventListener('click', doSeen); bSeen.addEventListener('click', doSeen);
     open.addEventListener('click', doOpen); bOpen.addEventListener('click', doOpen);
     min.addEventListener('click', doMin);
     tap.addEventListener('click', function () { unlock(); setTimeout(paint, 150); });
+    bSnd.addEventListener('click', function () { unlock(); setTimeout(paint, 150); });
     pOn.addEventListener('click', function () { pOn.disabled = true; enablePush(true).then(function () { pOn.disabled = false; paint(); }); });
     pLater.addEventListener('click', function () { lsSet('shg_ring_push_later', String(Date.now() + 3 * 86400000)); paint(); });
     pOff.addEventListener('click', function () { pOff.disabled = true; disablePush().then(function () { pOff.disabled = false; paint(); }); });
@@ -328,6 +368,7 @@
 
   function paint() {
     var list = live();
+    api.ringing = list.length > 0;
     if (!list.length) {
       if (el) {
         if (el.shown && prevFocus && prevFocus.focus) { try { prevFocus.focus({ preventScroll: true }); } catch (e) {} }
@@ -336,6 +377,7 @@
       }
       stopLoop(); wakeOff();
       if (uiTimer) { clearInterval(uiTimer); uiTimer = null; }
+      sndChip();
       return;
     }
     build();
@@ -370,7 +412,9 @@
       + (isRinging && soundOn() && cfg.sound && locked() ? ' locked' : '');
     el.bi.textContent = top.icon || '🔔';
     el.bt.textContent = head;
-    el.bar.className = (full ? '' : 'on') + (sos ? ' sos' : '');
+    /* the next ring would be silent (no tap on this page yet): the bar shows its 🔊 button, between rings too */
+    var mute = ctx ? locked() : needTap();
+    el.bar.className = (full ? '' : 'on') + (sos ? ' sos' : '') + (mute && soundOn() && cfg.sound && !quiet ? ' locked' : '');
     /* focus goes to the CARD, never to a button: someone typing in a form must not tap Seen with the space bar */
     if (full && !el.shown) {
       prevFocus = document.activeElement;
@@ -380,6 +424,7 @@
       prevFocus = null;
     }
     el.shown = full;
+    sndChip();
 
     /* sound: only while a ring is running, only in the tab that leads, never in quiet hours (SOS excepted) */
     var visible = document.visibilityState === 'visible';
@@ -400,15 +445,33 @@
   }
   function uiTick() {
     if (bc && document.visibilityState === 'visible') { try { bc.postMessage({ t: 'here', id: TAB }); } catch (e) {} }
+    /* no good feed answer for a while (poll stopped, server away): never keep ringing from an old list */
+    if (rings.length && lastGood && Date.now() - lastGood > 75000) { dropRings(); return; }
     paint();
   }
+  /* forget the open rings: the card goes, the sound stops (the next good feed brings back what is still open) */
+  function dropRings() {
+    rings = []; ringCount = 0;
+    stopLoop(); paint();
+  }
 
+  /* resolves the JSON answer, { ok: false, status } for an HTTP error, or null when the network failed */
   function post(body) {
     return fetch(ACK, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrf() },
       body: JSON.stringify(body)
-    }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+    }).then(function (r) { return r.ok ? r.json() : { ok: false, status: r.status || 0 }; }).catch(function () { return null; });
+  }
+  /* a short line on the page (reuses the quiet-alert box); tapping it reloads the page */
+  function sayLine(text) {
+    build();
+    if (!el) { return; }
+    el.soft.textContent = text;
+    el.soft.setAttribute('href', location.href || '/admin/');
+    el.soft.className = 'on';
+    clearTimeout(softTimer);
+    softTimer = setTimeout(function () { el.soft.className = ''; }, 15000);
   }
   function ackShown() {
     var ids = live().map(function (r) { return r.id; });
@@ -417,8 +480,20 @@
     stopLoop(); wakeOff(); paint();
     if (!ids.length) { return Promise.resolve(null); }
     /* more open rings than the card can list (a flood): Seen answers all of them, or the rest would ring again */
-    return post(ringCount > rings.length ? { all: 1 } : { ids: ids }).then(function (j) {
-      if (!j || !j.ok) { ids.forEach(function (id) { delete hidden[id]; }); }   // could not save: let it come back
+    var upto = rings.reduce(function (m, r) { return Math.max(m, r.id || 0); }, 0);
+    return post(ringCount > rings.length && upto > 0 ? { all: 1, upto: upto } : { ids: ids }).then(function (j) {
+      if (j && j.ok) { return j; }
+      var st = j && j.status ? j.status : 0;
+      if (st >= 400 && st < 500) {
+        /* expired session / CSRF (401, 419) or refused: a retry cannot work, so the card stays quiet in this
+           tab (the office's ring goes on elsewhere) and the person is told to reload */
+        sayLine(st === 401 || st === 419
+          ? 'सत्र सकियो, "देखेँ" सेभ भएन - पेज रिलोड गर्नुहोस् · Session expired, Seen was not saved - reload the page'
+          : '"देखेँ" सेभ भएन - पेज रिलोड गर्नुहोस् · Seen was not saved - reload the page');
+      } else {
+        ids.forEach(function (id) { delete hidden[id]; });     // network or server error: let it come back, a retry may work
+        paint();
+      }
       return j;
     });
   }
@@ -486,9 +561,20 @@
     if (t - lastFetch < 4000) { return; }
     lastFetch = t;
     fetch(FEED, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { if (j && j.ok && j.data) { apply(j.data); } else { api.active = false; } })
-      .catch(function () {});
+      .then(function (r) { if (!r.ok) { feedFail(r.status !== 429); return null; } return r.json(); })
+      .then(function (j) {
+        if (j === null) { return; }
+        if (j && j.ok && j.data) { lastGood = Date.now(); apply(j.data); } else { feedFail(true); }
+      })
+      .catch(function () { feedFail(false); });
+  }
+  /* The feed did not answer. An HTTP error (401 signed out, 403, 429, 500) or an answer that is not the
+     feed: the open list can no longer be trusted - stop the sound and drop the card at once, or it would
+     keep ringing (repeats included) for alerts someone may already have seen. A network blip keeps the
+     card for up to 30 s, then the same. The next good answer brings back whatever is still open. */
+  function feedFail(hard) {
+    api.active = false;
+    if (rings.length && (hard || !lastGood || Date.now() - lastGood > 30000)) { dropRings(); }
   }
 
   /* ------------------------------------------------------------------

@@ -58,7 +58,7 @@ final class RoleMenu
     {
         return [
             'home' => ['icon' => 'dashboard', 'ne' => 'गृह', 'en' => 'Home', 'tabs' => [
-                'home' => ['गृह', 'Home', ['home.php']],
+                'home' => ['गृह', 'Home', ['home.php', 'agent-home.php']],   // agent-home.php: an agent's wallet home (fx4)
             ]],
             'book' => ['icon' => 'ticket-alt', 'ne' => 'टिकट काट्ने', 'en' => 'Book ticket', 'tabs' => [
                 'sell' => ['टिकट काट्ने', 'Sell', ['quick-ticket.php', 'nepal-counter.php', '/index.php?counter=1#/']],
@@ -105,6 +105,7 @@ final class RoleMenu
                 'messages' => ['सन्देश', 'Messages', ['wa-manager.php', 'wa-inbox.php', 'wa-outbox.php', 'wa-templates.php', 'messages-log.php', 'messenger-inbox.php', 'facebook.php', 'social-posts.php', 'fb-comments.php']],
                 'ai'       => ['AI', 'AI', ['ai-center.php', 'ai-hub.php', 'ai-brain.php', 'ai-activity.php', 'ai-local.php', 'ai-copilot.php']],
                 'look'     => ['रङ र थिम', 'Look', ['themes.php']],
+                'alerts'   => ['घण्टी र सूचना', 'Ring & alerts', ['alert-settings.php']],
                 'system'   => ['सिस्टम', 'System', ['activity-log.php', 'backup.php', 'health.php']],
             ]],
         ];
@@ -121,7 +122,8 @@ final class RoleMenu
     public static function pageLabels(): array
     {
         return [
-            'home.php' => ['गृह', 'Home'], 'index.php' => ['ड्यासबोर्ड', 'Dashboard'], 'hub.php' => ['कन्ट्रोल सेन्टर', 'Control Center'],
+            'home.php' => ['गृह', 'Home'], 'agent-home.php' => ['मेरो घर', 'My home'], 'alert-settings.php' => ['घण्टी र सूचना', 'Ring & alerts'],
+            'index.php' => ['ड्यासबोर्ड', 'Dashboard'], 'hub.php' => ['कन्ट्रोल सेन्टर', 'Control Center'],
             'quick-ticket.php' => ['टिकट काट्ने', 'SmartBook'], 'nepal-counter.php' => ['नेपाल काउन्टर', 'Nepal counter'],
             '/index.php?counter=1#/' => ['काउन्टर बुकिङ', 'Counter booking'], 'bulk-tickets.php' => ['धेरै टिकट एकैचोटि', 'Bulk tickets (CSV)'],
             'bookings.php' => ['टिकट रजिस्टर', 'Tickets register'], 'agent-passengers.php' => ['एजेन्टका यात्रु', 'Agent passengers'],
@@ -217,7 +219,7 @@ final class RoleMenu
             'accountant' => ['money' => 'payments.php'],
             'support'    => ['tickets' => 'ticket-requests.php', 'people' => 'customers.php', 'settings' => 'wa-inbox.php'],
             'counter'    => ['buses' => 'manifest.php', 'money' => 'cash-book.php'],
-            'agent'      => ['buses' => 'map.php', 'money' => 'settlements.php', 'people' => '/me/'],
+            'agent'      => ['buses' => 'map.php', 'money' => 'settlements.php', 'people' => '/me/', 'home' => 'agent-home.php'],
         ];
     }
 

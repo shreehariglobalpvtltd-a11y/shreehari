@@ -1371,13 +1371,30 @@ final class WaLocal
         }
         if ($pend !== null && (float) $pend['total_amount'] > 0) {
             $lines[] = '💳 ' . (string) $pend['pnr'] . ' · ' . self::t($lang, 'तिर्न बाँकी: ', 'भुगतान बाकी: ', 'Due: ') . inr((float) $pend['total_amount']);
-            // fx1 (26 Nov 2026): a pay-at-boarding (COD) booking never gets the pay QR picture
-            if ($upi !== '' && (int) ($pend['is_cod'] ?? 0) !== 1) {
-                $media   = appUrl('pay-image.php?pnr=' . urlencode((string) $pend['pnr']));
-                $lines[] = self::t($lang, 'माथिको QR स्क्यान गर्नुहोस् (रकम आफैं आउँछ), वा:', 'ऊपर का QR स्कैन कीजिए (रकम अपने आप आएगी), या:', 'Scan the QR above (amount filled in), or:');
+            // fx1 / fx4 (26 Nov 2026): a pay-at-boarding (COD) booking never gets a pay QR, pay link or "send the screenshot"
+            if ((int) ($pend['is_cod'] ?? 0) === 1) {
+                $lines[] = self::t($lang, 'यो टिकटको भाडा बसमा / काउन्टरमा तिर्ने हो — यहाँ केही तिर्नु पर्दैन।', 'इस टिकट का किराया बस में / काउंटर पर देना है — यहाँ कुछ भुगतान नहीं करना है।', 'This ticket is paid on boarding / at the counter — nothing is paid here.');
+            } else {
+                $np = ['nepal' => false, 'payee' => '', 'kind' => ''];
+                try {
+                    require_once INCLUDE_PATH . '/aitools.php';
+                    $np = AiTools::nepalPay((string) $pend['pnr']);
+                } catch (Throwable $e) {
+                    // the old (India) path
+                }
+                if ($np['nepal']) {
+                    // fx4: a Nepal sale never gets the India UPI QR - its wallet id + the page with the Nepal QR
+                    if ($np['payee'] !== '') {
+                        $lines[] = '• ' . $np['kind'] . ': ' . $np['payee'];
+                    }
+                    $lines[] = self::t($lang, 'नेपालको QR यो लिंकमा छ:', 'नेपाल का QR इस लिंक पर है:', 'The Nepal QR is on this link:');
+                } elseif ($upi !== '') {
+                    $media   = appUrl('pay-image.php?pnr=' . urlencode((string) $pend['pnr']));
+                    $lines[] = self::t($lang, 'माथिको QR स्क्यान गर्नुहोस् (रकम आफैं आउँछ), वा:', 'ऊपर का QR स्कैन कीजिए (रकम अपने आप आएगी), या:', 'Scan the QR above (amount filled in), or:');
+                }
+                $lines[] = appUrl('pay.php?pnr=' . urlencode((string) $pend['pnr']));
+                $lines[] = self::t($lang, 'तिरेपछि screenshot यहीँ पठाउनुहोस् — अफिसले जाँचेर टिकट पठाउँछ।', 'भुगतान के बाद screenshot यहीं भेजिए — ऑफिस जाँच कर टिकट भेजेगा।', 'After paying, send the screenshot here — the office checks it and sends the ticket.');
             }
-            $lines[] = appUrl('pay.php?pnr=' . urlencode((string) $pend['pnr']));
-            $lines[] = self::t($lang, 'तिरेपछि screenshot यहीँ पठाउनुहोस् — अफिसले जाँचेर टिकट पठाउँछ।', 'भुगतान के बाद screenshot यहीं भेजिए — ऑफिस जाँच कर टिकट भेजेगा।', 'After paying, send the screenshot here — the office checks it and sends the ticket.');
         } else {
             $lines[] = self::t($lang, '💳 तिर्ने तरिका:', '💳 भुगतान के तरीके:', '💳 Ways to pay:');
             if ($upi !== '') {

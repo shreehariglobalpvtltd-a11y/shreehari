@@ -52,6 +52,13 @@ if (($argv[1] ?? '') === '--hit') {
         'role' => (string) $a['role'], 'permissions' => jsonColumn($a['permissions'] ?? null), 'last_seen' => time(),
         'must_change_pw' => false, 'via_otp' => false,
     ];
+    // 'nokyc': act as a database without admin_profiles.kyc_status (the cached probe says "no").
+    if (!empty($spec['nokyc'])) {
+        require_once $ROOT . '/includes/agentwallet.php';
+        $rp = new ReflectionProperty('AgentWallet', 'kycAvailable');
+        $rp->setAccessible(true);
+        $rp->setValue(null, false);
+    }
     $_GET  = is_array($spec['get'] ?? null) ? $spec['get'] : [];
     $_POST = is_array($spec['post'] ?? null) ? $spec['post'] : [];
     $isPost = is_array($spec['post'] ?? null);
@@ -112,10 +119,11 @@ function thrown(callable $fn): string {
 }
 
 /** Run one page in a child process as $asId. @return array{code:int, loc:string, flash:?array, body:string} */
-function hit(int $asId, string $page, array $get = [], ?array $post = null): array {
+function hit(int $asId, string $page, array $get = [], ?array $post = null, bool $noKyc = false): array {
     global $ROOT;
     $ini  = $ROOT . DIRECTORY_SEPARATOR . '.claude' . DIRECTORY_SEPARATOR . 'php-dev.ini';
-    $spec = base64_encode((string) json_encode(['as' => $asId, 'page' => $page, 'get' => $get, 'post' => $post]));
+    if (!is_file($ini)) { $ini = (string) php_ini_loaded_file(); }     // a worktree without its own ini: the child uses the parent's
+    $spec = base64_encode((string) json_encode(['as' => $asId, 'page' => $page, 'get' => $get, 'post' => $post, 'nokyc' => $noKyc]));
     $cmd  = escapeshellarg(PHP_BINARY) . (is_file($ini) ? ' -c ' . escapeshellarg($ini) : '') . ' ' . escapeshellarg(__FILE__) . ' --hit ' . $spec;
     $des  = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
     $proc = proc_open($cmd, $des, $pipes, $ROOT);
@@ -141,7 +149,10 @@ function leaks(string $body, array $needles): string {
 /** The home page's own content (the side menu links to SmartBook and Quick Ticket for everyone). */
 function ahMain(string $body): string {
     $at = strpos($body, '<div class="ah">');
-    return $at === false ? '' : substr($body, $at);
+    if ($at === false) return '';
+    // Stop at </main>: the shared chrome after it (hub bottom bar) has its own Book link.
+    $end = strpos($body, '</main>', $at);
+    return substr($body, $at, $end === false ? null : $end - $at);
 }
 /** A PDF's text: the raw bytes plus every Flate stream inflated (so a name inside a compressed page is found). */
 function pdfText(string $pdf): string {
@@ -386,6 +397,42 @@ try {
     }
     check('D no parcel wording and no form on the home', stripos($pg['body'], 'parcel') === false && stripos($pg['body'], 'पार्सल') === false
         && !str_contains($pg['body'], '<form method="post"'));
+
+    // last-five seats: a released berth (cancel / seat shift) is not shown, the one still held is
+    if (CounterDesk::hasColumn('booking_seats', 'released_at')) {
+        require_once INCLUDE_PATH . '/seats.php';
+        $sDate   = date('Y-m-d', strtotime('+333 days'));
+        $sNew    = Database::fetch('SELECT id FROM schedules WHERE route_id = 2 AND travel_date = :d', ['d' => $sDate]) === null;
+        $sId     = 0;
+        $legRow  = 0;
+        try {
+            $sId    = (int) Seats::schedule(2, $sDate)['id'];
+            $sIds   = Seats::seatIds('sleeper', 'sharing');
+            [$sKeep, $sGone] = [$sIds[count($sIds) - 1], $sIds[count($sIds) - 3]];
+            $legRow = (int) Database::insert('booking_legs', ['booking_id' => $bA1, 'schedule_id' => $sId, 'leg_type' => 'outbound',
+                'travel_date' => $sDate, 'fare_per_seat' => 1100, 'seat_count' => 1, 'leg_total' => 1100]);
+            Database::insert('booking_seats', ['schedule_id' => $sId, 'seat_no' => $sKeep, 'booking_id' => $bA1, 'leg_id' => $legRow]);
+            Database::insert('booking_seats', ['schedule_id' => $sId, 'seat_no' => $sGone, 'booking_id' => $bA1, 'leg_id' => $legRow,
+                'released_at' => date('Y-m-d H:i:s')]);
+            $seatsOf = '';
+            foreach (AgentReport::home($A)['recent'] as $rr) {
+                if ((string) $rr['pnr'] === $pA1) { $seatsOf = (string) ($rr['seats'] ?? ''); }
+            }
+            check('D last-five seats leave out a released berth', $seatsOf === (string) $sKeep, 'seats "' . $seatsOf . '"');
+        } catch (Throwable $ex) {
+            check('D last-five seats leave out a released berth', false, $ex->getMessage());
+        } finally {
+            try {
+                Database::run('DELETE FROM booking_seats WHERE booking_id = :b', ['b' => $bA1]);
+                if ($legRow > 0) { Database::run('DELETE FROM booking_legs WHERE id = :l', ['l' => $legRow]); }
+                if ($sNew && $sId > 0) { Database::delete('schedules', 'id = :i', ['i' => $sId]); }
+            } catch (Throwable $ex) {
+                echo "  (seat cleanup) " . $ex->getMessage() . "\n";
+            }
+        }
+    } else {
+        echo "  SKIP  booking_seats.released_at missing on this database\n";
+    }
 
     // credit limit bar + hold: the button goes, the office buttons come
     AgentCredit::setLimit($A, 10000.0, $Z);
@@ -661,6 +708,15 @@ try {
     check('E switch agent_list_verified_first_on = 0: the old order, the marker stays',
         $pV !== false && $pA !== false && $pA < $pV && $qV !== false && $qA !== false && $qA < $qV && str_contains($rowOf($pg['body'], $reg($A)), 'KYC बाँकी'));
     $set('agent_list_verified_first_on', '1');
+    // A database without the KYC column: the same rule as AgentReport::kycPending() - nobody marked, nothing re-sorted.
+    $pg = hit($Z, 'admin/agents.php', [], null, true);
+    $pV = strpos($pg['body'], $reg($V)); $pA = strpos($pg['body'], $reg($A));
+    $pp = hit($Z, 'admin/people.php', ['tab' => 'agents'], null, true);
+    $qV = strpos($pp['body'], $a360($V)); $qA = strpos($pp['body'], $a360($A));
+    check('E no KYC column: the register and Agents & Staff mark nobody and keep the old order',
+        $pg['code'] === 200 && $pp['code'] === 200 && $pV !== false && $pA !== false && $pA < $pV && $qV !== false && $qA !== false && $qA < $qV
+        && !str_contains($rowOf($pg['body'], $reg($A)), 'data-kyc-pill') && !str_contains($rowOf($pp['body'], $a360($A)), 'data-kyc-pill')
+        && !str_contains($rowOf($pg['body'], $reg($A)), "'0')\""), 'codes ' . $pg['code'] . '/' . $pp['code']);
 
     /* ---------------- F wiring ---------------- */
     echo "\n-- F wiring\n";

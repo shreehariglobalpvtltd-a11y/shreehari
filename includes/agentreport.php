@@ -393,7 +393,7 @@ final class AgentReport
                 "SELECT b.pnr, b.status, b.total_amount, b.created_at, b.booking_mode" . $fx . ",
                         r.from_city, r.to_city, bl.travel_date,
                         (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
-                           FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
+                           FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats,
                         (SELECT bp.full_name FROM booking_passengers bp
                           WHERE bp.booking_id = b.id AND bp.is_primary = 1 LIMIT 1) AS passenger
                    FROM bookings b

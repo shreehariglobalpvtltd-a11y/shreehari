@@ -432,7 +432,29 @@ try {
         && str_contains($js, "if (FAST && e.key === 'Enter' && !e.isComposing && e.target.id === 'sbName' && coarse())"));
     check('a keyboard keeps Enter = one more passenger and Ctrl+Enter = book + print',
         str_contains($js, "if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); book('cash', true); return; }")
-        && str_contains($js, "if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {"));
+        && str_contains($js, "if (e.key === 'Enter' && (e.target.id === 'sbName' || (e.target.closest('#sbPax') && !e.target.closest('#sbPax button')))) {"));
+    /* fx4: the audit items this slice owns in the shared booking card */
+    check('fx4 #6: a new passenger ("+" and the desk Enter) starts with a BLANK gender - never a copy of the one before',
+        substr_count($js, "S.pax.push({ gender: '', band: 'adult' })") === 2 && !str_contains($js, 'S.pax[S.pax.length - 1].gender'));
+    check('fx4: Enter on an F / M chip presses the chip (the add-passenger key skips buttons inside #sbPax)',
+        str_contains($js, "!e.target.closest('#sbPax button')"));
+    check('fx4 #5/#8: the sale card is kept (b.sbCard) and a reopened ticket reads it, else route / printed berths / real NPR',
+        str_contains($js, 'b.sbCard = { route: r.route') && str_contains($js, 'var c = b.sbCard || {}')
+        && str_contains($js, 'routeById(b.routeId)') && str_contains($js, 'seatLabel(s, rt && rt.type, b.bookingType)')
+        && str_contains($js, 'Math.round(Number(b.total || 0) * rate)') && !str_contains($js, 'npr: 0,'));
+    check('fx4 #8: "(≈ NPR …)" only with a real NPR figure; ticket date = AD + BS (tkDate)',
+        str_contains($js, "(Number(r.npr) > 0 ? ' <small>(≈ '") && str_contains($js, 'function tkDate(r)') && str_contains($js, "bsFull(r.date, '')")
+        && substr_count($js, 'tkDate(r)') >= 5);
+    check('fx4 #17: a phone clock ahead of the server re-quotes at most every 20 s (no loop, never mid-sale)',
+        str_contains($js, 'if (!S.busy && Date.now() - clockAskAt >= 20000) { clockAskAt = Date.now(); requote(0); }')
+        && !str_contains($js, 'if (left < 0) { clearInterval(clockTimer); clockTimer = null; el.hidden = true; requote(0); return; }'));
+    check('fx4 #27: seat / pay / ticket sheets take focus on their panel and hand it back; Esc closes seat + ticket (customer face)',
+        str_contains($js, 'function dlgFocus(el)') && str_contains($js, "dlgFocus(sh.querySelector('.sb-sheet-in'))")
+        && str_contains($js, "dlgFocus(box.querySelector('.sb-py'))") && str_contains($js, "dlgFocus(host.querySelector('.sb-tk') || host)")
+        && str_contains($js, "else if (!STAFF && \$('sbSheet') && !\$('sbSheet').hidden) closeSheet();")
+        && str_contains($js, "!document.querySelector('.tkm')) closeTicket();"));
+    check('fx4 #11 not shipped half-done: no history push in the booking card (Back handling waits for an Android hand-test)',
+        !str_contains($js, 'history.pushState'));
     check('F | M two buttons: STAFF + switch, only while nothing is chosen, never pre-set',
         str_contains($js, "if (STAFF && STAFF.twoBtn && g === 'u') {") && str_contains($js, 'data-g="Female"') && str_contains($js, 'data-g="Male"')
         && str_contains($js, "(gWant === 'Female' || gWant === 'Male')"));

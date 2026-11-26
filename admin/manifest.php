@@ -814,7 +814,10 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 
     /* The rows, the money rule and the boarding line, packed once. The PDF
        and the PNG pages both read THIS array, so a fare can never print one
-       way on paper and another in the picture. */
+       way on paper and another in the picture.
+       26 Nov 2026 (fx4): ChalaniPng::sheetFor() (includes/chalanipng.php) builds a
+       copy of this block for download-chalan.php's on-demand redraw - change the two
+       together; tests/fx1-chalani-test.php (PARITY) fails when they drift. */
     $chalaniFmt = ['money' => $money, 'stopShort' => $stopShort, 'isLate' => $isLate,
                    'bookedBy' => $bookedByShort, 'stopsLine' => $stopsLine,
                    'stopsLineRoman' => $stopsLineRoman,
@@ -1165,12 +1168,12 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   table.ps td small { color:#5C6B85; font-size:8.5px; }
   /* 26 Nov 2026 (fx1): in the name cell the NAME takes the "…" - the border ID and the
      ticket number after it always print whole (they were the part the cell cut off) */
-  /* how it gives way: the NAME is printed as far as it goes; what does not fit beside
-     it moves to a hidden second line, last piece first - the ticket number, then the
-     ID, then the infant mark - so a piece is either whole or left out, never cut.
-     Only a name longer than the whole cell takes the "…". */
-  table.ps td .nmw { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:5px; height:17px; line-height:17px; margin:-1px 0; overflow:hidden; }
-  table.ps td .nmw .nmn { flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  /* how it gives way (26 Nov 2026, fx4): ONE line, and the NAME is the only piece that
+     shrinks - a long name takes the "…" while the infant mark, the border ID and the
+     ticket number keep their full width. (It used to wrap them onto a hidden second
+     line, so a long name silently dropped the ID the border desk reads.) */
+  table.ps td .nmw { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:5px; height:17px; line-height:17px; margin:-1px 0; overflow:hidden; }
+  table.ps td .nmw .nmn { flex:0 1 auto; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
   table.ps td .nmw small, table.ps td .nmw b.inf { flex:0 0 auto; white-space:nowrap; }
   table.ps td .nmw small:last-child { margin-left:auto; }
   table.ps td small.pid { color:#12264E; font-weight:700; }

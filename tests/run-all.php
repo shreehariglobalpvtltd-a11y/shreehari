@@ -293,6 +293,13 @@ const CORE_SUITES = [
     'wx6-test.php'                    => 'Nepal journey (office 4 pm, our auto, 6 pm bus, one service), 5 pm NPT warning, boot coach, ticket styles, nav glide',
     'easy-login-test.php'             => 'easy login: mode, code / mobile, FirstName@2026 until changed, office reset, never superadmin, drivers',
     'fx1-rolemenu-test.php'           => 'admin menu as 8 hubs (admin_hub_menu_on), hub tab strip, phone bottom bar, starter-password nudge',
+    // 26 Nov 2026 (fx4): the six slices the fork session built, reviewed and finished here
+    'fx1-alertbus-test.php'           => 'call-style ring: events, who hears what, Seen (capped, never an SOS by Seen all), push repeats, quiet hours',
+    'fx1-tracking-test.php'           => 'tracking: driver GPS on poor network, stale marker, expired track links, SOS, ETA to the drop',
+    'fx1-aiwa-test.php'               => 'WhatsApp bot + AI: own bookings only, no COD pay link, office copy, Nepal pay rules, date-change request',
+    'fx1-chalani-test.php'            => 'chalani PNG / PDF / thermal: money strip = sum of rows, BS + AD, masked public link',
+    'fx1-agent-test.php'              => 'agent wallet home: own sales / commission / due only, credit banner, sub-agent approval',
+    'fx1-counter-test.php'            => 'counter desk: fast entry, NPR first on a Nepal desk, gender never copied, clerk links',
 ];
 
 /**

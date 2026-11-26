@@ -1383,28 +1383,88 @@ final class AiTools
             return self::no('That booking is not on this number.');
         }
 
-        $due = (float) $detail['total_amount'];
+        $due    = (float) $detail['total_amount'];
+        $st     = (string) $detail['status'];
+        $isCod  = (int) ($detail['is_cod'] ?? 0) === 1;
+        $data   = [
+            'pnr'    => (string) $detail['pnr'],
+            'status' => $st,
+            'due'    => $due,
+            'dueLabel' => inr($due),
+            'bookingId' => (int) $detail['id'],
+        ];
+        /* fx4 (26 Nov 2026): a pay-at-boarding (COD) ticket never gets a pay link / QR / pay id
+           (the model could otherwise still send them), a booking that is not waiting for an
+           online payment gets no pay link, and a Nepal sale never gets the India UPI QR. */
+        if ($isCod) {
+            return ['ok' => true,
+                'say'  => 'Pay-at-boarding ticket: the fare is paid on the bus / at the counter. Do not send any pay link or QR.',
+                'data' => $data + ['payAtBoarding' => true], 'media' => null];
+        }
+        if (!in_array($st, ['pending', 'rejected'], true)) {
+            return ['ok' => true,
+                'say'  => 'This booking is not waiting for an online payment — say so rather than asking for money.',
+                'data' => $data, 'media' => null];
+        }
+        $np = self::nepalPay((string) $detail['pnr']);
+        $data['payLink'] = appUrl('pay.php?pnr=' . urlencode((string) $detail['pnr']));
+        if ($np['nepal']) {
+            $data['wallet']   = $np['kind'];
+            $data['walletId'] = $np['payee'];
+        } else {
+            $data['upiId']   = Settings::getString('upi_id', '');
+            $data['esewaId'] = Settings::getString('esewa_id', '');
+        }
         return [
             'ok'   => true,
-            'say'  => (string) $detail['status'] === 'pending'
-                ? 'Give the passenger this QR / link to pay. The ticket is issued once the payment is verified.'
-                : 'This booking is not waiting for an online payment — say so rather than asking for money.',
-            'data' => [
-                'pnr'    => (string) $detail['pnr'],
-                'status' => (string) $detail['status'],
-                'due'    => $due,
-                'dueLabel' => inr($due),
-                'payLink' => appUrl('pay.php?pnr=' . urlencode((string) $detail['pnr'])),
-                'upiId'  => Settings::getString('upi_id', ''),
-                'esewaId' => Settings::getString('esewa_id', ''),
-                'bookingId' => (int) $detail['id'],
-            ],
-            // fx1 (26 Nov 2026): a pay-at-boarding (COD) booking never gets a pay QR, whatever its status
-            'media' => (string) $detail['status'] === 'pending' && Settings::getString('upi_id', '') !== '' && $due > 0
-                && (int) ($detail['is_cod'] ?? 0) !== 1
+            'say'  => $np['nepal']
+                ? 'Nepal booking: give the passenger the link (it shows the Nepal QR) and the wallet id to pay. Never an India UPI QR. The ticket is issued once the payment is verified.'
+                : 'Give the passenger this QR / link to pay. The ticket is issued once the payment is verified.',
+            'data' => $data,
+            'media' => $st === 'pending' && !$np['nepal'] && Settings::getString('upi_id', '') !== '' && $due > 0
                 ? appUrl('pay-image.php?pnr=' . urlencode((string) $detail['pnr']))
                 : null,
         ];
+    }
+
+    /**
+     * fx4 (26 Nov 2026): is this a NEPAL sale (the same test as pay.php: NPR frozen on the sale,
+     * or a Nepal desk / entity)? Then the bot never attaches pay-image.php (it draws only the
+     * India UPI QR): it gives the wallet id of the Nepal QR (PayQr, the one the ticket prints)
+     * and pay.php, which shows the Nepal QR. Switch wa_nepal_no_upi_qr_on (default 1) = 0 -> old
+     * behaviour. Any error -> not Nepal (the old path).
+     * @return array{nepal: bool, payee: string, kind: string}
+     */
+    public static function nepalPay(string $pnr): array
+    {
+        $no = ['nepal' => false, 'payee' => '', 'kind' => ''];
+        if ($pnr === '' || !Settings::getBool('wa_nepal_no_upi_qr_on', true)) {
+            return $no;
+        }
+        try {
+            $b = Database::fetch('SELECT * FROM bookings WHERE pnr = :p LIMIT 1', ['p' => $pnr]);
+            if ($b === null) {
+                return $no;
+            }
+            $frozenNpr = strtoupper((string) ($b['fx_currency'] ?? '')) === 'NPR' && (float) ($b['fx_total'] ?? 0) > 0;
+            $co = Settings::companyFor((string) ($b['counter_code'] ?? ''), (string) ($b['entity'] ?? ''));
+            if (!$frozenNpr && ($co['saleEntity'] ?? 'IN') !== 'NP' && ($co['entity'] ?? 'IN') !== 'NP') {
+                return $no;
+            }
+            $payee = trim((string) ($co['payEsewa'] ?? ''));
+            $kind  = 'eSewa';
+            try {
+                require_once INCLUDE_PATH . '/payqr.php';
+                $r = PayQr::resolve($b, 'NP', $payee);
+                $payee = trim((string) ($r['payee'] ?? $payee));
+                $kind  = trim((string) ($r['kind'] ?? '')) !== '' ? trim((string) $r['kind']) : 'eSewa';
+            } catch (Throwable $e) {
+                // keep the sale's own eSewa id
+            }
+            return ['nepal' => true, 'payee' => $payee, 'kind' => $kind];
+        } catch (Throwable $e) {
+            return $no;
+        }
     }
 
     /**

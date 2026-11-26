@@ -536,9 +536,16 @@ try {
     $calls = [];
     AlertBus::deliver(200, $tb + 1);
     $mineB = array_values(array_filter($calls, static fn(array $c): bool => $c['adminId'] === $AGA && in_array((int) $c['payload']['alertId'], $bIds, true)));
-    check('burst: 3 open rings > burst 2 -> every push is the ONE merged notification (same tag + Topic, count 3, Seen = all)', count($mineB) === 3
+    /* fx4: a flood used to send one push per alert still at its first ring (3 buzzes, all the same merged card) */
+    check('burst: 3 open rings > burst 2 -> ONE push in all: the merged notification for the newest (tag + Topic many, count 3, Seen = all)', count($mineB) === 1
+        && (int) $mineB[0]['payload']['alertId'] === max($bIds)
         && array_unique(array_column(array_column($mineB, 'payload'), 'tag')) === ['shg-ring-many'] && array_unique(array_column($mineB, 'topic')) === ['ringmany']
-        && str_contains((string) $mineB[0]['payload']['title'], '3') && $mineB[0]['payload']['ackAll'] === 1);
+        && str_contains((string) $mineB[0]['payload']['title'], '3') && $mineB[0]['payload']['ackAll'] === 1, (string) count($mineB));
+    $calls = [];
+    AlertBus::deliver(200, $tb + 2);
+    check('burst: the next pass inside the same ring sends nothing more (the older alerts take no claim of their own)',
+        array_filter($calls, static fn(array $c): bool => $c['adminId'] === $AGA) === []
+        && (int) Database::scalar("SELECT COUNT(*) FROM alert_deliveries WHERE alert_id IN (" . implode(',', $bIds) . ") AND channel = 'push' AND admin_id = :a", ['a' => $AGA]) === 1);
     $bp = $mineB[0]['payload'] ?? ['alertId' => 0, 'ackToken' => ''];
     check('burst: its token is signed as "all" - and a single-alert token can never be used as "all"', AlertBus::checkAckToken((int) $bp['alertId'], $AGA, (string) $bp['ackToken'], true)
         && !AlertBus::checkAckToken((int) $bp['alertId'], $AGA, (string) $bp['ackToken'], false)
@@ -558,6 +565,18 @@ try {
     check('…and the agent\'s phone gets no further repeat of them', array_filter($calls, static fn(array $c): bool => $c['adminId'] === $AGA) === []);
     foreach ($bIds as $bId) { AlertBus::ack($bId, $who($ACC, 'accountant')); }     // one by one: never "all" on a shared database
     check('Seen by the office closes them', (int) Database::scalar('SELECT COUNT(*) FROM alert_events WHERE id IN (' . implode(',', $bIds) . ') AND acked_at IS NOT NULL') === 3);
+
+    /* fx4 review: "Seen all" (a merged notification tapped later, or the card) is capped at the alert the
+       person was shown - a LATER alert, and above all a driver SOS, must keep ringing for the office. */
+    $tq = time();
+    $qA = $raise('payment_confirmed', ['title' => '✅ cap A', 'body' => 'a', 'ring' => true], $tag . ':capA', $tq);
+    $qB = $raise('payment_confirmed', ['title' => '✅ cap B', 'body' => 'b', 'ring' => true], $tag . ':capB', $tq + 1);
+    $qS = $raise('driver_sos', ['title' => '🆘 cap SOS', 'body' => 's', 'ring' => true], $tag . ':capS', $tq + 2);
+    $nq = AlertBus::ackAll($who($MGR, 'manager'), 'push', $tq + 3, $qA);
+    check('Seen all capped at alert A: A is closed, the LATER alert B keeps ringing', $alert($tag . ':capA')['acked_at'] !== null && $alert($tag . ':capB')['acked_at'] === null, (string) $nq);
+    check('…and a driver SOS is never silenced by "Seen all", even below the cap', AlertBus::ackAll($who($MGR, 'manager'), 'panel', $tq + 4, $qS - 1) >= 0
+        && $alert($tag . ':capS')['acked_at'] === null && $alert($tag . ':capB')['acked_at'] !== null);
+    check('…only its own Seen stops the SOS', AlertBus::ack($qS, $who($MGR, 'manager'), 'panel', $tq + 5)['ok'] === true && $alert($tag . ':capS')['acked_at'] !== null);
     $set('alert_ring_burst', 6, 'int');
 
     /* ---------------- 7b. WHICH phones ring: only the ones that tapped "Ring on this phone" ---------------- */
@@ -652,8 +671,15 @@ try {
     check('WhatsApp on: an agent ticket goes once (not on the repeat); a customer\'s own booking and an SOS never (they already send their own)',
         count($waCalls) === 1 && $waCalls[0]['headline'] === '🧾 wa test' && $waCalls[0]['bookingId'] === $bAgent['id'], (string) count($waCalls));
     check('…logged as one delivery row for the office number', (int) Database::scalar("SELECT COUNT(*) FROM alert_deliveries WHERE alert_id = :a AND channel = 'whatsapp' AND admin_id = 0", ['a' => $w1]) === 1);
+    /* fx4: the hourly budget is used up -> nothing goes AND no claim row is left behind, so a later pass can still send it */
+    Database::run("UPDATE rate_limits SET hits = 99, window_start = :w WHERE bucket = 'alert_wa' AND identifier = 'office'", ['w' => date('Y-m-d H:i:s')]);
+    $w4 = $raise('agent_ticket', ['title' => '🧾 wa limit', 'body' => 'b', 'actor' => $AGA], $tag . ':w4', $tw);
+    $waBefore = count($waCalls);
+    AlertBus::deliver(200, $tw + 3, $w4);
+    check('WhatsApp budget used up: no message, and the claim row was taken back (claim first, then the limit)', count($waCalls) === $waBefore
+        && (int) Database::scalar("SELECT COUNT(*) FROM alert_deliveries WHERE alert_id = :a AND channel = 'whatsapp'", ['a' => $w4]) === 0);
     $set('alert_wa_on', false, 'bool');
-    foreach ([$w1, $w2, $w3] as $w) { AlertBus::ack($w, $who(1, 'superadmin')); }
+    foreach ([$w1, $w2, $w3, $w4] as $w) { AlertBus::ack($w, $who(1, 'superadmin')); }
 
     /* ---------------- 8b. agent near the credit limit: one alert per agent per day ---------------- */
     require_once INCLUDE_PATH . '/agentwallet.php';
@@ -910,9 +936,10 @@ async function scene(o) {
   AC.prototype.resume = function () {};
   AC.prototype.createOscillator = function () { return { type: '', frequency: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {} }, connect() {}, start() { st.osc++; }, stop() {} }; };
   AC.prototype.createGain = function () { return { gain: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; };
-  let feed = o.feed;
+  let feed = o.feed, feedOk = true;
   st.push = [];
   const nav = { vibrate: () => { st.vib++; return true; }, wakeLock: { request: () => { st.wake++; return Promise.resolve({ release() {}, addEventListener() {} }); } } };
+  if (o.ua) { nav.userActivation = { hasBeenActive: false }; }   // a freshly loaded page nobody has touched
   if (o.push) {       // a handset whose browser already has a push subscription (say, from Office chat)
     const sub = { endpoint: 'https://push.invalid/h', toJSON: () => ({ endpoint: 'https://push.invalid/h', keys: {} }) };
     const reg = { pushManager: { getSubscription: () => Promise.resolve(sub) } };
@@ -922,7 +949,11 @@ async function scene(o) {
     navigator: nav,
     localStorage: store(o.ls), sessionStorage: store(o.ss), AudioContext: AC, addEventListener: () => {},
     fetch: (u, opt) => {
-      if (u.indexOf('alert-feed') >= 0) { st.feeds++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, data: JSON.parse(JSON.stringify(feed)) }) }); }
+      if (u.indexOf('alert-feed') >= 0) {
+        st.feeds++;
+        if (!feedOk) { return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false }) }); }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, data: JSON.parse(JSON.stringify(feed)) }) });
+      }
       if (u.indexOf('alert-push') >= 0) {
         const body = opt && opt.body ? JSON.parse(opt.body) : null;
         if (body) { st.push.push(body); }
@@ -930,6 +961,7 @@ async function scene(o) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, data: data }) });
       }
       st.acks.push({ u: u, headers: opt.headers, body: JSON.parse(opt.body) });
+      if (o.ackStatus) { return Promise.resolve({ ok: false, status: o.ackStatus, json: () => Promise.resolve({ ok: false }) }); }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, data: { acked: 1 } }) });
     },
     setInterval: (f, ms) => { const t = setInterval(f, ms); st.timers.push(t); return t; }, clearInterval: clearInterval, setTimeout: setTimeout, clearTimeout: clearTimeout,
@@ -939,8 +971,9 @@ async function scene(o) {
   vm.createContext(ctx); vm.runInContext(src, ctx);
   await wait(40);
   const find = (id) => doc.body.children.filter((c) => c.id === id)[0] || null;
-  const snap = () => { const r = find('shgRing'), b = find('shgRingBar'), s = find('shgRingSoft');
+  const snap = () => { const r = find('shgRing'), b = find('shgRingBar'), s = find('shgRingSoft'), c = find('shgRingSnd');
     return { card: r ? r.className : null, bar: b ? b.className : null, soft: s ? s.className : null, osc: st.osc, feeds: st.feeds, ctxs: st.ctxs, wake: st.wake,
+      chip: c ? (c.style.display || '') : null, chipText: c ? c.textContent : '', softText: s ? s.textContent : '', ringing: ctx.SHGRing.ringing,
       offer: r ? r.children[0].children[7].className : null, stop: r ? r.children[0].children[8].className : null, push: st.push.slice(),
       title: r ? r.children[0].children[1].textContent : '', active: ctx.SHGRing.active, focusOnButton: !!(doc.activeElement && doc.activeElement.tag === 'button') }; };
   const out = { first: snap() };
@@ -950,6 +983,8 @@ async function scene(o) {
     if (o.then === 'feed2') { feed = o.feed2; ctx.SHGRing.tick(); await wait(20); out.throttled = st.feeds; ctx.SHGRing.refresh(); await wait(40); }
     if (o.then === 'wait') { await wait(1150); }
     if (o.then === 'stop') { card.children[0].children[8].children[0].click(); await wait(40); }
+    if (o.then === 'fail') { feedOk = false; ctx.SHGRing.refresh(); await wait(40); }
+    if (o.then === 'chip') { const c = find('shgRingSnd'); if (c) { c.click(); } await wait(300); }
     out.second = snap();
   }
   st.timers.forEach(clearInterval);
@@ -978,6 +1013,13 @@ async function scene(o) {
   const withPush = { me: 5, push: { on: true } };
   out.chatOnly = await scene({ feed: f([ring(30, 5)], withPush), push: 'chat' });
   out.ringsHere = await scene({ feed: f([ring(31, 5)], withPush), push: 'rings', then: 'stop' });
+  out.feedFail = await scene({ feed: f([ring(40, 5)]), then: 'fail' });
+  out.ackExpired = await scene({ feed: f([ring(41, 5)]), then: 'seen', ackStatus: 419 });
+  out.ackDown = await scene({ feed: f([ring(42, 5)]), then: 'seen', ackStatus: 500 });
+  out.chipIdle = await scene({ feed: f([]), ua: true, then: 'chip' });
+  out.chipOff = await scene({ feed: Object.assign({}, base, { on: false, ring: false }), ua: true });
+  out.chipMuted = await scene({ feed: f([]), ua: true, ls: { shg_admin_sound: '0' } });
+  out.sellLocked = await scene({ feed: f([ring(43, 5)]), path: '/admin/quick-ticket.php', suspended: true });
   console.log(JSON.stringify(out));
   process.exit(0);
 })().catch((e) => { console.log(JSON.stringify({ error: String(e && e.stack || e) })); process.exit(0); });
@@ -1007,8 +1049,9 @@ JS);
             check('ring JS: quiet hours -> slim bar, silent', !$has($o['quiet']['first']['card'], 'on') && $has($o['quiet']['first']['bar'], 'on') && $o['quiet']['first']['osc'] === 0);
             check('ring JS: quiet hours + driver SOS -> full screen with the siren', $has($o['quietSos']['first']['card'], 'on') && $has($o['quietSos']['first']['card'], 'sos') && $o['quietSos']['first']['osc'] === 2);
             check('ring JS: browser still holds the sound -> "tap for sound" on the card', $has($o['locked']['first']['card'], 'locked') && $o['locked']['first']['osc'] === 0);
-            check('ring JS: a flood (14 open, 3 listed) -> one card with the count; Seen answers ALL', str_contains((string) $o['many']['first']['title'], '14')
-                && ($o['many']['acks'][0]['body'] ?? null) === ['all' => 1], json_encode($o['many']));
+            // fx4: "all" now carries the newest ring id shown (upto), so a later alert keeps ringing
+            check('ring JS: a flood (14 open, 3 listed) -> one card with the count; Seen answers ALL up to the newest shown', str_contains((string) $o['many']['first']['title'], '14')
+                && ($o['many']['acks'][0]['body']['all'] ?? null) === 1 && (int) ($o['many']['acks'][0]['body']['upto'] ?? 0) > 0, json_encode($o['many']));
             check('ring JS: soft alerts already there when the page opens make no sound', $o['softFirst']['first']['osc'] === 0 && !$has($o['softFirst']['first']['soft'], 'on'));
             check('ring JS: a NEW soft alert -> a quiet line + its short sound; a tick inside 4 s is not a second request', $has($o['softNew']['second']['soft'], 'on')
                 && $o['softNew']['second']['osc'] === 3 && $o['softNew']['throttled'] === 1 && $o['softNew']['second']['feeds'] === 2, json_encode($o['softNew']));
@@ -1021,6 +1064,27 @@ JS);
             check('ring JS: a handset that rings shows "Stop ringing this phone" (no offer); the tap posts unsubscribe with its endpoint and the button goes',
                 $has($h0['stop'], 'on') && !$has($h0['offer'], 'on') && count($h1['push']) === 2 && $h1['push'][1] === ['action' => 'unsubscribe', 'endpoint' => 'https://push.invalid/h']
                 && !$has($h1['stop'], 'on'), json_encode([$h0, $h1]));
+            /* fx4 follow-ups from the audit */
+            $ff = $o['feedFail'];
+            check('ring JS: the feed answers an error (500) -> the card and the bar go and SHGRing.ringing is false (no ringing from a stale list)',
+                $has($ff['first']['card'], 'on') && $ff['first']['ringing'] === true && !$has($ff['second']['card'], 'on') && !$has($ff['second']['bar'], 'on')
+                && $ff['second']['ringing'] === false && $ff['second']['active'] === false && $ff['second']['feeds'] === 2, json_encode($ff));
+            $ae = $o['ackExpired'];
+            check('ring JS: Seen refused with 419 (session / CSRF expired) -> the ring stays quiet in this tab and a "reload" line shows',
+                count($ae['acks'] ?? []) === 1 && !$has($ae['second']['card'], 'on') && !$has($ae['second']['bar'], 'on') && $has($ae['second']['soft'], 'on')
+                && str_contains((string) $ae['second']['softText'], 'reload') && str_contains((string) $ae['second']['softText'], 'रिलोड'), json_encode($ae));
+            $ad = $o['ackDown'];
+            check('ring JS: Seen hit a server error (500) -> the ring comes back (a retry may work)', count($ad['acks'] ?? []) === 1 && $has($ad['second']['card'], 'on'), json_encode($ad));
+            $ci = $o['chipIdle'];
+            check('ring JS: a freshly loaded page nobody touched -> "tap to enable ring sound" chip, no AudioContext made; a tap on it unlocks the sound and hides it',
+                $ci['first']['chip'] === 'block' && $ci['first']['ctxs'] === 0 && $ci['first']['card'] === null && str_contains((string) $ci['first']['chipText'], 'Tap to enable ring sound')
+                && str_contains((string) $ci['first']['chipText'], 'ट्याप') && $ci['second']['chip'] === 'none' && $ci['second']['ctxs'] === 1, json_encode($ci));
+            check('ring JS: no chip when the ring is off for this person, or the sound switch is off, or the browser has no activation flag',
+                $o['chipOff']['first']['chip'] === null && $o['chipMuted']['first']['chip'] === null && $o['idle']['first']['chip'] === null,
+                json_encode([$o['chipOff']['first'], $o['chipMuted']['first']]));
+            $sl = $o['sellLocked']['first'];
+            check('ring JS: selling screen + sound still locked -> the slim bar carries the 🔊 hint (class locked), no separate chip',
+                $has($sl['bar'], 'on') && $has($sl['bar'], 'locked') && !$has($sl['card'], 'on') && ($sl['chip'] === null || $sl['chip'] === 'none'), json_encode($sl));
         }
     }
 

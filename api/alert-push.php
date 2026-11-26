@@ -50,7 +50,7 @@ try {
 
     Security::requireCsrf();
     if (!Security::rateLimit('alert_push', 'admin:' . $me, 20, 60)) {
-        Response::error('Too many requests.', 429);
+        Response::error('धेरै पटक थिचियो, एकछिन पर्खनुहोस् · Too many requests.', 429);
     }
     $action = Security::clean((string) Response::field('action', ''), 20);
 
@@ -70,11 +70,11 @@ try {
 
     if ($action === 'subscribe') {
         if (!$ready) {
-            Response::error('Phone ring is switched off on this server.', 503);
+            Response::error('यो सर्भरमा फोन घण्टी बन्द छ · Phone ring is switched off on this server.', 503);
         }
         $sub = WebPush::normaliseSubscription(Response::field('subscription'));
         if ($sub === null) {
-            Response::invalid(['subscription' => 'The browser did not send a valid push subscription.']);
+            Response::invalid(['subscription' => 'ब्राउजरले मान्य push subscription पठाएन · The browser did not send a valid push subscription.']);
         }
         /* Only a tap on "Ring on this phone" (ask) switches a handset on. The panel's quiet sync
            (no ask) moves a handset that already rings to whoever is signed in now, and leaves
@@ -85,7 +85,7 @@ try {
         }
         $had = AlertBus::phoneRings($sub['endpoint'], $me);
         if (!AlertBus::pushOptIn($sub['endpoint'], $me, $ask)) {       // before the bind: nothing is changed when it cannot ring
-            Response::error('Phone ring could not be switched on (run database/upgrade-2026-11-26-fx1-alertbus.sql).', 503);
+            Response::error('फोन घण्टी खोल्न सकिएन · Phone ring could not be switched on (run database/upgrade-2026-11-26-fx1-alertbus.sql).', 503);
         }
         $id = WebPush::subscribe($sub, [
             'admin_id' => $me,
@@ -98,7 +98,7 @@ try {
         Response::success(['id' => $id, 'ring' => true], 'यो फोनमा घण्टी बज्छ · This phone will ring');
     }
 
-    Response::invalid(['action' => 'Unknown action.']);
+    Response::invalid(['action' => 'थाहा नभएको काम · Unknown action.']);
 } catch (Throwable $e) {
     Response::serverError($e);
 }

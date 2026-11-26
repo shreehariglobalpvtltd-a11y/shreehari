@@ -1219,7 +1219,7 @@
      a silent jump. Shown in Quick and Full mode; gone again when the note is. */
   /* 25 Nov 2026 (wx6): today's bus still on sale - a calm blue line 'closes at 17:00 Nepal time',
      a live countdown in the last hour, and a fresh quote when it closes (-> tomorrow + the orange note). */
-  var clockTimer = null;
+  var clockTimer = null, clockAskAt = 0;
   function clockSoonLine(q) {
     var cs = q && q.clockSoon, el = $('sbClockSoon');
     clearInterval(clockTimer); clockTimer = null;
@@ -1232,7 +1232,14 @@
     }
     var tick = function () {
       var left = Math.floor((cs.closesAt * 1000 - Date.now()) / 60000);
-      if (left < 0) { clearInterval(clockTimer); clockTimer = null; el.hidden = true; requote(0); return; }
+      /* fx4 (audit #17): this device's clock says closed but the server (the judge) still sells -
+         keep the line and ask again at most every 20 s, never in a loop (a phone clock that runs
+         ahead used to re-quote on every answer: Cash / Online waited forever, the IP hit the limit). */
+      if (left < 0) {
+        el.textContent = '⏰ ' + (cs.label || ''); el.hidden = false;
+        if (!S.busy && Date.now() - clockAskAt >= 20000) { clockAskAt = Date.now(); requote(0); }
+        return;
+      }
       el.textContent = '⏰ ' + (cs.label || '') + (left < 60 ? '  ·  ⏳ ' + left + ' मिनेट बाँकी · min left' : '');
       el.hidden = false;
     };
@@ -1354,7 +1361,8 @@
       S.manual = []; renderPax(); changed('pax'); return;
     }
     if ((b = e.target.closest('#sbMinus, #sbPlus'))) {
-      if (b.id === 'sbPlus' && S.pax.length < S.maxPax) S.pax.push({ gender: S.pax.length ? S.pax[S.pax.length - 1].gender : '', band: 'adult' });
+      /* fx4 (audit #6): a new passenger starts with a blank gender - never copied from the one before. */
+      if (b.id === 'sbPlus' && S.pax.length < S.maxPax) S.pax.push({ gender: '', band: 'adult' });
       if (b.id === 'sbMinus' && S.pax.length > 1) S.pax.pop();
       S.manual = []; renderPax(); changed(); return;
     }
@@ -1652,7 +1660,17 @@
     if (e.key !== 'Escape') return;
     if ($('sbPayOv') && !$('sbPayOv').hidden) closePay();
     else if ($('sbCv') && !$('sbCv').hidden) closeCash();
+    /* fx4 (audit #27): Escape closes the seat sheet and the ticket sheet on the customer face too
+       (the staff page has its own Esc for these two). The ticket waits while its reveal is still on
+       screen, so one Escape dismisses only the reveal. */
+    else if (!STAFF && $('sbSheet') && !$('sbSheet').hidden) closeSheet();
+    else if (!STAFF && $('sbModal') && !$('sbModal').hidden && !document.querySelector('.tkm')) closeTicket();
   });
+  /* fx4 (audit #27): a sheet that opens as an aria-modal dialog takes the focus on its panel (not on
+     a close button, so a stray Enter / Space dismisses nothing) and hands it back when it closes. */
+  function dlgFocus(el) { if (!el) return; if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); try { el.focus({ preventScroll: true }); } catch (x) {} }
+  function dlgBack(el, alt) { var t = (el && el.isConnected && el.getClientRects().length) ? el : alt; if (t) { try { t.focus({ preventScroll: true }); } catch (x) {} } }
+  var sheetRet = null, tkRet = null;
 
   /* ---------------------------------------------------- choose seats */
   var pick = [];
@@ -1663,6 +1681,7 @@
     api({ action: 'seats', scheduleId: S.q.scheduleId, type: S.type }).then(function (m) {
       var sh = $('sbSheet'); sh.hidden = false; document.body.classList.add('shg-modal-open');
       drawMap(m, need);
+      sheetRet = document.activeElement; dlgFocus(sh.querySelector('.sb-sheet-in'));
       seatPoll(need, m);
       $('sbSheetOk').onclick = function () {
         if (pick.length !== need) { say(tr('pickAll')); return; }
@@ -1670,7 +1689,12 @@
       };
     }).catch(function (er) { say(er.message); });
   }
-  function closeSheet() { seatPollStop(); $('sbSheet').hidden = true; document.body.classList.remove('shg-modal-open'); }
+  function closeSheet() {
+    var was = !$('sbSheet').hidden;
+    seatPollStop(); $('sbSheet').hidden = true; document.body.classList.remove('shg-modal-open');
+    if (was) dlgBack(sheetRet, $('sbSeatMode') && $('sbSeatMode').querySelector('button.on'));
+    sheetRet = null;
+  }
   /* 16 Nov 2026 (P2-3b): while the seat sheet is open and the tab is in front, the
      coach is read again every 30 s (read-only - the sale still re-checks every berth
      on the server). A berth somebody else took in the meantime leaves this pick with
@@ -2099,6 +2123,7 @@
     }
     box.hidden = false; document.body.classList.add('shg-modal-open');
     drawPay(); startQrTimer(); pollPay(2500);
+    dlgFocus(box.querySelector('.sb-py'));   // fx4 (audit #27)
   }
   function closePay(silent) {
     if (!PAY) return;
@@ -2106,6 +2131,7 @@
     var box = $('sbPayOv'); if (box) box.hidden = true;
     if (!silent) document.body.classList.remove('shg-modal-open');
     PAY = null;
+    if (!silent) dlgBack(null, $('sbOnline'));   // fx4: the silent close is followed by the ticket, which takes its own focus
   }
   function hhmm(sql) { var m = /(\d{2}):(\d{2})/.exec(String(sql || '').split(' ')[1] || ''); return m ? m[1] + ':' + m[2] : ''; }
   function drawPay() {
@@ -2150,7 +2176,11 @@
     }
     var foot = '<div class="sb-py-ft"><span>🔒 ' + esc(tr('pySafe')) + '</span>'
       + (d.holdUntil && P.state === 'pay' ? '<span>🛏 ' + esc(tr('pyHeld')) + ' ' + esc(hhmm(d.holdUntil)) + '</span>' : '') + '</div>';
+    /* fx4 (audit #27): a redraw (tab tap, verifying, expired) keeps the focus inside the popup */
+    var ae = document.activeElement, had = !!(ae && box.contains(ae)), wasTab = had && ae.hasAttribute('data-pytab');
     box.innerHTML = '<div class="sb-py">' + head + '<div class="sb-py-body">' + body + '</div>' + foot + '</div>';
+    if (wasTab) { var tOn = box.querySelector('[data-pytab].on'); if (tOn) { try { tOn.focus({ preventScroll: true }); } catch (x) {} } }
+    else if (had) dlgFocus(box.querySelector('.sb-py'));
     paintQrTimer();
   }
   function startQrTimer() {
@@ -2415,9 +2445,10 @@
         setTimeout(function () { try { nxt.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {} }, 120);
         return;
       }
-      if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {
+      /* fx4: Enter on a passenger chip button (F / M / band) presses that button - it does not add a passenger. */
+      if (e.key === 'Enter' && (e.target.id === 'sbName' || (e.target.closest('#sbPax') && !e.target.closest('#sbPax button')))) {
         e.preventDefault();
-        if (S.pax.length < S.maxPax) { S.pax.push({ gender: S.pax.length ? S.pax[S.pax.length - 1].gender : '', band: 'adult' }); S.manual = []; renderPax(); changed(); }
+        if (S.pax.length < S.maxPax) { S.pax.push({ gender: '', band: 'adult' }); S.manual = []; renderPax(); changed(); }
         var last = $('sbPax').querySelector('.sb-p:last-child .sb-g'); if (last) last.focus();
       }
     });
@@ -2441,6 +2472,10 @@
       if (!r || !r.customer || typeof bookingFromServer !== 'function' || typeof DB === 'undefined') return;
       var b = bookingFromServer(r.customer, r.phone); if (!b) return;
       b.ownBrowser = true;
+      /* fx4 (audit #5/#8): remember what the sale answer printed (route, AD + BS date, the printed
+         berths, both money figures), so a reload at #/?ticket=PNR shows the very same card. */
+      b.sbCard = { route: r.route || '', dateLabel: r.dateLabel || '', seatLabels: (r.seatLabels || []).slice(), totalLabel: r.totalLabel || '',
+        npr: Number(r.npr) || 0, boarding: r.boarding || '', boardingTime: r.boardingTime || '', reportTime: r.reportTime || '' };
       var at = -1;
       for (var i = 0; i < DB.bookings.length; i++) { if (DB.bookings[i] && DB.bookings[i].id === b.id) { at = i; break; } }
       if (at >= 0) DB.bookings[at] = Object.assign({}, DB.bookings[at], b); else DB.bookings.unshift(b);
@@ -2492,7 +2527,7 @@
         + '<div class="tkm-name">' + flow(name || '', 0.75) + '</div>'
         + (phTxt ? '<div class="tkm-ph">📱 ' + flow(phTxt, 1.05) + '</div>' : '')
         + '<div class="tkm-route">' + flow(r.route || '', 1.3) + '</div>'
-        + '<div class="tkm-meta"><span>📅 ' + esc(r.dateLabel || '') + '</span><span>💺 ' + esc((r.seatLabels || []).join(', ')) + '</span>'
+        + '<div class="tkm-meta"><span>📅 ' + esc(tkDate(r)) + '</span><span>💺 ' + esc((r.seatLabels || []).join(', ')) + '</span>'
         + (r.totalLabel ? '<span>' + esc(r.totalLabel) + '</span>' : '') + '</div>'
         + (r.normal && r.normal.save >= 1 ? '<div class="tkm-nf"><s>' + esc(money(r.normal.normal)) + '</s> <b>' + esc(tr('nfSave')) + ' ' + esc(money(r.normal.save)) + '</b></div>' : '')
         + '<div class="tkm-perf" aria-hidden="true"></div>'
@@ -2537,7 +2572,7 @@
   function shareTicket(r) {
     if (!r) return;
     var url = location.origin + (r.ticket && r.ticket.view ? r.ticket.view : '/#/ticket/' + r.pnr);
-    var text = 'S Hari Global ticket ' + r.pnr + ' · ' + (r.route || '') + ' · ' + (r.dateLabel || '') + ' · ' + (r.seatLabels || []).join(', ');
+    var text = 'S Hari Global ticket ' + r.pnr + ' · ' + (r.route || '') + ' · ' + tkDate(r) + ' · ' + (r.seatLabels || []).join(', ');
     var shareFile = function () {
       if (!(r.ticket && r.ticket.png && navigator.canShare)) return Promise.reject();
       return fetch(r.ticket.png, { credentials: 'same-origin' }).then(function (x) { return x.blob(); }).then(function (blob) {
@@ -2569,8 +2604,16 @@
     var ph = digits(r.phone || ''); if (ph.length < 10) return '';
     var cc = ph.length > 10 ? '' : (S.cc === 'NP' ? '977' : '91');
     var link = location.origin + ((r.ticket && r.ticket.view) || '');
-    var text = 'S Hari Global 🎫 ' + r.pnr + ' · ' + (r.route || '') + ' · ' + (r.dateLabel || '') + ' · ' + (r.seatLabels || []).join(', ') + '\n' + link;
+    var text = 'S Hari Global 🎫 ' + r.pnr + ' · ' + (r.route || '') + ' · ' + tkDate(r) + ' · ' + (r.seatLabels || []).join(', ') + '\n' + link;
     return '<a class="sb-tk-wa" target="_blank" rel="noopener" href="https://wa.me/' + cc + ph + '?text=' + encodeURIComponent(text) + '"><span>' + esc(tr('waSend')) + '</span><small>+' + esc(cc + ph) + '</small></a>';
+  }
+  /* fx4 (audit #8, rule "BS + AD where a passenger sees a date"): the ticket card's date line -
+     the AD label the sale printed, then the Nepali (BS) date beside it when it is not there yet. */
+  function tkDate(r) {
+    var d = String((r && r.dateLabel) || '');
+    var bs = (r && r.date) ? bsFull(r.date, '') : '';
+    if (bs && d.indexOf(bs) < 0) d += (d ? ' · ' : '') + bs;
+    return d;
   }
   function ticketHtml(r) {
     var t = r.ticket || {};
@@ -2579,7 +2622,7 @@
        faces only) reads रू big - the figure printed on the ticket - and ₹ small. */
     var fxT = (STAFF && STAFF.nprFirst && r.fx && r.fx.currency === 'NPR' && Number(r.fx.amount) > 0) ? nprRs(r.fx.amount) : '';
     return '<div class="sb-tk">'
-      + '<div class="sb-tk-h"><span class="sb-tk-ok" aria-hidden="true">✓</span><div><b>' + esc(tr('ticketOk')) + '</b><small>' + esc(r.route || '') + ' · ' + esc(r.dateLabel || '') + '</small></div>'
+      + '<div class="sb-tk-h"><span class="sb-tk-ok" aria-hidden="true">✓</span><div><b>' + esc(tr('ticketOk')) + '</b><small>' + esc([r.route, tkDate(r)].filter(Boolean).join(' · ')) + '</small></div>'
       + (secs ? '<span class="sb-tk-fast" title="' + esc(tr('fast')) + '">⚡ ' + esc(secs) + '</span>' : '')
       + '<button type="button" class="sb-x" data-tk="close" aria-label="Close" style="margin-left:auto">✕</button></div>'
       + '<div class="sb-tk-pnr">' + esc(tr('pnr')) + ' ' + esc(r.pnr) + '</div>'
@@ -2587,7 +2630,8 @@
       /* 25 Nov 2026 (wx1): NPR chosen -> the NPR total big (as the ticket prints it), ₹ small */
       + (fxT
         ? '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · <b>' + esc(fxT) + '</b> <small>(' + esc(r.totalLabel || '') + ')</small></div>'
-        : '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || '')) + ' <small>(≈ ' + esc(inNpr() && r.npr ? (r.totalLabel || '') : npr(r.npr)) + ')</small>'
+        : '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || ''))
+          + (Number(r.npr) > 0 ? ' <small>(≈ ' + esc(inNpr() ? (r.totalLabel || '') : npr(r.npr)) + ')</small>' : '')   // fx4 (audit #8): never '≈ NPR 0'
       + (inNpr() ? '' : nfHtml(r.normal)) + '</div>')
       + (r.boardingTime ? '<div class="sb-tk-row">' + esc(r.boarding || '') + ' · <small>' + esc(tr('report')) + ' ' + esc(r.reportTime || '') + '</small></div>' : '')
       + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(fxT || (inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || ''))) + '</div>' : '')
@@ -2620,7 +2664,13 @@
     var html = ticketHtml(r);
     var host;
     if (wide()) { host = $('sbTicket'); host.innerHTML = html; host.hidden = false; host.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
-    else { host = $('sbModalIn'); host.innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open'); }
+    else {
+      var wasOpen = !$('sbModal').hidden;
+      host = $('sbModalIn'); host.innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open');
+      /* fx4 (audit #27): the ticket sheet takes the focus on its panel, never on ✕ (the reveal's Enter must not close it) */
+      if (!wasOpen) tkRet = document.activeElement;
+      dlgFocus(host.querySelector('.sb-tk') || host);
+    }
     wireTicketImg(host);
     if (!STAFF) pushCard(host, r);
     try { if (!STAFF && location.hash.indexOf('#/?ticket=') !== 0) history.replaceState(null, '', '#/?ticket=' + encodeURIComponent(r.pnr)); } catch (e) {}
@@ -2670,9 +2720,12 @@
     if (img.complete && img.naturalWidth > 0) ok();
   }
   function closeTicket() {
+    var was = !$('sbModal').hidden;
     $('sbModal').hidden = true; document.body.classList.remove('shg-modal-open');
     $('sbTicket').hidden = true;
     try { if (location.hash.indexOf('#/?ticket=') === 0) history.replaceState(null, '', '#/'); } catch (e) {}
+    if (was) dlgBack(tkRet, null);   // fx4 (audit #27)
+    tkRet = null;
   }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-tk]'); if (!b || !root.contains(b)) return;
@@ -2695,7 +2748,19 @@
     var b = (typeof DB !== 'undefined' && DB.bookings) ? DB.bookings.find(function (x) { return x && x.id === pnr; }) : null;
     if (b && b.dlKey) {
       var k = '&k=' + encodeURIComponent(b.dlKey);
-      showTicket({ pnr: pnr, route: (b.from || '') + ' → ' + (b.to || ''), dateLabel: b.date || '', seatLabels: b.seats || [], totalLabel: money(b.total || 0), npr: 0,
+      /* fx4 (audit #5/#8): the card the sale printed (adopt() keeps it as b.sbCard); an older stored
+         booking falls back to its route, the printed berth labels, AD + BS date and a real NPR figure
+         - never ' → ', stored seat ids (L11) or '≈ NPR 0'. Display only: no fare or seat is changed. */
+      var c = b.sbCard || {}, rt = null;
+      try { rt = (typeof routeById === 'function' && b.routeId) ? routeById(b.routeId) : null; } catch (x) {}
+      var frm = b.from || (rt && rt.from) || '', dst = b.to || (rt && rt.to) || '';
+      var lbls = (c.seatLabels && c.seatLabels.length) ? c.seatLabels
+        : (b.seats || []).map(function (s) { try { return typeof seatLabel === 'function' ? seatLabel(s, rt && rt.type, b.bookingType) : s; } catch (x) { return s; } });
+      var rate = (typeof CONFIG !== 'undefined' && Number(CONFIG.nprPerInr) > 0) ? Number(CONFIG.nprPerInr) : 0;
+      var nprAmt = Number(c.npr) > 0 ? Number(c.npr) : (Number(b.fxTotal) > 0 ? Number(b.fxTotal) : Math.round(Number(b.total || 0) * rate));
+      var dLbl = c.dateLabel || (b.date ? ((typeof fmtDate === 'function' ? fmtDate(b.date) : adFull(b.date))) : '');
+      showTicket({ pnr: pnr, route: c.route || (frm && dst ? frm + ' → ' + dst : ''), date: b.date || '', dateLabel: dLbl, seatLabels: lbls,
+        totalLabel: c.totalLabel || money(b.total || 0), npr: nprAmt, boarding: c.boarding || '', boardingTime: c.boardingTime || '', reportTime: c.reportTime || '',
         isCod: !!b.codFlag, ticket: { view: '/download-ticket.php?pnr=' + encodeURIComponent(pnr) + k + '&img=1&view=1', png: '/download-ticket.php?pnr=' + encodeURIComponent(pnr) + k + '&img=1',
           pdf: '/download-ticket.php?pnr=' + encodeURIComponent(pnr) + k, print: '/download-ticket.php?pnr=' + encodeURIComponent(pnr) + k + '&print=1' } }, false);
     } else {

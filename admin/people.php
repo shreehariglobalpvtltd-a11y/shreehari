@@ -35,9 +35,11 @@ $flash   = $_SESSION['shg_people_flash'] ?? null;
 unset($_SESSION['shg_people_flash']);
 
 /* ---- Everyone, once -------------------------------------------------- */
+// Same rule as AgentReport::kycPending(): no KYC column = nobody is marked and nothing is re-sorted.
+$ppKycOn = AgentWallet::kycAvailable();
 $rows = Database::fetchAll(
     "SELECT a.id, a.username, a.full_name, a.phone, a.email, a.role, a.is_active, a.last_login_at, a.created_at,
-            p.counter_code, p.counter_name, p.kyc_status
+            p.counter_code, p.counter_name, " . ($ppKycOn ? 'p.kyc_status' : 'NULL AS kyc_status') . "
        FROM admins a
        LEFT JOIN admin_profiles p ON p.admin_id = a.id
       ORDER BY a.is_active DESC, a.full_name, a.username"
@@ -46,7 +48,7 @@ $rows = Database::fetchAll(
    disabled, then by name as before). Only kyc_status = 'verified' counts; no profile row,
    none, pending and rejected are "KYC बाँकी". Switch agent_list_verified_first_on (default 1). */
 $kycOk = static fn(array $r): bool => strtolower(trim((string) ($r['kyc_status'] ?? ''))) === 'verified';
-if ($tab === 'agents' && Settings::getBool('agent_list_verified_first_on', true)) {
+if ($ppKycOn && $tab === 'agents' && Settings::getBool('agent_list_verified_first_on', true)) {
     // One sort key per row - [disabled?, not-a-verified-agent?, SQL position] - so the order is total
     // (a pairwise "both agents?" rule is not, and usort then returns whatever it likes).
     $ppKey = [];
@@ -271,7 +273,8 @@ admin_header('Agents & Staff', 'people');
           <td data-label="Cash held" class="num" style="color:<?= $cash > 0.009 ? '#b02a2a' : 'inherit' ?>"><?= $e(inr(max(0.0, $cash))) ?></td>
           <td data-label="Sales this month" class="num"><?= $e(inr((float) ($mtd[$id] ?? 0))) ?></td>
           <td data-label="KYC"><?php $ppKyc = strtolower(trim((string) ($r['kyc_status'] ?? ''))); ?>
-            <?php if ($ppKyc === 'verified'): ?><span class="pp-st open">✓ Verified</span>
+            <?php if (!$ppKycOn): ?><span class="muted">—</span>
+            <?php elseif ($ppKyc === 'verified'): ?><span class="pp-st open">✓ Verified</span>
             <?php elseif ($ppKyc === 'rejected'): ?><span class="pp-st closed_diff" data-kyc-pill>KYC ✗ मिलेन</span>
             <?php elseif ($ppKyc === 'submitted'): ?><span class="pp-st" data-kyc-pill style="background:#fef3c7;color:#92400e">KYC बाँकी · जाँच गर्नुपर्ने</span>
             <?php else: ?><span class="pp-st" data-kyc-pill style="background:#fef3c7;color:#92400e">KYC बाँकी</span><?php endif; ?></td>

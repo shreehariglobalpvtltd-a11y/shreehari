@@ -379,7 +379,9 @@ $parentFilter = (int) ($_GET['parent'] ?? 0);
 /* 26 Nov 2026 (fx1): KYC state on the register. One rule everywhere - only
    admin_profiles.kyc_status = 'verified' is verified; no profile row, NULL, none,
    pending and rejected are all "KYC बाँकी". The column is read only when it exists. */
-$kycCol = AgentWallet::kycAvailable() ? 'p.kyc_status' : 'NULL';
+// Same rule as AgentReport::kycPending(): no KYC column = nobody is marked and nothing is re-sorted.
+$kycOn  = AgentWallet::kycAvailable();
+$kycCol = $kycOn ? 'p.kyc_status' : 'NULL';
 $rows = Database::fetchAll(
     "SELECT a.id, a.username, a.full_name, a.phone, a.email, a.is_active, a.last_login_at, a.created_at,
             $kycCol AS kyc_status,
@@ -487,7 +489,7 @@ unset($r);
 // Serial order: numbered agents first (1, 2, 3...), then the un-numbered by id.
 // 26 Nov 2026 (fx1): KYC-verified agents come first, each group still in serial order
 // (switch agent_list_verified_first_on, default 1; 0 = plain serial order as before).
-$verifiedFirst = Settings::getBool('agent_list_verified_first_on', true);
+$verifiedFirst = $kycOn && Settings::getBool('agent_list_verified_first_on', true);
 usort($rows, static function (array $x, array $y) use ($verifiedFirst): int {
     if ($verifiedFirst && $x['kyc_ok'] !== $y['kyc_ok']) { return $x['kyc_ok'] ? -1 : 1; }
     $sx = $x['serial'] ?? PHP_INT_MAX; $sy = $y['serial'] ?? PHP_INT_MAX;
@@ -505,7 +507,7 @@ $flat   = static fn(array $r): array => [
     $r['rate'] . ' (' . $r['rate_note'] . ')', $r['comm_due'], $r['cash_bal'], (int) $r['sales'], (float) $r['revenue'], (int) ($r['daily_booking_limit'] ?? 0),
     ucfirst((string) $r['status']), (string) ($r['last_sale'] ?? ''), (string) ($r['last_login_at'] ?? ''),
     (string) ($r['joined_on'] ?: substr((string) $r['created_at'], 0, 10)),
-    $r['kyc_ok'] ? 'Verified' : ($r['kyc'] === 'rejected' ? 'Rejected' : ($r['kyc'] === 'submitted' ? 'Submitted - to check' : 'Not done')),
+    !$kycOn ? '' : ($r['kyc_ok'] ? 'Verified' : ($r['kyc'] === 'rejected' ? 'Rejected' : ($r['kyc'] === 'submitted' ? 'Submitted - to check' : 'Not done'))),
 ];
 $export = (string) ($_GET['export'] ?? '');
 if ($export === 'csv' || $export === 'xlsx') {
@@ -643,7 +645,7 @@ admin_header('Agents & Organization Hub', 'agents');
       if ($waDigits !== '' && strlen($waDigits) === 10) { $waDigits = '91' . $waDigits; }
       $appRef = (string) ($r['app_ref'] ?: ('AGR-' . str_pad((string) $r['id'], 6, '0', STR_PAD_LEFT)));
     ?>
-      <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>" data-kyc="<?= $r['kyc_ok'] ? '1' : '0' ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
+      <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>" data-kyc="<?= $kycOn ? ($r['kyc_ok'] ? '1' : '0') : '' ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
         <td style="text-align:center"><input type="checkbox" class="agent-cb" value="<?= (int) $r['id'] ?>" data-name="<?= $e($r['full_name'] ?: $r['username']) ?>" style="width:16px;height:16px;cursor:pointer"></td>
         <td class="num" data-sort="<?= $r['serial'] === null ? 99999 : (int) $r['serial'] ?>"><?= $r['serial'] === null ? '<span class="muted">—</span>' : '<b>' . (int) $r['serial'] . '</b>' ?></td>
         <td data-sort="<?= $e($r['kind']) ?>"><?= $isOrg
@@ -652,7 +654,7 @@ admin_header('Agents & Organization Hub', 'agents');
         <td class="mono"><?= $r['code'] !== '' ? '<span class="pill" style="background:#efeaff;color:#5a3fb0;font-weight:700">' . $e($r['code']) . '</span>' : '<span class="muted">—</span>' ?></td>
         <td>
           <b><?= $e($r['full_name'] ?: $r['username']) ?></b>
-          <?php if (!$r['kyc_ok']): /* 26 Nov 2026 (fx1): unverified agents are marked on the list */ ?>
+          <?php if ($kycOn && !$r['kyc_ok']): /* 26 Nov 2026 (fx1): unverified agents are marked on the list */ ?>
             <?php if ($r['kyc'] === 'rejected'): ?><span class="pill" data-kyc-pill style="background:#f7dcdc;color:#8a1f1f;font-size:11px">KYC ✗ मिलेन</span>
             <?php elseif ($r['kyc'] === 'submitted'): ?><span class="pill" data-kyc-pill style="background:#fef3c7;color:#92400e;font-size:11px" title="Documents sent — the office has to check them">KYC बाँकी · जाँच गर्नुपर्ने</span>
             <?php else: ?><span class="pill" data-kyc-pill style="background:#fef3c7;color:#92400e;font-size:11px" title="No verified ID on file">KYC बाँकी</span><?php endif; ?>
@@ -672,7 +674,7 @@ admin_header('Agents & Organization Hub', 'agents');
         <td class="num" data-sort="<?= (int) ($r['pax'] ?? 0) ?>"><b><?= (int) ($r['pax'] ?? 0) ?> जना</b><div class="muted" style="font-size:11px"><?= (int) $r['sales'] ?> tickets · ₹<?= number_format((float) $r['revenue']) ?></div></td>
         <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?><?php if (isset($creditHeld[(int) $r['id']])): /* 25 Nov 2026 (op5-credit): Agent 360 "Stop selling" */ ?> <span class="pill" style="background:#f7dcdc;color:#8a1f1f" title="<?= $e($creditHeld[(int) $r['id']]) ?>">⛔ On hold · रोकिएको</span><?php endif; ?></td>
         <td><span class="dt-acts">
-          <button type="button" class="btn ghost" onclick="openIdModal(<?= $jsq($appRef) ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,'<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>',<?= $jsq($r['code']) ?>,<?= $jsq($r['phone']) ?>,<?= $jsq($waDigits) ?>,<?= $jsq($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>,'<?= $r['kyc_ok'] ? '1' : '0' ?>')" title="One-Tap ID Card &amp; Agreement Preview">🪪 ID Card</button>
+          <button type="button" class="btn ghost" onclick="openIdModal(<?= $jsq($appRef) ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,'<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>',<?= $jsq($r['code']) ?>,<?= $jsq($r['phone']) ?>,<?= $jsq($waDigits) ?>,<?= $jsq($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>,'<?= $kycOn ? ($r['kyc_ok'] ? '1' : '0') : '' ?>')" title="One-Tap ID Card &amp; Agreement Preview">🪪 ID Card</button>
           <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
           <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
           <a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>" title="Wallet, ledger, payouts">💼 Wallet</a>
@@ -704,7 +706,7 @@ admin_header('Agents & Organization Hub', 'agents');
           <div class="kv"><label>Joined Date</label><b><?= $e($r['joined_on'] ?: substr((string) $r['created_at'], 0, 10)) ?></b></div>
         </div>
         <div class="dt-acts" style="padding:6px 2px">
-          <button type="button" class="btn" onclick="openIdModal(<?= $jsq($appRef) ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,'<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>',<?= $jsq($r['code']) ?>,<?= $jsq($r['phone']) ?>,<?= $jsq($waDigits) ?>,<?= $jsq($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>,'<?= $r['kyc_ok'] ? '1' : '0' ?>')">🪪 ID Card &amp; Agreement Preview</button>
+          <button type="button" class="btn" onclick="openIdModal(<?= $jsq($appRef) ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,'<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>',<?= $jsq($r['code']) ?>,<?= $jsq($r['phone']) ?>,<?= $jsq($waDigits) ?>,<?= $jsq($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>,'<?= $kycOn ? ($r['kyc_ok'] ? '1' : '0') : '' ?>')">🪪 ID Card &amp; Agreement Preview</button>
           <?php if ($canSettleWallet): ?><button type="button" class="btn ghost" onclick="openSettleModal(<?= (int)$r['id'] ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,<?= (float)$r['comm_due'] ?>,<?= (float)$r['cash_bal'] ?>)">💵 Record Wallet Settlement</button><?php endif; ?>
           <a class="btn ghost" href="agent-passengers.php?agent=<?= (int) $r['id'] ?>">🧑‍🤝‍🧑 Passengers</a>
           <a class="btn ghost" href="agent-offline.php?agent=<?= (int) $r['id'] ?>">🧾 Paper tickets</a>

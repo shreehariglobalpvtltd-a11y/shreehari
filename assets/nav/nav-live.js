@@ -1079,7 +1079,8 @@ function myBusAge() {
   Object.keys(d).forEach(function (k) { o[k] = d[k]; });
   o.live = false; o.lastKnown = true; o.lastLat = d.lat; o.lastLng = d.lng; o.lastAtMs = at;
   try { o.lastAt = new Date(at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }); } catch (e) { o.lastAt = ''; }
-  o.lastAgeMin = Math.max(1, Math.round((Date.now() - at) / 60000)); o.lastStop = '';
+  /* the place it was last seen near, like track.php's aged() (pace.liveName), so the card keeps "· <place>" */
+  o.lastAgeMin = Math.max(1, Math.round((Date.now() - at) / 60000)); o.lastStop = (d.pace && d.pace.liveName) || '';
   o.lat = o.lng = o.etaMin = o.km = o.kmh = o.fixAge = null;
   MB.st = o;
   myBusMark(o, false);

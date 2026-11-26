@@ -101,7 +101,14 @@ check('driver app: the clock is measured from the answers; a fix is never re-sta
 check('driver app: the floor of the clock fix is under the 5 min a fix stays live, the ceiling is 12 h',
     preg_match('/var CLK_MIN = (\d+), CLK_MAX = (\d+),/', $drv, $m) === 1 && (int) $m[1] === 150000 && (int) $m[1] < EtaAlerts::FIX_MAX_AGE_SEC * 1000 && (int) $m[2] === 43200000);
 check('driver app: a bus list that did not load is asked for again (timer + "online")', str_contains($drv, 'meT = setTimeout(meAgain, 8000)') && str_contains($drv, 'else if (meT) { clearTimeout(meT); meAgain(); }'));
-check('driver app: the screen lock is asked for again when the system drops it', str_contains($drv, 'if (!S.wake && now % 10000 < 1000) keepAwake();'));
+check('driver app: the screen lock is asked for again when the system drops it (every 10 s by elapsed time, not a clock window)',
+    str_contains($drv, 'if (!S.wake && now - lastWakeTry >= 10000) { lastWakeTry = now; keepAwake(); }') && !str_contains($drv, 'now % 10000 < 1000) keepAwake'));
+check('driver app: an SOS / breakdown gets twice the time limit, and a given-up alert says "may have been sent", not "no signal"',
+    str_contains($drv, "var mul = body.action === 'event' && (body.kind === 'sos' || body.kind === 'breakdown') ? 2 : 1;")
+    && str_contains($drv, 'S.netTimeout * 1000 * mul') && str_contains($drv, 'g.gaveUp = true') && str_contains($drv, 'sosOffline(!!(e && e.gaveUp))')
+    && str_contains($drv, 'It may have been sent; trying again') && str_contains($drv, 'खबर पुगेको हुन सक्छ'));
+check('SHARI NAV "My bus": gone stale on this phone keeps the place it was last seen near (pace.liveName, like track.php)',
+    str_contains($nav, "o.lastStop = (d.pace && d.pace.liveName) || '';"));
 check('api/driver.php reads both switches, answers its clock only while the fix is on, and takes the points as sent',
     str_contains($api, "Settings::getInt('driver_net_timeout_sec', 20)") && str_contains($api, "Settings::getBool('driver_clock_fix_on', true)")
     && str_contains($api, "(\$clockFix ? ['nowMs' => (int) round(microtime(true) * 1000)] : [])") && substr_count($api, '+ $appNet()') === 3
@@ -534,6 +541,54 @@ async function driverPickOffline() {
   check('...back online: the list is asked for at once and the line is gone', mes().length === 2 && E('ePick').textContent === '', mes().length + ' / ' + E('ePick').textContent);
 }
 
+/* ---- driver/index.php: an SOS tapped on a weak link (time limit 20 s) ---- */
+async function driverSos() {
+  localStorage.setItem('shgDrv:token', 'a'.repeat(48));
+  localStorage.setItem('shgDrv:trip', JSON.stringify({ tripId: 7, scheduleId: 3, route: 'A - B', bus: 'T-1', dep: '10:00', date: '2096-07-14', since: now, startedTs: null }));
+  let how = 'hang';
+  const cfg = { netTimeoutSec: 20, clockFix: true };
+  H.route = c => {
+    const a = c.body ? c.body.action : (/action=(\w+)/.exec(c.url) || [])[1];
+    if (a === 'me') return json(200, { ok: true, data: Object.assign({ driver: { name: 'T', phone: '', role: 'driver' }, trip: { tripId: 7, scheduleId: 3, lastSeq: 0, lastPingAt: null, startedTs: null }, trips: [], pingSec: 15, crew: {} }, cfg, { nowMs: now }) });
+    if (a === 'trip') return json(200, { ok: true, data: { now: Math.floor(now / 1000) } });
+    if (a === 'ping') return json(200, { ok: true, data: Object.assign({ ack: c.body.points.reduce((m, p) => Math.max(m, p.seq), 0), stored: c.body.points.length, moved: true, pingSec: 15 }, cfg, { nowMs: now }) });
+    if (a === 'event') return how === 'hang' ? hang(c) : how === 'off' ? Promise.reject(new Error('offline')) : json(200, { ok: true, data: { repeat: true } });
+    return json(200, { ok: true, data: {} });
+  };
+  run(fileA); await settle();
+  check('the driver page boots with the saved trip', typeof H.onFix === 'function');
+  if (typeof H.onFix !== 'function') return;
+  const evs = () => H.calls.filter(c => c.body && c.body.action === 'event');
+  const tapSos = async () => {
+    (E('aSos')._l.click || []).forEach(f => f({}));
+    await advance(1000);   // past the 0.7 s guard against a double tap
+    const go = E('shBody').children.filter(x => String(x.textContent).indexOf('YES, SEND SOS') >= 0).pop();
+    if (go) (go._l.click || []).forEach(f => f({}));
+    await settle();
+    return !!go;
+  };
+  check('SOS: the confirm button is there', await tapSos());
+  const first = evs()[evs().length - 1];
+  check('...the SOS goes out at once', evs().length === 1 && first.body.kind === 'sos' && !!first.opt.signal);
+  await advance(21000);
+  check('...on a slow link it is NOT given up at 20 s like the GPS upload (alerts get 2x the time)', first.opt.signal.aborted === false && E('shT').textContent.indexOf('Weak signal') < 0 && E('shT').textContent.indexOf('No signal') < 0, E('shT').textContent);
+  await advance(20000);
+  check('...given up at 40 s: the sheet says "weak signal, may have been sent, trying again" - not "no signal"',
+    first.opt.signal.aborted === true && E('shT').textContent.indexOf('Weak signal') >= 0 && E('sheet').hidden === false
+    && String(E('shBody').children[E('shBody').children.length - 1].textContent).indexOf('It may have been sent') >= 0, E('shT').textContent);
+  how = 'ok';
+  await advance(16000);
+  check('...the re-send lands (the server already had it): "SOS sent"', evs().length >= 2 && evs()[evs().length - 1].body.kind === 'sos' && E('shT').textContent.indexOf('SOS sent') >= 0, E('shT').textContent);
+  const n = evs().length;
+  await advance(45000);
+  check('...and it is not sent again after that', evs().length === n, String(evs().length - n));
+  how = 'off';
+  (E('shClose')._l.click || []).forEach(f => f({}));
+  await tapSos();
+  check('no network at all (the request fails at once): still "No signal, saved on the phone"', E('shT').textContent.indexOf('No signal') >= 0
+    && String(E('shBody').children[E('shBody').children.length - 1].textContent).indexOf('Saved on the phone') >= 0, E('shT').textContent);
+}
+
 /* ---- admin/map.php: the office Live Map script (rendered), without the map library ---- */
 async function map() {
   let how = 'ok';
@@ -586,7 +641,7 @@ async function nav() {
   const escH = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   globalThis.SHGNAV_X = { esc: escH, fetchT: (u, o) => fetch(u, o), S: { map: fakeMap, lang: 'en', saver: true, me: null, level: 0, depth: 0, nav: null }, toast() {}, hav() { return 0; }, closeModal() {} };
   const base = { pnr: 'SHG-TEST-1', bookingStatus: 'confirmed', state: 'on_route', bus: 'T-1', route: 'A - B', stop: 'Kanpur', staleSec: 60 };
-  const live = Object.assign({}, base, { live: true, lat: 26.5, lng: 80.3, kmh: 50, fixAge: 10, etaMin: 25, km: 14, bearing: 90, lastKnown: false });
+  const live = Object.assign({}, base, { live: true, lat: 26.5, lng: 80.3, kmh: 50, fixAge: 10, etaMin: 25, km: 14, bearing: 90, lastKnown: false, pace: { liveName: 'Unnao' } });
   let ans = live, how = 'ok';
   H.route = c => {
     if (c.url.indexOf('/api/whereis.php') === 0) return how === 'ok' ? json(200, { ok: true, data: Object.assign({}, ans) }) : Promise.reject(new Error('offline'));
@@ -625,6 +680,7 @@ async function nav() {
   await advance(40000);
   check('70 s without an answer (this phone is offline): the coach turns grey where it was, the card is not LIVE, no ETA',
     on().length === 1 && mk().ll[0] === 80.3 && mk().el.classList.contains('nl-last') && card().indexOf('nl-badge-live') < 0 && card().indexOf('last known place') > 0 && card().indexOf('25 min') < 0, card().slice(0, 400));
+  check('...and the card keeps the place it was last seen near (before: the place was dropped)', card().indexOf(' IST · Unnao') > 0, card().slice(0, 400));
 
   how = 'ok'; ans = Object.assign({}, live, { staleSec: 0 });
   await advance(15000);
@@ -634,7 +690,7 @@ async function nav() {
 }
 
 (mode === 'track' ? track(true) : mode === 'track0' ? track(false) : mode === 'map' || mode === 'map0' ? map() : mode === 'nav' ? nav()
-  : mode.indexOf('clock-') === 0 ? driverClock(mode.slice(6)) : mode === 'pick' ? driverPick() : mode === 'pick-offline' ? driverPickOffline() : driver(mode === 'driver0' ? 0 : 20))
+  : mode.indexOf('clock-') === 0 ? driverClock(mode.slice(6)) : mode === 'pick' ? driverPick() : mode === 'sos' ? driverSos() : mode === 'pick-offline' ? driverPickOffline() : driver(mode === 'driver0' ? 0 : 20))
   .catch(e => check('the fake browser run threw', false, e && e.stack))
   .then(() => { process.stdout.write(JSON.stringify(out)); });
 FXJS;
@@ -659,6 +715,7 @@ $browser('driver web app, clock wrong but the first answer is slow (fake browser
 $browser('driver web app, driver_clock_fix_on = 0 (fake browser)', 'clock-off', $tmp . DIRECTORY_SEPARATOR . 'driver.js');
 $browser('driver web app: the bus list on a weak network (fake browser)', 'pick', $tmp . DIRECTORY_SEPARATOR . 'driver.js');
 $browser('driver web app: the bus list while the phone is offline (fake browser)', 'pick-offline', $tmp . DIRECTORY_SEPARATOR . 'driver.js');
+$browser('driver web app: SOS tapped on a weak link (fake browser)', 'sos', $tmp . DIRECTORY_SEPARATOR . 'driver.js');
 $browser('SHARI NAV "My bus" (fake browser, no map library)', 'nav', $ROOT . '/assets/nav/nav-live.js');
 /* the office Live Map script as PHP prints it (the page itself needs an admin sign-in): its template values are given here */
 $renderMap = static function (int $stale) use ($map, $a, $b): string {

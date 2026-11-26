@@ -297,13 +297,21 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     else { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
     if (S.netTimeout > 0 && TIMED[body.action] && window.AbortController) {
       ctl = new AbortController(); opt.signal = ctl.signal;
-      tm = setTimeout(function () { ctl.abort(); }, S.netTimeout * 1000);
+      /* an SOS / breakdown gets twice the time: on a weak link it may be slow, and giving it up early only
+         shows "no signal" for a tap that is often already with the office */
+      var mul = body.action === 'event' && (body.kind === 'sos' || body.kind === 'breakdown') ? 2 : 1;
+      tm = setTimeout(function () { ctl.abort(); }, S.netTimeout * 1000 * mul);
     }
     return fetch(url, opt).then(function (r) {
       var t1 = Date.now();
       return r.json().catch(function () { if (ctl && ctl.signal.aborted) throw new Error('timeout'); return {}; })
         .then(function (j) { clearTimeout(tm); j.status = r.status; clockSeen(j.data ? j.data.nowMs : null, t0, t1); return j; });
-    }).catch(function (e) { clearTimeout(tm); throw e; });
+    }).catch(function (e) {
+      clearTimeout(tm);
+      /* given up by our own timer (the request may have reached the server) - not "no network at all" */
+      if (ctl && ctl.signal.aborted) { var g = new Error('timeout'); g.gaveUp = true; throw g; }
+      throw e;
+    });
   }
   /* 26 Nov 2026 (fx1): a phone whose clock is wrong was never live ("position is 10 min old" for a fix taken
      this second). The answers carry the server's clock (nowMs); from one that came back within 10 s the page
@@ -576,14 +584,14 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     qDrop(-1, 0); clearTripData();
     loadMe().then(function () { $('ePick').textContent = msg; });
   }
-  var lastFlush = 0, lastQ = -1, lastEvFlush = 0;
+  var lastFlush = 0, lastQ = -1, lastEvFlush = 0, lastWakeTry = 0;
   function tick() {
     var now = Date.now();
     if (now - lastFlush >= S.pingSec * 1000) { lastFlush = now; flush(); }
     if (now - lastEvFlush >= S.pingSec * 1000) { lastEvFlush = now; flushEvents(false); }
     /* 26 Nov 2026 (fx1): Android drops the screen lock on battery saver / low battery without the page being
        hidden; ask again (keepAwake does nothing while it is held or the page is hidden) */
-    if (!S.wake && now % 10000 < 1000) keepAwake();
+    if (!S.wake && now - lastWakeTry >= 10000) { lastWakeTry = now; keepAwake(); }
     if (S.trip && !S.infoLoading && now - S.infoAt > 300000 && navigator.onLine !== false && document.visibilityState === 'visible') loadInfo();
     var f = S.fix, age = f ? Math.round((now - f.t) / 1000) : null;
     if (!f) setState('warn', 'Searching GPS… · GPS खोज रहा है');
@@ -794,10 +802,10 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
       if (j.ok) { onEventDone(ev, j.data || {}); flushEvents(false); return; }
       if (j.status === 409) { tripGone('This trip has ended or moved to another phone. · यात्रा अर्को फोनमा छ।'); return; }
       if (fromTap || !keep) toast(j.error || 'Not sent. · पठाउन सकिएन।', true);
-    }).catch(function () {
+    }).catch(function (e) {
       S.evSending = false;
       if (!fromTap) return;
-      if (isAlert(ev)) sosOffline();
+      if (isAlert(ev)) sosOffline(!!(e && e.gaveUp));
       else toast('📶 नेट आएपछि पठाइन्छ · Saved: it goes when the phone has signal.');
     });
   }
@@ -827,9 +835,13 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
       p.className = 'mut'; b.appendChild(p); callOffice(b);
     }, 'बन्द · Close');
   }
-  function sosOffline() {
-    sheet('📶 नेट छैन · No signal', function (b) {
-      var p = el('p', 'खबर फोनमा सुरक्षित छ — नेट आउनासाथ आफैँ जान्छ। अहिले नै अफिसलाई फोन गर्नुहोस्। · Saved on the phone; it goes by itself when there is signal. Call the office now.');
+  /* slow = the request was given up by the time limit: it may already be with the office, so the sheet says
+     "may have been sent, trying again" instead of "no signal" (the re-send answers alertSent when it lands) */
+  function sosOffline(slow) {
+    sheet(slow ? '📶 नेट कमजोर · Weak signal' : '📶 नेट छैन · No signal', function (b) {
+      var p = el('p', slow
+        ? 'खबर पुगेको हुन सक्छ — फेरि पठाउँदै छ, पुगेपछि यहाँ देखिन्छ। अहिले नै अफिसलाई फोन गर्नुहोस्। · It may have been sent; trying again, you will see here when it lands. Call the office now.'
+        : 'खबर फोनमा सुरक्षित छ — नेट आउनासाथ आफैँ जान्छ। अहिले नै अफिसलाई फोन गर्नुहोस्। · Saved on the phone; it goes by itself when there is signal. Call the office now.');
       p.className = 'mut'; b.appendChild(p); callOffice(b);
     }, 'बन्द · Close');
   }

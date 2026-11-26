@@ -996,7 +996,21 @@ final class WaBot
             /* Not paid yet? Then the most useful reply is the way to pay: the
                QR image carries the exact amount, the link opens a UPI app. */
             // fx1 (26 Nov 2026): never a pay QR for a pay-at-boarding (COD) booking, whatever its status
-            if (Settings::getString('upi_id', '') !== '' && (float) $detail['total_amount'] > 0 && (int) ($detail['is_cod'] ?? 0) !== 1) {
+            $np = ['nepal' => false, 'payee' => '', 'kind' => ''];
+            if ((float) $detail['total_amount'] > 0 && (int) ($detail['is_cod'] ?? 0) !== 1) {
+                try {
+                    require_once INCLUDE_PATH . '/aitools.php';
+                    $np = AiTools::nepalPay((string) $detail['pnr']);
+                } catch (Throwable $e) {
+                    // the old (India) path
+                }
+            }
+            if ($np['nepal']) {
+                // fx4 (26 Nov 2026): a Nepal sale never gets the India UPI QR - its wallet id + the page with the Nepal QR
+                $lines[] = "\n💰 तिर्न बाँकी छ भने · To pay:" . ($np['payee'] !== '' ? "\n• " . $np['kind'] . ': ' . $np['payee'] : '');
+                $lines[] = 'नेपालको QR यो लिंकमा छ · The Nepal QR is on this link:';
+                $lines[] = appUrl('pay.php?pnr=' . urlencode((string) $detail['pnr']));
+            } elseif (Settings::getString('upi_id', '') !== '' && (float) $detail['total_amount'] > 0 && (int) ($detail['is_cod'] ?? 0) !== 1) {
                 $mediaUrl = appUrl('pay-image.php?pnr=' . urlencode((string) $detail['pnr']));
                 $lines[]  = "\n💰 तिर्न बाँकी छ भने माथिको QR स्क्यान गर्नुहोस्, वा यहाँ थिच्नुहोस्:";
                 $lines[]  = appUrl('pay.php?pnr=' . urlencode((string) $detail['pnr']));
@@ -1357,7 +1371,15 @@ final class WaBot
                 . ((string) ($b['travel_date'] ?? '') !== '' ? ' · ' . formatDate((string) $b['travel_date'], 'D, j M') : '');
         }
         $lines[] = 'स्थिति · Status: ' . $label;
-        if ($due > 0 && in_array($st, ['pending', 'rejected'], true) || ($st === 'confirmed' && (int) $b['is_cod'] === 1 && $due > 0)) {
+        /* fx4 (26 Nov 2026): a pay-at-boarding (COD) ticket gets no pay link here - "pay on boarding".
+           The owner's optional free pay page for COD (pay.php, 16 Nov P1) stays reachable; the bot
+           sends its link only when wa_cod_pay_link_on = 1 (default 0). */
+        $isCod = (int) $b['is_cod'] === 1;
+        if ($due > 0 && $isCod && in_array($st, ['pending', 'rejected', 'confirmed'], true)) {
+            $lines[] = Settings::getBool('wa_cod_pay_link_on', false) && $st === 'confirmed'
+                ? '💳 बसमा / काउन्टरमा तिर्नुहोस् · Pay on boarding (' . inr($due) . ') — वा · or: ' . appUrl('pay.php?pnr=' . rawurlencode((string) $b['pnr']))
+                : '💳 बसमा / काउन्टरमा तिर्नुहोस् · Pay on boarding (' . inr($due) . ')';
+        } elseif ($due > 0 && in_array($st, ['pending', 'rejected'], true)) {
             $lines[] = '💳 तिर्न · Pay ' . inr($due) . ': ' . appUrl('pay.php?pnr=' . rawurlencode((string) $b['pnr']));
         }
         if (in_array($st, ['confirmed', 'completed'], true)) {

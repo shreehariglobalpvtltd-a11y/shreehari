@@ -118,6 +118,23 @@ final class ChalaniPng
     }
 
     /**
+     * Switch chalani_png_v20_on (default on): the fx1 row and head layout of the
+     * passenger pages - the name on its own line with the ticket no. and ID under it,
+     * two-line BOARDING / DROP / REMARKS cells, the driver phone on its own line, one
+     * title line with a two-line place list. Off = the v19 row layout, as before
+     * (the copy files, copy number, flags by direction and the strip fix stay: they
+     * are correctness fixes, not layout). Flipping it redraws every cached page.
+     */
+    public static function v20On(): bool
+    {
+        try {
+            return Settings::getBool('chalani_png_v20_on', true);
+        } catch (Throwable $e) {
+            return true;
+        }
+    }
+
+    /**
      * The travel date in Bikram Sambat, or '' (switch off, or outside the BS table -
      * then the chalani prints the AD date alone, never a guessed one).
      * $kind 'ro' = "BS 2087-10-02" (the Roman PNG pages), 'ne' = "वि.सं. २०८७ माघ २".
@@ -817,6 +834,11 @@ final class ChalaniPng
         if (($copyTag = self::copyTag($fmt)) !== '') {
             $seed['copy'] = [$copyTag, (string) ($fmt['copy']['kind'] ?? ''), (string) ($fmt['copy']['label'] ?? '')];
         }
+        /* 26 Nov 2026 (fx4): the v20 layout switch - only when it is OFF, so the
+           default seed (and every page already drawn with it) keeps its hash */
+        if (!self::v20On()) {
+            $seed['v20'] = 0;
+        }
         // 25 Nov 2026 (op5): the border ID tag is drawn too - only when the caller passes it (other keys unchanged)
         if (isset($fmt['paxId']) && is_callable($fmt['paxId'])) {
             $seed['paxid'] = array_map(static fn(array $r): string => (string) $fmt['paxId']($r), $rows);
@@ -1443,7 +1465,8 @@ final class ChalaniPng
         $copyKind  = self::copyTag($fmt) !== '' ? (string) ($fmt['copy']['kind'] ?? '') : '';
         $copyLabel = $copyKind !== '' ? trim(self::ro((string) ($fmt['copy']['label'] ?? ''))) : '';
         $flagFirst = self::flagFirst($trip);
-        self::$drawn = ['chart' => false, 'page' => $page, 'chalaniNo' => $chalaniNo, 'copy' => $copyKind, 'copyHead' => '', 'flagFirst' => $flagFirst,
+        $v20       = self::v20On();   // 26 Nov 2026 (fx4): switch chalani_png_v20_on - off = the v19 row / head layout
+        self::$drawn = ['chart' => false, 'page' => $page, 'chalaniNo' => $chalaniNo, 'copy' => $copyKind, 'copyHead' => '', 'flagFirst' => $flagFirst, 'v20' => $v20,
                         'date' => '', 'driver' => [], 'places' => [], 'placesMore' => 0, 'title' => '', 'names' => [], 'subs' => [], 'boards' => [], 'drops' => [], 'remarks' => [], 'sumHead' => ''];
 
         /* ================= mantra strip ================= */
@@ -1571,12 +1594,15 @@ final class ChalaniPng
            on one line lost the phone to the "..", and the crew calls that number */
         $drvName  = trim($roman((string) ($trip['driver_name'] ?? '')));
         $drvPhone = trim($roman((string) ($trip['driver_phone'] ?? '')));
+        $drvOne   = trim($drvName . ($drvPhone !== '' ? '  ·  ' . $drvPhone : ''));   // v19: "name · phone" on one line
         $depTs = ($trip['dep_time'] ?? '') !== '' ? strtotime($date . ' ' . substr((string) $trip['dep_time'], 0, 8)) : false;
         foreach ([
             ['FROM (BOARDING CITY)', $roman((string) ($trip['from_city'] ?? '-')), ''],
             ['TO (DESTINATION)',     $roman((string) ($trip['to_city'] ?? '-')), ''],
             ['DEPARTURE',            $depTs !== false ? strtoupper(date('g:i A', $depTs)) : '-', ''],
-            ['DRIVER / CONDUCTOR',   $drvName !== '' ? $drvName : ($drvPhone !== '' ? $drvPhone : '-'), $drvName !== '' ? $drvPhone : ''],
+            $v20
+                ? ['DRIVER / CONDUCTOR', $drvName !== '' ? $drvName : ($drvPhone !== '' ? $drvPhone : '-'), $drvName !== '' ? $drvPhone : '']
+                : ['DRIVER / CONDUCTOR', $drvOne !== '' ? $drvOne : '-', ''],
         ] as $i => [$k, $v, $v2]) {
             $bx = $M + $i * ($boxW + 12);
             GoldSheet::card($im, $bx, $y, $bx + $boxW, $y + 84, 10, [255, 253, 246], GoldSheet::GOLD, 6);
@@ -1610,7 +1636,26 @@ final class ChalaniPng
         $places = (array) ($fmt['placeList'] ?? []);
         $pgTxt  = 'PAGE ' . $page . ' OF ' . $pagesShown;
         $ttlW   = $stripW - self::w(16, $pgTxt) - 28;
-        if ($places !== []) {
+        if (!$v20) {
+            /* v19 layout (switch chalani_png_v20_on = 0): the head-count and the places on
+               one line, then FROM - TO · PASSENGER RECORD with the page number */
+            if ($places !== []) {
+                $ws  = (int) ($fmt['womenSingleCount'] ?? 0);
+                $hd  = 'BUS ' . $roman((string) ($fmt['busName'] ?? '')) . '  ·  ' . count($rows) . ' PASSENGERS' . ((int) ($totals['infants'] ?? 0) > 0 ? ' + ' . (int) $totals['infants'] . ' INFANT (LAP)' : '') . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : '') . '  ·  ';
+                $pl  = implode('   ', array_map(static fn(array $p): string => (int) $p['no'] . '. ' . self::ro((string) $p['name']) . ' ' . (int) $p['n'], $places));
+                self::t($im, 15, $M, $y, $navy, self::fit(15, $hd, $stripW), true);
+                self::t($im, 15, $M + self::w(15, $hd) + 4, $y, $ink, self::fit(15, $pl, max(40, $stripW - self::w(15, $hd) - 4)), false);
+                self::$drawn['title'] = $hd;
+            } elseif ($stopsLine !== '') {
+                self::t($im, 15, $M, $y, $muted, self::fit(15, 'Boarding points: ' . $stopsLine, $stripW), false);
+            }
+            $y += 28;
+            self::t($im, 20, $M, $y, $navy, strtoupper(
+                $roman((string) ($trip['from_city'] ?? 'Gujarat')) . ' - '
+                . $roman((string) ($trip['to_city'] ?? 'Rupaidiha')) . '  ·  PASSENGER RECORD'
+            ), true);
+            self::tR($im, 16, $px1 - 16, $y + 3, $maroon, $pgTxt, true);
+        } elseif ($places !== []) {
             $ws   = (int) ($fmt['womenSingleCount'] ?? 0);
             $busN = trim($roman((string) ($fmt['busName'] ?? '')));
             $hd   = ($busN !== '' ? 'BUS ' . strtoupper($busN) . '  ·  ' : '') . count($rows) . ' PASSENGERS' . ((int) ($totals['infants'] ?? 0) > 0 ? ' + ' . (int) $totals['infants'] . ' INFANT (LAP)' : '') . ($ws > 0 ? '  ·  WOMEN SINGLE ' . $ws : '');
@@ -1646,8 +1691,10 @@ final class ChalaniPng
                 self::t($im, 13, $M, $y + 26, $muted, self::fit(13, 'Boarding points: ' . $stopsLine, $stripW), false);
             }
         }
-        self::tR($im, 15, $px1 - 16, $y - 4, $maroon, $pgTxt, true);
-        $y += 28;
+        if ($v20) {
+            self::tR($im, 15, $px1 - 16, $y - 4, $maroon, $pgTxt, true);
+            $y += 28;
+        }
         /* 25 Nov 2026 (release ch, uniform chalani): the money strip - जम्मा यात्री Total |
            नगद Cash | अनलाइन Online | ड्यू बाँकी Due - on every page, from the same $money /
            payMark the table reads (ChalaniStrip: each rupee in one bucket). Switch
@@ -1659,8 +1706,12 @@ final class ChalaniPng
                glyphs). 26 Nov 2026 (fx1): asked of the shaper itself - class_exists() was
                always true (bootstrap loads the class), so a box without HarfBuzz printed
                unjoined conjuncts instead of the Roman labels this promises. */
-            $devOk = false;
-            try { $devOk = class_exists('DevShape') && DevShape::shape('जम्मा यात्री') !== null; } catch (Throwable $e) { $devOk = false; }
+            static $devOkMemo = null;   // 26 Nov 2026 (fx4): asked once per request, not once per page
+            if ($devOkMemo === null) {
+                $devOkMemo = false;
+                try { $devOkMemo = class_exists('DevShape') && DevShape::shape('जम्मा यात्री') !== null; } catch (Throwable $e) { $devOkMemo = false; }
+            }
+            $devOk = $devOkMemo;
             $lab   = $devOk ? ['जम्मा यात्री · TOTAL', 'नगद · CASH', 'अनलाइन · ONLINE', 'ड्यू बाँकी · DUE'] : ['TOTAL PASSENGERS', 'CASH', 'ONLINE', 'DUE'];
             $cl0   = (string) ($fmt['cur']['latin'] ?? 'Rs');
             $val   = [
@@ -1793,20 +1844,34 @@ final class ChalaniPng
             $rInf = isset($fmt['infantsOf']) && is_callable($fmt['infantsOf']) ? (int) $fmt['infantsOf']($r) : 0;   // 16 Nov 2026
             $pidT = isset($fmt['paxId']) && is_callable($fmt['paxId']) ? trim($roman((string) $fmt['paxId']($r))) : '';   // 25 Nov 2026 (op5): border ID tag
             $infT = $rInf > 0 ? ' +' . $rInf . ' infant' : '';
-            /* a Devanagari name is taller (matras above the head line and under the base
-               line: 25 px at this size against 21 for Latin) - one size down and 1 px up,
-               so its lowest matra stays above the small line */
-            $nmDev = preg_match('/\p{Devanagari}/u', $name) === 1;
-            $nmS   = $nmDev ? 14 : 16;
-            $nameL = self::fit($nmS, $name, $cw[2] - 20 - ($infT !== '' ? self::w($nmS, $infT) : 0)) . $infT;
-            self::t($im, $nmS, $cx[2] + 10, $ry + ($nmDev ? 2 : 3), $ink, $nameL, false);
-            /* the ID first, in full - when both do not fit it is the ticket number that shortens */
-            $subR = $pidT !== '' ? 'ID ' . $pidT : '';
-            $subL = $tkt !== '' ? self::fit(11, $tkt, $cw[2] - 20 - ($subR !== '' ? self::w(11, $subR) + 16 : 0)) : '';
-            if ($subL !== '') { self::t($im, 11, $cx[2] + 10, $ry + 28, $late ? $maroon : $muted, $subL, false); }
-            if ($subR !== '') { self::tR($im, 11, $cx[2] + $cw[2] - 10, $ry + 28, $navy, self::fit(11, $subR, $cw[2] - 20), true); }
-            self::$drawn['names'][] = $nameL;
-            self::$drawn['subs'][]  = trim($subL . ' | ' . $subR, ' |');
+            if (!$v20) {
+                /* v19 layout (switch chalani_png_v20_on = 0): name, infants and ID on one
+                   line, the ticket number at the right of the same line */
+                $nameL = $name . $infT . ($pidT !== '' ? '  ' . $pidT : '');
+                $tktW  = $tkt !== '' ? self::w(11, $tkt) + 14 : 0;
+                $nameL = self::fit(18, $nameL, $cw[2] - 20 - $tktW);
+                self::t($im, 18, $cx[2] + 10, $vy + 1, $ink, $nameL, false);
+                if ($tkt !== '') {
+                    self::tR($im, 11, $cx[2] + $cw[2] - 8, $vy + 9, $late ? $maroon : $muted, $tkt, false);
+                }
+                self::$drawn['names'][] = $nameL;
+                self::$drawn['subs'][]  = $tkt;
+            } else {
+                /* a Devanagari name is taller (matras above the head line and under the base
+                   line: 25 px at this size against 21 for Latin) - one size down and 1 px up,
+                   so its lowest matra stays above the small line */
+                $nmDev = preg_match('/\p{Devanagari}/u', $name) === 1;
+                $nmS   = $nmDev ? 14 : 16;
+                $nameL = self::fit($nmS, $name, $cw[2] - 20 - ($infT !== '' ? self::w($nmS, $infT) : 0)) . $infT;
+                self::t($im, $nmS, $cx[2] + 10, $ry + ($nmDev ? 2 : 3), $ink, $nameL, false);
+                /* the ID first, in full - when both do not fit it is the ticket number that shortens */
+                $subR = $pidT !== '' ? 'ID ' . $pidT : '';
+                $subL = $tkt !== '' ? self::fit(11, $tkt, $cw[2] - 20 - ($subR !== '' ? self::w(11, $subR) + 16 : 0)) : '';
+                if ($subL !== '') { self::t($im, 11, $cx[2] + 10, $ry + 28, $late ? $maroon : $muted, $subL, false); }
+                if ($subR !== '') { self::tR($im, 11, $cx[2] + $cw[2] - 10, $ry + 28, $navy, self::fit(11, $subR, $cw[2] - 20), true); }
+                self::$drawn['names'][] = $nameL;
+                self::$drawn['subs'][]  = trim($subL . ' | ' . $subR, ' |');
+            }
 
             $ph = (string) ($r['contact_phone'] ?? '');
             self::t($im, 18, $cx[3] + 10, $vy + 2, $ink,
@@ -1816,8 +1881,18 @@ final class ChalaniPng
                a size, then takes two lines - it used to end in ".." */
             $pk  = $r['boarding_stop'] ? (string) $stopShrt((string) $r['boarding_stop']) : '—';
             $pno = (int) $placeNo($pk);
-            self::$drawn['boards'][] = $placeCell($cx[4] + 10, $cw[4] - 18, $ry, ($pno > 0 ? $pno . ' · ' : '') . $roman($pk));
-            self::$drawn['drops'][]  = $placeCell($cx[5] + 10, $cw[5] - 18, $ry, $roman((string) $stopShrt((string) $r['drop_stop'])));
+            if ($v20) {
+                self::$drawn['boards'][] = $placeCell($cx[4] + 10, $cw[4] - 18, $ry, ($pno > 0 ? $pno . ' · ' : '') . $roman($pk));
+                self::$drawn['drops'][]  = $placeCell($cx[5] + 10, $cw[5] - 18, $ry, $roman((string) $stopShrt((string) $r['drop_stop'])));
+            } else {
+                /* v19 layout: one line each at 17 px */
+                $bL = self::fit(17, ($pno > 0 ? $pno . ' · ' : '') . $roman($pk), $cw[4] - 20);
+                $dL = self::fit(17, $roman((string) $stopShrt((string) $r['drop_stop'])), $cw[5] - 20);
+                self::t($im, 17, $cx[4] + 10, $vy + 3, $ink, $bL, false);
+                self::t($im, 17, $cx[5] + 10, $vy + 3, $ink, $dL, false);
+                self::$drawn['boards'][] = $bL;
+                self::$drawn['drops'][]  = $dL;
+            }
 
             self::tR($im, 18, $cx[6] + $cw[6] - 10, $vy + 2, $ink, number_format($m['ticket']), false);
             if ($m['cash']   > 0) { self::tR($im, 18, $cx[7] + $cw[7] - 10, $vy + 2, $ink,   number_format($m['cash']),   false); }
@@ -1899,7 +1974,11 @@ final class ChalaniPng
             $remS = 0;
             foreach ([15, 14, 13] as $try) { if (self::w($try, $rem) + ($remBold ? 1 : 0) <= $remW) { $remS = $try; break; } }
             $remBits = explode(' · ', $rem);
-            if ($remS > 0 || count($remBits) < 2) {
+            if (!$v20) {
+                /* v19 layout (switch chalani_png_v20_on = 0): one line at 15 px */
+                $remL = self::fit(15, $rem, $cw[10] - 20);
+                self::t($im, 15, $cx[10] + 10, $vy + 3, $remCol, $remL, $remBold);
+            } elseif ($remS > 0 || count($remBits) < 2) {
                 if ($remS === 0) { foreach ([12, 11] as $try) { $remS = $try; if (self::w($try, $rem) + ($remBold ? 1 : 0) <= $remW) { break; } } }
                 $remL = self::fit($remS, $rem, $remW);
                 self::t($im, $remS, $cx[10] + 8, $vy + 3 + intdiv(15 - $remS, 2), $remCol, $remL, $remBold);
