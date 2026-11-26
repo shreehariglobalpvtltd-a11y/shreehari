@@ -138,6 +138,24 @@ final class WaBot
                 Logger::exception($e, 'whatsapp');
             }
         }
+        /* 26 Nov 2026 (fx1): the OWNER's questions — "kun agent le kati kate?", "pending payment?", "bus 3 kaha cha?",
+           "revenue", "sanjh ko report" — are answered here, before the staff desk. The desk answers every line from
+           a staff number, so the office words further down never ran for the owner (he got "no sure answer", and
+           "agents" was read as a directory search). Read-only, office numbers only, strict patterns, and never a
+           line the desk is waiting on (a "ho", a sale, a PNR): includes/waoffice.php. Switch wa_office_ask_on. */
+        if ($kind === 'text' && $body !== '' && $senderDigits !== '' && is_file(INCLUDE_PATH . '/waoffice.php')) {
+            try {
+                require_once INCLUDE_PATH . '/waoffice.php';
+                $officeAns = WaOffice::handle($from, $senderDigits, $body, $kind);
+                if ($officeAns !== null) {
+                    self::$lastRouter = 'office';
+                    self::$lastRole   = (string) ($officeAns['role'] ?? 'admin');
+                    return self::out($officeAns['text'], $officeAns['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');     // the desk below still answers
+            }
+        }
         // Agent Pro (Oct 2026): the agents' and staff WhatsApp desk
         if (is_file(INCLUDE_PATH . '/agentpro-wa.php')) {
             require_once INCLUDE_PATH . '/agentpro-wa.php';
@@ -754,9 +772,17 @@ final class WaBot
             if ($body !== '' && Settings::getBool('wa_draft_only_bookings_on', true)) {
                 try {
                     require_once INCLUDE_PATH . '/waanswer.php';
-                    if (!WaAnswer::looksLikeBooking($body)) {
+                    /* 26 Nov 2026 (fx1; "ticket cancel garnu cha" / "seat badalnu cha" were parked as a NEW booking draft
+                       because the line holds "ticket" / "seat"): the words of a cancel, a refund or a seat / date change
+                       are never a booking request. WaEdit answers them earlier; this is the belt for when it could not. */
+                    $changeTalk = false;
+                    if (Settings::getBool('wa_change_words_on', true)) {
+                        require_once INCLUDE_PATH . '/waedit.php';
+                        $changeTalk = WaEdit::changeWords($body);
+                    }
+                    if ($changeTalk || !WaAnswer::looksLikeBooking($body)) {
                         $draftOk = false;                       // a statement gets the welcome below, never a draft
-                        if (WaAnswer::isQuestion($body)) {
+                        if ($changeTalk || WaAnswer::isQuestion($body)) {
                             self::$lastRouter = 'unsure';
                             return self::out(WaAnswer::unsure($body, $isStaff));
                         }
@@ -806,8 +832,24 @@ final class WaBot
                 );
             }
 
+            /* 26 Nov 2026 (fx1; "hi" got this welcome with no menu and no buttons whenever wa_faq_on was off): a bare
+               hello also gets the order menu — book / my ticket / office — as buttons, and in words for a phone
+               without them. A hello carries no language of its own, so the desk speaks Nepali first (WaFaq's rule).
+               Switches wa_order_menu_on + wa_welcome_menu_on (default 1); off = the welcome alone, as before. */
+            $helloMenu = false;
+            if ($body !== '' && $kind === 'text' && Settings::getBool('wa_order_menu_on', true) && Settings::getBool('wa_welcome_menu_on', true)) {
+                try {
+                    require_once INCLUDE_PATH . '/wafaq.php';
+                    $helloMenu = WaFaq::greets($body);
+                } catch (Throwable $e) {
+                    $helloMenu = false;
+                }
+            }
+            if ($helloMenu && $fl === 'en') {
+                $fl = 'ne';
+            }
             self::$lastRouter = 'welcome';
-            return self::out(
+            $welcome = (
                 self::tr($fl,
                     "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
                     . "आफ्नो बुकिङ PNR (जस्तै SHG-2026-00963) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
@@ -828,6 +870,18 @@ final class WaBot
                     . "like \"2 seats Nepal 15 Sep, Mehsana\".\n\n"
                     . ($phone !== '' ? "Want to talk to a person? Call: " . $phone . "." : ""))
             );
+            if ($helloMenu) {
+                try {
+                    require_once INCLUDE_PATH . '/waorder.php';
+                    $menuRole = is_array($who) && in_array((string) ($who['role'] ?? ''), ['customer', 'staff', 'admin'], true) ? (string) $who['role'] : 'customer';
+                    // buttons: the welcome is the body above them (as WaFaq's hello does); words: the same menu spelled out
+                    $menuUi = WaOrder::menuUi($menuRole, $fl, rtrim($welcome) . "\n\n" . WaOrder::menuHead($fl));
+                    return self::out(rtrim($welcome) . "\n\n" . WaOrder::menuText($menuRole, $fl), null, $menuUi);
+                } catch (Throwable $e) {
+                    Logger::exception($e, 'whatsapp');   // the welcome alone still goes
+                }
+            }
+            return self::out($welcome);
         }
 
         try {
@@ -941,7 +995,8 @@ final class WaBot
             $lines[] = "\n⏳ भुक्तानी जाँच भइरहेको छ। पक्का भएपछि तपाईंको टिकट यहीँ आउनेछ।";
             /* Not paid yet? Then the most useful reply is the way to pay: the
                QR image carries the exact amount, the link opens a UPI app. */
-            if (Settings::getString('upi_id', '') !== '' && (float) $detail['total_amount'] > 0) {
+            // fx1 (26 Nov 2026): never a pay QR for a pay-at-boarding (COD) booking, whatever its status
+            if (Settings::getString('upi_id', '') !== '' && (float) $detail['total_amount'] > 0 && (int) ($detail['is_cod'] ?? 0) !== 1) {
                 $mediaUrl = appUrl('pay-image.php?pnr=' . urlencode((string) $detail['pnr']));
                 $lines[]  = "\n💰 तिर्न बाँकी छ भने माथिको QR स्क्यान गर्नुहोस्, वा यहाँ थिच्नुहोस्:";
                 $lines[]  = appUrl('pay.php?pnr=' . urlencode((string) $detail['pnr']));

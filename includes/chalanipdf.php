@@ -36,6 +36,7 @@ if (!defined('SHG_APP')) {
 require_once INCLUDE_PATH . '/pdf.php';
 require_once INCLUDE_PATH . '/ticket.php';      // Ticket::logoFile()
 require_once INCLUDE_PATH . '/chalanistrip.php'; // 25 Nov 2026 (release ch): Total | Cash | Online | Due
+require_once INCLUDE_PATH . '/chalanipng.php';   // 26 Nov 2026 (fx1): the shared direction / BS date / copy rules
 
 final class ChalaniPdf
 {
@@ -126,10 +127,15 @@ final class ChalaniPdf
             }
             return $pdf->textWidth($latin($t), $size, 'F1');
         };
-        $fit = static function (string $t, float $size, float $max) use ($width): string {
+        /* 26 Nov 2026 (fx1): a cut must SHOW. Text on the Helvetica path loses every
+           non-ASCII byte ($latin), so the "…" this appended was stripped again and a
+           shortened ticket number or name printed as if it were complete. Latin text
+           now ends in "..", Devanagari text keeps "…" (the CID face has it). */
+        $fit = static function (string $t, float $size, float $max) use ($width, $hasDev, $needCID, $norm): string {
             if ($t === '' || $width($t, $size) <= $max) { return $t; }
-            while ($t !== '' && $width($t . '…', $size) > $max) { $t = mb_substr($t, 0, mb_strlen($t) - 1); }
-            return $t . '…';
+            $dots = ($hasDev && $needCID($norm($t))) ? '…' : '..';
+            while ($t !== '' && $width($t . $dots, $size) > $max) { $t = mb_substr($t, 0, mb_strlen($t) - 1); }
+            return rtrim($t) . $dots;
         };
 
         /* ---- Nepali formatting --------------------------------------- */
@@ -169,9 +175,31 @@ final class ChalaniPdf
         $co        = Settings::company();
         $cin       = $co['cin'];
 
+        /* 26 Nov 2026 (fx1): one rule with the PNG pages and the print sheet
+           (ChalaniPng) - the flags and the corridor words follow the DIRECTION (India
+           first going to Nepal, Nepal first on the return run; the face has no arrow,
+           so the order of the two names carries it), the date prints in BS beside AD
+           (switch chalani_bs_date_on), and an agent's / a desk's copy says so. */
+        $toNepal   = ChalaniPng::toNepal($trip);
+        $flagFirst = $toNepal ? 'IN' : 'NP';
+        $corridor  = $toNepal ? 'गुजरात – रुपैडिहा' : 'रुपैडिहा – गुजरात';
+        $lands     = $toNepal ? 'भारत–नेपाल' : 'नेपाल–भारत';
+        $bsNe      = ChalaniPng::bsDate($date, 'ne');
+        $copy      = ChalaniPng::copyTag($fmt) !== '' ? (array) $fmt['copy'] : ['kind' => '', 'label' => ''];
+        $copyLine  = match ((string) $copy['kind']) {
+            'agent' => 'एजेन्ट प्रति · AGENT COPY' . (trim((string) $copy['label']) !== '' ? ' — ' . trim((string) $copy['label']) : ''),
+            'desk'  => 'काउन्टर प्रति · DESK COPY' . (trim((string) $copy['label']) !== '' ? ' — ' . trim((string) $copy['label']) : ''),
+            default => '',
+        };
+
         /* ---- columns (pt) — mirror the HTML colgroup --------------------- */
         $inner = $W - 2 * $M;                                    // 801.89
-        $cw    = [20, 34, 148, 72, 88, 88, 50, 50, 56, 40];       // 646
+        /* 26 Nov 2026 (fx1): the name column is 30 pt wider - 12 from the mobile column
+           (a ten-digit number needs 41 pt of the 72 it had) and 6 from each of the three
+           money columns ("2,200" needs 20 pt of 50) - because the name cell also holds
+           the lap-infant mark, the border ID and the ticket number. The sum is unchanged,
+           so the boarding / drop / remarks columns and the page economy are too. */
+        $cw    = [20, 34, 178, 60, 88, 88, 44, 44, 50, 40];       // 646
         $cw[]  = $inner - array_sum($cw);                         // कैफियत takes the rest
         $cx    = [];
         $x     = $M;
@@ -183,7 +211,7 @@ final class ChalaniPdf
 
         /* ---- page chrome --------------------------------------------- */
         $page = 0;
-        $header = static function () use ($pdf, $W, $M, $txt, $txtR, $txtC, $width, $neDate, $neTime, $coachNe, $date, $chalaniNo, $trip, $cin, $co, &$page): float {
+        $header = static function () use ($pdf, $W, $M, $txt, $txtR, $txtC, $width, $fit, $neDate, $neTime, $coachNe, $date, $chalaniNo, $trip, $cin, $co, $flagFirst, $corridor, $bsNe, $copyLine, &$page): float {
             $page++;
             $y = $M + 2;
             /* The emblem alone, aspect-correct (it was squashed into 44x44),
@@ -206,7 +234,7 @@ final class ChalaniPdf
             $title = 'बस चलानी · यात्रु विवरण';
             $txtR($rx, $y + 12, $title, 13, true, self::NAVY);
             // both flags before the title, and the heritage art in the free middle of the letterhead
-            DocArt::pdfFlags($pdf, $rx - $width($title, 13) - 8 - DocArt::pdfFlagsWidth(12, 3), $y + 1, 12, 3, 'IN', true);
+            DocArt::pdfFlags($pdf, $rx - $width($title, 13) - 8 - DocArt::pdfFlagsWidth(12, 3), $y + 1, 12, 3, $flagFirst, true);
             $artL = $lx + max(array_map(static fn(array $l): float => $width((string) $l[0], (float) $l[1]), $hl)) + 16;
             $artR = $rx - 270;
             if (DocArt::heritageOn() && $artR - $artL >= 90) {
@@ -215,28 +243,42 @@ final class ChalaniPdf
                     $txtC($artR - $aw, $artR, $y + 44, 'सगरमाथा · लुम्बिनी', 6.4, false, self::MUTE);
                 }
             }
-            $txtR($rx, $y + 22, 'गुजरात ⇄ रुपैडिहा · ' . $coachNe((string) ($trip['coach_type'] ?? '')), 7.6, false, self::MUTE);
+            /* a copy says whose it is, in the place of the corridor line (same height, so
+               no row moves); the whole-bus sheet keeps the corridor and the coach */
+            if ($copyLine !== '') {
+                $txtR($rx, $y + 22, $fit($copyLine, 7.8, 262), 7.8, true, self::AMBER);
+            } else {
+                $txtR($rx, $y + 22, $corridor . ' · ' . $coachNe((string) ($trip['coach_type'] ?? '')), 7.6, false, self::MUTE);
+            }
             // three underlined fields, right-aligned as the reference
-            $kv = [['चलानी नं. :', $chalaniNo], ['मिति :', $neDate($date)], ['बस नं. :', (string) ($trip['bus_number'] ?? '')]];
+            // 26 Nov 2026 (fx1): the date field is wider - it holds BS and AD
+            $kv = [['चलानी नं. :', $chalaniNo], ['मिति :', ($bsNe !== '' ? $bsNe . ' · ' : '') . $neDate($date)], ['बस नं. :', (string) ($trip['bus_number'] ?? '')]];
             $ky = $y + 32;
+            $fw = $bsNe !== '' ? 178.0 : 124.0;
             foreach ($kv as [$k, $v]) {
-                $txtR($rx - 128, $ky, $k, 7.6, false, self::MUTE);
-                $pdf->line($rx - 124, $ky + 1.5, $rx, $ky + 1.5, self::LINE, 0.5);
-                $txt($rx - 121, $ky, $v, 7.8, true, self::INK);
+                $txtR($rx - $fw - 4, $ky, $k, 7.6, false, self::MUTE);
+                $pdf->line($rx - $fw, $ky + 1.5, $rx, $ky + 1.5, self::LINE, 0.5);
+                $vs = $width($v, 7.8) <= $fw - 4 ? 7.8 : 7.0;
+                $txt($rx - $fw + 3, $ky, $fit($v, $vs, $fw - 4), $vs, true, self::INK);
                 $ky += 9.5;
             }
             $by = $y + 56;
             $pdf->line($M, $by, $W - $M, $by, self::NAVY, 1.6);
             return $by + 8;
         };
-        $footer = static function () use ($pdf, $W, $H, $M, $txt, $txtR, $cin, $co, &$page): void {
+        $footer = static function () use ($pdf, $W, $H, $M, $txt, $txtR, $cin, $co, $corridor, $lands, $chalaniNo, &$page): void {
             $fy = $H - $M - 14;
             $pdf->line($M, $fy - 4, $W - $M, $fy - 4, self::NAVY, 1.0);
             $txt($M, $fy + 4, 'बुकिङ काउन्टर : ' . $co['counters'] . '  ·  २४×७ सहायता / WhatsApp : +' . $co['whatsapp'], 6.9, false, self::MUTE);
-            $txt($M, $fy + 12, 'यो ' . ($co['legalNe'] !== '' ? $co['legalNe'] : 'एस हरि ग्लोबल प्राइभेट लिमिटेड') . 'को आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : गुजरात ⇄ रुपैडिहा (भारत–नेपाल)। CIN ' . $cin, 6.4, false, self::MUTE);
-            $txtR($W - $M, $fy + 12, $co['web'] . '  ·  पृष्ठ ' . $page, 6.6, false, self::MUTE);
+            $txt($M, $fy + 12, 'यो ' . ($co['legalNe'] !== '' ? $co['legalNe'] : 'एस हरि ग्लोबल प्राइभेट लिमिटेड') . 'को आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : ' . $corridor . ' (' . $lands . ')। CIN ' . $cin, 6.4, false, self::MUTE);
+            // 26 Nov 2026 (fx1): the chalani number beside the page number - a loose page 2 says which bus it belongs to
+            $txtR($W - $M, $fy + 12, $co['web'] . '  ·  ' . $chalaniNo . '  ·  पृष्ठ ' . $page, 6.6, false, self::MUTE);
         };
         $tableHead = static function (float $y) use ($pdf, $M, $inner, $cx, $cw, $heads, $align, $headH, $txt, $txtR, $txtC): float {
+            /* 26 Nov 2026 (fx1): Pdf::rect() strokes with whatever width the LAST line() left
+               behind - after the header's 1.6 pt rule the first boxes of a page printed
+               heavy and the rest thin. Every group of strokes sets its own width now. */
+            $pdf->setLineWidth(0.5);
             $pdf->rect($M, $y, $inner, $headH, self::SOFT, true);
             foreach ($heads as $i => $h) {
                 $pdf->rect($cx[$i], $y, $cw[$i], $headH, self::LINE, false);
@@ -265,6 +307,7 @@ final class ChalaniPdf
         $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $width, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $womanSingle, $placeNo, $infantsOf, $rowState, $stateNe, $payMark, $cs, $paxIdOf): void {
             $ws = $r !== null && $womanSingle($r);
             if ($ws) { $pdf->rect($M, $y, $inner, $rowH, self::PINK, true); }
+            $pdf->setLineWidth(0.5);   // 26 Nov 2026 (fx1): the tick drawn in the row before left 0.8 behind
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
             $ty = $y + 9.4;
             $txtC($cx[0], $cx[0] + $cw[0], $ty, $neDigits((string) $n), 6.8, false, self::MUTE);
@@ -272,19 +315,57 @@ final class ChalaniPdf
             self::$drawn['rows']++;
             $m = $money($r);
             $txtC($cx[1], $cx[1] + $cw[1], $ty, Seats::displayLabel((string) $r['seat_no'], $seatCoach, (string) ($r['booking_mode'] ?? 'sharing')), 8, true, $ws ? self::ROSE : self::INK);
+            /* 26 Nov 2026 (fx1): the name cell, right to left - the ticket number WHOLE (a
+               real one, TKT-261126-G4YTK7, is 54.5 pt at 5.6 pt and was fitted into 50, so
+               every number lost its last letter with nothing to show for it), then the
+               border ID tag WHOLE, and the NAME in what is left: it steps down a size
+               before it takes the "..". The ID used to be glued to the name and cut. */
             $name = (string) ($r['full_name'] ?? '');
             $inf  = (int) $infantsOf($r);
-            if ($inf > 0) { $name .= ' + शिशु ' . $neDigits((string) $inf); }
-            if (($pidT = (string) $paxIdOf($r)) !== '') { $name .= ' · ' . $pidT; }
-            $tail = ' ' . (string) ($r['ticket_number'] ?: $r['pnr']);
-            $txt($cx[2] + 3, $ty, $fit($name, 7.8, $cw[2] - 6 - 52), 7.8, false, self::INK);
-            $txtR($cx[2] + $cw[2] - 3, $ty, $fit(trim($tail), 5.6, 50), 5.6, false, $isLate($r) ? self::RED : self::MUTE);
+            $infT = $inf > 0 ? '+ शिशु ' . $neDigits((string) $inf) : '';      // its own piece: a long name can no longer push it off the row
+            $pidT = trim((string) $paxIdOf($r));
+            $tail = trim((string) ($r['ticket_number'] ?: $r['pnr']));
+            $infW = $infT !== '' ? $width($infT, 6.4) + 3.0 : 0.0;
+            $pidL = $pidT !== '' ? $fit($pidT, 5.6, 46) : '';
+            $pidW = $pidL !== '' ? $width($pidL, 5.6) + 3.5 : 0.0;
+            /* the name and the ticket number give way together, a step at a time, until the
+               four pieces fit the cell; only then does the name take the ".." */
+            $ns = 6.6; $ts = 4.6;
+            foreach ([[7.8, 5.4], [7.2, 5.4], [7.2, 5.0], [6.6, 5.0], [6.6, 4.6]] as [$tryN, $tryT]) {
+                if ($width($name, $tryN) + $infW + $pidW + ($tail !== '' ? $width($tail, $tryT) + 3.5 : 0.0) <= $cw[2] - 6) { $ns = $tryN; $ts = $tryT; break; }
+            }
+            $nx2  = $cx[2] + $cw[2] - 3;                    // right edge still free in the cell
+            if ($tail !== '') {
+                $tailL = $fit($tail, $ts, 66);
+                $txtR($nx2, $ty, $tailL, $ts, false, $isLate($r) ? self::RED : self::MUTE);
+                $nx2 -= $width($tailL, $ts) + 3.5;
+                self::$drawn['tickets'][] = $tailL;
+            }
+            if ($pidL !== '') {
+                $txtR($nx2, $ty, $pidL, 5.6, true, self::NAVY);
+                $nx2 -= $pidW;
+                self::$drawn['ids'][] = $pidL;
+            }
+            $nameL = $fit($name, $ns, max(20.0, $nx2 - ($cx[2] + 3) - $infW));
+            $txt($cx[2] + 3, $ty, $nameL, $ns, false, self::INK);
+            if ($infT !== '') {
+                $txt($cx[2] + 3 + $width($nameL, $ns) + 3.0, $ty, $infT, 6.4, true, [124, 45, 18]);
+                self::$drawn['infantMarks'][] = $infT;
+            }
+            self::$drawn['names'][] = $nameL;
             $ph = (string) ($r['contact_phone'] ?? '');
             $txt($cx[3] + 3, $ty, $ph === '0000000000' ? '' : $fit($ph, 7.4, $cw[3] - 6), 7.4, false, self::INK);
             $pk  = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—';
             $pno = $placeNo($pk);
-            $txt($cx[4] + 3, $ty, $fit(($pno > 0 ? $neDigits((string) $pno) . ' · ' : '') . $pk, 7.2, $cw[4] - 6), 7.2, false, self::INK);
-            $txt($cx[5] + 3, $ty, $fit($stopShort((string) $r['drop_stop']), 7.2, $cw[5] - 6), 7.2, false, self::INK);
+            /* 26 Nov 2026 (fx1): a long place name ("Rupaidiha Border Bus Park") steps down
+               to 5.6 pt before it is cut - at 7.2 pt it lost its last two words */
+            foreach ([[4, ($pno > 0 ? $neDigits((string) $pno) . ' · ' : '') . $pk], [5, $stopShort((string) $r['drop_stop'])]] as [$ci, $pt]) {
+                $ps = 5.6;
+                foreach ([7.2, 6.6, 6.0, 5.6] as $try) { $ps = $try; if ($width($pt, $try) <= $cw[$ci] - 6) { break; } }
+                $ptL = $fit($pt, $ps, $cw[$ci] - 6);
+                $txt($cx[$ci] + 3, $ty, $ptL, $ps, false, self::INK);
+                self::$drawn['places'][] = $ptL;
+            }
             $txtR($cx[6] + $cw[6] - 3, $ty, number_format($m['ticket']), 7.6, false, self::INK);
             if ($m['cash']   > 0) { $txtR($cx[7] + $cw[7] - 3, $ty, number_format($m['cash']),   7.6, false, self::INK); }
             if ($m['online'] > 0) { $txtR($cx[8] + $cw[8] - 3, $ty, number_format($m['online']), 7.6, false, self::INK); }
@@ -333,6 +414,7 @@ final class ChalaniPdf
         ];
         foreach ($boxes as $i => [$k, $v]) {
             $bx = $M + $i * ($boxW + 8);
+            $pdf->setLineWidth(0.7);   // 26 Nov 2026 (fx1): all four boxes the same weight (the first was 1.6 pt)
             $pdf->roundedRect($bx, $y, $boxW, 28, 4, self::NAVY, false);
             $txt($bx + 6, $y + 9, $k, 6.2, false, self::MUTE);
             $pdf->line($bx + 6, $y + 23.5, $bx + $boxW - 6, $y + 23.5, self::MUTE, 0.4);
@@ -341,8 +423,13 @@ final class ChalaniPdf
         $y += 34;
 
         if ($stopsLine !== '') {
-            $line = 'चढ्ने ठाउँहरू : ' . $stopsLine . '  ·  सीमा : रुपैडिहा · जमुनाहा  ·  अगाडि : नेपालगंज, बाँके';
-            $txt($M, $y, $fit($line, 6.6, $inner), 6.6, false, self::MUTE);
+            // 26 Nov 2026 (fx1): the return run crosses the border the other way
+            $line = 'चढ्ने ठाउँहरू : ' . $stopsLine . ($toNepal ? '  ·  सीमा : रुपैडिहा · जमुनाहा  ·  अगाडि : नेपालगंज, बाँके' : '  ·  सीमा : जमुनाहा · रुपैडिहा  ·  गन्तव्य : गुजरात');
+            /* +0.8 pt under the boxes (the line touched them); the 9 pt step below is
+               unchanged, so the table starts where it did and no row changes page */
+            $ls = 5.4;
+            foreach ([6.6, 6.2, 5.8, 5.4] as $try) { $ls = $try; if ($width($line, $try) <= $inner) { break; } }   // an eleven-stop route lost its last stops and the border note at 6.6 pt
+            $txt($M, $y + 0.8, $fit($line, $ls, $inner), $ls, false, self::MUTE);
             $y += 9;
         }
         /* 6 Nov 2026: place-wise strip — bus + total (+ women on a single sleeper),
@@ -363,13 +450,14 @@ final class ChalaniPdf
             if ($cur !== '') { $lines[] = $cur; }
             $lines = array_slice($lines, 0, 3);
             $bh = 14 + 10 * count($lines);
+            $pdf->setLineWidth(0.7);
             $pdf->roundedRect($M, $y - 2, $inner, $bh, 4, self::NAVY, false);
             $txt($M + 8, $y + 8, $fit($head, 8.2, $inner - 16), 8.2, true, self::NAVY);
             $ly = $y + 18;
             foreach ($lines as $ln) { $txt($M + 8, $ly, $ln, 7.4, false, self::INK); $ly += 10; }
             $y += $bh + 4;
         }
-        $bandL = 'गुजरात ⇄ रुपैडिहा · यात्रु यात्रा अभिलेख';
+        $bandL = $corridor . ' · यात्रु यात्रा अभिलेख';
         /* 25 Nov 2026 (release ch, uniform chalani): the band's right side carries the money
            strip - जम्मा यात्री | नगद | अनलाइन | ड्यू बाँकी - from the same $money / payMark the
            rows read (ChalaniStrip), in the band's own height so no row moves to another page.
@@ -415,7 +503,10 @@ final class ChalaniPdf
         /* ---- table, paginated ---------------------------------------- */
         $limit  = $H - $M - 16;                  // the footer rule sits just below this
         self::$drawn = ['rows' => 0, 'xLines' => 0, 'maxBottom' => 0.0, 'limit' => $limit, 'marks' => [], 'sum' => [],
-            'strip' => $strip !== null ? array_diff_key($strip, ['rows' => 1]) : null];   // 25 Nov 2026 (release ch)
+            'strip' => $strip !== null ? array_diff_key($strip, ['rows' => 1]) : null,   // 25 Nov 2026 (release ch)
+            /* 26 Nov 2026 (fx1): the name cell as drawn (tests/fx1-chalani-test.php), the flag order, the date, the copy, the chart's extra seats */
+            'tickets' => [], 'ids' => [], 'names' => [], 'infantMarks' => [], 'places' => [], 'flagFirst' => $flagFirst, 'date' => ($bsNe !== '' ? $bsNe . ' · ' : '') . $neDate($date),
+            'copy' => $copyLine, 'extraSeats' => 0, 'infantTags' => 0];
         /* 16 Nov 2026 (owner: "chalani ko lagi bisesh payment bhayo ki nai thapaune
            line"): one line per booking with desk extras + blank pen lines.
            Page economy (review): with NO extras on the bus (the usual case) there is
@@ -462,6 +553,7 @@ final class ChalaniPdf
         foreach ($xw as $k => $w) { $xx[$k] = $acc; $acc += $w; }
         $xCell = static function (float $yy, array $vals, bool $head, ?array $rgbLast = null) use ($pdf, $xx, $xw, $xRowH, $txt, $txtR, $fit): void {
             if ($head) { $pdf->rect($xx[0], $yy, array_sum($xw), $xRowH, self::SOFT, true); }
+            $pdf->setLineWidth(0.5);
             foreach ($xw as $k => $w) {
                 $pdf->rect($xx[$k], $yy, $w, $xRowH, self::LINE, false);
                 $v = (string) ($vals[$k] ?? '');
@@ -490,6 +582,7 @@ final class ChalaniPdf
             if ($room < 1 && $xk < $xn && !$xFresh) { $footer(); $pdf->newPage(); $y = $header(); $xFresh = true; continue; }
             $take = max(0, min($room, $xn - $xk));
             $bh2  = 16 + $xRowH * (1 + $take) + 4;
+            $pdf->setLineWidth(0.7);
             $pdf->roundedRect($M, $y, $inner, $bh2, 4, self::NAVY, false);
             $txt($M + 8, $y + 11, 'विशेष भुक्तानी · थप सामान / शिशु / अन्य — भयो कि भएन' . ($xCont ? ' (क्रमशः)' : ''), 7.8, true, self::NAVY);
             $xy = $y + 16;
@@ -511,9 +604,15 @@ final class ChalaniPdf
         if ($y + $boxesH + 8 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
         $halfW = ($inner - 10) / 2;
         // Payment summary
+        $pdf->setLineWidth(0.7);
         $pdf->roundedRect($M, $y, $halfW, $boxesH, 4, self::NAVY, false);
         self::$drawn['maxBottom'] = max(self::$drawn['maxBottom'], $y + $boxesH);
-        $txt($M + 8, $y + 11, 'भुक्तानी सारांश' . (isset($fmt['cur']['desk']) ? ' · ' . (string) $fmt['cur']['desk'] . ' नेपाल काउन्टर प्रति (' . (string) ($fmt['cur']['code'] ?? 'NPR') . ')' : ''), 7.8, true, self::NAVY);
+        /* 26 Nov 2026 (fx1): whose money this adds up - an agent's or a rupee desk's copy
+           read like the whole bus here */
+        $sumWho = isset($fmt['cur']['desk'])
+            ? ' · ' . (string) $fmt['cur']['desk'] . ' नेपाल काउन्टर प्रति (' . (string) ($fmt['cur']['code'] ?? 'NPR') . ')'
+            : ((string) $copy['kind'] === 'agent' ? ' · एजेन्ट प्रति' : ((string) $copy['kind'] === 'desk' ? ' · काउन्टर प्रति' : ''));
+        $txt($M + 8, $y + 11, $fit('भुक्तानी सारांश' . $sumWho, 7.8, $halfW - 16), 7.8, true, self::NAVY);
         $sum = [
             ['जम्मा यात्रु',            $neDigits((string) ($totals['passengers'] ?? 0))],
             ['जम्मा टिकट रकम',          $cs . ' ' . number_format((float) ($totals['ticket'] ?? 0))],
@@ -523,12 +622,21 @@ final class ChalaniPdf
             ['बसमा उठाउनु पर्ने',          $neDigits((string) (int) ($totals['boardDueN'] ?? 0)) . ' जना · ' . $cs . ' ' . number_format((float) ($totals['boardDue'] ?? 0)), 'due'],
             ['छुट / सहुलियत',            $cs . ' ' . number_format((float) ($totals['discount'] ?? 0))],
         ];
+        /* 26 Nov 2026 (fx1): the strip at the top counts a verified payment the office
+           "marked due" as ड्यू; the नगद / अनलाइन lines above keep it (one rule, pinned by
+           tests). One line says how much, so the top and the bottom of the sheet agree.
+           The pitch below shrinks to fit - the box and the page economy do not change. */
+        $markedDue = $strip !== null ? (float) ($strip['markedCash'] ?? 0) + (float) ($strip['markedOnline'] ?? 0) : 0.0;
+        if ($markedDue > 0) {
+            array_splice($sum, 4, 0, [['   यसमध्ये कार्यालयले बाँकी राखेको', $cs . ' ' . number_format($markedDue), 'mk']]);
+        }
         if ($hasX) {
             $sum[] = ['विशेष भुक्तानी (थप सामान / शिशु)', $cs . ' ' . number_format((float) ($totals['extras'] ?? 0))];
             $sum[] = ['   भयो / बाँकी', $cs . ' ' . number_format((float) ($totals['extrasPaid'] ?? 0)) . ' / ' . number_format((float) ($totals['extrasDue'] ?? 0))];
         } else {
             // no extras on this bus: the blank special-payment lines for the road, here
-            for ($p = 0; $p < min(2, $xPen); $p++) { $sum[] = ['विशेष भुक्तानी', 'भयो [  ]  भएन [  ]', 'pen']; }
+            // (26 Nov 2026, fx1: one of the two gives its place to the marked-due line, so the box keeps 9 lines)
+            for ($p = 0; $p < min($markedDue > 0 ? 1 : 2, $xPen); $p++) { $sum[] = ['विशेष भुक्तानी', 'भयो [  ]  भएन [  ]', 'pen']; }
         }
         $sum[] = ['खुद जम्मा संकलन', $cs . ' ' . number_format((float) ($totals['net'] ?? 0)) . $inrNote('net')];
         $sy = $y + 21.5;
@@ -539,7 +647,7 @@ final class ChalaniPdf
             self::$drawn['sum'][] = $lab . ' = ' . $val;
             $last = $k === count($sum) - 1;
             $pen  = ($line[2] ?? '') === 'pen';
-            $hot  = ($line[2] ?? '') === 'due' && (float) ($totals['boardDue'] ?? 0) > 0;
+            $hot  = (($line[2] ?? '') === 'due' && (float) ($totals['boardDue'] ?? 0) > 0) || ($line[2] ?? '') === 'mk';
             if ($hot) {
                 $txt($M + 10, $sy, $lab, 7.2, true, self::RED);
                 $pdf->line($M + $halfW - 116, $sy + 1.5, $M + $halfW - 10, $sy + 1.5, self::LINE, 0.5);
@@ -559,6 +667,7 @@ final class ChalaniPdf
         }
         // Authorisation
         $ax = $M + $halfW + 10;
+        $pdf->setLineWidth(0.7);
         $pdf->roundedRect($ax, $y, $halfW, $boxesH, 4, self::NAVY, false);
         $txt($ax + 8, $y + 11, 'प्रमाणीकरण · दस्तखत', 7.8, true, self::NAVY);
         $signs = ['कन्डक्टरको सही', 'चालकको सही', 'एजेन्ट / कार्यालय सही', 'प्रमाणित गर्ने (म्यानेजर)'];
@@ -596,7 +705,14 @@ final class ChalaniPdf
             $hs = ['single' => 'SINGLE SLEEPER · 1 BERTH', 'double' => 'DOUBLE SLEEPER · 2 BERTHS', 'seat' => ''];
             $cellW = ($deckW - 12 - $aisle) / ($nL + $nR);
             $maxRows = max(array_map(static fn(array $d): int => count($d['rows']), $decks));
-            $avail = ($H - $M - 30) - ($y + 34);
+            /* 26 Nov 2026 (fx1): the extra seats sold on this bus (EX1, EX2 ...) as their own
+               row under the decks, and "+ शिशु n" on the berth a lap infant rides on - the
+               print sheet's chart had both, this page left them out although its header
+               counts those passengers. The decks give up the room only when there are any. */
+            $exBeds = array_values(array_filter(array_map('strval', array_keys($info)), static fn(string $b): bool => Seats::isExtraSeat($b)));
+            usort($exBeds, static fn(string $a, string $b): int => (int) substr($a, 2) <=> (int) substr($b, 2));
+            $exH   = $exBeds !== [] ? 44.0 : 0.0;
+            $avail = ($H - $M - 30) - ($y + 34) - $exH;
             $cellH = min(46.0, max(22.0, $avail / max(1, $maxRows) - 4));
             $col = static function (?array $i): array {
                 if ($i === null)        { return [[234, 247, 238], [159, 211, 174]]; }
@@ -604,10 +720,27 @@ final class ChalaniPdf
                 if (!empty($i['woman'])) { return [[253, 231, 242], [224, 106, 168]]; }
                 return [[220, 232, 251], [110, 149, 216]];
             };
+            /* one berth: label, first name, then "ठाउँ n · महिला · + शिशु n" */
+            $berth = static function (float $cxp, float $ry, float $cellW, float $cellH, string $lbl, ?array $i) use ($pdf, $col, $txtC, $fit, $neDigits): void {
+                [$fill, $edge] = $col($i);
+                $pdf->setLineWidth(0.5);
+                $pdf->roundedRect($cxp + 1.5, $ry, $cellW - 3, $cellH, 4, $fill, true);
+                $pdf->roundedRect($cxp + 1.5, $ry, $cellW - 3, $cellH, 4, $edge, false);
+                $txtC($cxp, $cxp + $cellW, $ry + 10, $lbl, 8, true, $i !== null && !empty($i['woman']) ? self::ROSE : self::NAVY);
+                if ($i !== null && $cellH >= 28) {
+                    $first = (string) (explode(' ', trim((string) $i['name']))[0] ?? '');
+                    $txtC($cxp, $cxp + $cellW, $ry + 20, $fit($first, 6.6, $cellW - 6), 6.6, false, self::INK);
+                    $inf = (int) ($i['inf'] ?? 0);
+                    if ($inf > 0) { self::$drawn['infantTags']++; }
+                    $tag = implode(' · ', array_filter([(int) $i['place'] > 0 ? 'ठाउँ ' . $neDigits((string) (int) $i['place']) : '', !empty($i['ws']) ? 'महिला' : '', $inf > 0 ? '+ शिशु ' . $neDigits((string) $inf) : '']));
+                    $txtC($cxp, $cxp + $cellW, $ry + 29, $fit($tag, 6, $cellW - 4), 6, true, !empty($i['ws']) ? self::ROSE : self::MUTE);
+                }
+            };
             foreach ($decks as $di => $dk) {
                 $dx = $M + $di * ($deckW + $gap);
                 $dy = $y;
                 $deckH = 30 + count($dk['rows']) * ($cellH + 4) + 6;
+                $pdf->setLineWidth(0.8);   // 26 Nov 2026 (fx1): both deck frames the same weight
                 $pdf->roundedRect($dx, $dy, $deckW, $deckH, 6, self::LINE, false);
                 $txt($dx + 8, $dy + 12, (string) $dk['label'], 9, true, self::NAVY);
                 if ($sleeper) {
@@ -625,18 +758,7 @@ final class ChalaniPdf
                     foreach ($ga[0] as $k => $bed) { $cells[] = [$dx + 6 + $k * $cellW, $bed]; }
                     foreach ($gb[0] as $k => $bed) { $cells[] = [$dx + 6 + $nL * $cellW + $aisle + $k * $cellW, $bed]; }
                     foreach ($cells as [$cxp, $bed]) {
-                        $i = $info[$bed] ?? null;
-                        [$fill, $edge] = $col($i);
-                        $pdf->roundedRect($cxp + 1.5, $ry, $cellW - 3, $cellH, 4, $fill, true);
-                        $pdf->roundedRect($cxp + 1.5, $ry, $cellW - 3, $cellH, 4, $edge, false);
-                        $lbl = Seats::displayLabel((string) $bed, $seatCoach, 'sharing');
-                        $txtC($cxp, $cxp + $cellW, $ry + 10, $lbl, 8, true, $i !== null && !empty($i['woman']) ? self::ROSE : self::NAVY);
-                        if ($i !== null && $cellH >= 28) {
-                            $first = (string) (explode(' ', trim((string) $i['name']))[0] ?? '');
-                            $txtC($cxp, $cxp + $cellW, $ry + 20, $fit($first, 6.6, $cellW - 6), 6.6, false, self::INK);
-                            $tag = ((int) $i['place'] > 0 ? 'ठाउँ ' . $neDigits((string) (int) $i['place']) : '') . (!empty($i['ws']) ? ' · महिला' : '');
-                            $txtC($cxp, $cxp + $cellW, $ry + 29, $fit(trim($tag, ' ·'), 6, $cellW - 4), 6, true, !empty($i['ws']) ? self::ROSE : self::MUTE);
-                        }
+                        $berth((float) $cxp, (float) $ry, (float) $cellW, (float) $cellH, Seats::displayLabel((string) $bed, $seatCoach, 'sharing'), $info[$bed] ?? null);
                     }
                     if ($ri === intdiv(count($dk['rows']), 2)) {
                         $txtC($dx + 6 + $nL * $cellW, $dx + 6 + $nL * $cellW + $aisle, $ry + 4, 'A', 6, true, self::MUTE);
@@ -648,8 +770,26 @@ final class ChalaniPdf
                     $ry += $cellH + 4;
                 }
             }
+            // 26 Nov 2026 (fx1): थप सिट - the extra seats, one row under the decks
+            if ($exBeds !== []) {
+                $ey = $y + 30 + $maxRows * ($cellH + 4) + 6 + 5;
+                $pdf->setLineWidth(0.8);
+                $pdf->roundedRect($M, $ey, $inner, 38, 6, self::LINE, false);
+                $txt($M + 8, $ey + 13, 'थप सिट · Extra seats', 8.4, true, self::NAVY);
+                $txt($M + 8, $ey + 24, $neDigits((string) count($exBeds)) . ' जना · बर्थ बिना', 6.8, false, self::MUTE);
+                $ex0 = $M + 110;
+                $exW = max(34.0, min(70.0, ($M + $inner - 6 - $ex0) / count($exBeds)));
+                $exFit = (int) max(1, floor(($M + $inner - 6 - $ex0) / $exW));
+                foreach (array_slice($exBeds, 0, $exFit) as $k => $bed) {
+                    $berth($ex0 + $k * $exW, $ey + 3, $exW, 32.0, strtoupper($bed), $info[$bed] ?? null);
+                    self::$drawn['extraSeats']++;
+                }
+                if (count($exBeds) > $exFit) {
+                    $txtR($M + $inner - 6, $ey + 34, '+' . $neDigits((string) (count($exBeds) - $exFit)), 6.4, true, self::ROSE);
+                }
+            }
             // legend
-            $ly = $y + 30 + $maxRows * ($cellH + 4) + 18;
+            $ly = $y + 30 + $maxRows * ($cellH + 4) + 18 + $exH;
             $lx = $M;
             foreach ([[null, 'खाली · Free'], [['x' => 1], 'बुक · Booked'], [['woman' => 1], 'महिला · Woman'], [['woman' => 1, 'ws' => 1], 'महिला सिंगल स्लिपर · Woman on single sleeper']] as [$sample, $lab]) {
                 [$fill, $edge] = $col($sample);
@@ -658,7 +798,7 @@ final class ChalaniPdf
                 $txt($lx + 18, $ly, $lab, 7.2, false, self::INK);
                 $lx += 18 + $width($lab, 7.2) + 18;
             }
-            $txt($lx, $ly, 'ठाउँ N = चढ्ने ठाउँ नं.', 7.2, false, self::MUTE);
+            $txt($lx, $ly, 'ठाउँ N = चढ्ने ठाउँ नं.  ·  + शिशु = काखमा शिशु', 7.2, false, self::MUTE);
             $footer();
         }
 

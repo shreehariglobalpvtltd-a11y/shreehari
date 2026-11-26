@@ -79,6 +79,27 @@ final class ChalaniStrip
         return Settings::getBool('chalani_counter_totals_on', true);
     }
 
+    /** 26 Nov 2026 (fx1): the 80 mm thermal chalani (admin/manifest.php?format=chalani80). Off = no button, format not found. */
+    public static function thermalOn(): bool
+    {
+        return Settings::getBool('chalani_thermal_on', true);
+    }
+
+    /**
+     * 26 Nov 2026 (fx1): one free-text cell of the manifest CSV. A passenger types
+     * their own name on the website, and a cell that starts with = + - @ (or a tab /
+     * carriage return) is run as a FORMULA when the office opens the file in Excel.
+     * Such a cell gets a leading apostrophe - shown as text, harmless. Everything
+     * else comes back unchanged; numbers and fixed words are never passed through here.
+     *
+     * @param mixed $v
+     */
+    public static function csvText($v): string
+    {
+        $s = (string) $v;
+        return ($s !== '' && strpbrk($s[0], "=+-@\t\r") !== false) ? "'" . $s : $s;
+    }
+
     /**
      * May the signed-in staff member download / share the WHOLE-BUS chalani
      * (PNG, PDF, print sheet, WhatsApp share)? chalani.export when the switch
@@ -273,18 +294,24 @@ final class ChalaniStrip
      * Signed, expiring public links to the chalani picture pages (the same key
      * download-chalan.php checks), for a WhatsApp share.
      *
+     * 26 Nov 2026 (fx1): $copyTag (ChalaniPng::copyTag) = the links of a DESK COPY -
+     * its own picture files; the tag is part of what is signed, so a whole-bus key
+     * never opens a copy and a copy's key never opens the whole bus. '' (the
+     * default) = the whole-bus links, signed exactly as before.
+     *
      * @return array<int,string> page => url
      */
-    public static function shareLinks(int $sid, int $pages, ?int $days = null): array
+    public static function shareLinks(int $sid, int $pages, ?int $days = null, string $copyTag = ''): array
     {
         $days = max(1, min(14, $days ?? Settings::getInt('chalani_share_link_days', 2)));
         $exp  = time() + $days * 86400;
+        $tag  = substr((string) preg_replace('/[^A-Z0-9]/', '', strtoupper($copyTag)), 0, 24);
         $out  = [];
         for ($p = 1; $p <= max(1, $pages); $p++) {
             $out[$p] = appUrl('download-chalan.php?' . http_build_query([
                 'sid' => $sid, 'doc' => 'chalani', 'page' => $p, 'exp' => $exp,
-                'k' => substr(Security::sign('chalan-dl|' . $sid . '|chalani|' . $p . '|' . $exp), 0, 20),
-            ]));
+                'k' => substr(Security::sign('chalan-dl|' . $sid . '|chalani|' . $p . '|' . $exp . ($tag !== '' ? '|' . $tag : '')), 0, 20),
+            ] + ($tag !== '' ? ['c' => $tag] : [])));
         }
         return $out;
     }

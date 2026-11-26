@@ -16,7 +16,9 @@
  * so the old page can come back without browsers remembering the move.
  */
 declare(strict_types=1);
-header('Location: /agreements/apply.html', true, 302);
+// 26 Nov 2026 (fx1): straight to the one form. /agreements/apply.html only forwards (by script, 30 Oct
+// 2026) to /join.php?from=apply, so the old door was two hops on a slow phone network. Same landing.
+header('Location: /join.php?from=apply', true, 302);
 exit;
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';

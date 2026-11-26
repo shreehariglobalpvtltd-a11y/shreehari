@@ -150,10 +150,19 @@ final class WaAnswer
      */
     public static function forCustomer(string $fromRaw, string $senderDigits, string $body, array $who): ?array
     {
-        if (!self::on() || $senderDigits === '' || trim($body) === '' || mb_strlen($body) > 400) {
+        if ($senderDigits === '' || trim($body) === '' || mb_strlen($body) > 400) {
             return null;
         }
         if (in_array((string) ($who['role'] ?? 'customer'), ['staff', 'admin'], true)) {
+            return null;
+        }
+        /* 26 Nov 2026 (fx1): "manche sanga kura garnu cha", "call me", "kisi se baat karni hai" — a person is asked
+           for. Its own switch (wa_human_ask_on), so it answers even with wa_answer_first_on off. */
+        $human = self::humanAsk($fromRaw, $senderDigits, $body);
+        if ($human !== null) {
+            return $human;
+        }
+        if (!self::on()) {
             return null;
         }
         require_once INCLUDE_PATH . '/walookup.php';
@@ -226,6 +235,176 @@ final class WaAnswer
             }
         }
         return null;
+    }
+
+    /* =================================================================
+     *  fx1 (26 Nov 2026): "talk to a human"
+     *
+     *  Live gap: "manche sanga kura garnu cha", "human", "call me", "kisi se
+     *  baat karni hai" all got the generic welcome — the only hand-off was a
+     *  tool the cloud model may call (off by default). Now, with no model:
+     *  ONE call-back request in the Help Desk (category "callback", the same
+     *  queue the website's "call me back" form fills) + the office bell, and
+     *  the office number in the writer's language. While a request of the
+     *  last hour is still open a later ask gets the numbers again, no new row
+     *  (and at most 3 new requests an hour from one number).
+     *  If the Help Desk is off or the save fails the reply gives the numbers
+     *  and never claims that staff were told.
+     *  Switch: wa_human_ask_on (default 1) — off = the line goes on as before.
+     * ================================================================= */
+
+    /**
+     * Does this line ASK for a person? Explicit phrases only (Roman / Devanagari Nepali, Hindi, English); a
+     * statement about a talk that already happened ("staff sanga kura bhayo") and a line with a seat count or a
+     * date (an order) never count.
+     */
+    public static function asksHuman(string $text): bool
+    {
+        $t = ' ' . trim((string) preg_replace('/\s+/u', ' ', mb_strtolower((string) preg_replace('/[\p{P}]+/u', ' ', TicketBotAscii::digits($text))))) . ' ';
+        if (mb_strlen($t) < 5 || mb_strlen($t) > 140) {
+            return false;
+        }
+        $a = '(?<![\p{L}\p{M}])';
+        $z = '(?![\p{L}\p{M}])';
+        // it already happened: a statement, not a request
+        // (review fix: "mujhe call karke bola tha ki …" — "bola / kaha tha", "bataya" tell of a past call)
+        if (preg_match('/' . $a . '(?:bhayo|bhaisakyo|bhako|bhaeko|bhayeko|gareko|garisake|garisakeko|garyo|gare|hua|hui|ho\s*gaya|ho\s*gayi|ho\s*chuki|thiyo|kiya\s*tha|ki\s*thi|already\s+(?:talked|spoke|called)|talked|spoke'
+                . '|bola\s+th[aie]|bole\s+th[aie]|boli\s+thi|kaha\s+th[aie]|kahi\s+thi|bataya|batayi|called\s+me|phoned\s+me'
+                . '|भयो|भइसक्यो|गरेको|गरिसकें|हुआ|हुई|हो\s*गया|हो\s*गई|की\s*थी|बोला\s*था|कहा\s*था|बताया)' . $z . '/u', $t) === 1) {
+            return false;
+        }
+        // "don't call me", "malai phone nagarnus", "call mat karo": the opposite of a request
+        // (review fix: "malai phone garnu pardaina", "call chahidaina", "phone karne ki zarurat nahi" — no need to)
+        if (preg_match('/' . $a . '(?:don\s*t|dont|do\s+not|never|mat|nagarnu\w*|nagarnus|nagara|nagar|nakara|nakaro'
+                . '|pardaina|pardena|pardaena|pardain|parena|naparne|napar\w*|chahidaina|chaidaina|chahinna|chahidena|chahindaina|nahi\s+chahiye|nahin\s+chahiye|nahi\s+karn[ai]|nahin\s+karn[ai]'
+                . '|zarurat\s+nahi\w*|jarurat\s+nahi\w*|zaroorat\s+nahi\w*|jarurat\s+chaina|jaruri\s+chaina|no\s+need|not\s+needed|need\s+not'
+                . '|नगर्नु\S*|नगर|मत|पर्दैन|चाहिँदैन|चाहिदैन|जरुरत\s*नहीं|जरूरत\s*नहीं|नहीं\s*चाहिए|नहीं\s*करन[ाी])' . $z . '/u', $t) === 1) {
+            return false;
+        }
+        $want = '(?:garn\w*|garna|garau\w*|garidinu\w*|gardinu\w*|gara\w*|gar|paryo|parcha|parchha|chahiyo|chaiyo|chahanchu|chahanchhu|man\s*cha|man\s*xa|cha|chha|xa|milcha|milchha|milxa|sakincha|sakinchha|hai|hoga|karni|karna|karni\s*hai|karna\s*hai|karwa\w*|kara\w*|krna|krni)';
+        $hit =
+            // Roman Nepali: "manche sanga kura garnu cha", "staff sanga kura garna paryo", "office ko manche sanga kura garnu paryo"
+            preg_match('/' . $a . '(?:manche|manchhe|manxe|manchey|maanche|manis|maanis|manxey|staff|office|karmachari|operator|representative|sir)(?:\s+ko\s+manche|\s+ko\s+manchhe)?\s+(?:sanga|sang|sita|sanghai|saga)\s+(?:kura|kuro|baat|bat|kurakani)\s+' . $want . $z . '/u', $t) === 1
+            // "malai phone garnus", "malai call garidinu", "hamilai phone gara na"; "mujhe call karo", "mujhe phone kijiye"
+            || preg_match('/' . $a . '(?:malai|mlai|hamilai|mujhe|mujhko|mujhse|humko|hume|hamein|hamko)\s+(?:ek\s*(?:choti|patak|baar)\s+)?(?:phone|fon|call|kal|callback|call\s*back)\s+(?:gar\w*|kar\w*|kijiye|kariye|kijie)' . $z . '/u', $t) === 1
+            || preg_match('/^\s(?:please\s+|pls\s+|plz\s+|kripaya\s+)?(?:phone|fon|call)\s+(?:garidinu\w*|gardinu\w*|garnus|garnuhos|garnu\s*hola|gara\s*na|garnu\s*na|kijiye|kariye|karo|kar\s*do|kardo|kar\s*dijiye)(?:\s+(?:na|hai|ta|please|pls|plz|sir|ji|hajur|dai))?\s$/u', $t) === 1
+            // Roman Hindi: "kisi se baat karni hai", "insaan se baat karwa do", "baat karni hai", "staff se baat karna hai"
+            || preg_match('/' . $a . '(?:kisi|kisise|insaan|insan|aadmi|admi|staff|office|manager|executive|operator)\s*se\s+baat\s+(?:karni|karna|karwa\w*|kara\w*|krni|krna|ho\s*sakti|ho\s*sakta)' . $z . '/u', $t) === 1
+            || preg_match('/^\s(?:mujhe\s+|muje\s+|hame\s+|hamein\s+)?baat\s+(?:karni|karna|krni|krna)\s+hai\s$/u', $t) === 1
+            // English: "human", "real person", "talk to a person", "I want to speak with someone", "call me (back)"
+            || preg_match('/^\s(?:a\s+|an\s+)?(?:human|real\s+person|live\s+agent|live\s+person|human\s+please|human\s+agent)\s$/u', $t) === 1
+            || preg_match('/' . $a . '(?:talk|speak|chat|connect)(?:\s+me)?\s+(?:to|with)\s+(?:a\s+|an\s+|any\s+|some\s+|the\s+|your\s+|real\s+)*(?:person|human|someone|somebody|staff|representative|operator|executive|manager|real\s+person|human\s+being|live\s+agent)' . $z . '/u', $t) === 1
+            // (review fix: "they call me Ram" is a name — "call me" counts only as the line's own ask: at its start,
+            //  after a please / can you, or after "… someone / staff / office (to) …", "I want you to …")
+            || preg_match('/^\s(?:(?:ok|okay|hi|hello|hey|namaste|sir|dai|hajur)\s+)*(?:(?:please|pls|plz|kindly)\s+)?(?:(?:can|could|will|would)\s+(?:you|u|someone|somebody|anyone)\s+)?(?:(?:please|pls|plz|kindly)\s+)?(?:call\s+me(?:\s+back)?|give\s+me\s+a\s+call|ring\s+me)' . $z . '/u', $t) === 1
+            || preg_match('/' . $a . '(?:please|pls|plz|kindly|someone|somebody|anyone|staff|office|manager|operator|(?:want|need)\s+(?:you|u))\s+(?:(?:to|should|can|could|will|would|please|pls)\s+){0,2}(?:call\s+me(?:\s+back)?|give\s+me\s+a\s+call|ring\s+me)' . $z . '/u', $t) === 1
+            || preg_match('/' . $a . '(?:call\s*back\s+(?:please|pls|plz|chahiyo|chaiyo|chahiye)|callback\s+(?:please|pls|plz|chahiyo|chaiyo|chahiye))' . $z . '/u', $t) === 1
+            // Devanagari Nepali / Hindi
+            || preg_match('/(?:मान्छे|मानिस|स्टाफ|अफिस|कर्मचारी)\s*(?:को\s*मान्छे\s*)?(?:सँग|संग|सित)\s*(?:कुरा|कुराकानी)\s*(?:गर्न|गर्नु|गराइ|गरौ|गरौं)/u', $t) === 1
+            || preg_match('/(?:मलाई|हामीलाई)\s*(?:एक\s*पटक\s*)?(?:फोन|कल)\s*गर/u', $t) === 1
+            || preg_match('/(?:फोन|कल)\s*गर्नु\S*\s*मलाई/u', $t) === 1
+            || preg_match('/(?:किसी|इंसान|इन्सान|आदमी|स्टाफ|ऑफिस|मैनेजर)\s*से\s*बात\s*(?:करनी|करना|करवा|करा)/u', $t) === 1
+            || preg_match('/^\s(?:मुझे\s*)?बात\s*(?:करनी|करना)\s*है\s$/u', $t) === 1
+            || preg_match('/(?:मुझे|हमें)\s*(?:फोन|कॉल|कल)\s*(?:कर|कीजिए|करिए)/u', $t) === 1;
+        if (!$hit) {
+            return false;
+        }
+        // an order in the same line ("call me, bholi 2 seat chahiyo") stays the booking's
+        if (preg_match('/\d+\s*(?:seat|seats|sit|ticket|tickets|tikat|jana|jan|log|people|persons?|berth|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $t) === 1) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * The answer to "talk to a human" (see the block comment above). null = not such a line / switched off.
+     *
+     * @return array{text:string, media:?string, router:string}|null
+     */
+    public static function humanAsk(string $fromRaw, string $senderDigits, string $body): ?array
+    {
+        if (!Settings::getBool('wa_human_ask_on', true) || $senderDigits === '' || !self::asksHuman($body)) {
+            return null;
+        }
+        $lang = self::lang($body);
+        $phone = Settings::officePhone();
+        $ref = '';
+        $state = 'none';                                  // none | new | repeat
+        try {
+            require_once INCLUDE_PATH . '/helpdesk.php';
+            if (HelpDesk::on()) {
+                // asked in the last hour: the request is already with the office — no second row
+                $ref = (string) Database::scalar(
+                    "SELECT ticket_ref FROM support_tickets WHERE phone LIKE :p AND category = 'callback' AND source = 'chat'
+                        AND status IN ('open','in_progress') AND created_at >= NOW() - INTERVAL 1 HOUR ORDER BY id DESC LIMIT 1", ['p' => '%' . $senderDigits], '');
+                if ($ref !== '') {
+                    $state = 'repeat';
+                } elseif (!Security::rateLimit('wa_human_ask', $senderDigits, 3, 3600)) {
+                    $state = 'none';                      // a number hammering the line: the office number only
+                } else {
+                    $pnr = (string) Database::scalar('SELECT pnr FROM bookings WHERE contact_phone = :p ORDER BY id DESC LIMIT 1', ['p' => $senderDigits], '');
+                    $r = HelpDesk::open(['name' => '', 'phone' => $senderDigits,
+                        'country' => str_starts_with((string) preg_replace('/\D/', '', $fromRaw), '977') ? 'NP' : 'IN',
+                        'category' => 'callback', 'message' => 'WhatsApp: ' . $body, 'pnr' => $pnr, 'source' => 'chat',
+                        'lang' => in_array($lang, ['hi', 'en'], true) ? $lang : 'ne', 'ack' => false]);
+                    if (!empty($r['ok'])) {
+                        $ref = (string) ($r['ref'] ?? '');
+                        $state = 'new';
+                        if (empty($r['duplicate'])) {
+                            try {
+                                require_once INCLUDE_PATH . '/adminalerts.php';
+                                AdminAlerts::push('wa_human_ask', 'Call back · WhatsApp ' . $ref,
+                                    'A passenger (' . maskPhone($senderDigits) . ') asked to talk to a person on WhatsApp. Please call them back — Help Desk ' . $ref . '.',
+                                    '/admin/support-inbox.php', '📞', 'wa_human:' . $senderDigits . ':' . date('YmdH'));
+                            } catch (Throwable $e) {
+                                // the Help Desk row is the record; the bell is a convenience
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('WaAnswer human ask failed: ' . $e->getMessage(), [], 'whatsapp');
+            $state = 'none';
+        }
+        $tag = $ref !== '' ? ' (' . $ref . ')' : '';
+        $text = match ($state) {
+            'new' => match ($lang) {
+                'rn' => "🙏 Huncha — tapai ko anurodh office ma darta bhayo" . $tag . ". Office ko manche le yahi number ma phone garnuhunchha.\n📞 Hatar bhaye ahile nai phone / WhatsApp: " . $phone,
+                'hi' => "🙏 ठीक है — आपका अनुरोध ऑफिस में दर्ज हो गया" . $tag . "। ऑफिस का स्टाफ इसी नंबर पर फ़ोन करेगा।\n📞 जल्दी हो तो अभी फ़ोन / WhatsApp कीजिए: " . $phone,
+                'en' => "🙏 Sure — your request is recorded with the office" . $tag . ". A member of staff will call you on this number.\n📞 In a hurry? Call / WhatsApp now: " . $phone,
+                default => "🙏 हुन्छ — तपाईंको अनुरोध अफिसमा दर्ता भयो" . $tag . "। अफिसको मान्छेले यही नम्बरमा फोन गर्नुहुन्छ।\n📞 हतार भए अहिले नै फोन / WhatsApp: " . $phone,
+            },
+            'repeat' => match ($lang) {
+                'rn' => "🙏 Tapai ko anurodh office ma pugisakeko chha" . $tag . " — office le phone garnechha.\n📞 Hatar bhaye: " . $phone,
+                'hi' => "🙏 आपका अनुरोध ऑफिस तक पहुँच चुका है" . $tag . " — ऑफिस फ़ोन करेगा।\n📞 जल्दी हो तो: " . $phone,
+                'en' => "🙏 Your request is already with the office" . $tag . " — they will call you.\n📞 In a hurry? Call / WhatsApp: " . $phone,
+                default => "🙏 तपाईंको अनुरोध अफिसमा पुगिसकेको छ" . $tag . " — अफिसले फोन गर्नेछ।\n📞 हतार भए: " . $phone,
+            },
+            default => match ($lang) {
+                'rn' => "🙏 Manche sanga kura garna office ma phone / WhatsApp garnus: " . $phone,
+                'hi' => "🙏 किसी से बात करने के लिए ऑफिस को फ़ोन / WhatsApp कीजिए: " . $phone,
+                'en' => "🙏 To talk to a person, please call / WhatsApp the office: " . $phone,
+                default => "🙏 मान्छेसँग कुरा गर्न अफिसमा फोन / WhatsApp गर्नुहोस्: " . $phone,
+            },
+        };
+        $text .= "\n" . match ($lang) {
+            'rn' => 'Aru office ko number: "office ko number" lekhnus.',
+            'hi' => 'दूसरे ऑफिस के नंबर: "office ka number" लिखिए।',
+            'en' => 'Other offices: write "office number".',
+            default => 'अरू अफिसको नम्बर: "office ko number" लेख्नुहोस्।',
+        };
+        try {
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            require_once INCLUDE_PATH . '/quickticket.php';
+            require_once INCLUDE_PATH . '/wabooking.php';
+            if (WaBooking::isOpen($senderDigits)) {
+                $text .= WaBooking::waitingNote($senderDigits);   // the half-made booking keeps waiting, said under the answer
+            }
+        } catch (Throwable $e) {
+        }
+        self::remember($senderDigits, $body, $text);
+        return ['text' => $text, 'media' => null, 'router' => 'human'];
     }
 
     /* =================================================================

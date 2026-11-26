@@ -220,8 +220,13 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
   'use strict';
   var API = '/api/driver.php';
   var K = { token: 'shgDrv:token', trip: 'shgDrv:trip', seq: 'shgDrv:seq', name: 'shgDrv:name', role: 'shgDrv:role',
-            info: 'shgDrv:info', evq: 'shgDrv:evq', cfg: 'shgDrv:cfg' };
-  var S = { token: null, trip: null, pingSec: 15, pick: null, watchId: null, fix: null, lastRec: 0,
+            info: 'shgDrv:info', evq: 'shgDrv:evq', cfg: 'shgDrv:cfg', net: 'shgDrv:net' };
+  /* 26 Nov 2026 (fx1): netTimeout = seconds before a stuck request is given up (server: driver_net_timeout_sec,
+     0 = never), clockFix = correct the GPS times of a phone whose clock is wrong (driver_clock_fix_on), clk = how
+     far this phone's clock is from the server's (ms, plus = ahead; null = not measured yet), batch = points per
+     upload (halved when an upload fails, doubled when one gets through, 10..200). */
+  var S = { netTimeout: 20, clockFix: true, clk: null, batch: 200,
+            token: null, trip: null, pingSec: 15, pick: null, watchId: null, fix: null, lastRec: 0,
             lastSentAt: 0, sending: false, wake: null, hiddenAt: 0, timer: null, ending: false,
             cfg: {}, info: null, infoAt: 0, infoLoading: false, skew: 0, rest: null, batt: null, battInit: false,
             speedHits: 0, evSending: false, toastT: 0, sosT: 0, buzzHard: false, sheetAt: 0 };
@@ -279,14 +284,63 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
   function bumpSeq(min) { if ((parseInt(lsGet(K.seq) || '0', 10) || 0) < min) lsSet(K.seq, String(min)); }
 
   /* ---------- server ---------- */
+  /* 26 Nov 2026 (fx1): on a weak network one request can hang for minutes, and while it hangs no later GPS
+     upload (S.sending) and no SOS (S.evSending) can leave the phone. These calls are given up after
+     S.netTimeout seconds and tried again on the next tick; each is safe to repeat (a point is stored once
+     per seq, the server knows a repeated tap, a trip ends once). Sign-in, the office link and Start Trip
+     are left to finish on their own. */
+  var TIMED = { me: 1, trip: 1, ping: 1, event: 1, end: 1 };
   function api(method, body) {
     var opt = { method: method, headers: { 'X-Driver-Token': S.token || '' }, cache: 'no-store' };
-    var url = API;
+    var url = API, ctl = null, tm = 0, t0 = Date.now();
     if (method === 'GET') url += '?' + Object.keys(body).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(body[k]); }).join('&');
     else { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+    if (S.netTimeout > 0 && TIMED[body.action] && window.AbortController) {
+      ctl = new AbortController(); opt.signal = ctl.signal;
+      tm = setTimeout(function () { ctl.abort(); }, S.netTimeout * 1000);
+    }
     return fetch(url, opt).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) { j.status = r.status; return j; });
-    });
+      var t1 = Date.now();
+      return r.json().catch(function () { if (ctl && ctl.signal.aborted) throw new Error('timeout'); return {}; })
+        .then(function (j) { clearTimeout(tm); j.status = r.status; clockSeen(j.data ? j.data.nowMs : null, t0, t1); return j; });
+    }).catch(function (e) { clearTimeout(tm); throw e; });
+  }
+  /* 26 Nov 2026 (fx1): a phone whose clock is wrong was never live ("position is 10 min old" for a fix taken
+     this second). The answers carry the server's clock (nowMs); from one that came back within 10 s the page
+     knows how far the phone's clock is off, right to 5 s. The first reading is kept, so every upload is
+     corrected by the SAME amount; it is replaced only when a later reading is more than 10 s away from it
+     (someone changed the phone's clock). */
+  var CLK_MIN = 150000, CLK_MAX = 43200000, CLK_NEAR = 10000;
+  function clockSeen(serverMs, t0, t1) {
+    if (typeof serverMs !== 'number' || !(t1 - t0 >= 0 && t1 - t0 <= 10000)) return;
+    var k = Math.round((t0 + t1) / 2 - serverMs);
+    if (S.clk == null || Math.abs(k - S.clk) > 10000) S.clk = k;
+  }
+  /* ms to take off this phone's clock; 0 = send the times as measured (switch off, not measured yet, a clock
+     that is right to 2.5 min - the server calls a fix live for 5 min - or a gap over 12 h, which is no clock) */
+  function clockOff() {
+    var k = S.clk;
+    return S.clockFix && k != null && Math.abs(k) >= CLK_MIN && Math.abs(k) <= CLK_MAX ? k : 0;
+  }
+  /* The time of one queued fix on the SERVER's clock. p.t is the fix time the browser gave: on some phones the
+     phone's own clock, on others real (satellite) time. p.r is the phone's clock when the fix reached this page.
+     A fix is never made newer than it can be: the reading that puts it just before its arrival is its clock;
+     when neither does, the fix is an old one (a last-known place handed over first) and the OLDER reading is
+     sent, so an old place stays old and is never shown as live. */
+  function fixTime(p, off) {
+    if (!off || p.r == null) return p.t;
+    var arr = p.r - off, a = [p.t - off, p.t], i, old = null;
+    for (i = 0; i < 2; i++) if (Math.abs(arr - a[i]) <= CLK_NEAR) return a[i];
+    for (i = 0; i < 2; i++) if (a[i] < arr && (old == null || a[i] < old)) old = a[i];
+    return old != null ? old : arr;   // a time after its own arrival on both clocks: the arrival moment
+  }
+  /* the server's word on the two switches rides on the answers the app already reads; kept for an offline reload */
+  function netCfg(d) {
+    if (!d) return;
+    var n = d.netTimeoutSec, was = S.netTimeout + '|' + S.clockFix;
+    if (typeof n === 'number' && n >= 0 && n <= 120) S.netTimeout = n;
+    if (typeof d.clockFix === 'boolean') S.clockFix = d.clockFix;
+    if (was !== S.netTimeout + '|' + S.clockFix) lsSet(K.net, JSON.stringify({ t: S.netTimeout, c: S.clockFix }));
   }
   /* what belongs to one trip only: the screen's data and its unsent taps */
   function clearTripData() { S.info = null; S.infoAt = 0; S.rest = null; lsSet(K.info, null); lsSet(K.evq, null); hideSheet(); }
@@ -330,12 +384,28 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
 
   /* ---------- pick + start ---------- */
   function fmtDate(d) { var p = String(d).split('-'); return p.length === 3 ? p[2] + '/' + p[1] : d; }
+  /* 26 Nov 2026 (fx1): `me` is given up after netTimeout like the other calls, and on the list screen nothing
+     else asks again (the 1 s tick only runs during a trip). So a list that did not load is asked for again by
+     itself: every 8 s, and at once when the phone says it is back online. */
+  var meT = 0, meBusy = 0, NO_NET = 'No internet. The list needs a connection once. · इंटरनेट नहीं है।';
+  function meAgain() {
+    meT = 0;
+    if (!S.token || S.trip || $('vPick').hidden) return;
+    /* one at a time; never under a START that is on its way; nothing to try while the phone itself says "offline" */
+    if (meBusy || (S.pick && $('bStart').disabled) || navigator.onLine === false) { meT = setTimeout(meAgain, 8000); return; }
+    loadMe();
+  }
   function loadMe() {
     $('whoName').textContent = lsGet(K.name) || '';
-    return api('GET', { action: 'me' }).then(function (j) {
+    if (meT) { clearTimeout(meT); meT = 0; }
+    var req = api('GET', { action: 'me' }), free = function () { meBusy--; }, had = S.trip;
+    meBusy++; req.then(free, free);
+    return req.then(function (j) {
       if (j.status === 401) { signedOut(); return; }
       if (!j.ok) { $('ePick').textContent = j.error || 'Could not load.'; show('vPick'); return; }
+      if ($('ePick').textContent === NO_NET) $('ePick').textContent = '';   // the line of a try that failed
       S.pingSec = j.data.pingSec || 15;
+      netCfg(j.data);
       $('whoName').textContent = j.data.driver.name;
       lsSet(K.role, j.data.driver.role || 'driver'); roleText();
       if (j.data.crew) { S.cfg = j.data.crew; lsSet(K.cfg, JSON.stringify(S.cfg)); renderActs(); }
@@ -349,6 +419,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
         run();
         return;
       }
+      if (S.trip && S.trip !== had) return;   // START went through while this was on its way: the answer is older than the trip
       if (S.trip) {
         // The server has no running trip for this phone any more (ended by the office): stop.
         stopGps(); S.trip = null; lsSet(K.trip, null); qDrop(-1, 0); clearTripData();
@@ -357,8 +428,9 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     }).catch(function () {
       // Offline with a trip already running: keep tracking from the saved trip.
       if (S.trip) { run(); return; }
-      $('ePick').textContent = 'No internet. The list needs a connection once. · इंटरनेट नहीं है।';
+      $('ePick').textContent = NO_NET;
       show('vPick');
+      if (S.token && !meT) meT = setTimeout(meAgain, 8000);
     });
   }
   /* a conductor (or host) shares the bus location exactly like the driver - only the words differ */
@@ -386,17 +458,19 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
   }
   $('bStart').addEventListener('click', function () {
     if (!S.pick) return;
+    var pick = S.pick;   // the list may be drawn again (and S.pick emptied) while START is on its way
     $('bStart').disabled = true; $('ePick').textContent = '';
     askGps().then(function () {
-      return api('POST', { action: 'start', scheduleId: S.pick.scheduleId });
+      return api('POST', { action: 'start', scheduleId: pick.scheduleId });
     }).then(function (j) {
       $('bStart').disabled = false;
       if (j.status === 401) { signedOut(); return; }
       if (!j.ok) { $('ePick').textContent = j.error || 'Could not start.'; return; }
       S.pingSec = j.data.pingSec || S.pingSec;
+      netCfg(j.data);
       clearTripData();
       /* since = when THIS phone took the wheel: a co-driver taking the trip over starts a fresh driving timer */
-      S.trip = { tripId: j.data.trip.tripId, scheduleId: S.pick.scheduleId, route: S.pick.route, bus: S.pick.bus, dep: S.pick.dep, date: S.pick.date,
+      S.trip = { tripId: j.data.trip.tripId, scheduleId: pick.scheduleId, route: pick.route, bus: pick.bus, dep: pick.dep, date: pick.date,
                  since: Date.now(), startedTs: null };
       bumpSeq(j.data.trip.lastSeq || 0);
       lsSet(K.trip, JSON.stringify(S.trip));
@@ -456,7 +530,8 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     var gap = (S.fix.kmh != null && S.fix.kmh < 3) ? 60000 : S.pingSec * 1000;
     if (S.trip && now - S.lastRec >= gap - 500) {
       S.lastRec = now;
-      qPut({ seq: nextSeq(), tripId: S.trip.tripId, t: S.fix.t, lat: +S.fix.lat.toFixed(7), lng: +S.fix.lng.toFixed(7),
+      /* r = this phone's own clock when the fix arrived (t is the GPS fix time, which some phones keep on another clock): fixTime() */
+      qPut({ seq: nextSeq(), tripId: S.trip.tripId, t: S.fix.t, r: now, lat: +S.fix.lat.toFixed(7), lng: +S.fix.lng.toFixed(7),
              kmh: S.fix.kmh != null ? Math.round(S.fix.kmh * 10) / 10 : null, brg: S.fix.brg != null ? Math.round(S.fix.brg) : null,
              acc: S.fix.acc != null ? Math.round(S.fix.acc) : null });
     }
@@ -466,23 +541,35 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     var trip = S.trip;
     S.sending = true;
     qAll().then(function (all) {
-      var mine = all.filter(function (p) { return p.tripId === trip.tripId; }).sort(function (a, b) { return a.seq - b.seq; }).slice(0, 200);
+      var lim = S.batch;
+      var mine = all.filter(function (p) { return p.tripId === trip.tripId; }).sort(function (a, b) { return a.seq - b.seq; }).slice(0, lim);
       if (!mine.length) { S.sending = false; return; }
-      var pts = mine.map(function (p) { return { seq: p.seq, t: p.t, lat: p.lat, lng: p.lng, kmh: p.kmh, brg: p.brg, acc: p.acc }; });
+      /* 26 Nov 2026 (fx1): on a phone whose clock is wrong the times go out on the server's clock (fixTime);
+         on every other phone exactly as measured, as before */
+      var off = clockOff();
+      var pts = mine.map(function (p) {
+        return { seq: p.seq, t: fixTime(p, off), lat: p.lat, lng: p.lng, kmh: p.kmh, brg: p.brg, acc: p.acc };
+      });
       /* the phone's battery rides along (optional: the server keeps it for the office) */
-      return api('POST', { action: 'ping', tripId: trip.tripId, points: pts, battery: S.batt || undefined }).then(function (j) {
+      var body = { action: 'ping', tripId: trip.tripId, points: pts, battery: S.batt || undefined };
+      return api('POST', body).then(function (j) {
         if (j.status === 401) { S.sending = false; signedOut(); return; }
         if (j.status === 409) { S.sending = false; tripGone('This trip is now running on another phone. · यह यात्रा दूसरे फोन पर चल रही है।'); return; }
         if (!j.ok) { S.sending = false; $('eRun').textContent = j.error || 'Server refused the position.'; return; }
         S.lastSentAt = Date.now();
+        S.batch = Math.min(200, lim * 2);   // it got through: the next upload may carry more
         if (j.data.pingSec) S.pingSec = j.data.pingSec;
+        netCfg(j.data);
         return qDrop(trip.tripId, j.data.ack).then(function () {
           S.sending = false;
           if (j.data.ended) { tripGone('The office ended this trip. · ऑफिस ने यात्रा समाप्त की।'); return; }
-          if (mine.length === 200) flush();   // more waiting after a dead zone: keep going
+          if (mine.length === lim) flush();   // more waiting after a dead zone: keep going
         });
       });
-    }).catch(function () { S.sending = false; });
+    }).catch(function () {
+      /* no answer (no network, or given up after netTimeout): a smaller upload has a better chance on a weak signal */
+      S.sending = false; S.batch = Math.max(10, Math.floor(S.batch / 2));
+    });
   }
   function tripGone(msg) {
     stopGps(); S.trip = null; lsSet(K.trip, null);
@@ -494,6 +581,9 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     var now = Date.now();
     if (now - lastFlush >= S.pingSec * 1000) { lastFlush = now; flush(); }
     if (now - lastEvFlush >= S.pingSec * 1000) { lastEvFlush = now; flushEvents(false); }
+    /* 26 Nov 2026 (fx1): Android drops the screen lock on battery saver / low battery without the page being
+       hidden; ask again (keepAwake does nothing while it is held or the page is hidden) */
+    if (!S.wake && now % 10000 < 1000) keepAwake();
     if (S.trip && !S.infoLoading && now - S.infoAt > 300000 && navigator.onLine !== false && document.visibilityState === 'visible') loadInfo();
     var f = S.fix, age = f ? Math.round((now - f.t) / 1000) : null;
     if (!f) setState('warn', 'Searching GPS… · GPS खोज रहा है');
@@ -528,7 +618,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
     }
     S.hiddenAt = 0;
   });
-  window.addEventListener('online', function () { flush(); flushEvents(false); if (S.trip) loadInfo(); });
+  window.addEventListener('online', function () { flush(); flushEvents(false); if (S.trip) loadInfo(); else if (meT) { clearTimeout(meT); meAgain(); } });
 
   /* ---------- the trip screen: stops, passengers, rest (api ?action=trip) ---------- */
   function loadInfo() {
@@ -926,6 +1016,7 @@ input:focus{outline:2px solid var(--gold);outline-offset:1px}
   }
   S.token = S.token || lsGet(K.token);
   try { S.cfg = JSON.parse(lsGet(K.cfg) || '{}') || {}; } catch (e) { S.cfg = {}; }
+  try { var nc = JSON.parse(lsGet(K.net) || 'null'); if (nc) netCfg({ netTimeoutSec: nc.t, clockFix: nc.c }); } catch (e) {}
   roleText();
   try { S.trip = JSON.parse(lsGet(K.trip) || 'null'); } catch (e) { S.trip = null; }
   if (!S.token) { show('vLogin'); return; }

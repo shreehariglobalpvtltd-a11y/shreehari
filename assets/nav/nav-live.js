@@ -292,6 +292,8 @@ function css() {
     '@media (prefers-reduced-motion:reduce){.nl-bi::before{animation:none}}body.saver .nl-bi::before,body.lowdata .nl-bi::before{animation:none}',
     '.nl-plate{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:5px;background:#FFD66B;color:#1a1a1a;font:700 12px Inter,system-ui,sans-serif;letter-spacing:.05em;vertical-align:middle}',
     '.nl-bi.nl-mine{border-color:#E8652E;background:#E8652E;box-shadow:0 0 0 6px rgba(232,101,46,.28),0 4px 12px rgba(0,0,0,.45)}',
+    /* 26 Nov 2026 (fx1): "my bus" at its LAST KNOWN place - grey, no live pulse, never mistaken for a live coach */
+    '.nl-bus.nl-last .nl-bi{border-color:#94A3B8;background:#64748B;box-shadow:0 4px 12px rgba(0,0,0,.45)}.nl-bus.nl-last .nl-bi::before{display:none}.nl-bus.nl-last img{filter:grayscale(1)}',
     /* 15 Nov 2026: heading badge on the real coach photo (b.brg from api/nav-buses.php) */
     '.nl-hd{position:absolute;left:-5px;top:-5px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:1}',
     '.nl-hd[hidden]{display:none}.nl-hd svg{width:12px;height:12px;display:block}.nl-hd path{fill:#1F4FA3}',
@@ -908,7 +910,15 @@ function openSync() {
    E · MY BUS (PNR) - the same door as track.php (WhereIs::authorised):
    the track link's key, or a login that owns the booking
 --------------------------------------------------------------------- */
-var MB = { pnr: '', k: '', timer: 0, m: null, st: null, want: null, following: false, dragBound: false };
+/* 26 Nov 2026 (fx1): okAt = when the last good answer came, stale = seconds this phone may keep calling it
+   live with no newer one (api/whereis.php staleSec = setting track_stale_sec, 0 = off) */
+var MB = { pnr: '', k: '', timer: 0, m: null, st: null, want: null, following: false, dragBound: false, okAt: 0, reqAt: 0, stale: 60 };
+/* where "my bus" is drawn: its live place, else the last known one (WhereIs lastLat / lastLng), else nowhere */
+function mbLL(d) {
+  if (!d) return null;
+  if (d.live && d.lat != null && d.lng != null) return [d.lng, d.lat];
+  return d.lastKnown && d.lastLat != null && d.lastLng != null ? [d.lastLng, d.lastLat] : null;
+}
 function openMyBus() {
   var saved = LSg.get('shg:nl:mybus', null), st = MB.st;
   var el = sheet('<h3><img src="/assets/img/bus-shg-sm.webp" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff">' + esc(t('myBusT')) + '</h3>' +
@@ -931,9 +941,9 @@ function openMyBus() {
   if (btnOverview) btnOverview.onclick = function () { routeOverview(); };
 }
 function centerBus() {
-  var m = X && X.S && X.S.map, d = MB.st;
-  if (!m || !d || d.lat == null || d.lng == null) return;
-  m.flyTo({ center: [d.lng, d.lat], zoom: Math.max(m.getZoom(), 13), pitch: 45, bearing: d.bearing || 0, duration: slow() ? 0 : 1000 });
+  var m = X && X.S && X.S.map, d = MB.st, ll = mbLL(d);
+  if (!m || !ll) return;
+  m.flyTo({ center: ll, zoom: Math.max(m.getZoom(), 13), pitch: 45, bearing: (d.live && d.bearing) || 0, duration: slow() ? 0 : 1000 });
 }
 function toggleFollow() {
   MB.following = !MB.following;
@@ -941,9 +951,9 @@ function toggleFollow() {
   if (SHT.open) openMyBus();
 }
 function routeOverview() {
-  var m = X && X.S && X.S.map, d = MB.st;
-  if (!m || !d || d.lat == null || d.lng == null) return;
-  var b = new maplibregl.LngLatBounds([d.lng, d.lat], [d.lng, d.lat]);
+  var m = X && X.S && X.S.map, d = MB.st, ll = mbLL(d);
+  if (!m || !ll) return;
+  var b = new maplibregl.LngLatBounds(ll, ll);
   if (d.stopLng != null && d.stopLat != null) {
     b.extend([d.stopLng, d.stopLat]);
   } else if (d.road && d.road.pts && d.road.pts.length > 0) {
@@ -955,6 +965,8 @@ function routeOverview() {
 }
 function myBusHtml(d) {
   var stClass = 'nl-badge-live', stText = t('statusLive');
+  /* minutes since the coach was last seen, counted on this phone so it keeps growing while the phone is offline */
+  var lastMin = !d.live && d.lastKnown ? (d.lastAtMs ? Math.max(1, Math.round((Date.now() - d.lastAtMs) / 60000)) : (d.lastAgeMin != null ? +d.lastAgeMin : null)) : null;
   if (d.state === 'arrived' || d.state === 'completed') {
     stClass = 'nl-badge-done'; stText = t('statusCompleted');
   } else if (d.live) {
@@ -964,7 +976,9 @@ function myBusHtml(d) {
       stClass = 'nl-badge-live'; stText = t('statusLive');
     }
   } else if (d.lastKnown) {
-    if (d.fixAge != null && d.fixAge < 300) {
+    /* 26 Nov 2026 (fx1): the last-known answer carries lastAgeMin / lastAt / lastStop (fixAge is null there,
+       so this badge and the "last known place" line below never showed) */
+    if (lastMin != null && lastMin < 15) {
       stClass = 'nl-badge-warn'; stText = t('statusGpsLost');
     } else {
       stClass = 'nl-badge-off'; stText = t('statusOffline');
@@ -985,11 +999,11 @@ function myBusHtml(d) {
     '</div>' +
     '<p style="color:var(--text,#EEF2FA);font-size:15px;font-weight:600;margin:0 0 4px 0">' + esc(d.pnr || MB.pnr) + (d.bus ? ' · 🚌 ' + esc(d.bus) : '') + (d.route ? ' · ' + esc(d.route) : '') + '</p>' +
     (stopText ? '<p style="font-size:13px;color:var(--text2,#A8B4CC);margin:0 0 4px 0">' + stopText + (etaText ? ' · ⏱️ ' + esc(etaText) : '') + (distText ? ' · 📍 ' + esc(distText) : '') + '</p>' : '') +
-    (d.lastKnown && d.fixAge != null ? '<p style="font-size:12px;color:#F59E0B;margin:0 0 4px 0">⚠️ ' + t('pnrLast', { n: ago(Date.now() - d.fixAge * 1000) }) + (d.lastStop ? ' near ' + esc(d.lastStop) : '') + '</p>' : '') +
+    (lastMin != null ? '<p style="font-size:12px;color:#F59E0B;margin:0 0 4px 0">⚠️ ' + esc(t('pnrLast', { n: lastMin + ' ' + t('min') })) + (d.lastAt ? ' · ' + esc(d.lastAt) + ' IST' : '') + (d.lastStop ? ' · ' + esc(d.lastStop) : '') + '</p>' : '') +
     '<div class="nl-acts" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' +
-      '<button class="nl-b" type="button" data-mb-center style="min-height:36px;padding:0 12px;font-size:13px">🎯 ' + esc(t('centerBus')) + '</button>' +
-      '<button class="nl-b ' + (MB.following ? 'cta' : '') + '" type="button" data-mb-follow style="min-height:36px;padding:0 12px;font-size:13px">🛰️ ' + esc(MB.following ? t('followingBus') : t('followBus')) + '</button>' +
-      '<button class="nl-b" type="button" data-mb-overview style="min-height:36px;padding:0 12px;font-size:13px">🗺️ ' + esc(t('routeOverview')) + '</button>' +
+      '<button class="nl-b" type="button" data-mb-center style="min-height:44px;padding:0 12px;font-size:13px">🎯 ' + esc(t('centerBus')) + '</button>' +
+      '<button class="nl-b ' + (MB.following ? 'cta' : '') + '" type="button" data-mb-follow style="min-height:44px;padding:0 12px;font-size:13px">🛰️ ' + esc(MB.following ? t('followingBus') : t('followBus')) + '</button>' +
+      '<button class="nl-b" type="button" data-mb-overview style="min-height:44px;padding:0 12px;font-size:13px">🗺️ ' + esc(t('routeOverview')) + '</button>' +
     '</div>' +
   '</div>';
 }
@@ -1005,6 +1019,7 @@ function myBusOff() {
 }
 function myBusTick(first) {
   if (!MB.pnr) return;
+  MB.reqAt = Date.now();
   X.fetchT('/api/whereis.php?pnr=' + encodeURIComponent(MB.pnr) + '&k=' + encodeURIComponent(MB.k), { credentials: 'same-origin', cache: 'no-store' }, 12000)
     .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
     .then(function (x) {
@@ -1017,31 +1032,58 @@ function myBusTick(first) {
         } else if (x.s === 404) myBusOff();                /* no longer this phone's to see: stop asking */
         return;
       }
-      var d = MB.st = x.j.data, m = X.S.map;
-      if (m && window.maplibregl && d.lat != null && d.lng != null) {
-        if (!MB.dragBound) {
-          MB.dragBound = true;
-          m.on('dragstart', function () {
-            if (MB.following) {
-              MB.following = false;
-              if (SHT.open) openMyBus();
-            }
-          });
-        }
-        if (!MB.m) {
-          var el2 = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global"><span>' + esc(t('myBusT')) + '</span>', 'nl-bi nl-mine');
-          el2.className = 'nl-bus';
-          el2.addEventListener('click', function (e) { e.stopPropagation(); openMyBus(); });
-          MB.m = new maplibregl.Marker({ element: el2, anchor: 'left' }).setLngLat([d.lng, d.lat]).addTo(m);
-        } else moveMarker(MB.m, [d.lng, d.lat]);
-        if (first) {
-          m.flyTo({ center: [d.lng, d.lat], zoom: Math.max(m.getZoom(), 11), duration: slow() ? 0 : 1200 });
-        } else if (MB.following) {
-          m.easeTo({ center: [d.lng, d.lat], bearing: d.bearing || 0, pitch: 45, duration: slow() ? 0 : 900 });
-        }
-      }
+      var d = MB.st = x.j.data;
+      MB.okAt = Date.now();
+      if (typeof d.staleSec === 'number') MB.stale = d.staleSec;
+      if (!d.live && d.lastKnown && d.lastAgeMin != null) d.lastAtMs = MB.okAt - d.lastAgeMin * 60000;
+      myBusMark(d, first);
       if (first || (SHT.open && $('#nlPnr'))) openMyBus();
     }).catch(function () { if (first) X.toast(t('failed')); });
+}
+/* 26 Nov 2026 (fx1): the coach marker follows the ANSWER, not only a live one. Before, a bus that stopped
+   being live (GPS gap, trip ended) stayed on the map at its last live place, still looking live. Now:
+   live = the orange coach, moving; last known place = the same coach in grey with the time it was seen;
+   nothing known = off the map. */
+function myBusMark(d, first) {
+  var m = X.S.map, ll = mbLL(d), live = !!(d && d.live);
+  if (!m || !window.maplibregl) return;
+  if (!ll) { if (MB.m) { MB.m.remove(); MB.m = null; } return; }
+  if (!MB.dragBound) {
+    MB.dragBound = true;
+    m.on('dragstart', function () {
+      if (MB.following) {
+        MB.following = false;
+        if (SHT.open) openMyBus();
+      }
+    });
+  }
+  if (!MB.m) {
+    var el2 = wrapM('<img src="/assets/img/bus-shg-sm.webp" alt="S Hari Global"><span>' + esc(t('myBusT')) + '</span>', 'nl-bi nl-mine');
+    el2.className = 'nl-bus';
+    el2.addEventListener('click', function (e) { e.stopPropagation(); openMyBus(); });
+    MB.m = new maplibregl.Marker({ element: el2, anchor: 'left' }).setLngLat(ll).addTo(m);
+  } else moveMarker(MB.m, ll, !live);
+  var mel = MB.m.getElement(), lab = mel.querySelector('span');
+  mel.classList.toggle('nl-last', !live);
+  if (lab) lab.textContent = t('myBusT') + (!live && d.lastAt ? ' · ' + d.lastAt : '');
+  if (first) {
+    m.flyTo({ center: ll, zoom: Math.max(m.getZoom(), 11), duration: slow() ? 0 : 1200 });
+  } else if (MB.following && live) {
+    m.easeTo({ center: ll, bearing: d.bearing || 0, pitch: 45, duration: slow() ? 0 : 900 });
+  }
+}
+/* No fresh answer for MB.stale seconds (this phone lost its network, or the server is not answering): the last
+   answer is no longer called live. Its place becomes the last known place, the ETA and the speed are dropped. */
+function myBusAge() {
+  var d = MB.st, o = {}, at = MB.okAt - (d.fixAge || 0) * 1000;
+  Object.keys(d).forEach(function (k) { o[k] = d[k]; });
+  o.live = false; o.lastKnown = true; o.lastLat = d.lat; o.lastLng = d.lng; o.lastAtMs = at;
+  try { o.lastAt = new Date(at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }); } catch (e) { o.lastAt = ''; }
+  o.lastAgeMin = Math.max(1, Math.round((Date.now() - at) / 60000)); o.lastStop = '';
+  o.lat = o.lng = o.etaMin = o.km = o.kmh = o.fixAge = null;
+  MB.st = o;
+  myBusMark(o, false);
+  if (SHT.open && $('#nlPnr')) openMyBus();
 }
 
 /* ---------------------------------------------------------------------
@@ -1143,11 +1185,13 @@ function start() {
   window.SHGNAV_LIVE = { openSync: openSync, openMyBus: openMyBus, openFleet: openFleet };
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { off('bus'); Object.keys(BUS.m).forEach(function (id) { if (BUS.m[id]._shgAnim) cancelAnimationFrame(BUS.m[id]._shgAnim); }); }
-    else { busRows(); if (BUS.on) busStart(); }
+    else { busRows(); if (BUS.on) busStart(); if (MB.pnr && MB.st) myBusTick(false); }   /* back on the page: my bus is asked at once, not up to 20 s later */
   });
   addEventListener('online', function () { BUS.retryAt = 0; if (BUS.on) busStart(); });
   setInterval(function () {
     if (document.hidden || FW) return;
+    /* 26 Nov 2026 (fx1): my bus is not called live on an old answer (3 s grace while a new one is being fetched) */
+    if (MB.st && MB.st.live && MB.stale > 0 && MB.okAt && Date.now() - MB.okAt > MB.stale * 1000 && Date.now() - MB.reqAt > 3000) myBusAge();
     Object.keys(BUS.by).forEach(function (id) { if (!busFresh(BUS.by[id])) removeBus(id); });
     busRows();
     // Repair a silent WebSocket without redundant polling while push is healthy.

@@ -66,6 +66,9 @@ if ($byAgent !== []) {
     }
 }
 
+require_once INCLUDE_PATH . '/agentreport.php';
+$agKyc = AgentReport::kycPending(array_keys($byAgent));   // 26 Nov 2026 (fx1): "KYC बाँकी" marker, one read
+
 $rows = [];
 $tot  = array_fill_keys(DeskTools::AGING_BUCKETS, 0.0) + ['total' => 0.0, 'credit' => 0.0];
 foreach ($byAgent as $aid => $list) {
@@ -147,7 +150,8 @@ admin_header('Agent cash aging', 'agent-aging');
     <tbody>
     <?php foreach ($rows as $r): $late = $dueDays > 0 && $r['oldestDays'] !== null && $r['oldestDays'] > $dueDays; ?>
       <tr>
-        <td data-label="Agent"><a href="/admin/agent-360.php?agent=<?= (int) $r['id'] ?>"><b><?= $e($r['name']) ?></b></a>
+        <?php /* 26 Nov 2026 (fx1): an agent holding the company's cash with no verified KYC is marked */ ?>
+        <td data-label="Agent"><a href="/admin/agent-360.php?agent=<?= (int) $r['id'] ?>"><b><?= $e($r['name']) ?></b></a><?= AgentReport::kycPill($agKyc, (int) $r['id']) ?>
           <span class="muted mono" style="font-size:11px"><?= $e(implode(' · ', array_filter([$r['code'], $r['role'] !== 'agent' ? $r['role'] : '', $r['active'] ? '' : 'inactive'], static fn($s): bool => $s !== ''))) ?></span>
           <?php if ($r['credit'] > 0): ?><div class="muted" style="font-size:11.5px">Handed in ahead: <?= $e(inr($r['credit'])) ?></div><?php endif; ?></td>
         <?php foreach (DeskTools::AGING_BUCKETS as $bk): $v = $r['buckets'][$bk]; ?>

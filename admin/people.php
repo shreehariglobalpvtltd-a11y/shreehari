@@ -42,6 +42,21 @@ $rows = Database::fetchAll(
        LEFT JOIN admin_profiles p ON p.admin_id = a.id
       ORDER BY a.is_active DESC, a.full_name, a.username"
 );
+/* 26 Nov 2026 (fx1): on the Agents tab the KYC-verified agents come first (inside active /
+   disabled, then by name as before). Only kyc_status = 'verified' counts; no profile row,
+   none, pending and rejected are "KYC बाँकी". Switch agent_list_verified_first_on (default 1). */
+$kycOk = static fn(array $r): bool => strtolower(trim((string) ($r['kyc_status'] ?? ''))) === 'verified';
+if ($tab === 'agents' && Settings::getBool('agent_list_verified_first_on', true)) {
+    // One sort key per row - [disabled?, not-a-verified-agent?, SQL position] - so the order is total
+    // (a pairwise "both agents?" rule is not, and usort then returns whatever it likes).
+    $ppKey = [];
+    foreach ($rows as $i => $r) {
+        $ppKey[$i] = [(int) $r['is_active'] === 1 ? 0 : 1, ($r['role'] === 'agent' && $kycOk($r)) ? 0 : 1, $i];
+    }
+    $ppOrder = array_keys($rows);
+    usort($ppOrder, static fn(int $x, int $y): int => $ppKey[$x] <=> $ppKey[$y]);
+    $rows = array_map(static fn(int $i): array => $rows[$i], $ppOrder);
+}
 $byRole = ['agent' => 0, 'counter' => 0, 'staff' => 0];
 foreach ($rows as $r) {
     if ((int) $r['is_active'] !== 1) { continue; }
@@ -255,7 +270,11 @@ admin_header('Agents & Staff', 'people');
           <td data-label="Commission due" class="num"><?= $e(inr($comm)) ?></td>
           <td data-label="Cash held" class="num" style="color:<?= $cash > 0.009 ? '#b02a2a' : 'inherit' ?>"><?= $e(inr(max(0.0, $cash))) ?></td>
           <td data-label="Sales this month" class="num"><?= $e(inr((float) ($mtd[$id] ?? 0))) ?></td>
-          <td data-label="KYC"><?= $e(ucfirst((string) ($r['kyc_status'] ?? 'none'))) ?></td>
+          <td data-label="KYC"><?php $ppKyc = strtolower(trim((string) ($r['kyc_status'] ?? ''))); ?>
+            <?php if ($ppKyc === 'verified'): ?><span class="pp-st open">✓ Verified</span>
+            <?php elseif ($ppKyc === 'rejected'): ?><span class="pp-st closed_diff" data-kyc-pill>KYC ✗ मिलेन</span>
+            <?php elseif ($ppKyc === 'submitted'): ?><span class="pp-st" data-kyc-pill style="background:#fef3c7;color:#92400e">KYC बाँकी · जाँच गर्नुपर्ने</span>
+            <?php else: ?><span class="pp-st" data-kyc-pill style="background:#fef3c7;color:#92400e">KYC बाँकी</span><?php endif; ?></td>
         <?php elseif ($tab === 'counters'):
           $dn = $deskNow[$id] ?? null; ?>
           <td data-label="Desk"><?= $desk !== '' ? $e($desk) : '<span class="muted">not assigned</span>' ?></td>

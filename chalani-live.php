@@ -29,11 +29,18 @@ header('Cache-Control: no-store, max-age=0');
 header('Referrer-Policy: no-referrer');
 
 $key = (string) ($_GET['k'] ?? '');
-if (!Security::rateLimit('chalani_live', Security::clientIp(), 600, 3600)) {
+/* 26 Nov 2026 (fx1): the key is checked FIRST and the two cases are counted apart.
+   One budget of 600 an hour per address covered both: the page re-reads itself every
+   30 s (120 an hour per open copy, plus a hit per QR picture), so five phones behind
+   one office Wi-Fi or one mobile-carrier address locked everybody out with a 429.
+   A WRONG key is now held much tighter than before (60 an hour - guessing the key gets
+   harder, not easier); a RIGHT key gets room for a whole office on one address. */
+$keyOk = OpsHub::checkPublicKey($key);
+if (!Security::rateLimit($keyOk ? 'chalani_live' : 'chalani_live_bad', Security::clientIp(), $keyOk ? 6000 : 60, 3600)) {
     http_response_code(429);
     exit('Too many requests — try again in a while.');
 }
-if (!OpsHub::checkPublicKey($key)) {
+if (!$keyOk) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
     exit('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chalani</title>'
@@ -249,6 +256,12 @@ dialog.pq::backdrop{background:rgba(8,15,30,.55)}
   .qrb{background:rgba(59,130,246,.18);border-color:rgba(147,197,253,.5);color:#BFDBFE}
   .pq .pq-amt{color:#FCA5A5}
 }
+/* 26 Nov 2026 (fx1): this page is opened on phones - every control a finger can hit (44 px), the pay-link box at 16 px so the phone does not zoom on focus */
+.days a{min-height:44px;display:flex;flex-direction:column;justify-content:center}
+.tools button,.qrb,.pq .pq-link button,.pq .pq-link a{min-height:44px}
+.pq .pq-x{width:44px;height:44px}
+.pq h3{margin-right:44px}
+.pq .pq-link input{min-height:44px;font-size:16px}
 @media print{.days,.tools,.qrb{display:none}body{background:#fff}.trip{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
 <header><h1>🚌 <?= $e($company) ?> — Live Chalani</h1>
@@ -298,6 +311,25 @@ dialog.pq::backdrop{background:rgba(8,15,30,.55)}
           }
       }
       foreach ($pmB as $pmX) { if ($pmX['mode'] === 'boarding') { $boardDue += $pmX['amt']; } }
+      /* 26 Nov 2026 (fx1): the place NUMBER is the office chalani's - the place's
+         position in the route's own pickup list (Admin -> Stops), the same matching
+         rule admin/manifest.php uses - so the paper in the driver's hand and this
+         page say the same number. It used to count 1, 2, 3 over the places that
+         happened to have passengers: Kamrej was "6" on paper and "1" here. */
+      try { $routeStops = Boarding::allStopsFor((int) $dep['route_id'], 'boarding'); } catch (Throwable $ex) { $routeStops = []; }
+      $placeNo = [];
+      $nextNo  = count($routeStops);
+      foreach (array_keys($groups) as $pk) {
+          $s  = mb_strtolower(trim((string) $pk));
+          $pn = 0;
+          foreach (array_values($routeStops) as $si => $st) {
+              $n = mb_strtolower(trim((string) ($st['name'] ?? '')));
+              if ($n !== '' && ($s === $n || str_starts_with($s, $n) || str_starts_with($n, $s))) { $pn = $si + 1; break; }
+          }
+          $placeNo[$pk] = $pn;
+      }
+      foreach ($placeNo as $pk => $pn) { if ($pn === 0) { $placeNo[$pk] = ++$nextNo; } }   // a place not on the route list: after the numbered ones, as first seen
+      uksort($groups, static fn($a, $b): int => $placeNo[$a] <=> $placeNo[$b]);
       $total = (int) ($dep['total_seats'] ?: 72);
       /* 16 Nov 2026 (owner: "chalani ma seat ma sabai ma thik hos"): free = berths not
          taken — a private double cabin is one passenger on two berths */
@@ -316,8 +348,8 @@ dialog.pq::backdrop{background:rgba(8,15,30,.55)}
         <span class="c-paid">✅ Paid <?= $cnt['paid'] ?></span><span class="c-agent">🟠 Agent <?= $cnt['agent'] ?></span><span class="c-due">🔴 Due <?= $cnt['due'] ?></span>
         <span class="<?= $boardDue > 0 ? 'c-board' : 'c-n' ?>">🚌 बसमा उठाउनु पर्ने · To collect on boarding: <?= (int) $boardDueN ?> जना · ₹<?= $e(number_format($boardDue)) ?></span>
       </div>
-      <?php $no = 0; foreach ($groups as $place => $bks): $no++; $paxHere = array_sum(array_map(static fn(array $g): int => $g['n'], $bks)); ?>
-        <div class="place">📍 <?= $no ?> · <?= $e($place) ?> · <?= $paxHere ?> यात्रु</div>
+      <?php foreach ($groups as $place => $bks): $paxHere = array_sum(array_map(static fn(array $g): int => $g['n'], $bks)); ?>
+        <div class="place">📍 <?= (int) ($placeNo[$place] ?? 0) ?> · <?= $e($place) ?> · <?= $paxHere ?> यात्रु</div>
         <?php foreach ($bks as $g): [$lbl, $cls] = OpsHub::payLabel($g['state']); $r = $g['r']; ?>
           <div class="bk <?= $e($g['state']) ?>">
             <b><?= $e($g['lead']) ?><?= $g['n'] > 1 ? ' + ' . ($g['n'] - 1) : '' ?> · 💺 <?= $e(implode(', ', $g['seats'])) ?></b>
@@ -392,14 +424,19 @@ dialog.pq::backdrop{background:rgba(8,15,30,.55)}
     });
   }
   /* the page re-reads itself every 30 s - but never while the QR card is open
-     in front of a passenger who is scanning it */
-  (function later() {
-    setTimeout(function () {
-      if (d && d.open) { later(); return; }
-      try { sessionStorage.setItem('chl_y', String(window.scrollY)); } catch (e) {}
-      location.reload();
-    }, 30000);
-  })();
+     in front of a passenger who is scanning it.
+     26 Nov 2026 (fx1): and only while somebody is LOOKING at it. A copy left open in
+     a background tab or on a locked phone kept loading the whole bus twice a minute
+     for nobody; it now waits, and re-reads at once when the tab comes back (if 30 s
+     have passed), so what the reader sees is as fresh as before. */
+  var due = Date.now() + 30000;
+  var reread = function () {
+    if ((d && d.open) || document.visibilityState === 'hidden' || Date.now() < due) { return; }
+    try { sessionStorage.setItem('chl_y', String(window.scrollY)); } catch (e) {}
+    location.reload();
+  };
+  setInterval(reread, 5000);
+  document.addEventListener('visibilitychange', reread);
 })();
 try { var y = sessionStorage.getItem('chl_y'); if (y) { window.scrollTo(0, parseInt(y, 10) || 0); sessionStorage.removeItem('chl_y'); } } catch (e) {}
 </script>

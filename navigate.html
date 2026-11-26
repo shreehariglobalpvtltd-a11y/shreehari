@@ -4361,6 +4361,9 @@ document.addEventListener('visibilitychange', function () {
   }
   if (VO.ctx && VO.ctx.state === 'suspended' && S.nav) { try { VO.ctx.resume(); } catch (e) {} }
 });
+/* 26 Nov 2026 (fx1): Android drops the screen lock on battery saver / low battery while the page stays visible, and
+   nothing asked for it again until the page was hidden and shown. While a drive is on, ask again every 10 s. */
+setInterval(function () { if (!S.wake && document.visibilityState === 'visible' && S.nav && !S.nav.preview && !S.nav.arrived) wake(true); }, 10000);
 
 /* demo drive (?sim=1..8): fake GPS along the route, same pipeline as real fixes */
 function startSim() {

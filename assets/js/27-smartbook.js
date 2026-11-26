@@ -321,12 +321,65 @@
     if (inNpr()) return money(inr);
     return npr(p && Number(p.total) > 0 ? Math.round(Number(p.npr) * (Number(inr) || 0) / Number(p.total)) : 0);
   }
+  /* fx1 (26 Nov 2026) - STAFF desk only, each behind its own switch on admin/smartbook.php
+     (window.SB_STAFF.nprFirst / .fast / .twoBtn; the customer card never has SB_STAFF):
+     an NPR window collects रू at the DESK's rate and the sale freezes round(total x rate)
+     on the ticket (quote price.fx / the made booking's fx). deskFx() = that rate, or null
+     at an INR desk / with the switch off; deskAmt() = the रू figure for an INR amount. */
+  var FAST = !!(STAFF && STAFF.fast);
+  function deskFx(q) {
+    var f = STAFF && STAFF.nprFirst && q && q.price ? q.price.fx : null;
+    return f && f.currency === 'NPR' && Number(f.rate) > 0 ? f : null;
+  }
+  function nprRs(n) { return 'रू ' + Math.round(Number(n) || 0).toLocaleString('en-IN'); }
+  function deskAmt(inr, q) {
+    var f = deskFx(q); if (!f) return '';
+    inr = Number(inr) || 0;
+    // the quoted total itself: the server's own figure (CounterDesk::convert), never re-worked here
+    if (Math.abs(inr - Number(q.price.total)) < 0.005 && Number(f.amount) > 0) return nprRs(f.amount);
+    return nprRs(Number((inr * Number(f.rate)).toPrecision(15)));   // + luggage / infant: the same product the sale rounds
+  }
+  function deskAlt(inr, q) { var f = deskFx(q); return f ? money(inr) + ' × ' + Number(f.rate) : ''; }
+  /* The CARD's total (before Cash / Online is chosen) leads with रू only on the Counter / Admin
+     faces, where every sale has a desk seller. On the Agent face an Online sale has no desk
+     seller and freezes no NPR on the ticket, so the card keeps ₹ big (≈ NPR small, as before);
+     the Cash sheet - always a desk sale - still leads with the रू that sale freezes. */
+  function cardFx(q) { return MODE !== 'agent' ? deskFx(q) : null; }
+  function coarse() { try { return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); } catch (e) { return false; } }
   var store = {
     get: function () { try { return JSON.parse(localStorage.getItem('sb:v1') || 'null') || {}; } catch (e) { return {}; } },
     set: function () {
       try {
+        /* fx1: a desk remembers its OWN habits (run, pickup / drop, dial code, berth) - never the
+           last passenger: a reload must not bring the previous customer's mobile and name back.
+           The passenger being typed lives in this TAB only (draft, below). */
+        if (FAST) {
+          localStorage.setItem('sb:v1', JSON.stringify({ dir: S.dir, point: S.point, cc: S.cc, pickup: S.pickup || '', type: S.type, cabin: S.cabin, berth: S.berth }));
+          draft.set();
+          return;
+        }
         localStorage.setItem('sb:v1', JSON.stringify({ dir: S.dir, point: S.point, cc: S.cc, phone: S.phone, name: S.name,
           pax: S.pax.map(function (p) { return { gender: p.gender, band: p.band }; }), type: S.type, cabin: S.cabin, berth: S.berth }));
+      } catch (e) {}
+    }
+  };
+  /* fx1 (desk_fast_entry_on): the UNFINISHED entry - mobile, name, F / M, age band - is kept for
+     THIS TAB only (sessionStorage), so a reload, a tap on Admin / Counter / Agent mode or an old
+     phone throwing the tab away while the clerk looks at the customer's ID does not cost the
+     typing again. It is gone when the tab closes, the moment a sale is made (S.soldKey = that
+     passenger) and when the card is cleared for the next customer. An AI-guessed F / M is not
+     kept - it comes back as "not chosen", never as a fact. */
+  var draft = {
+    get: function () { try { return JSON.parse(sessionStorage.getItem('sb:draft') || 'null') || {}; } catch (e) { return {}; } },
+    clear: function () { try { sessionStorage.removeItem('sb:draft'); } catch (e) {} },
+    key: function () { return digits(S.phone) + '|' + String(S.name || '').trim(); },
+    set: function () {
+      try {
+        var some = digits(S.phone) !== '' || String(S.name || '').trim() !== '' || S.pax.length > 1
+          || S.pax.some(function (p) { return (!!p.gender && !p.ai) || (!!p.band && p.band !== 'adult'); });
+        if (!some || (S.soldKey && S.soldKey === draft.key())) { draft.clear(); return; }
+        sessionStorage.setItem('sb:draft', JSON.stringify({ phone: S.phone, name: S.name,
+          pax: S.pax.map(function (p) { return { gender: p.ai ? '' : p.gender, band: p.band }; }) }));
       } catch (e) {}
     }
   };
@@ -338,8 +391,12 @@
     root.querySelectorAll('[data-sbi-title]').forEach(function (el) { var s = tr(el.getAttribute('data-sbi-title')); el.title = s; el.setAttribute('aria-label', s); });
     try { if (typeof factPolicyLine === 'function') $('sbPolicy').textContent = ' · ' + factPolicyLine(); } catch (e) {}
     if (STAFF) {   // at a desk Cash is money taken now; an agent's Online is the customer's QR
-      root.querySelector('#sbCash small').textContent = MODE === 'agent' ? 'agent collects' : 'received now';
-      root.querySelector('#sbOnline small').textContent = MODE === 'agent' ? 'customer pays QR' : 'UPI · eSewa seen';
+      /* fx1 (26 Nov 2026): these two lines were English only - now in the card's language */
+      var sw = { en: ['agent collects', 'received now', 'customer pays QR', 'UPI · eSewa seen'],
+        hi: ['एजेंट ने लिया', 'अभी लिया', 'ग्राहक QR से देगा', 'UPI · eSewa देखा'],
+        ne: ['एजेन्टले लियो', 'अहिले लिइयो', 'ग्राहकले QR बाट तिर्छ', 'UPI · eSewa देखियो'] }[lang()];
+      root.querySelector('#sbCash small').textContent = MODE === 'agent' ? sw[0] : sw[1];
+      root.querySelector('#sbOnline small').textContent = MODE === 'agent' ? sw[2] : sw[3];
     }
     $('sbPointL').textContent = tr(pointType() === 'drop' ? 'drop' : 'board');
     renderDates(); renderPax(); renderQuote();
@@ -373,6 +430,9 @@
     retargetBookLinks();
     steerClassic();
     var saved = store.get();
+    /* fx1: a desk never restores a passenger from the shared browser store (sb:v1) - only the
+       entry left unfinished in THIS tab (draft: nothing after a sale or once the tab is closed) */
+    if (FAST) { var dr = draft.get(); saved.phone = String(dr.phone || ''); saved.name = String(dr.name || ''); saved.pax = Array.isArray(dr.pax) && dr.pax.length ? dr.pax : null; }
     api({ action: 'boot', phone: saved.phone || '', direction: saved.dir || '', tz: TZ })
       .then(function (d) {
         S.dirs = d.directions || [];
@@ -398,10 +458,22 @@
         var df = d.defaults || {};
         S.why = df.why || {};
         S.dir = saved.dir || df.direction || 'toNepal';
+        /* fx1 (26 Nov 2026): a ONE-WAY desk (the Nepal windows; server key defaults.deskOnly,
+           Counter / Admin faces) opens on its own run whatever this browser remembers - the
+           other run could be filled to the last tap and was refused only there. */
+        S.deskOnly = (STAFF && (df.deskOnly === 'toIndia' || df.deskOnly === 'toNepal')) ? df.deskOnly : '';
+        if (S.deskOnly) S.dir = S.deskOnly;
         S.point = (saved.point && hasPoint(S.dir, saved.point)) ? saved.point : (df.point || '');
         if (S.dir !== df.direction && !hasPoint(S.dir, S.point)) S.point = firstPoint(S.dir);
         /* 25 Nov 2026 (wx6, owner: 'type almost nothing'): a phone on Nepal time starts on +977 */
         S.cc = saved.cc || (NP_TZ && !STAFF ? 'NP' : 'IN'); S.phone = saved.phone || ''; S.name = saved.name || df.name || '';
+        /* fx1: a Nepal desk (SB_STAFF.deskCc = 'NP') starts on +977 - under +91 a 98XXXXXXXX Nepal
+           number passed as an India one and the ticket went to +91. Once per browser (the old
+           default 'IN' was saved by every sale and is not a choice); after that the clerk's own
+           pick is remembered as before. */
+        var ccMoved = false;
+        if (FAST && STAFF.deskCc === 'NP' && lsGet('sb:ccDesk') !== '1') { S.cc = 'NP'; lsSet('sb:ccDesk', '1'); ccMoved = true; }
+        if (FAST && S.dir === 'toIndia' && saved.pickup) S.pickup = String(saved.pickup);   // the desk's usual Nepal-side pickup chip
         S.pax = (saved.pax && saved.pax.length ? saved.pax : (df.pax && df.pax.length ? df.pax : S.pax)).slice(0, S.maxPax)
           .map(function (p) { return { gender: p.gender === 'Female' || p.gender === 'Male' ? p.gender : '', band: p.band || 'adult' }; });
         /* 16 Oct 2026 (owner: "badi jaso sharing use hunx - default sharing, private clickable option"):
@@ -409,7 +481,9 @@
         S.type = 'sharing'; S.cabin = 'single'; S.berth = saved.berth || df.berth || 'any';
         if (!S.allowCod) $('sbCash').hidden = true;
         S.curChoice = !STAFF && !!d.curChoice; S.cur = defaultCur();   // 25 Nov 2026 (wx1)
+        if (ccMoved) store.set();   // fx1: the desk's +977 is remembered from this first load on
         fill(); applyWords(); applyQuick(); requote(0);
+        deskFocus();   // fx1: a keyboard desk starts with the cursor in Mobile (never on a touch screen)
         /* 13 Nov 2026 (mg20): a ticket order typed in the Home AI box ("Ram 98…, Surat bholi 2 jana")
            arrives as ?order= — read into the card here; the person checks it and taps Book. */
         try {
@@ -437,11 +511,33 @@
   function firstPoint(dir) { var l = pointList(dir); return l.length ? l[0].name : ''; }
 
   /* ------------------------------------------------------- the controls */
+  /* fx1 (26 Nov 2026): a keyboard desk starts (and restarts after each sale) with the cursor in
+     Mobile - or in the agent box while an agent is still to be chosen. Fine pointers only: a
+     touch screen never gets a keyboard popped up by itself. Never steals a focus somebody set. */
+  function deskFocus() {
+    /* Counter / Admin faces only: there an empty Mobile is a valid walk-in, so leaving the box
+       shows no error. (On an agent's face a mobile is required - a cursor parked there would
+       paint "enter a mobile" the moment the agent clicks anything else first.) */
+    if (!FAST || MODE === 'agent' || coarse()) return;
+    try { if (!window.matchMedia('(pointer:fine)').matches) return; } catch (e) { return; }
+    var a = document.activeElement;
+    if (a && a !== document.body && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName || '')) return;
+    if (['sbSheet', 'sbPayOv', 'sbCv', 'sbModal'].some(function (id) { var el = $(id); return !!(el && !el.hidden); })) return;
+    var el = (STAFF.agentRequired && $('sbAgent') && !S.agent) ? $('sbAgent') : $('sbPhone');
+    try { if (el) el.focus({ preventScroll: true }); } catch (e) {}
+  }
   function fill() {
+    /* fx1: on a one-way desk's Counter / Admin face the other run cannot be sold - whatever
+       set it (a typed order, a regular customer's last trip) the card goes back to the desk's
+       run, and only that button is drawn. */
+    var oneWay = !!(STAFF && S.deskOnly && MODE !== 'agent');
+    if (oneWay && S.dir !== S.deskOnly) { S.dir = S.deskOnly; S.date = ''; S.manual = []; S.seatMode = 'auto'; S.pickup = ''; }
     root.querySelectorAll('.sb-dir-b').forEach(function (b) {
       var on = b.getAttribute('data-dir') === S.dir;
       b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
+      if (STAFF) b.hidden = oneWay && !on;
     });
+    if (STAFF) { var dirRow = root.querySelector('.sb-dir'); if (dirRow) dirRow.classList.toggle('sb-dir-one', oneWay); }
     var sel = $('sbPoint'); var h = '';
     pointList().forEach(function (p) {
       var lbl = p.short || p.name;
@@ -589,6 +685,17 @@
       var g = p.gender === 'Female' ? 'f' : (p.gender === 'Male' ? 'm' : 'u');
       var gl = p.gender === 'Female' ? '♀ ' + tr('female') : (p.gender === 'Male' ? '♂ ' + tr('male') : tr('gender'));
       if (p.ai && g !== 'u') gl = '🤖 ' + gl;
+      /* fx1 (26 Nov 2026, desk only - switch desk_gender_two_btn_on): nothing chosen yet = TWO
+         buttons, ♀ and ♂, one tap each. The single chip's first tap was always Female, so a man
+         cost two taps and one hurried tap left him as Female (a women-only berth). Nothing is
+         ever pre-set here; once chosen it is the usual chip (tap = the other one). */
+      if (STAFF && STAFF.twoBtn && g === 'u') {
+        h += '<span class="sb-p' + (S.touched.book ? ' sb-need' : '') + '">'
+          + '<button type="button" class="sb-g u sb-g2" data-i="' + i + '" data-act="g" data-g="Female" aria-label="Passenger ' + (i + 1) + ' ' + esc(tr('female')) + '">♀ ' + esc(tr('female')) + '</button>'
+          + '<button type="button" class="sb-g u sb-g2" data-i="' + i + '" data-act="g" data-g="Male" aria-label="Passenger ' + (i + 1) + ' ' + esc(tr('male')) + '">♂ ' + esc(tr('male')) + '</button>'
+          + '<button type="button" class="sb-b" data-i="' + i + '" data-act="b" aria-label="Passenger ' + (i + 1) + ' age band">' + esc(bandLabel(p.band)) + '</button></span>';
+        return;
+      }
       h += '<span class="sb-p' + (g === 'u' && S.touched.book ? ' sb-need' : '') + '"><button type="button" class="sb-g ' + g + (p.ai && g !== 'u' ? ' sb-ai' : '') + '" data-i="' + i + '" data-act="g"' + (p.ai && g !== 'u' ? ' title="' + esc(tr('aiGuess')) + '"' : '') + ' aria-label="Passenger ' + (i + 1) + ' gender">' + esc(gl) + '</button>'
         + '<button type="button" class="sb-b" data-i="' + i + '" data-act="b" aria-label="Passenger ' + (i + 1) + ' age band">' + esc(bandLabel(p.band)) + '</button></span>';
     });
@@ -727,7 +834,11 @@
   var qPend = false, quoteAt = 0;
   function requote(ms) {
     clearTimeout(qTimer);
-    S.idem = null;   // anything changed → a new booking intent
+    /* fx1 (26 Nov 2026): never while a sale is in flight. A late re-quote (a slow "who is this
+       mobile" / name-guess answer, a timer) dropped the key of the request that was already on
+       its way; if that answer was then lost, the retry went out under a NEW key and could make a
+       second ticket for the same passenger. The key now lives until the sale answers. */
+    if (!S.busy) S.idem = null;   // anything changed → a new booking intent
     /* A hand pick that a change dropped (gender, age band, date, pickup, +/-, type) is
        an AutoBerth sale again: back to Auto, so the seat map opens once more before
        the sale (seat_pick_manual_first) with the new berth marked. */
@@ -1083,16 +1194,21 @@
     /* 25 Nov 2026 (wx1): the chosen money big, the other one small (NPR = the server's own rate) */
     var tot = q && q.ok && q.price ? (inNpr() ? npr(q.price.npr) : money(q.price.total)) : '—';
     var altM = q && q.ok && q.price ? '≈ ' + (inNpr() ? money(q.price.total) : npr(q.price.npr)) : '';
+    /* fx1 (26 Nov 2026): at an NPR desk the figure the clerk collects is रू at the DESK's rate -
+       the one the sale freezes on the ticket - big; ₹ and the rate small beside it. */
+    if (q && q.ok && q.price && cardFx(q)) { tot = deskAmt(q.price.total, q); altM = deskAlt(q.price.total, q); }
+    deskBlockLine(q);
     $('sbTotal').textContent = tot;
     $('sbNpr').textContent = altM;
     (function () {   // 20 Nov 2026 (nf1)
       var host = $('sbTotal').parentNode, el = $('sbNf'), h = q && q.ok && q.price ? nfHtml(q.price.normal, function (n) { return curAmt(n, q); }) : '';
+      if (h && cardFx(q)) h = nfHtml(q.price.normal, function (n) { return deskAmt(n, q); });   // fx1: रू beside a रू total (NPR desk)
       if (!h) { if (el) el.remove(); return; }
       if (!el) { el = document.createElement('div'); el.id = 'sbNf'; host.appendChild(el); }
       el.innerHTML = h;
     })();
     $('sbBarTotal').textContent = tot;
-    try { $('sbBarTotal').setAttribute('data-nf', q && q.ok && q.price && q.price.normal ? curAmt(q.price.normal.normal, q) : ''); } catch (e) {}
+    try { $('sbBarTotal').setAttribute('data-nf', q && q.ok && q.price && q.price.normal ? ((cardFx(q) ? deskAmt(q.price.normal.normal, q) : '') || curAmt(q.price.normal.normal, q)) : ''); } catch (e) {}
     $('sbBarSeats').textContent = q && q.ok ? (seatSummary(q) + (q.price ? ' · ' + altM : '')) : (q && q.error ? q.error : tr('loading'));
     syncPoint();
     renderQLine();
@@ -1122,6 +1238,21 @@
     };
     tick();
     clockTimer = setInterval(tick, 30000);
+  }
+  /* fx1 (26 Nov 2026): a one-way desk (quote.deskBlock = the sentence the sale itself would
+     throw - "यो काउन्टर (NPJ) ले रुपैडिहा → गुजरात टिकट मात्र काट्छ") is told under the run
+     buttons the moment the other run is on the card, not after the whole ticket is filled. */
+  function deskBlockLine(q) {
+    if (!STAFF) return;
+    var msg = q && q.deskBlock ? String(q.deskBlock) : '', el = $('sbxBlock');
+    if (!msg) { if (el) { el.hidden = true; el.textContent = ''; } return; }
+    if (!el) {
+      var at = root.querySelector('.sb-dir'); if (!at || !at.parentNode) return;
+      el = document.createElement('p'); el.id = 'sbxBlock'; el.className = 'sbx-block'; el.setAttribute('role', 'alert');
+      at.parentNode.insertBefore(el, at.nextSibling);
+    }
+    el.textContent = '⛔ ' + msg;
+    el.hidden = false;
   }
   function clockLine(q) {
     clockSoonLine(q);
@@ -1216,7 +1347,9 @@
     }
     if ((b = e.target.closest('#sbPax button'))) {
       var i = +b.getAttribute('data-i'), p = S.pax[i]; if (!p) return;
-      if (b.getAttribute('data-act') === 'g') { p.gender = p.gender === 'Female' ? 'Male' : (p.gender === 'Male' ? 'Female' : 'Female'); p.ai = false; }
+      var gWant = b.getAttribute('data-g');   // fx1: the desk's two-button chip names the gender it sets
+      if (b.getAttribute('data-act') === 'g' && (gWant === 'Female' || gWant === 'Male')) { p.gender = gWant; p.ai = false; }
+      else if (b.getAttribute('data-act') === 'g') { p.gender = p.gender === 'Female' ? 'Male' : (p.gender === 'Male' ? 'Female' : 'Female'); p.ai = false; }
       else { var order = ['adult', 'child', 'senior', 'patient']; p.band = order[(order.indexOf(p.band) + 1) % order.length]; }
       S.manual = []; renderPax(); changed('pax'); return;
     }
@@ -1262,6 +1395,9 @@
         whoT = setTimeout(function () {
       api({ action: 'who', phone: p }).then(function (r) {
         if (!r || !r.found || digits(S.phone) !== p) return;
+        /* fx1: a sale is on its way (S.busy), or its answer was lost and the retry must carry the
+           same key (S.idem) - a late autofill must not re-price the card under it. */
+        if (S.busy || S.idem) return;
         var did = false, nm = String(S.name || '').trim();
         if (r.name && (nm === '' || S.autoName === nm)) { S.name = r.name; S.autoName = r.name; $('sbName').value = r.name; did = true; }
         var plain = !S.touched.pax && S.pax.every(function (x) { return !x.gender || x.ai; });
@@ -1269,7 +1405,7 @@
           S.pax = r.people.slice(0, S.maxPax || 6).map(function (x) { return { gender: x.gender === 'Female' || x.gender === 'Male' ? x.gender : '', band: x.band || 'adult', ai: true }; });
           S.manual = []; renderPax(); did = true;
         }
-        if (did) { store.set(); showErrs(false); syncButtons(); requote(); say('🤖 ' + (r.name || p) + ' — ' + r.trips + ' trip' + (r.trips === 1 ? '' : 's') + ' · auto-filled'); }
+        if (did) { store.set(); showErrs(false); syncButtons(); requote(); say('🤖 ' + (r.name || p) + ' — ' + r.trips + (lang() === 'en' ? ' trip' + (r.trips === 1 ? '' : 's') + ' · auto-filled' : ' यात्रा · आफैं भरियो (auto-filled)')); }
       }).catch(function () {});
     }, 350);
   }
@@ -1289,6 +1425,7 @@
       if (nm === guessFor) return; guessFor = nm;
       api({ action: 'guess', name: nm }).then(function (r) {
         var q = S.pax[0]; if (!q || (q.gender && !q.ai) || String(S.name || '').trim() !== nm) return;
+        if (S.busy || S.idem) return;   // fx1: never under a sale in flight / a lost answer waiting for its retry (see whoSoon)
         if (r && r.gender) { if (q.gender !== r.gender) { q.gender = r.gender; q.ai = true; S.manual = []; renderPax(); changed('pax'); } }
         else if (q.ai) { q.gender = ''; q.ai = false; renderPax(); changed('pax'); }
       }).catch(function () {});
@@ -1655,6 +1792,14 @@
       return;
     }
     if (!S.q || !S.q.ok) { say(S.q && S.q.error ? S.q.error : tr('loading')); if (!S.q) requote(0); return; }
+    /* fx1 (26 Nov 2026): a one-way desk - the sale would refuse this run (every Counter / Admin
+       sale and an agent's Cash have a desk seller). Say it now, in the sale's own words, instead
+       of after the seat map and the confirm sheet. An agent's Online goes on as before. */
+    if (STAFF && S.q.deskBlock && (pay === 'cash' || MODE !== 'agent')) {
+      say(String(S.q.deskBlock));
+      try { $('sbxBlock').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {}
+      return;
+    }
     /* 6 Nov 2026 (owner: "customer, agent le book garda automatic bhanda seat selection
        prefer"): the seat map opens first, AutoBerth's berths already marked — one tap on
        OK keeps them, or tap other berths. Then the same button books. Setting
@@ -1693,6 +1838,7 @@
     api(body).then(function (r) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
       closeCash();
+      if (FAST) { S.soldKey = draft.key(); draft.clear(); }   // fx1: this passenger has a ticket now - a reload must not bring them back
       adopt(r);
       S.idem = null;
       if (STAFF && r.agent) say('🤝 ' + r.agent.code + ' · ' + r.agent.name + (r.commission ? ' · 💰 ' + money(r.commission) : ''));
@@ -1724,7 +1870,16 @@
     });
   }
   var printNext = false, bookWait = false;
-  function staffPrint() { try { return localStorage.getItem('sb:print80') !== '0'; } catch (e) { return true; } }
+  /* fx1 (26 Nov 2026): on a PHONE with nothing saved the 80 mm print does not open by itself (a
+     new tab after every sale, no printer) - the same default the tick box on admin/smartbook.php
+     shows; SB_STAFF.printTouch (desk_print80_touch_on = 1) = on by default everywhere, as before. */
+  function staffPrint() {
+    try {
+      var v = localStorage.getItem('sb:print80');
+      if (v === null && STAFF && STAFF.printTouch === false && window.matchMedia && window.matchMedia('(pointer:coarse) and (max-width:600px)').matches) return false;
+      return v !== '0';
+    } catch (e) { return true; }
+  }
 
   /* ------------------------------------------------ Cash verification sheet
      16 Oct 2026 (owner): Cash = pay at boarding, so a customer gives the full
@@ -1809,8 +1964,14 @@
     if (STAFF) { var cnS = cashNoteText(cashNote()); if (cnS) rows.push(['💵 पैसा कहिले? · When will they pay', cnS]); }
     if (q.clockNote && q.clockNote.label) rows.push(['⛔ ' + q.clockNote.label, q.dateLabel || q.date || '']);
     /* 25 Nov 2026 (wx1): the chosen money big, the other small (curAmt / altAmt = ₹ big as before unless NPR chosen) */
-    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small><b>' + esc(q.price ? curAmt(Number(q.price.total) + dxS.amt, q) : '—') + '</b>'
-      + (q.price ? '<span>≈ ' + esc(altAmt(Number(q.price.total) + dxS.amt, q)) + '</span>' : '') + '</div><dl>'
+    /* fx1 (26 Nov 2026): at an NPR desk the sheet leads with the रू to collect - (fare + the desk's
+       extras) x the desk's rate, the very sum the sale freezes on the ticket - and ₹ x rate small. */
+    var okNpr = q.price ? deskAmt(Number(q.price.total) + dxS.amt, q) : '';
+    var okTot = okNpr
+      ? '<b>' + esc(okNpr) + '</b><span>' + esc(deskAlt(Number(q.price.total) + dxS.amt, q)) + '</span>'
+      : '<b>' + esc(q.price ? curAmt(Number(q.price.total) + dxS.amt, q) : '—') + '</b>'
+        + (q.price ? '<span>≈ ' + esc(altAmt(Number(q.price.total) + dxS.amt, q)) + '</span>' : '');
+    return '<div class="sb-ok-sum"><div class="sb-ok-tot"><small>' + esc(tr('total')) + '</small>' + okTot + '</div><dl>'
       + rows.filter(function (r) { return String(r[1] || '').replace(/[\s·→+]/g, '') !== ''; })
           .map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('')
       + '</dl></div>';
@@ -1821,6 +1982,7 @@
   function openOk(wantPrint) {
     var box = cashSheet(), q = S.q || {};
     var tot = q.price ? curAmt(Number(q.price.total) + deskExtras('cash').amt, q) : '';   // P8-3f / P4-4d: + the desk's extras; wx1: NPR when chosen
+    if (q.price && deskFx(q)) tot = deskAmt(Number(q.price.total) + deskExtras('cash').amt, q);   // fx1: the रू an NPR desk collects
     okPrint = !!wantPrint;
     box.setAttribute('data-kind', 'ok');
     box.innerHTML = '<form class="sb-cv-in sb-ok" novalidate>'
@@ -2232,8 +2394,27 @@
   if (STAFF) {
     initAgent();
     buildDeskMore();
+    /* fx1 (26 Nov 2026, switch desk_fast_entry_on): Enter moves on. Mobile -> Name on every
+       device. On a TOUCH screen Enter in Name closes the keyboard and shows F / M (or the Book
+       bar) - there the keyboard's Enter used to ADD a passenger (1 adult became 2 and the price
+       doubled). A real keyboard keeps Enter = one more passenger and Ctrl+Enter = book + print. */
+    if (FAST) {
+      try { $('sbPhone').setAttribute('enterkeyhint', 'next'); $('sbName').setAttribute('enterkeyhint', coarse() ? 'done' : 'next'); } catch (x) {}
+    }
     root.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); book('cash', true); return; }
+      if (FAST && e.key === 'Enter' && !e.isComposing && e.target.id === 'sbPhone') {
+        e.preventDefault(); S.touched.phone = true; showErrs(false);
+        try { $('sbName').focus(); } catch (x) {}
+        return;
+      }
+      if (FAST && e.key === 'Enter' && !e.isComposing && e.target.id === 'sbName' && coarse()) {
+        e.preventDefault(); S.touched.name = true; showErrs(false);
+        try { e.target.blur(); } catch (x) {}
+        var nxt = S.pax.some(function (p) { return !p.gender; }) ? $('sbPax') : $('sbCash');
+        setTimeout(function () { try { nxt.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {} }, 120);
+        return;
+      }
       if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {
         e.preventDefault();
         if (S.pax.length < S.maxPax) { S.pax.push({ gender: S.pax.length ? S.pax[S.pax.length - 1].gender : '', band: 'adult' }); S.manual = []; renderPax(); changed(); }
@@ -2394,6 +2575,9 @@
   function ticketHtml(r) {
     var t = r.ticket || {};
     var secs = r.elapsedMs > 0 ? (r.elapsedMs / 1000).toFixed(1) + ' s' : '';
+    /* fx1 (26 Nov 2026): a desk sale frozen in NPR (r.fx = the booking's own fx_total, staff
+       faces only) reads रू big - the figure printed on the ticket - and ₹ small. */
+    var fxT = (STAFF && STAFF.nprFirst && r.fx && r.fx.currency === 'NPR' && Number(r.fx.amount) > 0) ? nprRs(r.fx.amount) : '';
     return '<div class="sb-tk">'
       + '<div class="sb-tk-h"><span class="sb-tk-ok" aria-hidden="true">✓</span><div><b>' + esc(tr('ticketOk')) + '</b><small>' + esc(r.route || '') + ' · ' + esc(r.dateLabel || '') + '</small></div>'
       + (secs ? '<span class="sb-tk-fast" title="' + esc(tr('fast')) + '">⚡ ' + esc(secs) + '</span>' : '')
@@ -2401,10 +2585,12 @@
       + '<div class="sb-tk-pnr">' + esc(tr('pnr')) + ' ' + esc(r.pnr) + '</div>'
       + (t.view ? '<div class="sb-tk-imgw" data-tkimg><img class="sb-tk-img" src="' + esc(t.view) + '" alt="Ticket ' + esc(r.pnr) + '" loading="eager" decoding="async"><span class="sb-tk-wait">' + esc(tr('making')) + '</span></div>' : '')
       /* 25 Nov 2026 (wx1): NPR chosen -> the NPR total big (as the ticket prints it), ₹ small */
-      + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || '')) + ' <small>(≈ ' + esc(inNpr() && r.npr ? (r.totalLabel || '') : npr(r.npr)) + ')</small>'
-      + (inNpr() ? '' : nfHtml(r.normal)) + '</div>'
+      + (fxT
+        ? '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · <b>' + esc(fxT) + '</b> <small>(' + esc(r.totalLabel || '') + ')</small></div>'
+        : '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || '')) + ' <small>(≈ ' + esc(inNpr() && r.npr ? (r.totalLabel || '') : npr(r.npr)) + ')</small>'
+      + (inNpr() ? '' : nfHtml(r.normal)) + '</div>')
       + (r.boardingTime ? '<div class="sb-tk-row">' + esc(r.boarding || '') + ' · <small>' + esc(tr('report')) + ' ' + esc(r.reportTime || '') + '</small></div>' : '')
-      + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || '')) + '</div>' : '')
+      + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(fxT || (inNpr() && r.npr ? npr(r.npr) : (r.totalLabel || ''))) + '</div>' : '')
       /* staff desks: who the sale was credited to and what it earned (the server
          answers these only to a staff session; a customer's answer has neither) */
       + (STAFF && r.agent ? '<div class="sb-tk-agent">🤝 ' + esc(tr('credited')) + ' ' + esc(r.agent.code + ' · ' + r.agent.name)
@@ -2422,7 +2608,10 @@
          opened in the browser's own viewer (?print=1, the keyed public link), print from there. */
       + (!STAFF && t.print ? '<a href="' + esc(t.print) + '" target="_blank" rel="noopener">🖨 ' + esc(tr('print')) + '</a>' : '')
       + '<button type="button" data-tk="copy">' + esc(tr('copy')) + '</button>'
-      + '<a href="#/trip/' + encodeURIComponent(r.pnr) + '">' + esc(tr('track')) + '</a>'
+      /* fx1 (26 Nov 2026): the staff page has no #/trip view (the link did nothing there) - the desk
+         gets the booking itself instead: seat shift, bus swap, edit, payment (admin/booking-view.php). */
+      + (STAFF ? '<a href="/admin/booking-view.php?pnr=' + encodeURIComponent(r.pnr) + '">🎫 टिकट खोल्नुहोस् · Open booking</a>'
+               : '<a href="#/trip/' + encodeURIComponent(r.pnr) + '">' + esc(tr('track')) + '</a>')
       + '</div><button type="button" class="sb-tk-new" data-tk="new">＋ ' + esc(tr('newB')) + '</button></div>';
   }
   function wide() { return window.matchMedia && window.matchMedia('(min-width: 860px)').matches; }
@@ -2562,7 +2751,9 @@
     });
     resetDeskMore();   // 19 Nov 2026: nor a 2nd number or a cash note
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
+    S.soldKey = '';   // fx1: the card is empty again (store.set() below drops the tab's draft)
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
+    deskFocus();   // fx1: a keyboard desk is ready for the next mobile at once
   }
   /* ------------------------------------------------ Offline call-back request
      16 Nov 2026 (P2-4e + P2-4g, setting offline_callback_on, default OFF): the card cannot

@@ -54,6 +54,16 @@ final class WaEdit
     private const OTHER_WORD   = ['arko', 'aru', 'dusra', 'dusre', 'naya', 'other', 'another', 'अर्को', 'अरू', 'दूसरा', 'नयाँ'];
     private const CONFIRM_STEM = ['confirm', 'conform', 'pakka', 'पक्का', 'कन्फर्म'];
     private const ASK_WORD     = ['garnu', 'gardinus', 'gardinu', 'garidinu', 'garidinus', 'karna', 'kardo', 'karde', 'karo', 'garau', 'garna', 'chahiyo', 'chaiyo', 'chahincha', 'please', 'गर्नु', 'गरिदिनु', 'गरिदिनुस्', 'करना', 'चाहियो'];
+    /* 26 Nov 2026 (fx1): a seat change and a refund are asked in words too. A seat needs a real "change" word
+       ("seat milau" is somebody ASKING for a seat, never a change); a refund needs an asking word. */
+    private const SEAT_WORD        = ['seat', 'seats', 'sit', 'sitt', 'berth', 'सिट', 'सीट'];
+    private const SEAT_CHANGE_STEM = ['badal', 'badla', 'badl', 'change', 'exchange', 'swap', 'बदल', 'चेन्ज', 'चेंज'];
+    private const REFUND_STEM      = ['refund', 'rifand', 'rifund', 'रिफन्ड', 'रिफंड'];
+    /* "firta" / "wapas" also mean a RETURN trip ("Nepal bata wapas aaune ticket chahiyo" is an order): they are a
+       refund only beside a money word. */
+    private const BACK_STEM        = ['firta', 'phirta', 'pharta', 'wapas', 'vapas', 'wapis', 'फिर्ता', 'वापस'];
+    private const MONEY_WORD       = ['paisa', 'paise', 'paisaa', 'rupaya', 'rupaye', 'rupiya', 'rakam', 'amount', 'money', 'payment', 'पैसा', 'पैसे', 'रकम', 'रुपैयाँ'];
+    private const REFUND_ASK       = ['chahiye', 'chaiye', 'dinus', 'dinu', 'dinuhos', 'deu', 'dijiye', 'dedo', 'do', 'want', 'need', 'give', 'चाहिए', 'दिनुस्', 'दिनुहोस्', 'देउ', 'दीजिए'];
 
     private function __construct() {}
 
@@ -204,15 +214,33 @@ final class WaEdit
         if ($pnr === '') {
             $pnr = self::latestPnr($fromRaw);
         }
+        /* 26 Nov 2026 (fx1; live: tickets cut by an agent sit on the AGENT's number, so the passenger's own
+           "ticket cancel garnu cha" / "seat badalnu cha" found no ticket here, fell through and was parked as a NEW
+           booking draft — "our desk will send your ticket"): these words now always get the honest answer — how to
+           ask (the PNR from the booking's mobile, or the office) and that the office settles it by hand. Nothing
+           is started and nothing is told about anybody's ticket. Switch wa_change_words_on (0 = fall through). */
+        $helpIntent = self::changeWordsOn() && self::helpWorthy($intent, $t);
+        /* A COMPLAINT that also says "ticket cancel gardinus" ("staff le gali garyo, …") from a number with no ticket
+           of its own stays the Help Desk's: WaLocal opens the complaint for it, as before fx1 (review fix). */
+        if ($helpIntent && self::complaintTalk($body)) {
+            $helpIntent = false;
+        }
         if ($pnr === '') {
-            return null;          // no live ticket on this number: the rest of the bot answers
+            return $helpIntent ? self::noTicketHelp($intent, $body) : null;   // no live ticket on this number
         }
         if ($intent === 'confirm') {
             return self::showTicket($pnr, $fromRaw, $who);
         }
         $b = Database::fetch('SELECT * FROM bookings WHERE pnr = :p LIMIT 1', ['p' => $pnr]);
         if ($b === null || !self::mayEdit($b, $fromRaw, $who)) {
-            return null;          // words about a ticket that is not theirs: the rest of the bot answers
+            // words about a ticket that is not theirs (or no such ticket — the same words, so a PNR is never confirmed)
+            return $helpIntent ? self::noTicketHelp($intent, $body) : null;
+        }
+        if ($intent === 'seat') {
+            return self::seatHelp($b, $body);        // never self-service: the ticket page files the request
+        }
+        if ($intent === 'refund') {
+            return self::refundHelp($b, $body);      // money is settled by the office by hand
         }
         $opened = self::start($fromRaw, $intl, $intent, $pnr, $who);
         /* 31 Oct 2026 (passenger sim: "naam galat cha, Ram Thapa hoina Ram Bahadur Thapa ho" / "miti badalnu paryo,
@@ -243,6 +271,130 @@ final class WaEdit
         return '';
     }
 
+    /** fx1 switch: cancel / change / refund words always get an answer (never a booking draft). Default ON. */
+    public static function changeWordsOn(): bool
+    {
+        return Settings::getBool('wa_change_words_on', true);
+    }
+
+    /**
+     * fx1: is this intent sure enough to answer a number that has NO ticket here? Cancel, refund and a seat change
+     * are; a date only with a real "change" word ("2 din pachi ko ticket milau" is a booking, not a date change);
+     * a name never ("mero naam Ram ho, ticket milaunus" is a booking too).
+     */
+    private static function helpWorthy(string $intent, string $t): bool
+    {
+        if (in_array($intent, ['cancel', 'refund', 'seat'], true)) {
+            return true;
+        }
+        if ($intent !== 'date') {
+            return false;
+        }
+        $tk = self::tokens($t);
+        return self::stem($tk, self::SEAT_CHANGE_STEM) && (self::stem($tk, self::DATE_STEM) || self::word($tk, ['date']))
+            && preg_match('/\d+\s*(?:seat|seats|sit|ticket|tickets|tikat|jana|jan|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $t) !== 1
+            && !self::wordedOrder($t);
+    }
+
+    /**
+     * fx1 (review fix): an order with its seat count in WORDS — "ek seat chahiye surat se", "dui jana ko ticket
+     * chahiyo" — beside a wanting word. "plan badal gaya, ab 20 tarikh ko jana hai ek seat chahiye" is a booking
+     * request, not a date change. (A count in digits is caught by the callers' own \d+ rule.)
+     */
+    private static function wordedOrder(string $t): bool
+    {
+        $a = '(?<![\p{L}\p{M}])';
+        $z = '(?![\p{L}\p{M}])';
+        return preg_match('/' . $a . '(?:ek|euta|eauta|yeuta|auta|dui|duita|duiwata|(?<!kar\s)(?<!kara\s)(?<!de\s)do|tin|teen|tinta|tinwata|char|chaar|charwata|panch|paanch|one|two|three|four|five|एक|एउटा|दुई|दुइटा|दो|तीन|तिन|चार|पाँच|पांच)'
+                . '\s+(?:(?:wota|wata|ota|jana\s+ko|jana\s+ka|logo\s+ka|log\s+ka)\s+)?(?:seat|seats|sit|ticket|tickets|tikat|tiket|jana|jan|सिट|सीट|टिकट|जना)' . $z . '/u', $t) === 1
+            && preg_match('/' . $a . '(?:chahiyo|chaiyo|chahiye|chaiye|chahincha|chahinchha|book|buk|booking|jana\s+hai|jaana\s+hai|jane\s+ho|चाहियो|चाहिए|चाहिये|बुक)' . $z . '/u', $t) === 1;
+    }
+
+    /** fx1 (review fix): does the line carry a complaint signal (WaLocal's reading)? Then the Help Desk answers it. */
+    private static function complaintTalk(string $raw): bool
+    {
+        try {
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            require_once INCLUDE_PATH . '/walocal.php';
+            return WaLocal::complaintLine($raw);
+        } catch (Throwable $ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * fx1: the words of a ticket change / cancel / refund, whoever writes them and however (a question too).
+     * WaBot uses it so such a line is never parked as a NEW booking draft.
+     */
+    public static function changeWords(string $raw): bool
+    {
+        $t = self::norm($raw);
+        if ($t === '' || mb_strlen($t) > 160) {
+            return false;
+        }
+        $tk = self::tokens($t);
+        if (count($tk) < 2 || preg_match('/\d+\s*(?:seat|seats|sit|ticket|tickets|tikat|jana|jan|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $t) === 1) {
+            return false;                                  // a bare "cancel" is a chat's "no"; "2 seat chahiyo …" is an order
+        }
+        // a seat / date change beside an order worded in full ("… ek seat chahiyo surat bata, window seat change
+        // garera dinu") is the order's: the desk draft keeps it (review fix)
+        return self::stem($tk, self::CANCEL_STEM) || self::refundTalk($tk)
+            || (self::stem($tk, self::SEAT_CHANGE_STEM) && !self::wordedOrder($t)
+                && (self::word($tk, self::SEAT_WORD) || self::stem($tk, self::DATE_STEM) || self::word($tk, ['date'])));
+    }
+
+    /**
+     * fx1: "refund …", or "paisa firta / paise wapas …" — never a bare "firta / wapas" (a return trip).
+     * Review fix: also not a refund —
+     *   - a refund that is NOT wanted, said right beside the word: "refund nachahiyo, ticket nai chahiyo",
+     *     "paisa wapas nahi chahiye", "no refund";
+     *   - "wapas / firta" as the RETURN trip in a line that also holds a money word: "Nepal bata wapas aune ticket
+     *     chahiyo, paisa kati lagcha". A back-word counts for the refund when it sits with the money ("paisa
+     *     firta …", "wapas paise …"); one that leads a travel word, or stands in a what-does-it-cost line, does not.
+     * @param list<string> $tk
+     */
+    private static function refundTalk(array $tk): bool
+    {
+        $line = ' ' . implode(' ', $tk) . ' ';
+        $ref  = '(?:refund\S*|rifand\S*|rifund\S*|रिफन्ड\S*|रिफंड\S*|firta|phirta|pharta|wapas|vapas|wapis|फिर्ता|वापस)';
+        if (preg_match('/ ' . $ref . ' (?:\S+ )?(?:nachahiyo|nachaiyo|nachahine|chahidaina|chaidaina|chahinna|chahidena|chahiyena|chahindaina|चाहिँदैन|चाहिदैन|चाहिएन) /u', $line) === 1
+            || preg_match('/ ' . $ref . ' (?:\S+ )?(?:nahi|nahin|नहीं|नही) (?:chahiye|chaiye|chahie|चाहिए|चाहिये) /u', $line) === 1
+            || preg_match('/ (?:don t|dont|do not|no) (?:want |need )?(?:a |any |the |my )?refund /u', $line) === 1) {
+            return false;
+        }
+        if (self::stem($tk, self::REFUND_STEM)) {
+            return true;
+        }
+        if (!self::stem($tk, self::BACK_STEM) || !self::word($tk, self::MONEY_WORD)) {
+            return false;
+        }
+        // what does it cost: "paisa kati lagcha", "kitna paisa lagega", "bhada kati", "how much"
+        $priceAsk = preg_match('/ (?:kati|katti|kitna|kitne|kitni|कति|कितना|कितने|कितनी) (?:\S+ )?(?:lag\S*|par\S*|लाग\S*|पर्छ|लगेगा|लगता) /u', $line) === 1
+            || preg_match('/ (?:bhada|bhara|bhaada|fare|kiraya|kiraaya|price|rate|भाडा|किराया) /u', $line) === 1
+            || str_contains($line, ' how much ');
+        $trip = ['aune', 'aaune', 'aaunu', 'aunu', 'jane', 'jaane', 'janu', 'aane', 'ane', 'aana', 'jana', 'jaana', 'farkine', 'farkane', 'pharkine', 'lautne', 'lautna',
+            'आउने', 'जाने', 'आने', 'फर्किने', 'लौटने'];
+        $n = count($tk);
+        for ($i = 0; $i < $n; $i++) {
+            if (!self::stem([$tk[$i]], self::BACK_STEM)) {
+                continue;
+            }
+            // with the money: "paisa firta", "paisa malai firta", "wapas paise"
+            if (in_array($tk[$i - 1] ?? '', self::MONEY_WORD, true) || in_array($tk[$i - 2] ?? '', self::MONEY_WORD, true)
+                || in_array($tk[$i + 1] ?? '', self::MONEY_WORD, true)) {
+                return true;
+            }
+            $after = $tk[$i + 1] ?? '';
+            $tripAfter = in_array($after, $trip, true)
+                || (in_array($after, ['ko', 'ka', 'ki', 'को', 'का', 'की'], true) && in_array($tk[$i + 2] ?? '', ['ticket', 'tikat', 'tiket', 'seat', 'bus', 'टिकट', 'सिट', 'बस'], true));
+            if ($tripAfter || $priceAsk) {
+                continue;                                  // this back-word is the return trip / a fare question
+            }
+            return true;                                   // the old reading: a back-word and a money word in one line
+        }
+        return false;
+    }
+
     /** Which action these words ask for ('' = none). */
     public static function intentOf(string $t, string $raw): string
     {
@@ -252,6 +404,14 @@ final class WaEdit
         $tk = self::tokens($t);
         $change = self::stem($tk, self::CHANGE_STEM) || self::word($tk, self::CHANGE_WORD);
         $cancel = self::stem($tk, self::CANCEL_STEM);
+        /* fx1: "seat badalnu cha", "mero seat change gardinus", "seat badalna milcha?" — a statement or a question,
+           the answer is the same (where the request is made), so it is read before the rule-question exit below.
+           Never a line with a seat COUNT ("2 seat chahiyo, plan change bhayo" stays an order). */
+        if (self::changeWordsOn() && !$cancel && self::word($tk, self::SEAT_WORD) && self::stem($tk, self::SEAT_CHANGE_STEM)
+            && count($tk) <= 10 && !self::word($tk, self::NAME_WORD) && !self::stem($tk, self::DATE_STEM)
+            && preg_match('/\d+\s*(?:seat|seats|sit|ticket|tickets|tikat|jana|jan|सिट|सीट|टिकट|जना)(?![\p{L}])/u', $t) !== 1) {
+            return 'seat';
+        }
         // "ticket confirm bhayo?" is a question by nature — and exactly this one.
         if (self::stem($tk, self::CONFIRM_STEM) && !$cancel && !$change
             && (self::word($tk, ['ticket', 'टिकट', 'bhayo', 'bhaye', 'hua', 'cha', 'xa', 'हो', 'भयो']) || self::pnrIn($raw) !== '')) {
@@ -278,7 +438,112 @@ final class WaEdit
         if ($cancel && ($asks || self::word($tk, ['ticket', 'टिकट']) || self::pnrIn($raw) !== '')) {
             return 'cancel';
         }
+        /* fx1: "refund chahiyo", "mero paisa firta dinus", "paise wapas chahiye" — a demand, not the rule question
+           (that left above). A line that is a COMPLAINT ("conductor le badi paisa liyo, firta chahiyo") stays the
+           Help Desk's: WaLocal opens the ticket for it. */
+        if (self::changeWordsOn() && self::refundTalk($tk) && ($asks || self::word($tk, self::REFUND_ASK)) && count($tk) <= 10) {
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/walocal.php';
+                if (WaLocal::complaintLine($raw)) {
+                    return '';
+                }
+            } catch (Throwable $ignored) {
+            }
+            return 'refund';
+        }
         return '';
+    }
+
+    /* -----------------------------------------------------------------
+     *  fx1 (26 Nov 2026): the honest answers — nothing is started here
+     * ----------------------------------------------------------------- */
+
+    /** ne | rn | hi | en, the way the person wrote (WaAnswer::lang). */
+    private static function replyLang(string $body): string
+    {
+        try {
+            require_once INCLUDE_PATH . '/waanswer.php';
+            return WaAnswer::lang($body);
+        } catch (Throwable $e) {
+            return 'ne';
+        }
+    }
+
+    private static function tr(string $lang, string $ne, string $rn, string $hi, string $en): string
+    {
+        return match ($lang) { 'rn' => $rn, 'hi' => $hi, 'en' => $en, default => $ne };
+    }
+
+    /** No ticket of theirs on this number: how to ask, and who settles it. Says nothing about anybody's ticket. */
+    private static function noTicketHelp(string $intent, string $body): array
+    {
+        $l = self::replyLang($body);
+        $phone = Settings::officePhone();
+        $what = match ($intent) {
+            'date'   => self::tr($l, 'मिति परिवर्तन', 'Miti badalne', 'तारीख बदलना', 'Date change'),
+            'seat'   => self::tr($l, 'सिट परिवर्तन', 'Seat badalne', 'सीट बदलना', 'Seat change'),
+            'refund' => self::tr($l, 'रकम फिर्ता', 'Paisa firta', 'रिफंड', 'Refund'),
+            default  => self::tr($l, 'टिकट रद्द', 'Ticket cancel', 'टिकट रद्द', 'Ticket cancel'),
+        };
+        return self::say(self::tr($l,
+            "ℹ️ " . $what . ": यो नम्बरमा चालु टिकट भेटिएन।\n• टिकट बुक गर्दा दिएको मोबाइलबाट PNR (जस्तै SHG-2026-00123) सहित लेख्नुहोस्, वा\n• अफिसमा फोन / WhatsApp: " . $phone
+                . "\nरद्द र रकम फिर्ता अफिसले नै हातले मिलाउँछ — यहाँ आफैं केही रद्द वा फिर्ता हुँदैन।",
+            "ℹ️ " . $what . ": yo number ma chalu ticket bhetiena.\n• Ticket book garda dieko mobile bata PNR (jastai SHG-2026-00123) sahit lekhnus, wa\n• Office ma phone / WhatsApp: " . $phone
+                . "\nCancel ra paisa firta office le nai haat le milauchha — yaha afai kehi cancel wa firta hudaina.",
+            "ℹ️ " . $what . ": इस नंबर पर कोई चालू टिकट नहीं मिला।\n• टिकट बुक करते समय दिए गए मोबाइल से PNR (जैसे SHG-2026-00123) के साथ लिखिए, या\n• ऑफिस को फ़ोन / WhatsApp: " . $phone
+                . "\nरद्द और रिफंड ऑफिस खुद हाथ से करता है — यहाँ अपने आप कुछ रद्द या वापस नहीं होता।",
+            "ℹ️ " . $what . ": no live ticket was found on this number.\n• Write from the mobile used for the booking, with the PNR (like SHG-2026-00123), or\n• call / WhatsApp the office: " . $phone
+                . "\nCancellations and refunds are settled by the office by hand — nothing is cancelled or refunded here automatically."));
+    }
+
+    /** Their own ticket, a seat change: the ticket page files the REQUEST (admin/ticket-requests.php); the office decides. */
+    private static function seatHelp(array $b, string $body): array
+    {
+        $l = self::replyLang($body);
+        $pnr = (string) $b['pnr'];
+        $phone = Settings::officePhone();
+        $link = '';
+        try {
+            require_once INCLUDE_PATH . '/ticketrequests.php';
+            require_once INCLUDE_PATH . '/ticketlink.php';
+            if (TicketRequests::enabled() && (string) $b['status'] === 'confirmed') {
+                $link = TicketLink::forBooking((int) $b['id']);
+            }
+        } catch (Throwable $e) {
+            $link = '';
+        }
+        $head = self::tr($l,
+            "💺 टिकट " . $pnr . " को सिट यहाँ आफैं बदलिँदैन — अनुरोध अफिसमा जान्छ, सिट खाली भए अफिसले मिलाउँछ।",
+            "💺 Ticket " . $pnr . " ko seat yaha afai badlidaina — anurodh office ma janchha, seat khali bhaye office le milauchha.",
+            "💺 टिकट " . $pnr . " की सीट यहाँ अपने आप नहीं बदलती — अनुरोध ऑफिस को जाता है, सीट खाली हो तो ऑफिस बदल देता है।",
+            "💺 The seat on ticket " . $pnr . " is not changed here by itself — a request goes to the office, which changes it if the seat is free.");
+        $how = $link !== ''
+            ? self::tr($l,
+                "🔗 टिकट पेज खोलेर \"सिट परिवर्तन माग्नुहोस्\" थिच्नुहोस्:\n" . $link,
+                "🔗 Ticket page kholera \"Request seat change\" thichnus:\n" . $link,
+                "🔗 टिकट पेज खोलकर \"Request seat change\" दबाइए:\n" . $link,
+                "🔗 Open the ticket page and tap \"Request seat change\":\n" . $link)
+            : '';
+        $office = self::tr($l, "📞 अफिस (फोन / WhatsApp): ", "📞 Office (phone / WhatsApp): ", "📞 ऑफिस (फ़ोन / WhatsApp): ", "📞 Office (call / WhatsApp): ") . $phone;
+        return self::say($head . ($how !== '' ? "\n" . $how : '') . "\n" . $office);
+    }
+
+    /** Their own ticket, a refund demand: never automatic. The way to ask for a cancel, the rule, the office. */
+    private static function refundHelp(array $b, string $body): array
+    {
+        $l = self::replyLang($body);
+        $pnr = (string) $b['pnr'];
+        $phone = Settings::officePhone();
+        return self::say(self::tr($l,
+            "↩️ रकम फिर्ता अफिसले नै नियम अनुसार हातले मिलाउँछ — यहाँ आफैं फिर्ता हुँदैन।\n• टिकट " . $pnr . " रद्द गर्ने अनुरोध पठाउन लेख्नुहोस्: cancel " . $pnr
+                . "\n• कति फिर्ता हुन्छ हेर्न लेख्नुहोस्: cancel garda kati firta\n📞 अफिस (फोन / WhatsApp): " . $phone,
+            "↩️ Paisa firta office le nai niyam anusar haat le milauchha — yaha afai firta hudaina.\n• Ticket " . $pnr . " cancel garne anurodh pathauna lekhnus: cancel " . $pnr
+                . "\n• Kati firta hunchha herna lekhnus: cancel garda kati firta\n📞 Office (phone / WhatsApp): " . $phone,
+            "↩️ रिफंड ऑफिस खुद नियम के अनुसार हाथ से करता है — यहाँ अपने आप वापस नहीं होता।\n• टिकट " . $pnr . " रद्द करने का अनुरोध भेजने के लिए लिखिए: cancel " . $pnr
+                . "\n• कितना वापस मिलेगा देखने के लिए लिखिए: cancel policy\n📞 ऑफिस (फ़ोन / WhatsApp): " . $phone,
+            "↩️ Refunds are settled by the office by hand, by the published rule — nothing is refunded here automatically.\n• To send a cancel request for ticket " . $pnr . ", write: cancel " . $pnr
+                . "\n• To see what the rule gives, write: cancel policy\n📞 Office (call / WhatsApp): " . $phone));
     }
 
     /** Open an action on one ticket (ownership checked here). */
@@ -370,12 +635,29 @@ final class WaEdit
                 return self::askOtp($intl, $bid, "✏️ " . $st['old'] . " → " . $new);
 
             case 'date_new':
+                // fx1: a PNR sent while the date question waits is a lookup, not a date ("date not understood" before).
+                // Only a PNR with NO date beside it: "SHG-… ko miti badalnu cha, 30 Nov ma jane" and "SHG-… 30 Nov"
+                // carry the new date and are taken at once, as since 31 Oct (review fix).
+                if (self::changeWordsOn() && self::pnrIn($body) !== ''
+                    && self::parseDate(trim((string) preg_replace('/SHG-?\s?\d{4}-?\s?\d{3,6}/i', ' ', $body))) === '') {
+                    return null;
+                }
                 $date = self::parseDate($body);
                 if ($date === '') {
                     if (preg_match('/\d|bholi|parsi|bhol|kal|tomorrow|भोलि|पर्सि|कल/iu', $body) !== 1) {
                         return null;    // not a date at all: the bot answers, the change stays open
                     }
                     return self::say('मिति बुझिएन — जस्तै 15 Oct वा 2026-10-15 लेख्नुहोस्। (रोक्न: stop)');
+                }
+                // fx1: request mode — no seat is looked for and nothing is quoted; the office decides when it acts
+                if (strtolower(trim(Settings::getString('wa_date_change_mode', 'self'))) === 'request') {
+                    $st['new']  = $date;
+                    $st['old']  = self::travelDate($bid);
+                    $st['step'] = 'otp';
+                    self::save($intl, $st);
+                    return self::askOtp($intl, $bid, "📅 मिति परिवर्तनको अनुरोध · Date-change request\n"
+                        . formatDate($st['old'], 'D, j M Y') . ' → ' . formatDate($date, 'D, j M Y') . "\n"
+                        . "अनुरोध कार्यालयमा जान्छ — कार्यालयले सिट हेरेर पक्का गर्छ। · The request goes to the office, which confirms it.");
                 }
                 $turn = (int) (microtime(true) * 10) % 1000000000;
                 $ctx  = self::ctx($fromRaw, $who, $turn, $body);
@@ -461,6 +743,12 @@ final class WaEdit
                     : self::say('❌ ' . (string) ($r['say'] ?? 'मिलेन।') . "\nकार्यालय: " . Settings::officePhone());
 
             case 'date':
+                /* fx1 (26 Nov 2026): wa_date_change_mode = 'request' — the verified date change is filed in the
+                   office queue (admin/ticket-requests.php, the same row the ticket page writes) and NOTHING is
+                   rebooked here; the office confirms it. 'self' (the default) keeps the rebook below, unchanged. */
+                if (strtolower(trim(Settings::getString('wa_date_change_mode', 'self'))) === 'request') {
+                    return self::dateRequest($fromRaw, $st, $b, $otp);
+                }
                 $r = AiTools::run('fix_ticket', ['pnr' => $pnr, 'new_date' => (string) $st['new'], 'confirm' => true],
                     self::ctx($fromRaw, $who, (int) ($st['turn'] ?? 0) + 1, 'ho'));
                 self::audit($b, 'travel_date', (string) ($st['old'] ?? ''), (string) $st['new'], $fromRaw, $otp, !empty($r['ok']) ? 'done' : 'refused', (string) ($r['say'] ?? ''));
@@ -482,6 +770,28 @@ final class WaEdit
                 return self::say("📝 रद्द गर्ने अनुरोध कार्यालयमा पुग्यो। कार्यालयले नियम अनुसार रकम फिर्ता मिलाएर सम्पर्क गर्नेछ।\nYour cancel request reached the office — they will call you.\nकार्यालय: " . Settings::officePhone());
         }
         return self::say('बुझिएन। · Not understood.');
+    }
+
+    /** fx1: the date change as a REQUEST for the office (wa_date_change_mode = request). The booking is not touched. */
+    private static function dateRequest(string $fromRaw, array $st, array $b, bool $otp): array
+    {
+        $new = (string) ($st['new'] ?? '');
+        $old = (string) ($st['old'] ?? '');
+        try {
+            require_once INCLUDE_PATH . '/ticketrequests.php';
+            TicketRequests::create($b, ['kind' => 'change_date', 'wanted_date' => $new,
+                'note' => 'WhatsApp' . ($otp ? ', code verified' : ', confirmed with ho')], '');
+        } catch (TicketRequestRefused $e) {
+            self::audit($b, 'travel_date', $old, $new, $fromRaw, $otp, 'refused', $e->getMessage());
+            return self::say('❌ ' . $e->getMessage() . "\nकार्यालय: " . Settings::officePhone());
+        } catch (Throwable $e) {
+            Logger::warning('date change request failed: ' . $e->getMessage(), ['pnr' => (string) $b['pnr']], 'whatsapp');
+            self::audit($b, 'travel_date', $old, $new, $fromRaw, $otp, 'refused', 'request could not be saved');
+            return self::say("अहिले अनुरोध दर्ता हुन सकेन — कार्यालयमा फोन गर्नुहोस्: " . Settings::officePhone() . "\nThe request could not be saved — please call the office.");
+        }
+        self::audit($b, 'travel_date', $old, $new, $fromRaw, $otp, 'requested', 'date change request; the office confirms it');
+        return self::say("📝 मिति परिवर्तनको अनुरोध कार्यालयमा पुग्यो: " . formatDate($new, 'D, j M Y') . "\nटिकट अहिले बदलिएको छैन — कार्यालयले सिट हेरेर पक्का गर्छ र खबर गर्छ।\n"
+            . "Your date-change request reached the office. The ticket is NOT changed yet — the office confirms it.\nकार्यालय: " . Settings::officePhone());
     }
 
     /**

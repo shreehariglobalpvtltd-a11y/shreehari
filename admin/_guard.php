@@ -827,6 +827,21 @@ function admin_footer(): void
         if (Auth::can('payments.view') && Auth::bookingScopeAdminId() === null && Settings::getBool('new_ticket_alert_on', true)) {
             echo '<script>window.SHG_NEW_TICKET_ALERT=1;</script>';
         }
+        /* fx1 (26 Nov 2026): the call-style ring (includes/alertbus.php). The script takes over the
+           px1 chime, so it is printed only when the SERVER says the ring really works here:
+           switches alert_bus_on / alert_ring_on = 0, or the migration not run yet (tables
+           missing), leave this page exactly as it was - old chime and green bar included. */
+        try {
+            if (Settings::getBool('alert_bus_on', true) && Settings::getBool('alert_ring_on', true)
+                && is_file(dirname(__DIR__) . '/assets/js/admin-ring.js') && is_file(INCLUDE_PATH . '/alertbus.php')) {
+                require_once INCLUDE_PATH . '/alertbus.php';
+                if (AlertBus::ringOn()) {
+                    echo '<script src="' . admin_asset_url('assets/js/admin-ring.js') . '" defer></script>';
+                }
+            }
+        } catch (Throwable $e) {
+            // the ring must never break a page
+        }
         echo '<script>' . admin_poll_js() . '</script>';
     }
 
@@ -1293,6 +1308,8 @@ function admin_poll_js(): string
   }
 
   function poll() {
+    // fx1: the call-style ring (assets/js/admin-ring.js) rides this same tick - it has no poller of its own
+    if (window.SHGRing) { try { window.SHGRing.tick(); } catch (e) {} }
     fetch('pending-count.php', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
@@ -1307,7 +1324,8 @@ function admin_poll_js(): string
         if (window.SHG_NEW_TICKET_ALERT && typeof j.maxBooking === 'number') {
           var lastB = parseInt(sessionStorage.getItem('shg_admin_last_maxb') || '-1', 10);
           var selling = !!document.getElementById('smartBook') || /quick-ticket|new-booking/.test(location.pathname);
-          if (lastB >= 0 && j.maxBooking > lastB && !selling) { chime(); showTicketBanner(j.maxBooking - lastB); }
+          var ringing = !!(window.SHGRing && window.SHGRing.active);   // fx1: the ring card speaks instead, never both
+          if (lastB >= 0 && j.maxBooking > lastB && !selling && !ringing) { chime(); showTicketBanner(j.maxBooking - lastB); }
           sessionStorage.setItem('shg_admin_last_maxb', String(j.maxBooking));
         }
         var badge = document.getElementById('navBadgePayments');

@@ -49,6 +49,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if ($row === null || ($scopeDesk !== null && $row['counter_code'] !== null && (string) $row['counter_code'] !== $scopeDesk)) {
                     continue;
                 }
+                /* fx1 (26 Nov 2026): the LIST below shows an agent only their own sales
+                   ($scopeBy); the collect did not ask. An agent holds no payments.verify
+                   by default, so this bites only when the office ticks that box for the
+                   role - and then a hand-typed id must still be one of their own. */
+                if ($scopeBy !== null && (int) ($row['sold_by_admin_id'] ?? 0) !== $scopeBy) {
+                    continue;
+                }
                 BookingService::settleCod($bid, $me, $note !== '' ? $note : 'Cash book: collected');
                 $done++;
             }
@@ -236,7 +243,7 @@ $label = ['pending' => '⏳ Pending', 'collected' => '✅ Collected', 'cancelled
         <td><?= $k === 'collected' ? $e($r['collector'] ?: $r['collector_user'] ?: 'Office') . '<br><small>' . $e(date('j M H:i', (int) strtotime((string) $r['verified_at']))) . '</small>' : '—' ?></td>
         <td><?= $e($r['counter_code'] ?: 'Online') ?><?= $r['seller'] ? '<br><small>' . $e($r['seller']) . '</small>' : '' ?></td>
         <?php if ($canTake): ?><td class="cb-noprint"><?php if ($k === 'pending' || $k === 'noshow'): ?>
-          <button class="btn ok cb-go" type="submit" name="booking_id" value="<?= (int) $r['id'] ?>" onclick="return confirm('Cash <?= $e(inr((float) $r['total_amount'])) ?> received for <?= $e($r['pnr']) ?>?')">✅ Collected</button>
+          <button class="btn ok cb-go" type="submit" name="booking_id" value="<?= (int) $r['id'] ?>" onclick="return confirm('नगद लिनुभयो? · Cash <?= $e(str_replace(["'", '\\'], '', $dm((float) $r['total_amount'], $r))) ?> received for <?= $e($r['pnr']) ?>?')">✅ Collected</button>
         <?php endif; ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
@@ -252,7 +259,7 @@ $label = ['pending' => '⏳ Pending', 'collected' => '✅ Collected', 'cancelled
 <?php if ($daily !== []): ?>
 <div class="panel">
   <h2>Daily cash totals (collected)</h2>
-  <table><thead><tr><th>Day</th><th>Collector · desk</th><th>Cash</th></tr></thead><tbody>
+  <table><thead><tr><th>Day</th><th>Collector · desk</th><th>Cash (₹ INR)</th></tr></thead><tbody>
   <?php foreach ($daily as $day => $list): arsort($list); foreach ($list as $who => $amt): ?>
     <tr><td><?= $e(formatDate($day, 'D j M')) ?></td><td><?= $e($who) ?></td><td><b><?= $e(inr($amt)) ?></b></td></tr>
   <?php endforeach; endforeach; ?>

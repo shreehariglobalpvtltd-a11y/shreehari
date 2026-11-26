@@ -29,6 +29,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || !Security::verifyCsrf())
     exit;
 }
 
+/* fx1 (26 Nov 2026): channel=alert - one sample alert through the alert bus (includes/alertbus.php),
+   for the buttons on admin/alert-settings.php. Super-admin only. event = a key of AlertBus::EVENTS,
+   via = inapp (the open panel) | push (this person's subscribed phones) | whatsapp (office number).
+   The sample is visible only to the person who pressed the button - it never rings the office.
+   The three older channels below are untouched. */
+if (strtolower((string) ($_POST['channel'] ?? '')) === 'alert') {
+    if (!Auth::isSuperadmin()) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'detail' => 'Only the super-admin can send a test alert.']);
+        exit;
+    }
+    try {
+        require_once INCLUDE_PATH . '/alertbus.php';
+        $ev  = Security::clean((string) ($_POST['event'] ?? ''), 40);
+        $via = strtolower(Security::clean((string) ($_POST['via'] ?? 'inapp'), 12));
+        if (!isset(AlertBus::EVENTS[$ev]) || !in_array($via, ['inapp', 'push', 'whatsapp'], true)) {
+            $res = ['ok' => false, 'detail' => 'Unknown alert or channel.'];
+        } else {
+            $res = AlertBus::test($ev, $via, ['id' => (int) ($admin['id'] ?? 0), 'role' => (string) ($admin['role'] ?? ''),
+                                              'full_name' => (string) ($admin['full_name'] ?? '')]);
+            Logger::audit('alerts.test', 'settings', 'alerts', null, ['event' => $ev, 'via' => $via, 'ok' => !empty($res['ok'])]);
+        }
+    } catch (Throwable $e) {
+        Logger::exception($e);
+        $res = ['ok' => false, 'detail' => 'The test could not run (server error). Check logs/.'];
+    }
+    echo json_encode($res, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $phone   = Security::clean($_POST['phone'] ?? '', 24);
 $ct      = strtolower((string) ($_POST['country'] ?? ''));
 $hint    = $ct === 'np' ? 'NP' : ($ct === 'in' ? 'IN' : null);

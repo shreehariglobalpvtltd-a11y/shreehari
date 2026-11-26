@@ -257,6 +257,106 @@ final class SmartBook
         }
     }
 
+    /**
+     * fx1 (26 Nov 2026): the ONE run the signed-in seller's desk may sell, as
+     * the sale itself decides it (BookingService::assertDeskDirection - switch
+     * desk_one_way_on, the seller's desk, a Nepal desk = entity NP or money
+     * NPR, the desk's default_direction). ['code' => desk, 'dir' => run] or
+     * null when the seller may sell both runs (a customer, no desk, an India
+     * desk, a desk with no run, the switch off).
+     *
+     * READS the rule, never makes it: the card uses this to open on the right
+     * run and to say "this desk sells Rupaidiha -> Gujarat only" BEFORE the
+     * clerk has filled the whole ticket. The sale still refuses by itself.
+     *
+     * @return array{code: string, dir: string}|null
+     */
+    private static function deskOneWayRow(): ?array
+    {
+        $admin = Auth::admin();
+        if ($admin === null || self::sessionMode() === 'customer' || !Settings::getBool('desk_one_way_on', true)) {
+            return null;
+        }
+        try {
+            $code = CounterDesk::codeForSale((int) ($admin['id'] ?? 0));
+            if ($code === null || !(CounterDesk::entity($code) === 'NP' || CounterDesk::currency($code) === 'NPR')) {
+                return null;
+            }
+            $dir = CounterDesk::direction($code);
+
+            return $dir === '' ? null : ['code' => $code, 'dir' => $dir];
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /** fx1: 'toIndia' | 'toNepal' when the seller's desk sells one run only, else ''. */
+    public static function deskOneWay(): string
+    {
+        return (string) (self::deskOneWayRow()['dir'] ?? '');
+    }
+
+    /**
+     * fx1 (26 Nov 2026): the money a DESK sale of this INR total is frozen in,
+     * for the card. At an NPR window the clerk collects रू at the DESK's own
+     * rate (CounterDesk::rate - a pinned fx_rate, else the company peg) and
+     * BookingService::deskStamp() freezes exactly round(total x that rate) on
+     * the ticket; the card showed only "≈ NPR" at the company peg, which is a
+     * different figure the day a desk pins its own rate.
+     *
+     * null for a customer, a seller with no desk and an INR desk. Display
+     * only - the price, the discount and the sale are untouched.
+     *
+     * @return array{currency: string, rate: float, amount: float, desk: string}|null
+     */
+    private static function deskFx(string $mode, float $inr): ?array
+    {
+        if ($mode === 'customer') {
+            return null;
+        }
+        try {
+            $code = CounterDesk::codeForSale((int) (Auth::admin()['id'] ?? 0));
+            if ($code === null) {
+                return null;
+            }
+            $fx = CounterDesk::convert($inr, $code);
+            if ($fx['currency'] === 'INR') {
+                return null;
+            }
+
+            return ['currency' => (string) $fx['currency'], 'rate' => (float) $fx['rate'], 'amount' => (float) $fx['amount'], 'desk' => $code];
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * fx1: the NPR a made sale carries, read from the booking row (fx_currency,
+     * fx_rate, fx_total) - the figure on the ticket, never today's rate. null
+     * for a customer session, an INR sale, or a database without the columns.
+     *
+     * @return array{currency: string, rate: float, amount: float}|null
+     */
+    private static function bookingFx(int $bookingId): ?array
+    {
+        if ($bookingId <= 0 || self::sessionMode() === 'customer') {
+            return null;
+        }
+        try {
+            if (!CounterDesk::hasColumn('bookings', 'fx_total') || !CounterDesk::hasColumn('bookings', 'fx_currency') || !CounterDesk::hasColumn('bookings', 'fx_rate')) {
+                return null;
+            }
+            $r = Database::fetch('SELECT fx_currency, fx_rate, fx_total FROM bookings WHERE id = :id', ['id' => $bookingId]);
+            if ($r === null || strtoupper((string) ($r['fx_currency'] ?? '')) !== 'NPR' || (float) ($r['fx_total'] ?? 0) <= 0) {
+                return null;
+            }
+
+            return ['currency' => 'NPR', 'rate' => (float) $r['fx_rate'], 'amount' => (float) $r['fx_total']];
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
     private static ?bool $hasVisibleTo = null;
 
     private static function hasVisibleTo(): bool
@@ -345,6 +445,19 @@ final class SmartBook
 
         // Direction: opposite of the last one-way trip when it was > 7 days ago, else the same.
         $dir = in_array($in['direction'] ?? '', ['toNepal', 'toIndia'], true) ? (string) $in['direction'] : '';
+        /* fx1 (26 Nov 2026): a ONE-WAY desk (the Nepal windows, desk_one_way_on)
+           opens on its own run even when the browser remembers the other one - a
+           Gujarat -> Nepal ticket filled at Nepalgunj was refused only at the last
+           tap. Counter / Admin faces only: every sale there has a desk seller, so
+           the other run can never be sold. An agent's face is left as it was (its
+           Online sale has no desk seller); the quote tells it about Cash. */
+        $only = in_array($mode, ['counter', 'admin'], true) ? self::deskOneWay() : '';
+        if ($only !== '') {
+            $dir = $only;
+            $why['direction'] = $only === 'toIndia'
+                ? self::why('Your desk sells Nepal → India only', 'आपका काउंटर सिर्फ नेपाल → भारत बेचता है', 'तपाईंको काउन्टरले नेपाल → भारत मात्र बेच्छ')
+                : self::why('Your desk sells India → Nepal only', 'आपका काउंटर सिर्फ भारत → नेपाल बेचता है', 'तपाईंको काउन्टरले भारत → नेपाल मात्र बेच्छ');
+        }
         /* 19 Nov 2026 (NP-1): the desk's own run before the phone's history - a
            Nepal counter / Nepal agent opens on Rupaidiha -> Surat. A direction
            the clerk chose still wins; customers are unchanged. */
@@ -456,7 +569,19 @@ final class SmartBook
                 $ages[] = (int) $a;
             }
         }
-        return DefaultRules::apply($out, ['phone' => $phone, 'history' => $history, 'mode' => $mode, 'points' => $names, 'ages' => $ages]);
+        $res = DefaultRules::apply($out, ['phone' => $phone, 'history' => $history, 'mode' => $mode, 'points' => $names, 'ages' => $ages]);
+        if ($only !== '') {
+            /* fx1: the card hides the other run's button on this key. An office Default
+               Rule that names the other run cannot win over what the sale would refuse:
+               the run goes back and the pickup with it (never a pickup of the other run). */
+            if ((string) ($res['direction'] ?? '') !== $only) {
+                $res['direction'] = $only;
+                $res['point']     = $point;
+                $res['pointType'] = $points['type'];
+            }
+            $res['deskOnly'] = $only;
+        }
+        return $res;
     }
 
     /**
@@ -1064,6 +1189,26 @@ final class SmartBook
             'ms'           => 0,
         ];
 
+        /* fx1 (26 Nov 2026): a one-way desk (BookingService::assertDeskDirection) - the card
+           is told BEFORE the last tap. deskOnly = the run the desk sells; deskBlock = the
+           sentence the sale itself would throw for this bus. ok / price are untouched (an
+           agent's Online sale has no desk seller and is not refused), the sale decides.
+           Both keys exist only for a seller on such a desk. */
+        /* fx1: price.fx = {currency, rate, amount, desk} - the रू a desk sale of this total
+           would freeze on the ticket (an NPR desk only; the key is absent everywhere else). */
+        if ($price !== null && ($deskFx = self::deskFx($mode, (float) $price['total'])) !== null) {
+            $out['price']['fx'] = $deskFx;
+        }
+        $oneWay = $mode !== 'customer' ? self::deskOneWayRow() : null;
+        if ($oneWay !== null) {
+            $out['deskOnly'] = $oneWay['dir'];
+            if (Boarding::routeDirection($route) !== $oneWay['dir']) {
+                $out['deskBlock'] = $oneWay['dir'] === 'toIndia'
+                    ? 'यो काउन्टर (' . $oneWay['code'] . ') ले रुपैडिहा → गुजरात टिकट मात्र काट्छ। · This desk sells Rupaidiha → Gujarat tickets only.'
+                    : 'यो काउन्टर (' . $oneWay['code'] . ') ले गुजरात → नेपाल टिकट मात्र काट्छ। · This desk sells Gujarat → Nepal tickets only.';
+            }
+        }
+
         // Two people of mixed gender in Sharing: SUGGEST a private double, never force it.
         if ($mode2 === 'sharing' && $n === 2 && count($genders) === 2) {
             $pv = Seats::availabilityForSchedule((int) $schedule['id'], 'private');
@@ -1601,7 +1746,9 @@ final class SmartBook
         } catch (Throwable $e) {
             Logger::error('SmartBook detail failed', ['pnr' => $pnr, 'e' => $e->getMessage()]);
         }
-        return [
+        // fx1 (26 Nov 2026): the NPR frozen on THIS sale (the ticket's own figure), staff faces only; no key otherwise
+        $fxKey = ($fxRow = self::bookingFx($bid)) !== null ? ['fx' => $fxRow] : [];
+        return $fxKey + [
             'ok'          => true,
             'pnr'         => $pnr,
             'bookingId'   => $bid,

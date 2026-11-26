@@ -43,6 +43,37 @@ if ($isSupervisor && isset($_GET['agent']) && (int) $_GET['agent'] > 0) {
 $agentScopeId = Auth::bookingScopeAdminId();
 if ($agentScopeId !== null) { $viewId = $agentScopeId; }
 
+/* 26 Nov 2026 (fx1): who may run counter staff (sub-agents) under $viewId.
+   Before this ANY office role that could open the page (dashboard.view) could
+   add a selling login, switch any admins row off or on by id (a super-admin
+   included) and move cash between any two ledgers, and any agent - a
+   sub-agent too, or one the office had stopped - could create an active
+   login for themself. Now:
+     - a MAIN agent on their own page: add staff, pause them, take their cash;
+     - a sub-agent: none of it (no staff under staff);
+     - the office: staff.manage to add / pause / switch on, commissions.pay to
+       record a cash handover - and the target is always a real child (role
+       agent, admin_profiles.parent_agent_id = the agent being viewed).
+   Switch agent_subagent_office_approve_on (default 1): a login an agent adds
+   starts paused and only the office (staff.manage) can switch it on. */
+require_once INCLUDE_PATH . '/agentcredit.php';
+require_once INCLUDE_PATH . '/agentreport.php';
+$subApproveOn = Settings::getBool('agent_subagent_office_approve_on', true);
+$selfIsSub    = Auth::isCounterAgent() && AgentCredit::parentOf($selfId) > 0;
+$ownsSubs     = Auth::isCounterAgent() && !$selfIsSub;
+$maySubManage = $ownsSubs || (!Auth::isCounterAgent() && $canManage);
+$maySubSettle = $ownsSubs || (!Auth::isCounterAgent() && $canSettle);
+/** The counter-staff row $subId when it really sells under $parentId (role agent), else null. */
+$subRowOf = static function (int $subId, int $parentId): ?array {
+    if ($subId <= 0 || $parentId <= 0 || $subId === $parentId) { return null; }
+    return Database::fetch(
+        "SELECT a.id, a.username, a.full_name, a.is_active
+           FROM admins a JOIN admin_profiles p ON p.admin_id = a.id
+          WHERE a.id = :sid AND a.role = 'agent' AND p.parent_agent_id = :pid",
+        ['sid' => $subId, 'pid' => $parentId]
+    );
+};
+
 /**
  * 16 Nov 2026 (F2): tell the agent a payout / cash handover was recorded on
  * this panel - the same owner switch (agent_notify_settlement, Settings →
@@ -521,79 +552,119 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $viewId = $targetId;
 
             } elseif ($action === 'add_subagent') {
+                /* 26 Nov 2026 (fx1): see the rule at the top of this file. The login is
+                   made by AgentWallet::createAgent() - the one door that checks the
+                   mobile is not already somebody's sign-in, the username and the 8+
+                   character password - and the parent link, the country and the
+                   "starts paused" switch are written with it in ONE transaction. The
+                   password is never repeated in the flash (it is in the page history). */
+                if (!$maySubManage) {
+                    throw new RuntimeException('काउन्टर स्टाफ थप्न मिल्दैन — अफिसलाई भन्नुहोस्। / You are not allowed to add counter staff. Ask the office.');
+                }
+                $master = Database::fetch("SELECT id, is_active FROM admins WHERE id = :i AND role = 'agent'", ['i' => $viewId]);
+                if ($master === null || AgentCredit::parentOf($viewId) > 0) {
+                    throw new RuntimeException('Counter staff can only be added under a main agent account.');
+                }
+                if ((int) $master['is_active'] !== 1) {
+                    throw new RuntimeException('This agent account is not active — counter staff cannot be added to it.');
+                }
+                if (Auth::isCounterAgent() && AgentCredit::refusal($viewId) !== null) {
+                    throw new RuntimeException('हिसाब मिलाउन बाँकी हुँदा नयाँ काउन्टर स्टाफ थप्न मिल्दैन — पहिले अफिसमा हिसाब मिलाउनुहोस्।'
+                        . ' / New counter staff cannot be added while your account is on hold or at its limit.');
+                }
                 $subName  = trim(Security::clean($_POST['sub_name'] ?? '', 120));
-                $subPhone = preg_replace('/\D/', '', (string) ($_POST['sub_phone'] ?? ''));
+                $subPhone = preg_replace('/\D/', '', (string) ($_POST['sub_phone'] ?? '')) ?? '';
                 $subPin   = trim((string) ($_POST['sub_pin'] ?? ''));
                 if (mb_strlen($subName) < 2) {
                     throw new RuntimeException('Enter staff full name.');
-                } elseif (strlen($subPhone) < 10) {
-                    throw new RuntimeException('Enter valid 10-digit mobile number.');
-                } elseif (mb_strlen($subPin) < 6) {
-                    throw new RuntimeException('PIN / password must be at least 6 characters.');
-                } else {
-                    $subUser = substr($subPhone, -10);
-                    $baseU   = $subUser;
-                    for ($i = 2; Database::exists('SELECT 1 FROM admins WHERE username = :u LIMIT 1', ['u' => $subUser]); $i++) {
-                        $subUser = $baseU . '_' . $i;
-                    }
-                    $newSubId = (int) Database::insert('admins', [
-                        'username'       => $subUser,
-                        'password_hash'  => Security::hashPassword($subPin),
-                        'full_name'      => $subName,
-                        'email'          => null,
-                        'phone'          => '+91' . substr($subPhone, -10),
-                        'role'           => 'agent',
-                        'is_active'      => 1,
-                        'must_change_pw' => 0
-                    ]);
+                } elseif (strlen($subPhone) < 10 || strlen($subPhone) > 15) {
+                    throw new RuntimeException('मोबाइल नम्बर १०–१५ अंकको हुनुपर्छ। / Enter a valid mobile number (10 to 15 digits).');
+                } elseif (strlen($subPin) < 8) {
+                    throw new RuntimeException('पासवर्ड कम्तीमा ८ अक्षरको हुनुपर्छ। / The password must be at least 8 characters.');
+                }
+                $masterProfile = AgentWallet::profile($viewId);
+                $startPaused   = $subApproveOn && !$canManage;      // an agent's own addition waits for the office
+                $newSubId = (int) Database::transaction(static function () use ($subName, $subPhone, $subPin, $masterProfile, $viewId, $selfId, $startPaused): int {
+                    $id = AgentWallet::createAgent($subName, $subPhone, AgentWallet::KIND_PERSON,
+                        (string) ($masterProfile['counter_name'] ?? ''), null, $selfId,
+                        ['password' => $subPin, 'whatsapp' => $subPhone, 'no_welcome' => true]);
                     Database::run(
-                        "INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name, agent_kind, parent_agent_id)
-                         VALUES (:aid, :p, :wa, :cn, 'person', :pid)
-                         ON DUPLICATE KEY UPDATE display_phone = :p2, whatsapp = :wa2, counter_name = :cn2, parent_agent_id = :pid2",
-                        [
-                            'aid' => $newSubId, 'p' => $subPhone, 'wa' => $subPhone,
-                            'cn'  => $profile['counter_name'] ?? 'Counter Staff', 'pid' => $viewId,
-                            'p2'  => $subPhone, 'wa2' => $subPhone,
-                            'cn2' => $profile['counter_name'] ?? 'Counter Staff', 'pid2' => $viewId
-                        ]
+                        'INSERT INTO admin_profiles (admin_id, parent_agent_id) VALUES (:a, :p)
+                         ON DUPLICATE KEY UPDATE parent_agent_id = :p2',
+                        ['a' => $id, 'p' => $viewId, 'p2' => $viewId]
                     );
-                    $code = AgentWallet::nextFreeAgentCode(AgentWallet::KIND_PERSON);
-                    if ($code !== null) {
-                        AgentWallet::setAgentCode($newSubId, $code, $selfId);
+                    // the staff member answers the same country's number as the main agent (977 / 91)
+                    $cc = (string) ($masterProfile['country_code'] ?? '');
+                    if ($cc !== '' && AgentWallet::profileHasColumn('country_code')) {
+                        Database::run('UPDATE admin_profiles SET country_code = :c WHERE admin_id = :a', ['c' => $cc, 'a' => $id]);
                     }
-                    Logger::audit('subagent.create', 'admin', $subUser, null, ['parent_id' => $viewId], 'Created counter sub-agent');
-                    $flash = ['ok', 'Counter staff "' . $subName . '" registered successfully! Login Username: ' . $subUser . ' (PIN: ' . $subPin . ')'];
+                    if ($startPaused) {
+                        Database::run("UPDATE admins SET is_active = 0 WHERE id = :a AND role = 'agent'", ['a' => $id]);
+                    }
+                    return $id;
+                }, 1);
+                $subUser = (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $newSubId], '');
+                Logger::audit('subagent.create', 'admin', (string) $newSubId, null,
+                    ['parent_id' => $viewId, 'by' => $selfId, 'active' => $startPaused ? 0 : 1], 'Created counter sub-agent');
+                if ($startPaused) {
+                    $askOffice = 'https://wa.me/' . AgentReport::officeContact($viewId)['wa'] . '?text=' . rawurlencode(
+                        'नमस्ते, मैले नयाँ काउन्टर स्टाफ थपेको छु: ' . $subName . ' (' . $subUser . '). कृपया खोलिदिनुहोस्। — '
+                        . (string) ($admin['full_name'] ?? ($admin['username'] ?? '')) . ' ' . AgentWallet::agentCodeLabel($selfId));
+                    $flash = ['ok', 'काउन्टर स्टाफ "' . $subName . '" दर्ता भयो (लगइन: ' . $subUser . ')। अफिसले खोलेपछि चल्छ।'
+                        . ' / Registered — the office will switch this login on before it can sell.', $askOffice, 'अफिसलाई WhatsApp · Tell the office'];
+                } else {
+                    $flash = ['ok', 'काउन्टर स्टाफ "' . $subName . '" दर्ता भयो। लगइन: ' . $subUser . ' — पासवर्ड तपाईंले भर्खर राख्नुभएको।'
+                        . ' / Counter staff registered. Login: ' . $subUser . ' with the password you just set.'];
                 }
 
             } elseif ($action === 'subagent_handover') {
+                /* 26 Nov 2026 (fx1): the staff member must be a real child of the agent
+                   being viewed (no office bypass), the office needs commissions.pay,
+                   and the two ledger rows are written together or not at all. */
                 $subId = (int) ($_POST['sub_agent_id'] ?? 0);
-                $amt   = max(0.0, (float) ($_POST['amount'] ?? 0));
+                $amt   = round(max(0.0, (float) ($_POST['amount'] ?? 0)), 2);
                 $note  = trim(Security::clean($_POST['note'] ?? 'Cash collection handed over to master agent', 255));
-                $isSub = Database::exists("SELECT 1 FROM admin_profiles WHERE admin_id = :sid AND parent_agent_id = :pid", ['sid' => $subId, 'pid' => $viewId]);
-                if (!$isSub && !$isSupervisor) {
+                $sub   = $maySubSettle ? $subRowOf($subId, $viewId) : null;
+                if ($sub === null) {
                     throw new RuntimeException('You can only record handover for your own registered counter staff.');
                 }
                 if ($amt <= 0) {
                     throw new RuntimeException('Enter a valid handover amount.');
                 }
-                $subName = (string) Database::scalar("SELECT full_name FROM admins WHERE id = :id", ['id' => $subId]);
-                $ref = 'HO-' . date('YmdHis');
-                // 1. Relieve sub-agent of cash held
-                AgentWallet::record($subId, 'cash_handover', $amt, ['ref' => $ref, 'note' => $note, 'by' => $selfId]);
-                // 2. Add cash to master agent's custody
-                AgentWallet::record($viewId, 'cash_due', $amt, ['ref' => $ref, 'note' => 'Cash received from counter staff ' . $subName, 'by' => $selfId]);
-                $flash = ['ok', 'Cash handover of ₹' . number_format($amt, 2) . ' from ' . $subName . ' recorded successfully.'];
+                $subName = (string) ($sub['full_name'] ?: $sub['username']);
+                $ref = 'HO-' . date('YmdHis') . '-' . $subId;
+                Database::transaction(static function () use ($subId, $viewId, $amt, $ref, $note, $subName, $selfId): void {
+                    // 1. Relieve sub-agent of cash held (refused by the ledger when it is more than they hold)
+                    AgentWallet::record($subId, 'cash_handover', $amt, ['ref' => $ref, 'note' => $note, 'by' => $selfId]);
+                    // 2. Add cash to master agent's custody
+                    AgentWallet::record($viewId, 'cash_due', $amt, ['ref' => $ref, 'note' => 'Cash received from counter staff ' . $subName, 'by' => $selfId]);
+                }, 1);
+                Logger::audit('subagent.handover', 'admin', (string) $subId, null,
+                    ['parent_id' => $viewId, 'amount' => $amt, 'ref' => $ref, 'by' => $selfId], 'Counter staff cash handed to the main agent');
+                // the exact amount written to both ledgers (inr() rounds to whole rupees: 400.55 read "₹401")
+                $flash = ['ok', 'Cash handover of ₹' . indianNumber($amt, abs($amt - round($amt)) > 0.004 ? 2 : 0) . ' from ' . $subName . ' recorded successfully.'];
 
             } elseif ($action === 'toggle_subagent') {
+                /* 26 Nov 2026 (fx1): only a real child of the agent being viewed, never
+                   "any admins id". A main agent may always PAUSE their staff; switching
+                   a login ON is the office's (staff.manage) while
+                   agent_subagent_office_approve_on is on, or a paused login - one the
+                   office stopped included - could be reopened by the agent. */
                 $subId = (int) ($_POST['sub_agent_id'] ?? 0);
-                $isSub = Database::exists("SELECT 1 FROM admin_profiles WHERE admin_id = :sid AND parent_agent_id = :pid", ['sid' => $subId, 'pid' => $viewId]);
-                if (!$isSub && !$isSupervisor) {
+                $sub   = $maySubManage ? $subRowOf($subId, $viewId) : null;
+                if ($sub === null) {
                     throw new RuntimeException('You can only manage your own registered counter staff.');
                 }
-                $current = (int) Database::scalar("SELECT is_active FROM admins WHERE id = :id", ['id' => $subId]);
-                $new = $current === 1 ? 0 : 1;
-                Database::run("UPDATE admins SET is_active = :a WHERE id = :id", ['a' => $new, 'id' => $subId]);
-                $flash = ['ok', 'Counter staff booking status updated to ' . ($new ? 'Active' : 'Paused') . '.'];
+                $new = (int) $sub['is_active'] === 1 ? 0 : 1;
+                if ($new === 1 && $subApproveOn && !$canManage) {
+                    throw new RuntimeException('यो लगइन अफिसले मात्र खोल्न सक्छ — अफिसलाई भन्नुहोस्। / Only the office can switch this login on. Ask the office.');
+                }
+                Database::run("UPDATE admins SET is_active = :a WHERE id = :id AND role = 'agent'", ['a' => $new, 'id' => $subId]);
+                Logger::audit('subagent.toggle', 'admin', (string) $subId, ['is_active' => (int) $sub['is_active']], ['is_active' => $new],
+                    'counter staff ' . ($new ? 'switched on' : 'paused') . ' (parent #' . $viewId . ', by admin#' . $selfId . ')');
+                $flash = ['ok', 'Counter staff booking status updated to ' . ($new ? 'Active' : 'Paused') . '.'
+                    . ($new === 0 && $subApproveOn && !$canManage
+                        ? ' अब यो लगइन अफिसले मात्र फेरि खोल्न सक्छ। / Only the office can switch this login on again.' : '')];
 
             } else {
                 $flash = ['bad', 'Unknown action.'];
@@ -838,8 +909,13 @@ if (Auth::isCounterAgent()) {
 }
 
 /* ---- This agent's recent sales -------------------------------------- */
+/* 26 Nov 2026 (fx1): the NPR frozen on a Nepal-desk sale rides along (when the columns exist), so the
+   row can print what the ticket itself prints - "NPR 3,520 (INR 2,200)" - instead of a bare ₹2,200. */
+$recentFx = CounterDesk::hasColumn('bookings', 'fx_currency') && CounterDesk::hasColumn('bookings', 'fx_total')
+    ? ' b.fx_currency, b.fx_total,' . (CounterDesk::hasColumn('bookings', 'fx_rate') ? ' b.fx_rate,' : '')
+    : '';
 $recent = Database::fetchAll(
-    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source,
+    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source,$recentFx
             r.from_city, r.to_city, bl.travel_date,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
@@ -961,24 +1037,23 @@ echo LiveSync::anchor('agent:' . $viewId, 'pill');
 if ($flash !== null) {
     // A settlement flash may carry the click-to-chat link of the agent's WhatsApp receipt (agent_settlement_notify).
     $flashWa = (string) ($flash[2] ?? '');
+    // 26 Nov 2026 (fx1): a flash may name its own WhatsApp button ($flash[3]) - "tell the office" after adding counter staff.
+    $flashWaLabel = trim((string) ($flash[3] ?? '')) !== '' ? (string) $flash[3] : 'एजेन्टलाई WhatsApp · Send to the agent';
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1])
-        . (str_starts_with($flashWa, 'https://wa.me/') ? ' <a class="btn ok" href="' . Security::e($flashWa) . '" target="_blank" rel="noopener">📲 एजेन्टलाई WhatsApp · Send to the agent</a>' : '')
+        . (str_starts_with($flashWa, 'https://wa.me/') ? ' <a class="btn ok" href="' . Security::e($flashWa) . '" target="_blank" rel="noopener">📲 ' . Security::e($flashWaLabel) . '</a>' : '')
         . '</div>';
 }
 /* 19 Nov 2026 (u5 AG-5): 'मद्दत · Help' strip on the agent's own panel - call / WhatsApp the office
-   (a Nepal member: the Nepal office when its number is set) and share the new-agent register link. */
+   (a Nepal member: the Nepal office when its number is set) and share the new-agent register link.
+   26 Nov 2026 (fx1): the number rule moved to AgentReport::officeContact() so the home page and the
+   "Request extra quota" link below use the same office (that link had a typed number). */
+$hlpOffice = AgentReport::officeContact($viewId);
+$hlpCall   = $hlpOffice['call'];
+$hlpWa     = $hlpOffice['wa'];
 if ($isOwn) {
-    $hlpCall = Settings::officePhone();
-    $hlpWa   = Settings::officeWhatsApp();
-    if ((string) ($profile['country_code'] ?? '') === '977') {
-        $npPh = trim(Settings::getString('nepal_phone', ''));
-        if ($npPh !== '') { $hlpCall = trim((string) (preg_split('#\s*/\s*#', $npPh)[0] ?? $npPh)); }
-        $npWa = preg_replace('/\D/', '', Settings::getString('nepal_whatsapp', '')) ?? '';
-        if (strlen($npWa) === 10) { $npWa = '977' . $npWa; }
-        if (preg_match('/^[1-9]\d{9,14}$/', $npWa) === 1) { $hlpWa = $npWa; }
-    }
     $hlpJoin = appUrl('join.php');
     echo '<div class="panel" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;margin-bottom:12px">'
+        . (Settings::getBool('agent_home_on', true) && Auth::isCounterAgent() ? '<a class="btn sm" href="/admin/agent-home.php">🏠 मेरो हिसाब · Home</a>' : '')
         . '<b style="margin-right:4px">🆘 मद्दत · Help</b>'
         . '<a class="btn sm" href="tel:' . Security::e(preg_replace('/[^0-9+]/', '', $hlpCall) ?? '') . '">📞 ' . Security::e($hlpCall) . '</a>'
         . '<a class="btn ok sm" href="https://wa.me/' . Security::e($hlpWa) . '" target="_blank" rel="noopener">💬 WhatsApp office</a>'
@@ -1110,6 +1185,12 @@ html[data-ck-tab="profile"] [data-pane]:not([data-pane~="profile"]){display:none
   .ck-tl li{grid-template-columns:minmax(0,1fr) auto}.ck-tl li .tgw{grid-column:1 / -1}
 }
 @media print{.ck-acts,.ck-tabs{display:none !important}}
+/* 26 Nov 2026 (fx1): the counter-staff cash handover box uses the register's modal classes, which this
+   page never defined - it opened as a loose block inside the panel. Same rules as admin/agents.php. */
+.id-preview-modal{position:fixed;inset:0;z-index:100;background:rgba(10,20,40,.65);display:flex;align-items:center;justify-content:center;padding:16px}
+.id-preview-modal[hidden]{display:none}
+.id-preview-box{background:var(--card);color:var(--ink);border-radius:18px;max-width:780px;width:100%;padding:20px;max-height:92vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.4)}
+.id-preview-box input{font-size:16px;min-height:44px;background:var(--card);color:var(--ink)}
 </style>
 
 <?php
@@ -1182,12 +1263,15 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
 
 <!-- ============ COCKPIT: quick stats ============ -->
 <div class="ck-stats">
+  <?php /* 26 Nov 2026 (fx1): the money now comes from the same read as the count beside it
+           (AgentWallet::headcount - ticket VALUE of today's tickets, pending and pay-at-boarding
+           included). It used to be confirmed-only money beside an all-tickets count. */ ?>
   <div class="ck-stat"><div class="k">Today · आज</div>
-    <div class="v"><?= Security::e(inr($stats['todayMoney'])) ?></div>
-    <div class="s"><?= (int) $heads['today']['tickets'] ?> ticket<?= (int) $heads['today']['tickets'] === 1 ? '' : 's' ?> · <b><?= (int) $heads['today']['heads'] ?> जना</b></div></div>
+    <div class="v"><?= Security::e(inr((float) $heads['today']['sales'])) ?></div>
+    <div class="s"><?= (int) $heads['today']['tickets'] ?> ticket<?= (int) $heads['today']['tickets'] === 1 ? '' : 's' ?> · <b><?= (int) $heads['today']['heads'] ?> जना</b> · टिकट मूल्य · ticket value</div></div>
   <div class="ck-stat"><div class="k">This month · यो महिना</div>
     <div class="v"><?= Security::e(inr($tgt['sales']['money'])) ?></div>
-    <div class="s"><?= (int) $tgt['sales']['confirmed'] ?> confirmed · <b><?= (int) $heads['month']['heads'] ?> जना</b> · <?= Security::e(inr($summary['earnedMonth'])) ?> commission</div></div>
+    <div class="s"><?= (int) $tgt['sales']['confirmed'] ?> confirmed · <b><?= (int) $heads['month']['heads'] ?> जना</b> · <?= Security::e(inr($summary['earnedMonth'])) ?> commission <span title="Commission by the date it was written to the wallet, as on the statement">(खाता · ledger)</span></div></div>
   <div class="ck-stat"><div class="k">Target · लक्ष्य</div>
     <?php if ($ckTgtAmt > 0):
       $ckTc = $tgt['pct'] >= 100 ? '#0a8b4b' : ($tgt['pct'] >= 60 ? '#d68910' : '#c0392b'); ?>
@@ -1221,7 +1305,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
 <div data-pane="balance" style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;box-shadow:0 3px 10px rgba(0,0,0,0.04)">
   <div style="flex:1;min-width:240px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <span style="font-weight:700;font-size:14px;color:#0d3b66">
+      <span style="font-weight:700;font-size:14px;color:var(--ink)">
         ⚡ Today's Daily Booking Quota: <?= $dailyLimit > 0 ? $todayBookedSeats . ' / ' . $dailyLimit . ' seats booked' : $todayBookedSeats . ' seats booked (Unlimited Quota)' ?>
       </span>
       <span style="font-size:12px;font-weight:700;color:<?= $quotaPercent >= 100 ? '#b91c1c' : ($quotaPercent >= 80 ? '#d97706' : '#15803d') ?>">
@@ -1229,7 +1313,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
       </span>
     </div>
     <?php if ($dailyLimit > 0): ?>
-      <div style="width:100%;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden">
+      <div style="width:100%;height:8px;background:var(--line);border-radius:4px;overflow:hidden">
         <div style="width:<?= $quotaPercent ?>%;height:100%;background:<?= $quotaPercent >= 100 ? '#ef4444' : ($quotaPercent >= 80 ? '#f59e0b' : '#22c55e') ?>;border-radius:4px;transition:width .3s"></div>
       </div>
     <?php endif; ?>
@@ -1242,9 +1326,9 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
     <?php endif; ?>
     <?php if ($dailyLimit > 0): 
       $quotaMsg = "Namaste HQ! Requesting additional seat booking quota for Agent " . ($viewing['full_name'] ?: $viewing['username']) . " (Code: " . AgentWallet::agentCodeLabel($viewId) . "). Current limit: {$todayBookedSeats}/{$dailyLimit}. Please add +10 seats quota.";
-      $quotaWa = "https://wa.me/919104801507?text=" . urlencode($quotaMsg);
+      $quotaWa = 'https://wa.me/' . $hlpWa . '?text=' . urlencode($quotaMsg);   // 26 Nov 2026 (fx1): the office number from settings (Nepal office for a 977 member), not a typed one
     ?>
-      <a href="<?= $quotaWa ?>" target="_blank" rel="noopener" class="btn" style="background:#f59e0b;color:#fff;font-size:12px;padding:4px 10px;text-decoration:none;border-radius:6px;font-weight:700">⚡ Request Extra Quota</a>
+      <a href="<?= Security::e($quotaWa) ?>" target="_blank" rel="noopener" class="btn" style="background:#f59e0b;color:#fff;font-size:12px;padding:4px 10px;text-decoration:none;border-radius:6px;font-weight:700">⚡ Request Extra Quota</a>
     <?php endif; ?>
   </div>
 </div>
@@ -1378,34 +1462,49 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
   <?php if ($ckCan360): ?><a class="btn ghost" href="/admin/agent-360.php?agent=<?= $viewId ?>&amp;tab=requests" style="margin-left:6px">अनुरोध · Requests →</a><?php endif; ?></div>
 <?php endif; ?>
 
-<!-- MY COUNTER STAFF (SUB-AGENTS) MANAGER -->
-<div class="dash-panel" data-pane="sales" style="margin-top:20px;border:1px solid #cbd5e1">
-  <div class="dp-head" style="justify-content:space-between;background:#f8fafc">
+<!-- MY COUNTER STAFF (SUB-AGENTS) MANAGER
+     26 Nov 2026 (fx1): shown for a MAIN agent only - never to a sub-agent (no staff under
+     staff). Each control follows the rule at the top of this file ($maySubManage /
+     $maySubSettle); an office viewer without either right reads the list and nothing else.
+     Colours come from the theme tokens (the panel was unreadable in the dark theme). -->
+<?php
+$subPanelOn = !$selfIsSub && (string) ($viewing['role'] ?? '') === 'agent' && AgentCredit::parentOf($viewId) === 0
+    && ($maySubManage || $maySubSettle || $mySubAgents !== []);
+if ($subPanelOn): ?>
+<div class="dash-panel" data-pane="sales" style="margin-top:20px">
+  <div class="dp-head" style="justify-content:space-between;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:8px">
       <span>👥</span>
       <span>My Counter Staff (Sub-Agents)</span>
       <span class="pill" style="background:#efeaff;color:#5a3fb0;font-size:11px"><?= count($mySubAgents) ?> Staff Members</span>
     </div>
-    <button type="button" class="btn ghost" onclick="var el=document.getElementById('addSubagentBox');el.hidden=!el.hidden" style="font-size:12px;padding:4px 10px">＋ Register Counter Staff</button>
+    <?php if ($maySubManage): ?>
+    <button type="button" class="btn ghost" onclick="var el=document.getElementById('addSubagentBox');el.hidden=!el.hidden">＋ Register Counter Staff</button>
+    <?php endif; ?>
   </div>
   <div class="dp-body" style="padding:16px">
-    
+
+    <?php if ($maySubManage): ?>
     <!-- REGISTER COUNTER STAFF FORM (COLLAPSIBLE) -->
-    <div id="addSubagentBox" hidden style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-bottom:16px">
-      <h4 style="margin:0 0 10px;font-size:13.5px;color:#0d3b66">Register New Shop / Counter Staff under Your Master Agent Account</h4>
+    <div id="addSubagentBox" hidden style="background:var(--head);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px">
+      <h4 style="margin:0 0 6px;font-size:13.5px;color:var(--ink)">Register New Shop / Counter Staff under Your Master Agent Account</h4>
+      <?php if ($subApproveOn && !$canManage): ?>
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">नयाँ लगइन अफिसले खोलेपछि मात्र चल्छ · A new login starts paused; the office switches it on.</p>
+      <?php endif; ?>
       <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:flex-end">
         <?= Security::csrfField() ?>
         <input type="hidden" name="action" value="add_subagent">
-        <label style="font-size:12px;font-weight:600">Staff Full Name<input type="text" name="sub_name" required placeholder="e.g. Ramesh Giri" style="width:100%;padding:7px;border-radius:6px;border:1px solid #cbd5e1;margin-top:3px"></label>
-        <label style="font-size:12px;font-weight:600">Mobile (10 digits)<input type="tel" name="sub_phone" required placeholder="e.g. 9812345678" style="width:100%;padding:7px;border-radius:6px;border:1px solid #cbd5e1;margin-top:3px"></label>
-        <label style="font-size:12px;font-weight:600">Login PIN / Password<input type="text" name="sub_pin" required placeholder="Min 6 characters" minlength="6" style="width:100%;padding:7px;border-radius:6px;border:1px solid #cbd5e1;margin-top:3px"></label>
-        <button type="submit" class="btn ok" style="padding:8px 14px;font-size:12.5px;font-weight:700">✓ Save &amp; Generate Sub-Agent Code</button>
+        <label style="font-size:12px;font-weight:600">Staff Full Name<input type="text" name="sub_name" required maxlength="120" placeholder="e.g. Ramesh Giri" style="width:100%;min-height:44px;font-size:16px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-top:3px"></label>
+        <label style="font-size:12px;font-weight:600">Mobile · मोबाइल (10–15 digits)<input type="tel" name="sub_phone" required inputmode="numeric" minlength="10" maxlength="16" placeholder="e.g. 9812345678" style="width:100%;min-height:44px;font-size:16px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-top:3px"></label>
+        <label style="font-size:12px;font-weight:600">Login Password · पासवर्ड<input type="text" name="sub_pin" required placeholder="Min 8 characters" minlength="8" maxlength="72" autocomplete="off" style="width:100%;min-height:44px;font-size:16px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin-top:3px"></label>
+        <button type="submit" class="btn ok" style="min-height:44px;padding:8px 14px;font-size:13px;font-weight:700">✓ Save &amp; Generate Sub-Agent Code</button>
       </form>
     </div>
+    <?php endif; ?>
 
     <!-- SUB-AGENTS TABLE -->
     <?php if ($mySubAgents === []): ?>
-      <p class="muted" style="margin:0;font-size:13px">No counter staff registered under this account yet. Click <b>＋ Register Counter Staff</b> to add shop staff who can sell tickets under your agency.</p>
+      <p class="muted" style="margin:0;font-size:13px">No counter staff registered under this account yet.<?php if ($maySubManage): ?> Click <b>＋ Register Counter Staff</b> to add shop staff who can sell tickets under your agency.<?php endif; ?></p>
     <?php else: ?>
       <div style="overflow-x:auto">
         <table class="dt" style="width:100%;font-size:12.5px;margin-bottom:14px">
@@ -1434,19 +1533,32 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
                 <td class="num"><b><?= (int)$ms['sales'] ?></b></td>
                 <td class="num">₹<?= number_format((float)$ms['revenue']) ?></td>
                 <td class="num"><b style="color:<?= (float)$ms['cash_held'] > 0 ? '#b02a2a' : '#0a6b3b' ?>">₹<?= number_format((float)$ms['cash_held']) ?></b></td>
-                <td><?= (int)$ms['is_active'] === 1 ? '<span class="pill" style="background:#d7f4e3;color:#0a6b3b;font-size:10.5px">Active</span>' : '<span class="pill" style="background:#fee2e2;color:#991b1b;font-size:10.5px">Paused</span>' ?></td>
+                <td><?= (int)$ms['is_active'] === 1 ? '<span class="pill" style="background:#d7f4e3;color:#0a6b3b;font-size:10.5px">Active</span>'
+                      : (empty($ms['last_login_at']) && (int) $ms['sales'] === 0
+                          ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:10.5px">अफिसको पर्खाइ · Waiting for office</span>'
+                          : '<span class="pill" style="background:#fee2e2;color:#991b1b;font-size:10.5px">Paused</span>') ?></td>
                 <td>
                   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                    <?php if ((float)$ms['cash_held'] > 0): ?>
-                      <button type="button" class="btn" style="background:#0a8b4b;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;font-weight:700" onclick="openSubHandoverModal(<?= (int)$ms['id'] ?>, '<?= Security::e(addslashes($ms['full_name'])) ?>', <?= (float)$ms['cash_held'] ?>)">📥 Handover Cash</button>
+                    <?php if ($maySubSettle && (float)$ms['cash_held'] > 0): ?>
+                      <button type="button" class="btn" style="background:#0a8b4b;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;font-weight:700" onclick="openSubHandoverModal(<?= (int)$ms['id'] ?>, <?= Security::e((string) json_encode((string) $ms['full_name'], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_TAG | JSON_HEX_AMP)) ?>, <?= (float)$ms['cash_held'] ?>)">📥 Handover Cash</button>
                     <?php endif; ?>
-                    <a href="<?= $subWaLink ?>" target="_blank" rel="noopener" class="btn" style="background:#25d366;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;text-decoration:none;font-weight:700">📲 WA Login</a>
-                    <form method="post" style="display:inline" onsubmit="return confirm('<?= (int)$ms['is_active'] === 1 ? 'Pause booking access for ' : 'Activate booking access for ' ?><?= Security::e(addslashes($ms['full_name'])) ?>?')">
+                    <?php if ($maySubManage): ?>
+                    <a href="<?= Security::e($subWaLink) ?>" target="_blank" rel="noopener" class="btn" style="background:#25d366;color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;text-decoration:none;font-weight:700">📲 WA Login</a>
+                    <?php endif; ?>
+                    <?php if ($maySubManage && ((int)$ms['is_active'] === 1 || !$subApproveOn || $canManage)): ?>
+                    <form method="post" style="display:inline" onsubmit="return confirm(<?= Security::e((string) json_encode(((int)$ms['is_active'] === 1 ? 'Pause booking access for ' : 'Activate booking access for ') . (string) $ms['full_name'] . '?'
+                        // an agent's Pause is one-way while the office-approve switch is on: say so BEFORE the tap
+                        . ((int)$ms['is_active'] === 1 && $subApproveOn && !$canManage
+                            ? "\n\nरोकेपछि यो लगइन अफिसले मात्र फेरि खोल्न सक्छ — तपाईं आफैं खोल्न मिल्दैन।\nAfter you pause it, only the office can switch this login on again."
+                            : ''), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_TAG | JSON_HEX_AMP)) ?>)">
                       <?= Security::csrfField() ?>
                       <input type="hidden" name="action" value="toggle_subagent">
                       <input type="hidden" name="sub_agent_id" value="<?= (int)$ms['id'] ?>">
                       <button type="submit" class="btn ghost" style="font-size:11px;padding:3px 7px"><?= (int)$ms['is_active'] === 1 ? '⏸ Pause' : '▶ Resume' ?></button>
                     </form>
+                    <?php elseif ($maySubManage): ?>
+                      <span class="muted" style="font-size:11.5px">अफिसले खोल्छ · the office switches it on</span>
+                    <?php endif; ?>
                   </div>
                 </td>
               </tr>
@@ -1459,7 +1571,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
       <div class="id-preview-modal" id="subHandoverModal" hidden onclick="if(event.target===this)this.hidden=true">
         <div class="id-preview-box" style="max-width:440px">
           <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
-            <h3 style="margin:0;font-size:16px;color:#0d3b66">📥 Record Counter Cash Handover</h3>
+            <h3 style="margin:0;font-size:16px;color:var(--ink)">📥 Record Counter Cash Handover</h3>
             <button type="button" class="btn ghost" onclick="document.getElementById('subHandoverModal').hidden=true">&times;</button>
           </div>
           <form method="post">
@@ -1495,7 +1607,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
       </script>
 
       <?php if ($subAgentBookings !== []): ?>
-        <h4 style="margin:12px 0 6px;font-size:13px;color:#0d3b66">Recent Tickets Sold by Your Counter Staff:</h4>
+        <h4 style="margin:12px 0 6px;font-size:13px;color:var(--ink)">Recent Tickets Sold by Your Counter Staff:</h4>
         <div style="overflow-x:auto">
           <table class="dt" style="width:100%;font-size:12px">
             <thead><tr>
@@ -1504,13 +1616,15 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
             <tbody>
               <?php foreach ($subAgentBookings as $sb): ?>
                 <tr>
-                  <td class="mono"><b><a href="/admin/booking-view.php?pnr=<?= urlencode((string)$sb['pnr']) ?>"><?= Security::e((string)$sb['pnr']) ?></a></b></td>
+                  <?php /* 26 Nov 2026 (fx1): booking-view.php shows an agent only the tickets they sold themself, so the
+                           main agent's link to a staff member's ticket was dead ("not found" + a security log line). Text for an agent. */ ?>
+                  <td class="mono"><b><?php if (Auth::isCounterAgent()): ?><?= Security::e((string)$sb['pnr']) ?><?php else: ?><a href="/admin/booking-view.php?pnr=<?= urlencode((string)$sb['pnr']) ?>"><?= Security::e((string)$sb['pnr']) ?></a><?php endif; ?></b></td>
                   <td><b><?= Security::e($sb['booked_by_staff']) ?></b></td>
                   <td><?= Security::e(($sb['from_city'] ?? '—') . ' → ' . ($sb['to_city'] ?? '—')) ?></td>
                   <td><?= Security::e(formatDate($sb['travel_date'] ?? null)) ?></td>
                   <td class="mono"><?= Security::e((string)($sb['seats'] ?? '—')) ?></td>
                   <td class="num">₹<?= number_format((float)$sb['total_amount']) ?></td>
-                  <td><span class="pill" style="background:#d7f4e3;color:#0a6b3b;font-size:10px"><?= ucfirst((string)$sb['status']) ?></span></td>
+                  <td><?= admin_pill((string) $sb['status']) ?></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
@@ -1521,6 +1635,7 @@ $ckCashHot  = $overdueDays > 0 || ((float) $profile['cash_limit'] > 0 && $balanc
 
   </div>
 </div>
+<?php endif; /* $subPanelOn */ ?>
 
 <div class="dash-panel" data-pane="sales">
   <div class="dp-head">📊 Bookings — Last 7 Days</div>
@@ -2304,13 +2419,16 @@ $ckHave = array_column($badges, 'label');
                 )));
           ?></td>
           <td class="mono" data-label="Passenger phone"><?= Security::e(maskPhone((string) $b['contact_phone'])) ?></td>
-          <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>
+          <td data-label="Amount"><?= Security::e(Ticket::isNprSale($b) ? Ticket::money($b, (float) $b['total_amount']) : inr((float) $b['total_amount'])) ?></td>
           <td data-label="Status"><?= admin_pill((string) $b['status']) ?></td>
           <td class="muted" data-label="When"><?= Security::e(timeAgo((string) $b['created_at'])) ?></td>
         </tr>
       <?php endforeach; endif; ?>
     </tbody>
   </table>
+  <?php foreach ($recent as $b) { if (Ticket::isNprSale($b)) { ?>
+    <p class="muted" style="font-size:12px;margin:8px 14px 12px">NPR = नेपाल काउन्टरमा काटेको टिकटको रकम। हिसाब, कमिसन र स्टेटमेन्ट INR (₹) मा राखिन्छ · The account, commission and statement are kept in INR.</p>
+  <?php break; } } ?>
 </div>
 
 <p class="muted" data-pane="commission" style="font-size:12.5px">

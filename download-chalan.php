@@ -47,7 +47,13 @@ try {
         exit('No such departure.');
     }
 
-    $expected = substr(Security::sign('chalan-dl|' . $sid . '|' . $doc . '|' . $page . '|' . $exp), 0, 20);
+    /* 26 Nov 2026 (fx1): c = the copy tag of a DESK COPY's chalani page (ChalaniStrip::
+       shareLinks). It is part of what is signed, so a whole-bus key never opens a copy
+       and a copy's key never opens the whole bus. No c = the whole-bus page, as before. */
+    $tag  = $doc === 'chalani'
+        ? substr((string) preg_replace('/[^A-Z0-9]/', '', strtoupper(Security::clean($_GET['c'] ?? '', 40))), 0, 24) : '';
+
+    $expected = substr(Security::sign('chalan-dl|' . $sid . '|' . $doc . '|' . $page . '|' . $exp . ($tag !== '' ? '|' . $tag : '')), 0, 20);
     $allowed  = $exp > time() && $key !== '' && hash_equals($expected, $key);
     // 16 Nov 2026 (G1): staffActive(), not admin() - a session on a temporary password is a guest here
     if (!$allowed && Auth::staffActive() !== null && Auth::can('bookings.view') && Auth::bookingScopeAdminId() === null) {
@@ -84,13 +90,56 @@ try {
         Response::inline($res['path'], 'image/png');
     }
 
-    // Chalani page: the newest drawn file for this departure + page.
-    $dir   = rtrim(UPLOAD_PATH, '/\\') . '/chalani';
-    $best  = '';
-    $bestT = 0;
-    foreach (glob($dir . '/*/*-S' . $sid . '-p' . $page . 'of*.png') ?: [] as $f) {
-        $t = (int) @filemtime($f);
-        if ($t > $bestT) { $bestT = $t; $best = $f; }
+    /* ---- chalani page ------------------------------------------------------
+       26 Nov 2026 (fx1): DRAWN ON DEMAND from today's rows (ChalaniPng::sheetFor -
+       the very arrays the manifest page draws from; fingerprint-cached, so an
+       unchanged bus costs no redraw). It used to serve "the newest file somebody
+       happened to draw": a link sent to the driver showed yesterday's list until an
+       office user opened the PNG pages again, and answered 404 when nobody ever had.
+       The page after the last sheet page is the seat chart, as the hub offers it.
+       Switch chalani_dl_redraw_on (default on); off = the newest drawn file, as before.
+       Any error in the builder falls back to that file too - a link never breaks. */
+    require_once INCLUDE_PATH . '/chalanipng.php';
+    $best    = '';
+    $noPage  = 0;      // > 0: the sheet is known and has only this many pages
+    if (Settings::getBool('chalani_dl_redraw_on', true)) {
+        try {
+            $desk = '';
+            if ($tag !== '') {
+                foreach (array_keys(CounterDesk::all()) as $dc) {
+                    if (ChalaniPng::copyInfo(null, '', (string) $dc, '')['tag'] === $tag) { $desk = (string) $dc; break; }
+                }
+            }
+            $sheet = ($tag === '' || $desk !== '') ? ChalaniPng::sheetFor($sid, $desk) : null;   // an agent copy is never rebuilt here
+            if ($sheet !== null && ChalaniPng::copyTag($sheet['fmt']) === $tag) {
+                $shown = $sheet['pages'] + ($sheet['hasChart'] ? 1 : 0);
+                if ($page <= $sheet['pages']) {
+                    $best = ChalaniPng::render($sheet['trip'], $sheet['rows'], $sheet['date'], $sheet['totals'], $sheet['fmt'], $page)['path'];
+                } elseif ($page === $shown) {
+                    $best = ChalaniPng::renderChart($sheet['trip'], $sheet['rows'], $sheet['date'], $sheet['totals'], $sheet['fmt'], $page, $shown)['path'];
+                } else {
+                    $noPage = $shown;
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::error('Chalani page redraw failed: ' . $e->getMessage(), ['sid' => $sid, 'page' => $page]);
+            $best = '';
+        }
+    }
+    if ($noPage > 0) {
+        http_response_code(404);
+        exit('This chalani has ' . $noPage . ' page' . ($noPage === 1 ? '' : 's') . ' now.');
+    }
+    if ($best === '') {
+        // the newest drawn file of this copy + page (never another copy's)
+        $best = ChalaniPng::newestFile($sid, $page, $tag);
+        if ($best === '' && $page > 1) {
+            // the page after the last sheet page = the seat chart
+            $p1 = ChalaniPng::newestFile($sid, 1, $tag);
+            if ($p1 !== '' && preg_match('/-p1of(\d+)-[0-9a-f]{8}\.png$/', basename($p1), $pm) === 1 && $page === (int) $pm[1] + 1) {
+                $best = ChalaniPng::newestFile($sid, 0, $tag);
+            }
+        }
     }
     if ($best === '') {
         http_response_code(404);

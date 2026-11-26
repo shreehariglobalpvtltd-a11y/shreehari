@@ -103,6 +103,22 @@ $sbLugFee  = $sbExtrasWired && CounterDesk::hasColumn('bookings', 'luggage_piece
 $sbInfOn   = $sbExtrasWired && Settings::getBool('infant_seat_on', false)
     && CounterDesk::hasColumn('bookings', 'infant_count') && CounterDesk::hasColumn('bookings', 'infant_fee');
 $sbInfFare = $sbInfOn ? max(0, Settings::getInt('infant_seat_fare', 0)) : 0;
+/* fx1 (26 Nov 2026): the desk this login sits on, for the card's first defaults -
+   the dial code (+977 at a Nepal window), the language, and the conveniences
+   below. Each is a switch (Settings row; no row = the default):
+     desk_npr_first_on      1  an NPR desk reads रू big (the figure frozen on the ticket), ₹ small
+     desk_fast_entry_on     1  Enter = next field, phone Enter never adds a passenger, autofocus
+                               on a keyboard, +977 first at a Nepal desk, the passenger being
+                               typed is kept for the open tab only (never in the shared store)
+     desk_gender_two_btn_on 1  a passenger with no F / M shows two buttons (never pre-set)
+     desk_print80_touch_on  0  a phone / tablet does not open the 80 mm print by itself
+     staff_card_lang       ne  the card's language until the clerk picks one (en = as before)
+   0 / off = the desk exactly as it was. */
+$sbDesk     = (string) (CounterDesk::forAdmin($me)['code'] ?? '');
+$sbDeskLang = $sbDesk !== '' ? CounterDesk::lang($sbDesk) : '';
+$sbLangDef  = strtolower(trim(Settings::getString('staff_card_lang', 'ne')));
+$sbLang     = in_array($sbDeskLang, ['en', 'hi', 'ne'], true) ? $sbDeskLang : (in_array($sbLangDef, ['en', 'hi', 'ne'], true) ? $sbLangDef : 'en');
+$sbFast     = Settings::getBool('desk_fast_entry_on', true);
 $isAdmin = in_array((string) $admin['role'], ['superadmin', 'manager'], true) || Auth::isSuperadmin();
 $ver     = (string) (preg_match("/var ASSET_VER = '([^']+)'/", (string) @file_get_contents(dirname(__DIR__) . '/sw.js'), $vm) === 1 ? $vm[1] : '1');
 $F       = SiteFacts::all();
@@ -222,6 +238,34 @@ html.sbx-admin .sbx-ov{display:block}
 <?php endif; ?>
 /* px2: one form only - the Quick / Full switch is not drawn (smartbook_form_mode = full | quick) */
 html.sb-one-form #smartBook #sbQMode{display:none}
+/* fx1 (26 Nov 2026): the desk under a FINGER - every control of the desk box and the
+   F / M + age chips at least 44px, inputs 16px (no zoom-in on focus). Coarse pointers
+   only: a mouse desk keeps its compact rows. Size only, nothing moved. */
+@media (pointer:coarse){
+  .sbx-chips button{min-height:44px;min-width:48px;font-size:14px}
+  .sbx-chips button.x{min-width:44px}
+  .sbx-disc input,.sbx-disc select,.sbx-tnote input,.sbx-xtra input,.sbx-ov input{min-height:44px;font-size:16px}
+  #sbRail .sbx-desk .sbx-tnote input{font-size:16px}
+  .sbx-cash select{min-height:44px!important;font-size:16px!important}
+  .sbx-more>summary{width:44px;height:44px}
+  .sbx-reg button,.sbx-auto{min-height:44px}
+  .sbx-modes a{display:inline-flex;align-items:center;min-height:44px}
+  #smartBook[data-staff] .sb-p{height:auto;min-height:46px}
+  #smartBook[data-staff] .sb-p button{height:auto;min-height:46px}
+  #smartBook[data-staff] .sb-dir-b{min-height:44px}
+}
+/* fx1: a one-way desk draws ONE run (the other button is hidden by the card script) */
+#smartBook[data-staff] .sb-dir.sb-dir-one{grid-template-columns:minmax(0,1fr)}
+#smartBook[data-staff] .sb-dir-b[hidden]{display:none}
+@media (max-width:600px){main.wrap #smartBook .sb-card>.sbx-block{order:0;margin:0 0 10px}}
+#smartBook[data-staff] .sbx-block{display:block;margin:-4px 0 10px;padding:8px 10px;border-radius:10px;border:1px solid #f0b429;background:#fff8e6;color:#7a3d00;font-size:14px;font-weight:700;line-height:1.4}
+#smartBook[data-staff] .sbx-block[hidden]{display:none}
+/* fx1: F | M as two buttons while nothing is chosen (never pre-set) */
+#smartBook[data-staff] .sb-p .sb-g.sb-g2{min-width:52px;border-right:1px solid var(--sb-line,#e0e8f2)}
+/* fx1: the card's language, in the gear menu */
+.sbx-lang{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;font-weight:700}
+.sbx-lang button{min-width:48px;min-height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line,#e0e8f2);background:transparent;color:inherit;font:inherit;font-weight:700;cursor:pointer}
+.sbx-lang button.on{background:#1a44c8;border-color:#1a44c8;color:#fff}
 </style>
 <div class="sbx-top">
   <span class="sbx-badge">⚡ SmartBook · <?= $e($label) ?></span>
@@ -286,8 +330,11 @@ html.sb-one-form #smartBook #sbQMode{display:none}
     <?php if ($isAdmin): ?>
       <span class="sbx-modes"><?php foreach (['admin' => 'Admin', 'counter' => 'Counter mode', 'agent' => 'Agent mode'] as $k => $v): ?><a class="<?= $mode === $k ? 'on' : '' ?>" href="?mode=<?= $e($k) ?>"><?= $e($v) ?></a><?php endforeach; ?></span>
     <?php endif; ?>
+    <?php /* fx1 (26 Nov 2026): the card's language - Nepali first unless the desk / the office says otherwise (staff_card_lang) */ ?>
+    <span class="sbx-lang" id="sbxLang" role="group" aria-label="भाषा · Language">भाषा · Language
+      <button type="button" data-lang="ne" lang="ne">नेपाली</button><button type="button" data-lang="hi" lang="hi">हिन्दी</button><button type="button" data-lang="en" lang="en">English</button></span>
     <label class="sbx-help"><input type="checkbox" id="sbxPrint"> 80 mm print after each Cash sale</label>
-    <p class="sbx-help">Enter = one more passenger · Ctrl+Enter = auto-berth + Cash + print · same engine as the website (rules decide, nothing typed is trusted).<?php if ($ownAgent === ''): ?> The agent you pick is remembered for this desk; commission goes to that agent, the cash stays with you.<?php endif; ?></p>
+    <p class="sbx-help"><?= $sbFast ? 'Enter (मोबाइल) = अर्को बक्स · next box · ' : '' ?>Enter = one more passenger · Ctrl+Enter = auto-berth + Cash + print · same engine as the website (rules decide, nothing typed is trusted).<?php if ($ownAgent === ''): ?> The agent you pick is remembered for this desk; commission goes to that agent, the cash stays with you.<?php endif; ?></p>
     <?php if ($mode === 'admin'): ?>
     <div class="sbx-ov" id="sbxOv"><label class="sbx-help" for="sbxOvIn">Override a hard rule on hand-picked berths — written reason (saved in the audit log)</label>
       <input id="sbxOvIn" maxlength="200" placeholder="e.g. family travelling together, confirmed by phone"></div>
@@ -326,6 +373,12 @@ window.SB_STAFF = <?= json_encode([
     'commDirect' => Settings::getFloat('agent_flat_direct', 200.0), 'commJoint' => Settings::getFloat('agent_flat_joint', 400.0), 'commFlat' => AgentWallet::flatMode(),
     // P8-3f / P4-4d: 0 = the field is not on the page
     'luggageFee' => $sbLugFee, 'infantFare' => $sbInfFare, 'lugMax' => BookingService::LUGGAGE_MAX, 'infMax' => BookingService::INFANT_MAX,
+    // fx1 (26 Nov 2026): the desk's conveniences - each a switch, false = the card as it was
+    'deskCc'   => $sbFast && $sbDesk !== '' && CounterDesk::dialCode($sbDesk) === '977' ? 'NP' : '',
+    'fast'     => $sbFast,
+    'nprFirst' => Settings::getBool('desk_npr_first_on', true),
+    'twoBtn'   => Settings::getBool('desk_gender_two_btn_on', true),
+    'printTouch' => Settings::getBool('desk_print80_touch_on', false),
 ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
 if (<?= $mode === 'admin' ? 'true' : 'false' ?>) document.documentElement.classList.add('sbx-admin');
 /* The few app globals the card uses, for a panel page that does not load the app bundle. */
@@ -351,11 +404,33 @@ if (typeof window.toast === 'undefined') {
     t.textContent = m; t.hidden = false; clearTimeout(t._h); t._h = setTimeout(function () { t.hidden = true; }, 3500);
   };
 }
-var LANG = (function () { try { return localStorage.getItem('shg:lang') || 'en'; } catch (e) { return 'en'; } })();
+<?php /* fx1 (26 Nov 2026): the card opened in English for every desk (nothing on the panel ever
+   wrote shg:lang). Now: the clerk's own pick, else the desk's language, else staff_card_lang
+   (default ne; en = as before). <html lang> follows, so the card's own words agree. */ ?>
+var SBX_LANG_DEF = <?= json_encode($sbLang) ?>;
+var LANG = (function () { try { return localStorage.getItem('shg:lang') || SBX_LANG_DEF; } catch (e) { return SBX_LANG_DEF; } })();
+if (LANG !== 'en' && LANG !== 'hi' && LANG !== 'ne') LANG = SBX_LANG_DEF;
+try { document.documentElement.lang = LANG; } catch (e) {}
+(function () {
+  var box = document.getElementById('sbxLang'); if (!box) return;
+  function paint() { box.querySelectorAll('button[data-lang]').forEach(function (b) { var on = b.getAttribute('data-lang') === LANG; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }); }
+  box.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-lang]'); if (!b) return;
+    LANG = b.getAttribute('data-lang');
+    try { localStorage.setItem('shg:lang', LANG); } catch (x) {}
+    document.documentElement.lang = LANG;   // the card re-words itself on this (its own observer)
+    paint();
+  });
+  paint();
+})();
 window.factPolicyLine = function () { var p = <?= json_encode($F['policy']['line'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>; return p[LANG] || p.en; };
 (function () {
   var pr = document.getElementById('sbxPrint');
-  try { pr.checked = localStorage.getItem('sb:print80') !== '0'; } catch (e) { pr.checked = true; }
+  /* fx1: on a PHONE nothing is printed by itself until the clerk ticks the box (a new tab
+     after every sale, with no printer). Switch desk_print80_touch_on = 1 = on by default
+     everywhere, as before. A saved choice always wins. */
+  var prPhone = <?= Settings::getBool('desk_print80_touch_on', false) ? 'false' : 'true' ?> && !!(window.matchMedia && window.matchMedia('(pointer:coarse) and (max-width:600px)').matches);
+  try { var prSaved = localStorage.getItem('sb:print80'); pr.checked = prSaved === null ? !prPhone : prSaved !== '0'; } catch (e) { pr.checked = !prPhone; }
   pr.addEventListener('change', function () { try { localStorage.setItem('sb:print80', pr.checked ? '1' : '0'); } catch (e) {} });
   /* After a sale the card is cleared for the next customer. */
   window.SB_AFTER = function () {
@@ -390,7 +465,8 @@ window.factPolicyLine = function () { var p = <?= json_encode($F['policy']['line
   setInterval(paint, 400);
   line.addEventListener('click', function (e) {
     var li = e.target.closest('li[data-go]'); if (!li) return;
-    var el = document.getElementById(li.getAttribute('data-go')); if (!el) return;
+    /* fx1: "Route" pointed at an id the card never had (the run buttons are .sb-dir) - the step did nothing */
+    var el = document.getElementById(li.getAttribute('data-go')) || (li.getAttribute('data-k') === 'route' ? document.querySelector('#smartBook .sb-dir') : null); if (!el) return;
     if (li.getAttribute('data-k') === 'book') { if (window.SmartBook && window.SmartBook.book) window.SmartBook.book('cash', false); return; }
     try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {}
     var f = el.matches('input,select,button') ? el : el.querySelector('input,select,button');
@@ -444,7 +520,7 @@ document.addEventListener('DOMContentLoaded', function () {
    Staff page only, so the shared card script (27-smartbook.js, also served
    to customers) is untouched. Ctrl+Enter = book + print and Enter = one more
    passenger stay as they were; these are the extra keys a counter asked for. */ ?>
-<div class="sbx-keys" id="sbxKeys" aria-hidden="true">⌨ <b>F2</b> new booking · <b>F3</b> find PNR · <b>F5</b> refresh seats · <b>Esc</b> close · <b>Ctrl+Enter</b> book &amp; print</div>
+<div class="sbx-keys" id="sbxKeys" aria-hidden="true">⌨ <?= $sbFast ? '<b>Enter</b> अर्को बक्स · next box · ' : '' ?><b>F2</b> new booking · <b>F3</b> find PNR · <b>F5</b> refresh seats · <b>Esc</b> close · <b>Ctrl+Enter</b> book &amp; print</div>
 <style>
 .sbx-keys{display:none;margin:10px auto 0;max-width:980px;font-size:12px;color:var(--mut);text-align:center}
 .sbx-keys b{display:inline-block;min-width:22px;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--card);color:var(--ink);font-size:11px}

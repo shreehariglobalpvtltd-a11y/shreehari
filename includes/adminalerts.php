@@ -150,13 +150,29 @@ final class AdminAlerts
             if (!preg_match('~^/admin/[A-Za-z0-9_.\-/]+(\?[A-Za-z0-9_.\-=&%+]*)?$~', $link)) {
                 $link = '';
             }
-            return Database::insert('notifications', [
+            $id = Database::insert('notifications', [
                 'audience' => 'admin',
                 'icon'     => mb_substr($icon, 0, 4),
                 'title'    => Security::clean($title, 191),
                 'body'     => Security::clean($body, 500),
                 'link'     => $link !== '' ? $link : null,
             ]);
+            /* 26 Nov 2026 (fx1): the call-style ring. A cancel / date-change request, a driver SOS
+               and a late bus are handed to the alert bus, which decides who hears it (role matrix)
+               and rings until someone taps Seen. Its own try/catch: the bell row is already stored
+               and the id below is what every caller relies on. */
+            if ($id > 0) {
+                try {
+                    if (!class_exists('AlertBus') && is_file(INCLUDE_PATH . '/alertbus.php')) {
+                        require_once INCLUDE_PATH . '/alertbus.php';
+                    }
+                    if (class_exists('AlertBus')) {
+                        AlertBus::fromBell($type, $id, $title, $body, $link, $icon);
+                    }
+                } catch (Throwable $ignored) {
+                }
+            }
+            return $id;
         } catch (Throwable $e) {
             try {
                 Logger::warning('AdminAlerts::push failed', ['type' => $type, 'error' => $e->getMessage()]);

@@ -454,6 +454,8 @@ admin_header('SHARI NAV — Global Map & Live Bus Tracking', 'map');
 .rp-ctl .btn,.rp-ctl select{min-height:44px;min-width:44px;font-size:15px}
 .rp-info{font-size:12.5px;color:var(--mut);display:flex;gap:10px;flex-wrap:wrap}
 @media(prefers-reduced-motion:reduce){.lm-coach.live::before{animation:none}}
+/* 26 Nov 2026 (fx1): this screen itself is not getting fresh answers - said in words, white on amber in both themes */
+#lmFleetAge.lm-stale{display:block;margin:6px 0 0;padding:8px 10px;border-radius:8px;background:#B45309;color:#fff;font-size:13px;font-weight:700;line-height:1.35}
 @media(max-width:520px){.fm-c{flex:1 1 calc(50% - 8px)}}
 @media(max-width:1020px){.lm-wrap{grid-template-columns:1fr}#lmMap{height:58vh;min-height:360px}.lm-side{max-height:none}}
 /* 16 Nov 2026 (BUG2): the Boarding tab's Add / Edit stop boxes had no styles on
@@ -734,7 +736,10 @@ window.ADMAP = {
   trailUrl: <?= json_encode($base . '/admin/api/trip-trail.php') ?>,
   replay: <?= $replay !== null ? (int) $replay['id'] : 'null' ?>,
   bar: <?= json_encode($fleetBar, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-  coach: '/assets/img/bus-shg-sm.webp'
+  coach: '/assets/img/bus-shg-sm.webp',
+  /* 26 Nov 2026 (fx1): seconds without a fresh fleet answer before this screen stops showing buses as live (track_stale_sec, 0 = off) */
+  stale: <?php $lmStale = Settings::getInt('track_stale_sec', 60); echo $lmStale > 0 ? max(30, min(600, $lmStale)) : 0; ?>
+
 };
 (function () {
   var A = window.ADMAP, map = null, busMarker = null, follow = false, lastAt = 0, busDisp = null, busTarget = null, anim = null, busBrg = null;
@@ -865,11 +870,22 @@ window.ADMAP = {
       if (!anim) anim = requestAnimationFrame(chase);
     }
   }
+  /* 26 Nov 2026 (fx1): this screen's OWN connection. A wall screen whose sign-in ran out or whose network
+     dropped kept every bus green ("🛰️ 12 s ago") for hours, because a failed poll was simply ignored.
+     Every poll now has a 10 s limit and must answer JSON (a redirect to the sign-in page is a failure). */
+  function getJ(url){
+    var ctl = window.AbortController ? new AbortController() : null, tm = ctl ? setTimeout(function(){ ctl.abort(); }, 10000) : 0;
+    return fetch(url, { credentials: 'same-origin', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function(r){ if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function(j){ clearTimeout(tm); return j; }, function(e){ clearTimeout(tm); throw e; });
+  }
+  var lastLb = null;
   function poll(){
     if (document.hidden) return;
-    fetch(A.base + '/api/kv.php?action=get&key=livebus', { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){
+    getJ(A.base + '/api/kv.php?action=get&key=livebus').then(function(d){
       var v = (d && d.data && d.data.value !== undefined) ? d.data.value : (d && d.value !== undefined ? d.value : (d && d.data));
       if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+      lastLb = v;
       showBus(v);
     }).catch(function(){});
   }
@@ -916,13 +932,14 @@ window.ADMAP = {
   });
   function pollBar(){
     if (document.hidden) return;
-    fetch(A.statusUrl, { credentials: 'same-origin', cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+    getJ(A.statusUrl).then(function(d){
       if (d && d.ok) paintBar(d.data);
     }).catch(function(){});
   }
   function showFleet(list){
-    var box = document.getElementById('lmFleet'), seen = {};
-    document.getElementById('lmFleetAge').textContent = list.length ? list.length + ' running' : 'none';
+    var box = document.getElementById('lmFleet'), seen = {}, fa = document.getElementById('lmFleetAge');
+    fa.classList.remove('lm-stale'); fa.removeAttribute('role');
+    fa.textContent = list.length ? list.length + ' running' : 'none';
     window.SHG_GPS_RUNNING_PLATES = {};
     list.forEach(function (t) { if (t.live) window.SHG_GPS_RUNNING_PLATES[t.bus] = true; });
     box.innerHTML = list.map(function(t){
@@ -955,11 +972,36 @@ window.ADMAP = {
     Object.keys(fleet).forEach(function(id){ if (!seen[id]) { if (fleet[id].anim) cancelAnimationFrame(fleet[id].anim); fleet[id].marker.remove(); delete fleet[id]; } });
     applyFilter();
   }
+  /* fleetList / fleetOk = the last good fleet answer and when it came. After A.stale seconds without a
+     newer one the list and the coaches are redrawn from a copy of it with nothing live ("⏸ last seen",
+     grey marker, the age counted on) and an amber line says since when; the next good answer puts
+     everything back. A.stale = setting track_stale_sec, 0 = off (the screen keeps the last answer). */
+  var fleetList = [], fleetOk = Date.now(), fleetBusy = false, fleetReqAt = 0;
+  function hhmm(ms){ try { return new Date(ms).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
   function pollFleet(){
-    if (document.hidden) return;
-    fetch(A.fleetUrl, { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){
-      if (d && d.ok && d.data) showFleet(d.data.trips || []);
-    }).catch(function(){});
+    if (document.hidden || fleetBusy) return;
+    fleetBusy = true; fleetReqAt = Date.now();
+    getJ(A.fleetUrl).then(function(d){
+      if (!(d && d.ok && d.data)) throw new Error('bad answer');
+      fleetList = d.data.trips || []; fleetOk = Date.now();
+      showFleet(fleetList);
+    }).catch(function(){}).then(function(){ fleetBusy = false; });
+  }
+  function staleCheck(){
+    if (!A.stale || document.hidden) return;
+    var gap = Date.now() - fleetOk;
+    if (gap <= A.stale * 1000 || (fleetBusy && Date.now() - fleetReqAt < 3000)) return;   // an answer is on its way: no flash of "no connection"
+    var add = Math.round(gap / 1000);
+    showFleet(fleetList.map(function(t){
+      var o = {}; Object.keys(t).forEach(function(k){ o[k] = t[k]; });
+      o.live = false; o.ageSec = t.ageSec != null ? (+t.ageSec + add) : null;
+      return o;
+    }));
+    var fa = document.getElementById('lmFleetAge');
+    fa.classList.add('lm-stale'); fa.setAttribute('role', 'alert');
+    fa.textContent = '⚠ जडान छैन — ' + hhmm(fleetOk) + ' देखि नयाँ जानकारी आएको छैन। पेज फेरि खोल्नुहोस्। · No connection: not updated since ' + hhmm(fleetOk) + ' IST. Reload the page.';
+    /* the one-bus box (livebus key): its own "live" tag is aged the same way */
+    if (lastLb) { showBus(lastLb); if (busMarker && lastLb.at && Date.now() - lastLb.at >= 3 * 60000) busMarker.getElement().classList.remove('live'); }
   }
   /* ---- trip replay: admin/map.php?trip=<live trip id> ---- */
   var RP = null;
@@ -1052,6 +1094,10 @@ window.ADMAP = {
   paintBar(A.bar);
   pollFleet(); setInterval(pollFleet, 10000);
   setInterval(pollBar, 30000);
+  setInterval(staleCheck, 5000);
+  /* back on this tab (the polls rest while it is hidden): ask at once, then judge how old the picture is */
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) { pollFleet(); setTimeout(staleCheck, 3000); } });
+  window.addEventListener('online', pollFleet);
   Promise.all([loadLib(), pickStyle(STYLE)]).then(function(res){
     try {
       map = new maplibregl.Map({ container: 'lmMap', style: res[1], center: [76.8, 25.6], zoom: 5, fadeDuration: 250, maxBounds: [[61.0, 4.5], [99.5, 38.5]], minZoom: 3.8,

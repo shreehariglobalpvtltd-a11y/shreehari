@@ -202,6 +202,9 @@ unset($r);
 // "Low performers only" (15 Oct 2026) — hides the other rows of the board
 // (each keeps its real rank); totals, the leader and the comparison are unchanged.
 $lowOnly = ($_GET['low'] ?? '') === '1';
+// 26 Nov 2026 (fx1): "KYC बाँकी" beside every agent with no verified ID on file - one read for the board.
+require_once INCLUDE_PATH . '/agentreport.php';
+$rankKyc = AgentReport::kycPending(array_map(static fn(array $r): int => (int) $r['id'], $rows));
 $lowN    = count(array_filter($rows, static fn(array $r): bool => $r['low']));
 
 $metric  = (string) ($_GET['by'] ?? 'revenue');
@@ -491,7 +494,7 @@ admin_header('Agent Ranking', 'agent-ranking');
       <tr>
         <td data-label="Compare"><input type="checkbox" class="cmp-pick" name="cmp[]" value="<?= (int) $r['id'] ?>"<?= in_array((int) $r['id'], $cmpIds, true) ? ' checked' : '' ?> aria-label="Compare <?= Security::e((string) ($r['full_name'] ?: $r['username'])) ?>"></td>
         <td style="font-size:17px"><?= $medals[$i] ?? '<span class="muted" style="font-size:14px">' . ($i + 1) . '</span>' ?></td>
-        <td><strong><?= Security::e((string) ($r['full_name'] ?: $r['username'])) ?></strong><?php if ($r['low']): ?> <span class="pill st-bad" style="font-size:10.5px" title="<?= Security::e('Low: ' . $r['low_why']) ?>">Low</span><?php endif; ?>
+        <td><strong><?= Security::e((string) ($r['full_name'] ?: $r['username'])) ?></strong><?= AgentReport::kycPill($rankKyc, (int) $r['id']) /* 26 Nov 2026 (fx1) */ ?><?php if ($r['low']): ?> <span class="pill st-bad" style="font-size:10.5px" title="<?= Security::e('Low: ' . $r['low_why']) ?>">Low</span><?php endif; ?>
           <div class="muted mono" style="font-size:11px"><?= Security::e((string) $r['username']) ?><?= (int) $r['is_active'] === 1 ? '' : ' · inactive' ?></div></td>
         <td class="mono"><?= Security::e(AgentWallet::agentCodeLabel((int) $r['id'])) ?></td>
         <td><?= (int) $r['confirmed'] ?>

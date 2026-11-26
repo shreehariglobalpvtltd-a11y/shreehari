@@ -1160,6 +1160,25 @@ final class WaLocal
         // Staff, or a customer with no ticket today: every trip on the road.
         $trips = EtaAlerts::candidates($now);
         $lines = [self::t($lang, '🚌 बस अहिले', '🚌 बस अभी', '🚌 Buses now')];
+        /* 26 Nov 2026 (fx1, "bus 3 kaha cha?" from the office — WaOffice names the bus in $who['busId']): only that
+           bus's running trip. When it is not on the road that is said, and every running trip follows — never a guess. */
+        $onlyBus = $isStaff ? (int) ($who['busId'] ?? 0) : 0;
+        if ($onlyBus > 0) {
+            $label = trim((string) ($who['busLabel'] ?? ''));
+            $mine = [];
+            foreach ($trips as $tr) {
+                if ((int) Database::scalar('SELECT bus_id FROM schedules WHERE id = :s', ['s' => (int) $tr['id']], 0) === $onlyBus) {
+                    $mine[] = $tr;
+                }
+            }
+            if ($mine !== []) {
+                $trips = $mine;
+                $lines = ['🚌 ' . ($label !== '' ? $label : self::t($lang, 'बस अहिले', 'बस अभी', 'Bus now'))];
+            } else {
+                $lines = ['🚌 ' . ($label !== '' ? $label . ' — ' : '') . self::t($lang, 'यो बस अहिले बाटोमा छैन।', 'यह बस अभी रास्ते में नहीं है।', 'This bus is not on the road right now.'),
+                    self::t($lang, 'अहिले बाटोमा भएका बस:', 'अभी रास्ते में चल रही बसें:', 'Buses on the road now:')];
+            }
+        }
         if ($trips === []) {
             $lines[] = self::t($lang, 'अहिले कुनै बस बाटोमा छैन।', 'अभी कोई बस रास्ते में नहीं है।', 'No bus is on the road right now.');
             foreach (Database::fetchAll('SELECT from_city, to_city, dep_time FROM routes WHERE is_active = 1 ORDER BY sort_order, dep_time') as $r) {
@@ -1336,7 +1355,7 @@ final class WaLocal
         $lines  = [];
         $media  = null;
         $pend   = $digits !== '' ? Database::fetch(
-            "SELECT pnr, total_amount, currency FROM bookings WHERE (contact_phone = :p OR alt_phone = :p2) AND status = 'pending'
+            "SELECT pnr, total_amount, currency, is_cod FROM bookings WHERE (contact_phone = :p OR alt_phone = :p2) AND status = 'pending'
                AND created_at >= NOW() - INTERVAL 3 DAY ORDER BY id DESC LIMIT 1", ['p' => $digits, 'p2' => $digits]) : null;
         if ($pend === null && $digits !== '') {
             // round 2 (passenger sim): the sale this chat just made for a typed contact number is theirs to pay too
@@ -1344,7 +1363,7 @@ final class WaLocal
                 require_once INCLUDE_PATH . '/wabooking.php';
                 $sold = WaBooking::lastSoldPnr($digits);
                 if ($sold !== '') {
-                    $pend = Database::fetch("SELECT pnr, total_amount, currency FROM bookings WHERE pnr = :n AND status = 'pending'", ['n' => $sold]);
+                    $pend = Database::fetch("SELECT pnr, total_amount, currency, is_cod FROM bookings WHERE pnr = :n AND status = 'pending'", ['n' => $sold]);
                 }
             } catch (Throwable $e) {
                 $pend = null;
@@ -1352,7 +1371,8 @@ final class WaLocal
         }
         if ($pend !== null && (float) $pend['total_amount'] > 0) {
             $lines[] = '💳 ' . (string) $pend['pnr'] . ' · ' . self::t($lang, 'तिर्न बाँकी: ', 'भुगतान बाकी: ', 'Due: ') . inr((float) $pend['total_amount']);
-            if ($upi !== '') {
+            // fx1 (26 Nov 2026): a pay-at-boarding (COD) booking never gets the pay QR picture
+            if ($upi !== '' && (int) ($pend['is_cod'] ?? 0) !== 1) {
                 $media   = appUrl('pay-image.php?pnr=' . urlencode((string) $pend['pnr']));
                 $lines[] = self::t($lang, 'माथिको QR स्क्यान गर्नुहोस् (रकम आफैं आउँछ), वा:', 'ऊपर का QR स्कैन कीजिए (रकम अपने आप आएगी), या:', 'Scan the QR above (amount filled in), or:');
             }
@@ -2230,6 +2250,16 @@ final class WaLocal
     {
         $s = self::signals($t, false);
         return $explicitOnly ? $s['explicit'] : in_array(true, $s, true);
+    }
+
+    /** fx1 (26 Nov 2026): does this line carry a complaint signal? Then it is the Help Desk's (earlyTurn), not a canned refund answer (WaEdit). */
+    public static function complaintLine(string $text): bool
+    {
+        try {
+            return self::complaintSignal(' ' . self::clauses($text) . ' ');
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /**

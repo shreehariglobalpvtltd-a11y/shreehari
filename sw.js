@@ -578,12 +578,79 @@ self.addEventListener('push', function (event) {
     data: { url: data.url || '/#/my' },
     vibrate: [120, 60, 120]
   };
+  /* fx1 (26 Nov 2026): the staff "new ticket" ring (includes/alertbus.php). Every field below is
+     OPTIONAL - a payload without them (every older push) builds exactly the options above.
+     requireInteraction keeps it on screen until tapped, actions = Seen / Open, the longer
+     vibrate is the "phone call" buzz, alertId + ackToken let Seen work with no page open. */
+  try {
+    if (data.requireInteraction === true) { opts.requireInteraction = true; }
+    if (typeof data.renotify === 'boolean') { opts.renotify = data.renotify && !!opts.tag; }
+    if (Array.isArray(data.vibrate) && data.vibrate.length) {
+      opts.vibrate = data.vibrate.slice(0, 16).map(function (n) { return Math.max(0, Math.min(5000, parseInt(n, 10) || 0)); });
+    }
+    if (data.silent === true) { opts.silent = true; delete opts.vibrate; }
+    if (Array.isArray(data.actions)) {
+      var acts = [];
+      for (var ai = 0; ai < data.actions.length && acts.length < 2; ai++) {
+        var a = data.actions[ai];
+        if (a && typeof a.action === 'string' && typeof a.title === 'string' && a.action && a.title) {
+          acts.push({ action: a.action.slice(0, 20), title: a.title.slice(0, 40) });
+        }
+      }
+      if (acts.length) { opts.actions = acts; }
+    }
+    if (data.alertId && typeof data.ackUrl === 'string' && typeof data.ackToken === 'string') {
+      opts.data.alertId = data.alertId;
+      opts.data.adminId = data.adminId || 0;
+      opts.data.ackUrl = data.ackUrl;
+      opts.data.ackToken = data.ackToken;
+      opts.data.ackAll = data.ackAll ? 1 : 0;
+    }
+  } catch (e) {}
   event.waitUntil(self.registration.showNotification(title, opts));
 });
 
 self.addEventListener('notificationclick', function (event) {
+  var nd = (event.notification && event.notification.data) || {};
   try { event.notification.close(); } catch (e) {}
-  var url = (event.notification && event.notification.data && event.notification.data.url) || '/#/my';
+  var url = nd.url || '/#/my';
+  /* fx1: a ring notification. "Seen" (or any tap) tells the server, which stops the ring on every
+     phone and panel. Only ever posts to this site's own /api/alert-ack.php. */
+  var ack = null;
+  if (nd.alertId && typeof nd.ackUrl === 'string' && nd.ackUrl.indexOf('/api/alert-ack.php') === 0 && nd.ackToken) {
+    ack = function () {
+      return fetch('/api/alert-ack.php', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: nd.alertId, admin: nd.adminId || 0, t: nd.ackToken, all: nd.ackAll ? 1 : 0 })
+      }).catch(function () {});
+    };
+  }
+  if (ack && event.action === 'seen') {
+    event.waitUntil(ack());
+    return;
+  }
+  /* fx1: a staff link (/admin/...). The old path only focused whatever window was open and posted
+     a message that no panel page listens for, so the tap never opened the ticket or the chat.
+     It now opens the link itself with openWindow (a new tab on a computer, so a half-typed sale
+     in the old tab is left alone). Customer links (everything else) keep the path below unchanged. */
+  var staff = typeof url === 'string' && url.indexOf('/admin/') === 0;
+  if (ack || staff) {
+    event.waitUntil((async function () {
+      try { if (ack) { await ack(); } } catch (e) {}
+      try {
+        if (staff && self.clients.openWindow) { await self.clients.openWindow(url); return; }
+      } catch (e) {}
+      try {
+        var wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (var w = 0; w < wins.length; w++) {
+          if (wins[w].url && wins[w].url.indexOf(self.location.origin) === 0 && 'focus' in wins[w]) { await wins[w].focus(); return; }
+        }
+        if (self.clients.openWindow) { await self.clients.openWindow(url); }
+      } catch (e) {}
+    })());
+    return;
+  }
   event.waitUntil((async function () {
     try {
       var list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

@@ -309,7 +309,7 @@ admin_header('Shift & Cash', 'shift');
   .sh-big{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
   .sh-big label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);flex:1 1 180px}
   .sh-big input,.sh-note input{font-size:22px;font-weight:700;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);min-height:54px;width:100%;font-variant-numeric:tabular-nums}
-  .sh-note input{font-size:15px;font-weight:500;min-height:46px}
+  .sh-note input{font-size:16px;font-weight:500;min-height:46px}   /* fx1: 16px - a 15px box zooms the page on a phone */
   .sh-go{min-height:54px;padding:0 26px;font-size:16px;font-weight:800;border-radius:12px;flex:0 0 auto}
   .sh-go.green{background:var(--ok);border-color:var(--ok);color:#fff}
   .sh-go.red{background:var(--bad);border-color:var(--bad);color:#fff}
@@ -334,7 +334,7 @@ admin_header('Shift & Cash', 'shift');
   .sh-sign b{display:block;font-size:16px;margin:4px 0}
   .sh-sign span{display:block;font-size:12px;color:var(--mut);margin-top:10px}
   .sh-exp{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,1.4fr) auto;gap:8px;align-items:end}
-  .sh-exp select,.sh-exp input{min-height:46px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:15px;width:100%}
+  .sh-exp select,.sh-exp input{min-height:46px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:16px;width:100%}
   .sh-exp .btn{min-height:46px}
   .sh-explist{list-style:none;margin:10px 0 0;padding:0}
   .sh-explist li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-top:6px;font-size:13.5px}

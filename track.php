@@ -37,8 +37,24 @@ $status  = $authed ? WhereIs::status($booking) : null;
 
 if ($lang === '') {
     // A +977 number reads Nepali first; everyone else Hindi first. English is one tap away.
-    $lang = str_starts_with(normalisePhone((string) ($booking['contact_phone'] ?? '')), '977') ? 'ne' : 'hi';
+    // 26 Nov 2026 (fx1), two fixes:
+    //  - only for a valid key: a wrong key got Nepali for a real +977 ticket and Hindi for a PNR that
+    //    does not exist, which told a stranger which PNRs are real;
+    //  - the ticket's own country (bookings.contact_country_code, as Notify uses it) decides. The old test
+    //    looked for "977" at the start of contact_phone, but that column holds the 10 digits WITHOUT the
+    //    country code (normalisePhone drops it), so Nepal passengers were getting Hindi.
+    $ccDigits = preg_replace('/\D/', '', (string) ($booking['contact_country_code'] ?? '')) ?? '';
+    $phDigits = ltrim(preg_replace('/\D/', '', (string) ($booking['contact_phone'] ?? '')) ?? '', '0');
+    $nepal    = $ccDigits === '977'
+        || ($ccDigits === '' && (strlen($phDigits) === 13 && str_starts_with($phDigits, '977')
+            || str_contains(strtolower((string) ($booking['id_type'] ?? '')), 'nepal')));
+    $lang = $authed && $nepal ? 'ne' : 'hi';
 }
+/* 26 Nov 2026 (fx1): after this many seconds without a fresh answer from the server the page stops
+   saying LIVE (the passenger's own phone lost its network, or the server is not answering) and shows
+   the last position as "last seen ... - not live". 0 = off; never under 30 s (the page asks every 15 s). */
+$staleSec = Settings::getInt('track_stale_sec', 60);
+$staleSec = $staleSec > 0 ? max(30, min(600, $staleSec)) : 0;
 
 $T = [
     'en' => ['title' => 'Where is my bus?', 'sub' => 'Live position for your ticket', 'notFound' => 'This link is not valid. Open the page from the message we sent you.',
@@ -47,6 +63,7 @@ $T = [
              'live' => 'The bus is on the road', 'eta' => 'about %1$d min to %2$s', 'km' => '%s km away', 'passed' => 'The bus has passed your stop — call the office if you missed it.',
              'onWay' => 'On the way to %s', 'onWayEta' => 'about %1$s · %2$s km to go', 'onWayKm' => '%s km to go',
              'lastKnown' => 'Last seen near %2$s at %1$s (%3$d min ago) — not live', 'gone' => 'The bus has left. Its position is not being sent right now.', 'mapsLast' => 'Last known place in Google Maps',
+             'lastSeen' => 'Last seen at %1$s (%2$d min ago) — not live', 'offline' => 'No new update since %s — check the internet on this phone. Not live.', 'istNote' => 'All times are India time (IST). Nepal time = IST + 15 min.',
              'arrived' => 'The bus has arrived', 'cancelled' => 'This trip is cancelled — the office will contact you.', 'delay' => 'Running %d min late',
              'share' => 'Share with family on WhatsApp', 'shareText' => 'Follow my bus live (S Hari Global):', 'maps' => 'Open in Google Maps', 'call' => 'Call the office',
              'updated' => 'Updated %s ago', 'refresh' => 'Refreshes by itself every 15 s', 'ticketOnly' => 'Ticket not confirmed — the bus cannot be followed yet.',
@@ -64,6 +81,7 @@ $T = [
              'live' => 'बस रास्ते में है', 'eta' => '%2$s तक लगभग %1$d मिनट', 'km' => '%s किमी दूर', 'passed' => 'बस आपके स्टॉप से निकल चुकी है — छूट गई हो तो ऑफ़िस को कॉल करें।',
              'onWay' => 'बस %s की ओर जा रही है', 'onWayEta' => 'लगभग %1$s · %2$s किमी बाकी', 'onWayKm' => '%s किमी बाकी',
              'lastKnown' => 'आखिरी बार %2$s के पास %1$s बजे दिखी (%3$d मिनट पहले) — लाइव नहीं', 'gone' => 'बस निकल चुकी है। अभी उसकी स्थिति नहीं आ रही।', 'mapsLast' => 'आखिरी जगह Google Maps में',
+             'lastSeen' => 'आखिरी बार %1$s बजे दिखी (%2$d मिनट पहले) — लाइव नहीं', 'offline' => '%s के बाद नई जानकारी नहीं आई — इस फ़ोन का इंटरनेट जाँचें। लाइव नहीं।', 'istNote' => 'सभी समय भारतीय समय (IST) हैं · नेपाल का समय = IST + 15 मिनट',
              'arrived' => 'बस पहुँच गई', 'cancelled' => 'यह यात्रा रद्द है — ऑफ़िस आपसे संपर्क करेगा।', 'delay' => '%d मिनट देरी से चल रही है',
              'share' => 'परिवार को WhatsApp पर भेजें', 'shareText' => 'मेरी बस को लाइव देखें (S Hari Global):', 'maps' => 'Google Maps में खोलें', 'call' => 'ऑफ़िस को कॉल करें',
              'updated' => '%s पहले अपडेट', 'refresh' => 'हर 15 सेकंड में खुद रीफ्रेश होता है', 'ticketOnly' => 'टिकट पक्का नहीं है — अभी बस नहीं देखी जा सकती।',
@@ -81,6 +99,7 @@ $T = [
              'live' => 'बस बाटोमा छ', 'eta' => '%2$s सम्म करिब %1$d मिनेट', 'km' => '%s किमी टाढा', 'passed' => 'बस तपाईंको स्टपबाट अगाडि गइसक्यो — छुटेको भए कार्यालयलाई फोन गर्नुहोस्।',
              'onWay' => 'बस %s तर्फ जाँदैछ', 'onWayEta' => 'करिब %1$s · %2$s किमी बाँकी', 'onWayKm' => '%s किमी बाँकी',
              'lastKnown' => 'अन्तिम पटक %2$s नजिक %1$s बजे देखियो (%3$d मिनेट अघि) — लाइभ होइन', 'gone' => 'बस छुटिसक्यो। अहिले यसको स्थिति आइरहेको छैन।', 'mapsLast' => 'अन्तिम ठाउँ Google Maps मा',
+             'lastSeen' => 'अन्तिम पटक %1$s बजे देखियो (%2$d मिनेट अघि) — लाइभ होइन', 'offline' => '%s पछि नयाँ जानकारी आएको छैन — यो फोनको इन्टरनेट जाँच्नुहोस्। लाइभ होइन।', 'istNote' => 'सबै समय भारतीय समय (IST) हुन् · नेपाली समय = IST + १५ मिनेट',
              'arrived' => 'बस पुग्यो', 'cancelled' => 'यो यात्रा रद्द भयो — कार्यालयले सम्पर्क गर्नेछ।', 'delay' => '%d मिनेट ढिलो चलिरहेको छ',
              'share' => 'परिवारलाई WhatsApp मा पठाउनुहोस्', 'shareText' => 'मेरो बस लाइभ हेर्नुहोस् (S Hari Global):', 'maps' => 'Google Maps मा खोल्नुहोस्', 'call' => 'कार्यालयलाई फोन',
              'updated' => '%s अघि अपडेट', 'refresh' => 'हरेक १५ सेकेन्डमा आफैँ रिफ्रेस हुन्छ', 'ticketOnly' => 'टिकट पक्का भएको छैन — अहिले बस हेर्न मिल्दैन।',
@@ -143,7 +162,10 @@ if ($authed && $status !== null) {
         }
     } elseif (!empty($status['lastKnown'])) {
         // D7-06: a GPS gap mid-journey — where it was last seen, never "not live yet".
-        $head = ['icon' => '⏸', 'title' => sprintf($T['lastKnown'], (string) $status['lastAt'], (string) $status['lastStop'], (int) $status['lastAgeMin']),
+        // 26 Nov 2026 (fx1): no stop name to print (a route without placed stops) = "last seen at HH:MM", never "near  at".
+        $head = ['icon' => '⏸', 'title' => (string) ($status['lastStop'] ?? '') !== ''
+                     ? sprintf($T['lastKnown'], (string) $status['lastAt'], (string) $status['lastStop'], (int) $status['lastAgeMin'])
+                     : sprintf($T['lastSeen'], (string) $status['lastAt'], (int) $status['lastAgeMin']),
                  'sub' => $gone ? $T['gone'] : '', 'tone' => 'muted'];
     } elseif ((int) ($status['delayMin'] ?? 0) > 0) {
         $head = ['icon' => '⏰', 'title' => sprintf($T['delay'], (int) $status['delayMin']), 'sub' => (string) ($status['delayNote'] ?? ''), 'tone' => 'warn'];
@@ -193,7 +215,9 @@ header('X-Robots-Tag: noindex');
 <title><?= $e($T['title']) ?> · <?= $e($company) ?></title>
 <link rel="icon" href="/assets/img/favicon-32.png">
 <script>/* The app's saved theme, before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
-(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled');if(t!=='light'){var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='amoled'?'#000000':'#0E1626')}}catch(e){}})();</script>
+(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled');if(t!=='light'){var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='amoled'?'#000000':'#0E1626')}}catch(e){}})();
+/* 26 Nov 2026 (fx1): the app's saved "reduced motion" (localStorage 'shg:motion' = reduced) stills the pulses here too. */
+(function(){try{if((localStorage.getItem('shg:motion')||'').replace(/"/g,'')==='reduced')document.documentElement.setAttribute('data-motion','reduced')}catch(e){}})();</script>
 <?= ThemeTokens::accentHead() ?>
 <style>
 /* 9 Oct 2026: the live screen - hero state, real progress, the whole run. Tokens follow the app (light / dark / AMOLED). */
@@ -222,6 +246,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 @keyframes p{70%{box-shadow:0 0 0 12px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
 @keyframes p2{0%{box-shadow:0 0 0 0 rgba(240,124,31,.55)}70%{box-shadow:0 0 0 9px rgba(240,124,31,0)}100%{box-shadow:0 0 0 0 rgba(240,124,31,0)}}
 @keyframes tk{to{stroke-dashoffset:0}}
+:root[data-motion="reduced"] .pulse,:root[data-motion="reduced"] .r.nx i::after,:root[data-motion="reduced"] .tick.go circle{animation:none}
+:root[data-motion="reduced"] .bar>i,:root[data-motion="reduced"] .bar>b{transition:none}
 /* 10 Oct 2026 (HD pack): the small phone-with-map illustration beside the title (decorative;
    track-journey-s = a 128 px export for this 64 x 64 box). */
 .h-row{display:flex;align-items:center;gap:12px}.h-row h1{flex:1;min-width:0}
@@ -288,6 +314,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     <ol class="rail" id="rail"></ol>
     <?php if ($haltCnt > 0): ?><p class="note"><?= $e($T['approxNote']) ?></p><?php endif; ?>
     <p class="note"><svg class="fl"><use href="#fIN"/></svg> Rupaidiha — <?= $e($T['border']) ?> · <svg class="fl np"><use href="#fNP"/></svg> <?= $e($T['across']) ?></p>
+    <p class="note">🕒 <?= $e($T['istNote']) ?></p>
   </section>
 
   <div class="btns">
@@ -300,7 +327,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 
 <script>
 (function(){
-  var T = <?= json_encode(array_diff_key($T, array_flip(['title', 'sub', 'notFound', 'stop', 'date', 'bus', 'pnr', 'route', 'share', 'shareText', 'call', 'toStop', 'journey', 'approxNote', 'ttNote', 'across', 'showMap', 'mapSub'])), JSON_UNESCAPED_UNICODE) ?>;
+  var T = <?= json_encode(array_diff_key($T, array_flip(['title', 'sub', 'notFound', 'stop', 'date', 'bus', 'pnr', 'route', 'share', 'shareText', 'call', 'toStop', 'journey', 'approxNote', 'ttNote', 'across', 'showMap', 'mapSub', 'istNote'])), JSON_UNESCAPED_UNICODE) ?>;
   var url = '/api/whereis.php?pnr=<?= $e(rawurlencode($pnr)) ?>&k=<?= $e(rawurlencode($tok)) ?>';
   var $ = function(id){ return document.getElementById(id); };
   /* Positional tokens, like the server's sprintf: %1$d / %2$s / %3$d (and a bare %s / %d). */
@@ -322,7 +349,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     else if (live && d.passed) { icon = '⚠️'; title = T.passed; sub = ''; tone = 'warn'; }
     else if (live) { icon = '📍'; title = T.live; tone = 'ok';
       sub = d.etaMin !== null ? (fill(T.eta, [d.etaMin, d.stop]) + ' · ' + T.km.replace('%s', d.km)) : ''; }
-    else if (d.lastKnown) { icon = '⏸'; title = fill(T.lastKnown, [d.lastAt, d.lastStop, d.lastAgeMin]); sub = gone ? T.gone : ''; }
+    else if (d.lastKnown) { icon = '⏸'; title = d.lastStop ? fill(T.lastKnown, [d.lastAt, d.lastStop, d.lastAgeMin]) : fill(T.lastSeen, [d.lastAt, d.lastAgeMin]); sub = gone ? T.gone : ''; }
     else if (d.delayMin > 0) { icon = '⏰'; title = T.delay.replace('%d', d.delayMin); sub = d.delayNote || ''; tone = 'warn'; }
     else if (gone) { title = T.gone; sub = ''; }
     else if (d.runningSinceMin != null && d.state !== 'cancelled') { title = T.ttTitle; sub = T.leftSub; }
@@ -340,10 +367,61 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
   }
   /* the small ring beside "refreshes every 15 s" fills up to the next refresh */
   function spin(){ var k = $('tk'); k.classList.remove('go'); void k.getBoundingClientRect(); k.classList.add('go'); }
+  /* 26 Nov 2026 (fx1): never an old position shown as live. `real` = the last answer the server gave,
+     `okAt` = when it came. When this phone gets no fresh answer for STALE seconds (its own network is
+     gone, a request hangs, the server is not answering) the page is repainted from an honest copy of
+     that answer: not live, "last seen HH:MM", no ETA, no GPS tags, the coach grey on the map. The next
+     good answer puts everything back. STALE = track_stale_sec, 0 = off (the page keeps the last answer). */
+  var STALE = <?= (int) $staleSec ?>, real = S.D, okAt = Date.now(), busy = false, reqAt = 0, agedKey = -1;
+  function hhmm(ms){ try { return new Date(ms).toLocaleTimeString('en-GB', {timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit'}); } catch (e) { return ''; } }
+  function copy(a){ var o = {}, k; for (k in a) if (Object.prototype.hasOwnProperty.call(a, k)) o[k] = a[k]; return o; }
+  function aged(now){
+    var o = copy(real);
+    if (real.live) {
+      var at = okAt - (real.fixAge || 0) * 1000;   // when the coach was really there
+      o.live = false; o.lastKnown = true; o.lastLat = real.lat; o.lastLng = real.lng; o.lastAt = hhmm(at);
+      o.lastAgeMin = Math.max(1, Math.round((now - at) / 60000));
+      o.lastStop = (real.pace && real.pace.liveName) || '';
+      o.lat = o.lng = o.etaMin = o.dropEtaMin = o.kmh = o.fixAge = o.destEta = null;
+      o.progress = {km: null, pct: null, source: 'none'};
+      if (real.pace) { o.pace = copy(real.pace); o.pace.livePct = o.pace.lateMin = o.pace.liveName = o.pace.liveKm = null; }
+      o.timeline = (real.timeline || []).map(function(r){ var c = copy(r); delete c.eta; return c; });
+    } else if (real.lastKnown && real.lastAgeMin != null) {
+      o.lastAgeMin = real.lastAgeMin + Math.floor((now - okAt) / 60000);
+    }
+    return o;
+  }
+  function age(){
+    if (!STALE || !real || document.hidden) return;
+    var now = Date.now(), gap = now - okAt;
+    if (busy && now - reqAt < 3000) return;   // an answer is on its way: no flash of "not live" on coming back to the page
+    if (gap <= STALE * 1000) {
+      if (real.live && real.fixAge != null) { var fa = real.fixAge + Math.round(gap / 1000); $('meta').textContent = T.updated.replace('%s', fa < 60 ? fa + ' s' : Math.round(fa / 60) + ' min'); }
+      return;
+    }
+    var key = Math.floor(gap / 60000);
+    if (key !== agedKey) { agedKey = key; paint(aged(now)); }
+    $('meta').textContent = fill(T.offline, [hhmm(okAt)]);
+  }
+  /* The link ran out (2 days after the trip) or the ticket is gone while the page stayed open: load the
+     page once more, the server then shows its "link not valid" card. Once a minute at most. */
+  function expired(){
+    try { var t = +sessionStorage.getItem('shgTrk404') || 0; if (Date.now() - t < 60000) return; sessionStorage.setItem('shgTrk404', String(Date.now())); } catch (e) { return; }
+    location.reload();
+  }
   function tick(){
-    if (document.hidden) return;
-    fetch(url, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){ if (j && j.ok && j.data) paint(j.data); spin(); }).catch(function(){});
+    if (document.hidden || busy) return;   // one request at a time: a slow one is not piled on
+    busy = true; reqAt = Date.now();
+    var ctl = window.AbortController ? new AbortController() : null;
+    var tm = setTimeout(function(){ if (ctl) ctl.abort(); else busy = false; }, 12000);   // a hung request on a weak network
+    fetch(url, {cache: 'no-store', signal: ctl ? ctl.signal : undefined}).then(function(r){
+      return r.ok || r.status === 404 ? r.json().then(function(j){ return {s: r.status, j: j}; }) : null;
+    }).then(function(x){
+      var j = x && x.j;
+      if (j && j.ok && j.data) { real = j.data; okAt = Date.now(); agedKey = -1; paint(real); }
+      else if (x && x.s === 404 && j && j.ok === false) expired();   // our own "not found", not a proxy's error page
+      spin();
+    }).catch(function(){}).then(function(){ clearTimeout(tm); busy = false; age(); });
   }
   /* 20 Oct 2026: the road map (assets/js/track-map.js + MapLibre) loads only on this tap - 3G phones pay nothing until then. */
   var mb = $('mapBtn');
@@ -356,7 +434,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
   };
   spin();
   setInterval(tick, 15000);
-  document.addEventListener('visibilitychange', function(){ if (!document.hidden) tick(); });
+  setInterval(age, 5000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) { tick(); age(); } });
+  window.addEventListener('online', tick);
 })();
 </script>
 <script defer src="/assets/js/track-live.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/track-live.js') ?>"></script>

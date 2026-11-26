@@ -142,6 +142,7 @@ $hrefChalaniPdf = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' =>
 $hrefChalaniPng = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalanipng']);
 $hrefChalaniP1  = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalanipng', 'page' => 1]);
 $hrefChalaniPrt = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalani']);
+$hrefChalani80  = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalani80']);   // 26 Nov 2026 (fx1): the 80 mm thermal list
 $hrefChallan    = $base . '/admin/challan.php?' . $q(['sid' => $sid]);
 $hrefChallanDl  = $base . '/admin/challan.php?' . $q(['sid' => $sid, 'dl' => 1]);
 $hrefStatus     = $base . '/admin/challan.php?' . $q(['sid' => $sid, 'doc' => 'status']);
@@ -368,6 +369,7 @@ admin_page_head(
       <a class="btn" href="<?= $hrefChalaniPdf ?>"><svg class="a-ic"><use href="#a-pdf"/></svg>Download PDF</a>
       <a class="btn ghost" href="<?= $hrefChalaniPng ?>" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-image"/></svg>PNG pages (<?= (int) $pageCount ?>)</a>
       <a class="btn ghost" href="<?= $hrefChalaniPrt ?>" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-printer"/></svg>Print</a>
+      <?php if (ChalaniStrip::thermalOn()): ?><a class="btn ghost" href="<?= $hrefChalani80 ?>" target="_blank" rel="noopener" title="८० मिमि थर्मल प्रिन्टर · 80 mm thermal printer"><svg class="a-ic"><use href="#a-printer"/></svg>८० मिमि · 80 mm</a><?php endif; ?>
     </div>
     <div class="text-xs muted" style="padding:0 16px 12px">The office's printed form: crew fields, passenger table, cash line, signatures.</div>
   </div>
@@ -396,7 +398,7 @@ admin_page_head(
         <select id="chDoc">
           <option value="challan">Challan — seat picture</option>
           <?php for ($p = 1; $chalaniOk && $p <= $pageCount; $p++): ?>
-            <option value="chalani:<?= $p ?>">Chalani page <?= $p ?> of <?= (int) $pageCount ?></option>
+            <option value="chalani:<?= $p ?>">Chalani page <?= $p ?> of <?= (int) $pageCount ?><?= $p === $pageCount ? ' · seat chart' : '' ?></option>
           <?php endfor; ?>
         </select>
       </label>

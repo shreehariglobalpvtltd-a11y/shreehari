@@ -250,6 +250,205 @@ final class AgentReport
     }
 
     /**
+     * The office a member should ring: the company number, or the Nepal office
+     * for a member whose profile says 977 (when that office has a number).
+     * Same rule as the Help strip on admin/agent.php (19 Nov 2026, u5 AG-5).
+     *
+     * @return array{call:string, wa:string}  call = as people read it, wa = digits for wa.me
+     */
+    public static function officeContact(int $agentId): array
+    {
+        $call = Settings::officePhone();
+        $wa   = Settings::officeWhatsApp();
+        try {
+            if ((string) (AgentWallet::profile($agentId)['country_code'] ?? '') === '977') {
+                $npPh = trim(Settings::getString('nepal_phone', ''));
+                if ($npPh !== '') {
+                    $call = trim((string) (preg_split('#\s*/\s*#', $npPh)[0] ?? $npPh));
+                }
+                $npWa = preg_replace('/\D/', '', Settings::getString('nepal_whatsapp', '')) ?? '';
+                if (strlen($npWa) === 10) {
+                    $npWa = '977' . $npWa;
+                }
+                if (preg_match('/^[1-9]\d{9,14}$/', $npWa) === 1) {
+                    $wa = $npWa;
+                }
+            }
+        } catch (Throwable $e) {
+            // the company number stands
+        }
+        return ['call' => $call, 'wa' => $wa];
+    }
+
+    /**
+     * Which of these agents have NO verified KYC (26 Nov 2026, fx1) - for the
+     * "KYC बाँकी" marker on the agent lists, one read for the whole list.
+     * The one rule: only admin_profiles.kyc_status = 'verified' is verified;
+     * no profile row, none, submitted and rejected are all pending. Only
+     * role = agent rows are judged (office staff carry no agent KYC). Empty on
+     * a database without the KYC columns, so nobody is marked by mistake.
+     *
+     * @param  list<int> $ids
+     * @return array<int,string> admin id => 'none' | 'submitted' | 'rejected'
+     */
+    public static function kycPending(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $i): bool => $i > 0)));
+        if ($ids === [] || !AgentWallet::kycAvailable()) {
+            return [];
+        }
+        $out = [];
+        try {
+            foreach (Database::fetchAll(
+                "SELECT a.id, COALESCE(p.kyc_status, 'none') AS k
+                   FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
+                  WHERE a.role = 'agent' AND a.id IN (" . implode(',', $ids) . ')'      // ints only - safe to inline
+            ) as $r) {
+                $k = strtolower(trim((string) $r['k']));
+                if ($k !== 'verified') {
+                    $out[(int) $r['id']] = $k !== '' ? $k : 'none';
+                }
+            }
+        } catch (Throwable $e) {
+            return [];
+        }
+        return $out;
+    }
+
+    /** The small "KYC बाँकी" pill for a list row; '' for a verified agent (or a non-agent). */
+    public static function kycPill(array $pending, int $id): string
+    {
+        if (!isset($pending[$id])) {
+            return '';
+        }
+        return $pending[$id] === 'rejected'
+            ? ' <span class="pill" data-kyc-pill style="background:#f7dcdc;color:#8a1f1f;font-size:10.5px">KYC ✗ मिलेन</span>'
+            : ' <span class="pill" data-kyc-pill style="background:#fef3c7;color:#92400e;font-size:10.5px" title="No verified ID on file">KYC बाँकी</span>';
+    }
+
+    /**
+     * Everything admin/agent-home.php shows for ONE agent (26 Nov 2026, fx1).
+     *
+     * READ-ONLY and no money logic of its own - every figure is another
+     * helper's figure, so the home can never disagree with the statement:
+     *   today / month  tickets, people and ticket value: AgentWallet::headcount()
+     *                  (by the day the ticket was CUT; ticket value includes
+     *                  pending and pay-at-boarding, so it is never "collected")
+     *   commission     AgentStatement::data() for 1st..today: earned less
+     *                  reversed, by LEDGER date - the statement's own lines.
+     *                  Today's figure is the same rows, today's date only.
+     *   net / owes     AgentWallet::netPosition() + AgentStatement::owes()
+     *   credit         AgentCredit::status(); 'refusal' also carries the main
+     *                  agent's hold for a sub-agent (AgentCredit::refusal)
+     * The only SQL here is the last-five list (the query of admin/agent.php's
+     * "recent sales", plus the NPR frozen on the sale when the columns exist).
+     *
+     * @return array<string,mixed>
+     */
+    public static function home(int $agentId): array
+    {
+        require_once __DIR__ . '/agentstatement.php';
+        require_once __DIR__ . '/agentcredit.php';
+        require_once __DIR__ . '/sellerday.php';      // CounterDesk + the BS / AD date label
+
+        $today = todayISO();
+        $first = date('Y-m-01', (int) strtotime($today . ' 12:00:00'));
+
+        $hToday = AgentWallet::headcount($agentId, $today, $today);
+        $hMonth = AgentWallet::headcount($agentId, $first, $today);
+
+        $commMonth = 0.0;
+        $commToday = 0.0;
+        $balanced  = true;
+        $closing   = null;
+        try {
+            $st        = AgentStatement::data($agentId, $first, $today);
+            $commMonth = round(-1 * ((float) $st['sum']['earned']['amount'] + (float) $st['sum']['reversed']['amount']), 2);
+            foreach ($st['rows'] as $row) {
+                if ((string) $row['date'] === $today && in_array((string) $row['kind'], ['earned', 'reversed'], true)) {
+                    $commToday = round($commToday + (float) $row['cr'] - (float) $row['dr'], 2);
+                }
+            }
+            $balanced = (bool) $st['balanced'];
+            $closing  = (float) $st['closing'];
+        } catch (Throwable $e) {
+            Logger::error('AgentReport::home statement failed', ['agent' => $agentId, 'e' => $e->getMessage()]);
+            $balanced = false;
+        }
+
+        $net    = AgentWallet::netPosition($agentId);
+        $credit = AgentCredit::status($agentId);
+        $why    = AgentCredit::refusal($agentId);
+
+        $desk = CounterDesk::forAdmin($agentId)['code'];
+        $cur  = $desk !== '' ? CounterDesk::currency($desk) : 'INR';
+        $rate = $desk !== '' ? CounterDesk::rate($desk) : 1.0;
+
+        $recent = [];
+        try {
+            $fx = CounterDesk::hasColumn('bookings', 'fx_currency') && CounterDesk::hasColumn('bookings', 'fx_total')
+                ? ', b.fx_currency, b.fx_total' . (CounterDesk::hasColumn('bookings', 'fx_rate') ? ', b.fx_rate' : '')
+                : '';
+            $recent = Database::fetchAll(
+                "SELECT b.pnr, b.status, b.total_amount, b.created_at, b.booking_mode" . $fx . ",
+                        r.from_city, r.to_city, bl.travel_date,
+                        (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
+                           FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
+                        (SELECT bp.full_name FROM booking_passengers bp
+                          WHERE bp.booking_id = b.id AND bp.is_primary = 1 LIMIT 1) AS passenger
+                   FROM bookings b
+                   LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+                   LEFT JOIN schedules s ON s.id = bl.schedule_id
+                   LEFT JOIN routes r ON r.id = s.route_id
+                  WHERE b.sold_by_admin_id = :a
+                  ORDER BY b.id DESC LIMIT 5",
+                ['a' => $agentId]
+            );
+        } catch (Throwable $e) {
+            Logger::error('AgentReport::home recent failed', ['agent' => $agentId, 'e' => $e->getMessage()]);
+            $recent = [];
+        }
+
+        $kyc = 'none';
+        try {
+            $kyc = (string) (AgentWallet::profile($agentId)['kyc_status'] ?? 'none');
+        } catch (Throwable $e) {
+            $kyc = 'none';
+        }
+        $rateLabel = '';
+        try {
+            $rateLabel = (string) (self::rateCard($agentId)['label'] ?? '');
+        } catch (Throwable $e) {
+            $rateLabel = '';
+        }
+
+        return [
+            'agentId'   => $agentId,
+            'date'      => $today,
+            'dateLabel' => SellerDay::dateLabel($today),
+            'monthFrom' => $first,
+            'code'      => AgentWallet::agentCodeLabel($agentId),
+            'rate'      => $rateLabel,
+            'kyc'       => $kyc !== '' ? $kyc : 'none',
+            'kycOk'     => $kyc === 'verified',
+            'today'     => ['tickets' => (int) $hToday['tickets'], 'heads' => (int) $hToday['heads'], 'sales' => (float) $hToday['sales'], 'commission' => $commToday],
+            'month'     => ['tickets' => (int) $hMonth['tickets'], 'heads' => (int) $hMonth['heads'], 'sales' => (float) $hMonth['sales'], 'commission' => $commMonth],
+            'net'       => $net,
+            'owesNe'    => AgentStatement::owes((float) $net['net'], 'ne'),
+            'owesEn'    => AgentStatement::owes((float) $net['net'], 'en'),
+            'credit'    => $credit,
+            'refusal'   => $why,
+            'parentId'  => AgentCredit::parentOf($agentId),
+            'payoutReq' => AgentWallet::openPayoutRequests($agentId)[0] ?? null,
+            'recent'    => $recent,
+            'desk'      => ['code' => $desk, 'currency' => $cur, 'rate' => $rate],
+            'balanced'  => $balanced,
+            'closing'   => $closing,
+            'office'    => self::officeContact($agentId),
+        ];
+    }
+
+    /**
      * What this agent is paid right now, as one record the rate card and
      * the statement both print.
      *

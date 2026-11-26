@@ -30,7 +30,7 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
     $date = todayISO();
 }
 $routeId = (int) ($_GET['route'] ?? 0);
-$format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf', 'payqr', 'json', 'chalanishare'], true) ? (string) $_GET['format'] : 'html';   // 25 Nov 2026 (release ch): + json (live poll), chalanishare (WhatsApp)
+$format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'chalanipng', 'pdf', 'payqr', 'json', 'chalanishare', 'chalani80'], true) ? (string) $_GET['format'] : 'html';   // 25 Nov 2026 (release ch): + json (live poll), chalanishare (WhatsApp)   // 26 Nov 2026 (fx1): + chalani80 (80 mm thermal list)
 require_once INCLUDE_PATH . '/chalanipng.php';   // 16 Nov 2026: ChalaniPng::payMode - the pay-at-boarding rule every chalani surface shares
 require_once INCLUDE_PATH . '/paxid.php';        // 25 Nov 2026 (op5): the passenger ID tag for the border crew
 /* 29 Oct 2026 (management upgrade 3.2): passengers in the order the coach
@@ -585,15 +585,21 @@ if ($format === 'csv') {
                    'Destination', 'Fare', 'Booking ID', 'Payment', 'Pay mode', 'Source', 'Agent', 'Ticket', 'Booked',
                    'Extra luggage', 'Infants', 'Extra Rs', 'Extra paid']);
 
+    /* 26 Nov 2026 (fx1): a passenger types their own name on the website, and a cell
+       that starts with = + - @ is run as a FORMULA when the office opens this file in
+       Excel. Free-text cells that start that way get a leading apostrophe (shown as
+       text, harmless - ChalaniStrip::csvText). Numbers, the phone and the fixed words
+       stay exactly as they were. */
+    $csvText = static fn($v): string => ChalaniStrip::csvText($v);
     foreach ($rows as $r) {
         $xRow = $extraOnRow($r);
         $xB   = $xBook[(int) ($r['booking_id'] ?? 0)] ?? null;
         $xHere = $xB !== null && ($xFirst[(int) $r['booking_id']] ?? -1) === (int) ($r['pax_id'] ?? 0);
         csv_put($out, [
             Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')),
-            $r['full_name'], $r['age'], $r['gender'], $r['contact_phone'],
-            $stopShort((string) $r['boarding_stop']), $stopShort((string) $r['drop_stop']), $farePer($r), $r['pnr'],
-            $payLabel($r), ChalaniPng::payModeLabel($payMark($r)['mode'], 'csv') . ($payMark($r)['claim'] ? ' (' . ChalaniPng::payClaimLabel('csv') . ')' : ''), $sourceLabel($r), $agentLabel($r), $ticketLabel($r),
+            $csvText($r['full_name']), $r['age'], $csvText($r['gender']), $r['contact_phone'],
+            $csvText($stopShort((string) $r['boarding_stop'])), $csvText($stopShort((string) $r['drop_stop'])), $farePer($r), $r['pnr'],
+            $payLabel($r), ChalaniPng::payModeLabel($payMark($r)['mode'], 'csv') . ($payMark($r)['claim'] ? ' (' . ChalaniPng::payClaimLabel('csv') . ')' : ''), $csvText($sourceLabel($r)), $csvText($agentLabel($r)), $ticketLabel($r),
             $bookedTime($r) . ($isLate($r) ? ' (after departure)' : ''),
             $xHere ? (string) $xB['lug'] : '', $xHere ? (string) $xB['inf'] : '',
             $xHere ? (string) $xRow : '', $xHere ? match ($xB['state']) { 'due' => 'DUE', 'agent' => 'PAID (with agent)', 'free' => 'FREE', default => 'PAID' } : '',
@@ -630,9 +636,16 @@ if ($format === 'pdf') {
  *  signatures. Data fills what the system knows; the rest stays as
  *  dotted blanks for the pen, same as the paper form.
  * ===================================================================== */
-if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng' || $format === 'chalanishare') {
+if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng' || $format === 'chalanishare' || $format === 'chalani80') {
     if ($trip === null) {
         exit('No departure on this date.');
+    }
+    /* 26 Nov 2026 (fx1): the 80 mm thermal list is its own switch (chalani_thermal_on,
+       default on). Off = no button anywhere and this format is not found. */
+    if ($format === 'chalani80' && !ChalaniStrip::thermalOn()) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('८० मिमि चलानी बन्द छ · The 80 mm chalani is switched off.');
     }
     /* 17 Sep 2026: an agent login sees only its own sales, so a chalani
        drawn from its rows would be an official sheet missing half the bus.
@@ -699,6 +712,15 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     }
 
     $e = static fn($v) => Security::e((string) $v);
+
+    /* 26 Nov 2026 (fx1): the flags and the corridor words follow the DIRECTION of this
+       departure (India first going to Nepal, Nepal first on the return run) - the
+       sheet said "गुजरात ⇄ रुपैडिहा" with the India flag first on every bus. And the
+       date in BS beside AD (switch chalani_bs_date_on; AD alone outside the BS table). */
+    $toNepal    = ChalaniPng::toNepal($trip);
+    $corridorNe = $toNepal ? 'गुजरात → रुपैडिहा' : 'रुपैडिहा → गुजरात';
+    $landsNe    = $toNepal ? 'भारत–नेपाल' : 'नेपाल–भारत';
+    $bsNe       = ChalaniPng::bsDate($date, 'ne');
 
     /* Inline SVG flags for the print band (9 Oct 2026) — the 🇮🇳 / 🇳🇵 emoji
        printed as the letters "IN" / "NP" on Windows. Explicit fills, so they
@@ -814,7 +836,15 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
                    'paxId' => $scopeId === null && PaxId::enabled()
                         ? static fn(array $r): string => PaxId::short((string) ($r['id_type'] ?? ''), (string) ($r['id_number'] ?? '')) : null,
                    'infantsOf' => static fn(array $r): int => ($xFirst[(int) ($r['booking_id'] ?? 0)] ?? -1) === (int) ($r['pax_id'] ?? 0)
-                        ? (int) ($xBook[(int) $r['booking_id']]['inf'] ?? 0) : 0];
+                        ? (int) ($xBook[(int) $r['booking_id']]['inf'] ?? 0) : 0,
+                   /* 26 Nov 2026 (fx1): WHOSE copy this is - '' the whole bus, an agent's
+                      copy, a desk's copy. The PNG pages print it in the head and keep a
+                      copy's picture files apart from the whole-bus ones (ChalaniPng::copyInfo),
+                      so drawing an agent / desk copy can no longer replace the pages a
+                      signed share link serves. The PDF prints the same line. */
+                   'copy' => ChalaniPng::copyInfo(
+                        $agentCopy ? (string) (AgentWallet::agentCodeFor((int) $scopeId) ?? (int) $scopeId) : null,
+                        $agentCopy ? (string) ($admin['full_name'] ?? '') : '', $deskF, $chalaniNo)];
 
     /* 19 Nov 2026 (NP-2, owner: "Nepal counter select garda NPR ma"): a Nepal
        desk's copy prints its money in NPR - the NPR frozen on each sale, else
@@ -894,7 +924,9 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
             exit('The chalani page could not be drawn: ' . $ex->getMessage());
         }
         $shStrip = ChalaniStrip::fromRows($rows, $chalaniFmt['money'], $chalaniFmt['payMark']);
-        $links   = ChalaniStrip::shareLinks((int) $trip['schedule_id'], $sheetPages);
+        /* 26 Nov 2026 (fx1): a desk copy's links name that copy (its own picture files);
+           the whole-bus links are exactly as before */
+        $links   = ChalaniStrip::shareLinks((int) $trip['schedule_id'], $sheetPages, null, ChalaniPng::copyTag($chalaniFmt));
         $waText  = ChalaniStrip::shareText($trip, $date, $chalaniNo, $shStrip, $links, (string) ($chalaniFmt['cur']['code'] ?? 'INR'));
         Logger::audit('manifest.chalanishare', 'schedule', (string) $trip['schedule_id'], null,
             ['pages' => $sheetPages, 'desk' => $deskF], 'WhatsApp share opened, ' . count($rows) . ' passengers, ' . $date);
@@ -956,6 +988,122 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
         exit;
     }
 
+    /* =================================================================
+     *  26 Nov 2026 (fx1) - THE 80 mm THERMAL LIST (?format=chalani80)
+     *
+     *  The same chalani, cut to what the conductor reads at the bus door on
+     *  a strip from the counter's thermal printer: number, BS + AD date, bus,
+     *  driver, then place by place - seat, name, drop, how the seat pays -
+     *  and the Total | Cash | Online | Due figures. Same gate as the sheet
+     *  above (an agent prints only its AGENT COPY; the whole bus needs
+     *  chalani.export), same rows, same money rule ($money / $payMark - a
+     *  Nepal desk copy in NPR). Reads only.
+     *  Phones: the last 4 digits; the whole number only when the office has
+     *  switched passenger phones on for the crew (driver_list_phones).
+     *  Switch chalani_thermal_on (default on).
+     * ================================================================= */
+    if ($format === 'chalani80') {
+        $t80Strip  = ChalaniStrip::fromRows($rows, $money, $payMark);
+        $t80Full   = Settings::getBool('driver_list_phones', false);
+        $t80Phone  = static function (string $ph) use ($t80Full): string {
+            $d = (string) preg_replace('/\D+/', '', $ph);
+            if ($d === '' || $d === '0000000000') { return ''; }
+            return $t80Full ? $ph : '••••' . substr($d, -4);
+        };
+        $t80Bus    = trim((string) ($trip['bus_name'] ?? '') . ' ' . (string) ($trip['bus_number'] ?? ''));
+        $t80Co     = Settings::company();
+        $t80Copy   = $chalaniFmt['copy'];
+        $t80Rows   = [];   // place name => its rows, in the place list's own order
+        foreach ($placeList as $pl) { $t80Rows[(string) $pl['name']] = []; }
+        foreach ($rows as $r) {
+            $t80Rows[$r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—'][] = $r;
+        }
+        Logger::audit('manifest.chalani80', 'schedule', (string) $trip['schedule_id'], null, null, count($rows) . ' passengers, ' . $date);
+        header('Content-Type: text/html; charset=utf-8');
+        ?>
+<!doctype html><html lang="ne"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>बस चलानी ८० मिमि · <?= $e($date) ?> · <?= $e($trip['route_code']) ?></title>
+<style>
+  @page { size: 80mm auto; margin: 3mm; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:10px; background:#EEF1F6; color:#000; font-family:'Noto Sans Devanagari','Mangal',Arial,sans-serif; font-size:12px; line-height:1.35; }
+  .t80 { width:72mm; max-width:100%; margin:0 auto; background:#fff; padding:3mm 2.5mm 4mm; }
+  .no-print { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:72mm; max-width:100%; margin:0 auto 10px; }
+  .no-print a, .no-print button { min-height:44px; padding:0 14px; font:inherit; font-size:16px; font-weight:700; border-radius:10px; border:1px solid #12264E; background:#fff; color:#12264E; text-decoration:none; display:inline-flex; align-items:center; cursor:pointer; }
+  .no-print .pri { background:#12264E; color:#fff; }
+  h1 { margin:0; font-size:14px; text-align:center; line-height:1.25; }
+  h2 { margin:2px 0 0; font-size:15px; text-align:center; letter-spacing:.3px; }
+  .cp { margin:3px 0 0; text-align:center; font-weight:800; border:1.5px solid #000; padding:2px 4px; }
+  .kv { width:100%; border-collapse:collapse; margin:5px 0 0; }
+  .kv td { padding:1px 0; vertical-align:top; } .kv td:first-child { white-space:nowrap; padding-right:6px; } .kv td:last-child { font-weight:700; text-align:right; overflow-wrap:anywhere; }
+  hr { border:0; border-top:1.5px dashed #000; margin:5px 0; }
+  .rt { text-align:center; font-weight:800; font-size:13.5px; }
+  .pl { margin:6px 0 2px; padding:2px 5px; border:1.5px solid #000; font-weight:800; display:flex; justify-content:space-between; gap:6px; break-after:avoid; }
+  table.ps { width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.ps td { padding:2px 0 3px; vertical-align:top; border-bottom:1px dotted #000; overflow-wrap:anywhere; }
+  table.ps tr { break-inside:avoid; }
+  td.st { width:11mm; font-weight:800; font-size:13.5px; } td.pm { width:21mm; text-align:right; font-weight:800; }
+  td.nm b { font-weight:700; } td.nm small, td.pm small { display:block; font-size:10.5px; font-weight:400; }
+  .sum { width:100%; border-collapse:collapse; } .sum td { padding:1.5px 0; } .sum td:last-child { text-align:right; font-weight:800; white-space:nowrap; }
+  .sum tr.big td { font-size:13.5px; font-weight:800; border-top:1.5px solid #000; }
+  .sg { display:flex; gap:10px; margin-top:26px; } .sg div { flex:1; border-top:1px solid #000; text-align:center; font-size:10.5px; padding-top:2px; }
+  .ft { margin-top:6px; text-align:center; font-size:10px; }
+  @media print { body { background:#fff; padding:0; } .no-print { display:none; } .t80 { width:auto; padding:0; } }
+</style></head><body>
+<div class="no-print">
+  <button type="button" class="pri" onclick="window.print()">🖨️ छाप्नुहोस् · Print</button>
+  <a href="<?= $e($chalaniLink(['format' => 'chalani'])) ?>">A4 चलानी</a>
+  <a href="<?= $e($chalaniLink([])) ?>">← फर्कनुहोस्</a>
+</div>
+<div class="t80">
+  <h1><?= $e($t80Co['legalNe'] !== '' ? $t80Co['legalNe'] : $t80Co['name']) ?></h1>
+  <h2>बस चलानी · यात्रु सूची</h2>
+  <?php if ($t80Copy['kind'] === 'agent'): ?><div class="cp">एजेन्ट प्रति · AGENT COPY<?= $t80Copy['label'] !== '' ? ' — ' . $e($t80Copy['label']) : '' ?></div>
+  <?php elseif ($t80Copy['kind'] === 'desk'): ?><div class="cp">काउन्टर प्रति · DESK COPY — <?= $e($t80Copy['label']) ?></div><?php endif; ?>
+  <table class="kv">
+    <tr><td>चलानी नं.</td><td><?= $e($chalaniNo) ?></td></tr>
+    <tr><td>मिति</td><td><?= $bsNe !== '' ? $e($bsNe) . '<br>' : '' ?><?= $e($neDate($date)) ?></td></tr>
+    <tr><td>बस</td><td><?= $e($t80Bus !== '' ? $t80Bus : '—') ?></td></tr>
+    <tr><td>प्रस्थान समय</td><td><?= $e($neTime($trip['dep_time'] ?? '')) ?></td></tr>
+    <tr><td>चालक</td><td><?= $e(trim((string) ($trip['driver_name'] ?? '')) ?: '—') ?><?= trim((string) ($trip['driver_phone'] ?? '')) !== '' ? '<br>' . $e((string) $trip['driver_phone']) : '' ?></td></tr>
+  </table>
+  <hr>
+  <div class="rt"><?= $e((string) $trip['from_city']) ?> → <?= $e((string) $trip['to_city']) ?></div>
+  <table class="kv">
+    <tr><td>जम्मा यात्रु</td><td><?= $e($neDigits((string) count($rows))) ?><?= $xInfants > 0 ? ' + शिशु ' . $e($neDigits((string) $xInfants)) : '' ?></td></tr>
+    <?php if ($womenSingleCount > 0): ?><tr><td>♀ महिला सिंगल स्लिपर</td><td><?= $e($neDigits((string) $womenSingleCount)) ?></td></tr><?php endif; ?>
+  </table>
+  <?php foreach ($placeList as $pl): $plRows = $t80Rows[(string) $pl['name']] ?? []; if ($plRows === []) { continue; } ?>
+  <div class="pl"><span><?= $e($neDigits((string) $pl['no'])) ?>. <?= $e($pl['name']) ?></span><span><?= $e($neDigits((string) $pl['n'])) ?> जना</span></div>
+  <table class="ps"><tbody>
+  <?php foreach ($plRows as $r): $pmk = $payMark($r); $m = $money($r); $rInf = (int) $chalaniFmt['infantsOf']($r); $ph = $t80Phone((string) ($r['contact_phone'] ?? '')); ?>
+    <tr>
+      <td class="st"><?= $e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) ?></td>
+      <td class="nm"><b><?= $isWomanSingle($r) ? '♀ ' : '' ?><?= $e($r['full_name']) ?></b><?= $rInf > 0 ? ' + शिशु ' . $e($neDigits((string) $rInf)) : '' ?>
+        <small>→ <?= $e($stopShort((string) (($r['drop_stop'] ?? '') ?: $trip['to_city']))) ?><?= $ph !== '' ? ' · ' . $e($ph) : '' ?></small></td>
+      <td class="pm"><?= $e($pmk['ne']) ?><?php if ($pmk['mode'] !== 'boarding'): ?><small><?= $e($curSym) ?> <?= $e(number_format($m['ticket'] + $m['extra'])) ?></small><?php endif; ?><?= $pmk['claim'] ? '<small>' . $e(ChalaniPng::payClaimLabel('ne')) . '</small>' : '' ?></td>
+    </tr>
+  <?php endforeach; ?>
+  </tbody></table>
+  <?php endforeach; ?>
+  <hr>
+  <table class="sum">
+    <tr><td>जम्मा यात्री <?= $e($neDigits((string) $t80Strip['passengers'])) ?></td><td><?= $e($curSym) ?> <?= $e(number_format($t80Strip['amount'])) ?></td></tr>
+    <tr><td>नगद · Cash</td><td><?= $e($curSym) ?> <?= $e(number_format($t80Strip['cash'])) ?></td></tr>
+    <tr><td>अनलाइन · Online</td><td><?= $e($curSym) ?> <?= $e(number_format($t80Strip['online'])) ?></td></tr>
+    <?php if (ChalaniStrip::hasOther($t80Strip)): ?><tr><td>अन्य भुक्तानी · Other paid</td><td><?= $e($curSym) ?> <?= $e(number_format($t80Strip['other'])) ?></td></tr><?php endif; ?>
+    <tr class="big"><td>ड्यू बाँकी · Due<?= $t80Strip['dueN'] > 0 ? ' (' . $e($neDigits((string) $t80Strip['dueN'])) . ' जना)' : '' ?></td><td><?= $e($curSym) ?> <?= $e(number_format($t80Strip['due'])) ?></td></tr>
+    <tr><td>बसमा उठाउनु पर्ने</td><td><?= $e($neDigits((string) $totals['boardDueN'])) ?> जना · <?= $e($curSym) ?> <?= $e(number_format($totals['boardDue'])) ?></td></tr>
+  </table>
+  <div class="sg"><div>कन्डक्टरको सही</div><div>चालकको सही</div></div>
+  <div class="ft"><?= $e($t80Co['phone']) ?> · <?= $e($t80Co['web']) ?><br>छापिएको : <?= $e(date('Y-m-d H:i')) ?> IST · कम्प्युटरबाट तयार</div>
+</div>
+</body></html>
+        <?php
+        exit;
+    }
+
     $minRows  = 25;
     $sheetRows = max($minRows, count($rows));
     /* The letterhead, from ONE place (10 Sep 2026): the address, the
@@ -973,6 +1121,10 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 <title>बस चलानी · <?= $e($date) ?> · <?= $e($trip['route_code']) ?></title>
 <style>
   @page { size: A4 landscape; margin: 7mm; }
+  /* 26 Nov 2026 (fx1): every printed page says which chalani it is and which page -
+     page 2 of a long bus used to carry the table head and nothing else. Margin boxes
+     print in Chrome / Edge 131+; other browsers ignore the rule and print as before. */
+  @page { @bottom-right { content: "<?= $e(preg_replace('/[^A-Za-z0-9\-]/', '', $chalaniNo)) ?> · " counter(page) " / " counter(pages); font-size:8pt; color:#3B4A66; } }
   * { box-sizing:border-box; }
   body { font-family:'Noto Sans Devanagari','Mangal',Arial,sans-serif; color:#16233C; margin:0; padding:0; font-size:11.5px; background:#F6F8FC; }
   .sheet { width:1123px; max-width:100%; margin:0 auto; background:#fff; padding:14px 18px 12px; }
@@ -1011,6 +1163,20 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   table.ps th.c, table.ps td.c { text-align:center; } table.ps th.r, table.ps td.r { text-align:right; }
   table.ps td.n { color:#5C6B85; }
   table.ps td small { color:#5C6B85; font-size:8.5px; }
+  /* 26 Nov 2026 (fx1): in the name cell the NAME takes the "…" - the border ID and the
+     ticket number after it always print whole (they were the part the cell cut off) */
+  /* how it gives way: the NAME is printed as far as it goes; what does not fit beside
+     it moves to a hidden second line, last piece first - the ticket number, then the
+     ID, then the infant mark - so a piece is either whole or left out, never cut.
+     Only a name longer than the whole cell takes the "…". */
+  table.ps td .nmw { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:5px; height:17px; line-height:17px; margin:-1px 0; overflow:hidden; }
+  table.ps td .nmw .nmn { flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  table.ps td .nmw small, table.ps td .nmw b.inf { flex:0 0 auto; white-space:nowrap; }
+  table.ps td .nmw small:last-child { margin-left:auto; }
+  table.ps td small.pid { color:#12264E; font-weight:700; }
+  /* the booking phone's GPS place: one short line at the end of the remarks cell (it
+     used to sit under the mobile number and doubled the height of every such row) */
+  table.ps td a.geo { color:#12264E; text-decoration:none; font-size:8.5px; }
   .late { color:#8a1111; font-weight:700; }
   /* 6 Nov 2026: place strip, place numbers, women on a single sleeper */
   .pl { border:1.5px solid #12264E; border-radius:6px; padding:5px 9px; margin:0 0 6px; }
@@ -1055,6 +1221,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 <div class="no-print">
   <a class="pri" href="<?= $e($pdfHref) ?>">📄 PDF डाउनलोड</a>
   <a href="<?= $e($pngHrefSheet) ?>">🖼️ PNG पेज (छुट्टाछुट्टै)</a>
+  <?php if (ChalaniStrip::thermalOn()): ?><a href="<?= $e($chalaniLink(['format' => 'chalani80'])) ?>">🧾 ८० मिमि</a><?php endif; ?>
   <button type="button" onclick="window.print()">🖨️ छाप्नुहोस्</button>
 </div>
 
@@ -1072,9 +1239,11 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   <div class="sh">
     <h2>बस चलानी · यात्रु विवरण</h2>
     <?php if ($agentCopy): ?><div class="kv" style="color:#b45309;font-weight:800">एजेन्ट प्रति · AGENT COPY — <?= $e((string) ($admin['full_name'] ?? '')) ?> का यात्रु मात्र</div><?php endif; ?>
-    <div class="rt">गुजरात ⇄ रुपैडिहा · <?= $e($coachNe((string) $trip['coach_type'])) ?></div>
+    <?php /* 26 Nov 2026 (fx1): a desk's copy says so too (a rupee desk's copy read as the whole bus) */ ?>
+    <?php if ($deskF !== ''): ?><div class="kv" style="color:#b45309;font-weight:800">काउन्टर प्रति · DESK COPY — <?= $e(CounterDesk::label($deskF)) ?> को बिक्री मात्र</div><?php endif; ?>
+    <div class="rt"><?= $e($corridorNe) ?> · <?= $e($coachNe((string) $trip['coach_type'])) ?></div>
     <div class="kv">चलानी नं. : <span><?= $e($chalaniNo) ?></span></div>
-    <div class="kv">मिति : <span><?= $e($neDate($date)) ?></span></div>
+    <div class="kv">मिति : <span><?= $bsNe !== '' ? $e($bsNe) . ' · ' : '' ?><?= $e($neDate($date)) ?></span></div>
     <div class="kv">बस नं. : <span><?= $e($trip['bus_number'] ?? '') ?>&nbsp;</span></div>
   </div>
 </div>
@@ -1087,7 +1256,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 </div>
 
 <?php if ($stopsLine !== ''): ?>
-<p class="stops"><b>चढ्ने ठाउँहरू :</b> <?= $e($stopsLine) ?> &nbsp;·&nbsp; <b>सीमा :</b> रुपैडिहा · जमुनाहा &nbsp;·&nbsp; <b>अगाडि :</b> नेपालगंज, बाँके</p>
+<p class="stops"><b>चढ्ने ठाउँहरू :</b> <?= $e($stopsLine) ?> &nbsp;·&nbsp; <?php if ($toNepal): ?><b>सीमा :</b> रुपैडिहा · जमुनाहा &nbsp;·&nbsp; <b>अगाडि :</b> नेपालगंज, बाँके<?php else: /* 26 Nov 2026 (fx1): the return run crosses the other way */ ?><b>सीमा :</b> जमुनाहा · रुपैडिहा &nbsp;·&nbsp; <b>गन्तव्य :</b> गुजरात<?php endif; ?></p>
 <?php endif; ?>
 
 <?php /* 6 Nov 2026: place-wise head-count, bus name and the women-on-single count, in one strip. */ ?>
@@ -1103,14 +1272,14 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   </div>
 </div>
 
-<div class="band"><span><?= $flagSvg('IN') ?> गुजरात ⇄ रुपैडिहा <?= $flagSvg('NP', 15) ?> · यात्रु यात्रा अभिलेख</span><?php
+<div class="band"><span><?= $toNepal ? $flagSvg('IN') : $flagSvg('NP', 15) ?> <?= $e($corridorNe) ?> <?= $toNepal ? $flagSvg('NP', 15) : $flagSvg('IN') ?> · यात्रु यात्रा अभिलेख</span><?php
   /* 25 Nov 2026 (release ch): the same Total | Cash | Online | Due strip as the screen, PDF and PNG */
   $shStrip = ChalaniStrip::on() ? ChalaniStrip::fromRows($rows, $money, $payMark) : null;
   if ($shStrip !== null): ?><span class="chs"><b>जम्मा यात्री <?= $e($neDigits((string) $shStrip['passengers'])) ?> · <?= $e($curSym) ?> <?= $e(number_format($shStrip['amount'])) ?></b> | <b class="ok">नगद <?= $e($curSym) ?> <?= $e(number_format($shStrip['cash'])) ?></b> | <b class="ok">अनलाइन <?= $e($curSym) ?> <?= $e(number_format($shStrip['online'])) ?></b> | <b class="<?= $shStrip['due'] > 0 ? 'bad' : 'ok' ?>">ड्यू बाँकी <?= $e($curSym) ?> <?= $e(number_format($shStrip['due'])) ?></b><?php if (ChalaniStrip::hasOther($shStrip)): ?> | <b>अन्य भुक्तानी <?= $e($curSym) ?> <?= $e(number_format($shStrip['other'])) ?></b><?php endif; ?></span><?php else: ?><span>सिट · नाम · भुक्तानी विवरण</span><?php endif; ?></div>
 
 <table class="ps">
   <colgroup>
-    <col style="width:26px"><col style="width:44px"><col style="width:190px"><col style="width:92px">
+    <col style="width:26px"><col style="width:44px"><col style="width:232px"><col style="width:84px">
     <col style="width:112px"><col style="width:112px"><col style="width:64px"><col style="width:64px">
     <col style="width:70px"><col style="width:52px"><col>
   </colgroup>
@@ -1126,17 +1295,18 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     <tr<?= $ws ? ' class="ws"' : '' ?>>
       <td class="c n"><?= $e($neDigits((string) ($i + 1))) ?></td>
       <td class="c"><b><?= $r ? $e(Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing'))) : '' ?></b></td>
-      <td><?php if ($r): ?><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?><?php if ($rInf > 0): ?> <b class="inf">+ शिशु <?= $e($neDigits((string) $rInf)) ?></b><?php endif; ?><?php $pidT = is_callable($chalaniFmt['paxId'] ?? null) ? (string) $chalaniFmt['paxId']($r) : ''; if ($pidT !== ''): ?> <small>🪪 <?= $e($pidT) ?></small><?php endif; ?> <small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small><?php endif; ?></td>
-      <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?><?php
-        /* 25 Nov 2026 (cp1): where the ticket was cut - the booking phone's GPS (BookGeo) */
-        if ($r && !empty($r['booked_lat'])): require_once INCLUDE_PATH . '/bookgeo.php'; ?><br><a class="geo" href="<?= $e(BookGeo::mapUrl($r)) ?>" target="_blank" rel="noopener" title="<?= $e(BookGeo::line($r)) ?>">&#128205; <?= $e((string) ($r['booked_place'] ?: 'GPS')) ?></a><?php endif; ?></td>
+      <td><?php if ($r): $pidT = is_callable($chalaniFmt['paxId'] ?? null) ? (string) $chalaniFmt['paxId']($r) : ''; ?><span class="nmw"><span class="nmn"><?= $ws ? '<b class="wsb">♀</b> ' : '' ?><?= $e($r['full_name']) ?></span><?php if ($rInf > 0): ?><b class="inf">+ शिशु <?= $e($neDigits((string) $rInf)) ?></b><?php endif; ?><?php if ($pidT !== ''): ?><small class="pid">🪪 <?= $e($pidT) ?></small><?php endif; ?><small><?= $e($r['ticket_number'] ?: $r['pnr']) ?><?php if ($isLate($r)): ?> · <span class="late">बस चलेपछि</span><?php endif; ?></small></span><?php endif; ?></td>
+      <td><?= $r ? $e($r['contact_phone'] === '0000000000' ? '' : $r['contact_phone']) : '' ?></td>
       <td><?php if ($r): $pk = $r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—'; ?><i class="pno"><?= $e($neDigits((string) ($placeList[$pk]['no'] ?? ''))) ?></i> <?= $e($pk) ?><?php endif; ?></td>
       <td><?= $r ? $e($stopShort((string) $r['drop_stop'])) : '' ?></td>
       <td class="r"><?= $m ? $e(number_format($m['ticket'])) : '' ?></td>
       <td class="r"><?= ($m && $m['cash'] > 0) ? $e(number_format($m['cash'])) : '' ?></td>
       <td class="r"><?= ($m && $m['online'] > 0) ? $e(number_format($m['online'])) : '' ?></td>
       <td class="c"></td>
-      <td><?php if ($r): $pmk = $payMark($r); ?><b class="pm pm-<?= $e($pmk['mode']) ?>"><?= $e($pmk['ne']) ?></b><?= $pmk['claim'] ? ' <b class="pm pm-pending">' . $e(ChalaniPng::payClaimLabel('ne')) . '</b>' : '' ?> · <?php endif; ?><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xCls($xs) ?>">थप <?= $e($curSym) ?><?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?></td>
+      <td><?php if ($r): $pmk = $payMark($r); ?><b class="pm pm-<?= $e($pmk['mode']) ?>"><?= $e($pmk['ne']) ?></b><?= $pmk['claim'] ? ' <b class="pm pm-pending">' . $e(ChalaniPng::payClaimLabel('ne')) . '</b>' : '' ?> · <?php endif; ?><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($m && $m['extra'] > 0): $xs = $chalaniFmt['rowState']($r); ?> · <b class="<?= $xCls($xs) ?>">थप <?= $e($curSym) ?><?= $e(number_format($m['extra'])) ?> <?= $e($xStateNe($xs)) ?></b><?php endif; ?><?php
+        /* 25 Nov 2026 (cp1): where the ticket was cut - the booking phone's GPS (BookGeo).
+           26 Nov 2026 (fx1): one short line here, last in the remarks (lowest priority) */
+        if ($r && !empty($r['booked_lat'])): require_once INCLUDE_PATH . '/bookgeo.php'; ?> · <a class="geo" href="<?= $e(BookGeo::mapUrl($r)) ?>" target="_blank" rel="noopener" title="<?= $e(BookGeo::line($r)) ?>">&#128205; <?= $e(mb_strimwidth((string) ($r['booked_place'] ?: 'GPS'), 0, 16, '…')) ?></a><?php endif; ?></td>
     </tr>
   <?php endfor; ?>
   </tbody>
@@ -1177,6 +1347,12 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <span>जम्मा टिकट रकम</span><b><?= $e($curSym) ?> <?= $e(number_format($totals['ticket'])) ?></b>
       <span>नगद संकलन</span><b><?= $e($curSym) ?> <?= $e(number_format($totals['cash'])) ?><?= $inrNote('cash') ?></b>
       <span>अनलाइन / UPI प्राप्ति</span><b><?= $e($curSym) ?> <?= $e(number_format($totals['online'])) ?><?= $inrNote('online') ?></b>
+      <?php /* 26 Nov 2026 (fx1): the strip above counts a verified payment the office "marked due" as
+               ड्यू; the two lines above keep it. One line says how much, so the sheet agrees with itself. */
+            $mkDue = $shStrip !== null ? (float) $shStrip['markedCash'] + (float) $shStrip['markedOnline'] : 0.0;
+            if ($mkDue > 0): ?>
+      <span class="bd">&nbsp;&nbsp;↳ यसमध्ये कार्यालयले बाँकी राखेको</span><b class="bd"><?= $e($curSym) ?> <?= $e(number_format($mkDue)) ?></b>
+      <?php endif; ?>
       <?php $bdCls = $totals['boardDue'] > 0 ? ' class="bd"' : ''; ?>
       <span<?= $bdCls ?>>बसमा उठाउनु पर्ने · To collect on boarding</span><b<?= $bdCls ?>><?= $e($neDigits((string) $totals['boardDueN'])) ?> जना · <?= $e($curSym) ?> <?= $e(number_format($totals['boardDue'])) ?></b>
       <span>छुट / सहुलियत</span><b><?= $e($curSym) ?> <?= $e(number_format($totals['discount'])) ?></b>
@@ -1202,7 +1378,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   <span><b>बुकिङ काउन्टर :</b> <?= $e($co['counters']) ?> &nbsp;·&nbsp; <b>२४×७ सहायता / WhatsApp :</b> +<?= $e($co['whatsapp']) ?></span>
 </div>
 <div class="ft" style="border-top:0;margin-top:3px;padding-top:0">
-  <span>यो एस हरि ग्लोबल प्राइभेट लिमिटेडको आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि सुरक्षित राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : गुजरात ⇄ रुपैडिहा (भारत–नेपाल)। CIN <?= $e($cin) ?> · कर्पोरेट मामिला मन्त्रालय, भारत सरकार दर्ता</span>
+  <span>यो एस हरि ग्लोबल प्राइभेट लिमिटेडको आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि सुरक्षित राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : <?= $e($corridorNe) ?> (<?= $e($landsNe) ?>)। CIN <?= $e($cin) ?> · कर्पोरेट मामिला मन्त्रालय, भारत सरकार दर्ता</span>
   <span><b>shreehariglobal.in</b> · shreehariglobalpvtltd@gmail.com</span>
 </div>
 <?php /* 6 Nov 2026: page 2 — the seat chart with names, the aisle gap in the middle. */ ?>
@@ -1332,6 +1508,18 @@ $chPaxKey = (static function (array $rows): string {
   .mf-wtag { background:#F8BBD9; color:#880E4F; border-radius:9px; padding:1px 6px; font-weight:800; }
   details.mf-chart { margin:0 0 14px; } details.mf-chart summary { cursor:pointer; font-weight:800; font-size:15px; padding:6px 0; }
   tr.mf-ws td { background:#FCE4EC !important; }
+  /* 26 Nov 2026 (fx1): dark theme. The women-single row kept its pale pink under the
+     theme's near-white text (unreadable); the seat chart's white cards carried a light
+     grey heading; the legend, the late / priority notes and the women count were dark
+     ink on the dark page. Colours only - nothing moves. */
+  :root[data-theme="dark"] tr.mf-ws td { background:rgba(236,72,153,.24) !important; }
+  :root[data-theme="dark"] .scx-deck h4 { color:#475569; }
+  :root[data-theme="dark"] .scx-leg { color:var(--mut,#9AA8C0); }
+  .mf-wsn { color:#880E4F; } :root[data-theme="dark"] .mf-wsn { color:#F9A8D4; }
+  .mf-late { color:#8a1111; font-weight:700; } :root[data-theme="dark"] .mf-late { color:#FCA5A5; }
+  .mf-prio { color:#0f5c36; font-weight:700; } :root[data-theme="dark"] .mf-prio { color:#6EE7A0; }
+  a.mf-geo { display:inline-block; margin-top:3px; font-size:12px; color:#1D4FA3; text-decoration:none; white-space:normal; overflow-wrap:anywhere; font-family:inherit; }
+  :root[data-theme="dark"] a.mf-geo { color:#BFDBFE; }
   /* 7 Nov 2026: professional skin (owner: "cartoon jasto bhayo") */
   .mf-tools { gap:8px; }
   .mf-tools .btn { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:0 12px; border-radius:8px; font-weight:600; font-size:13px; background:var(--card); color:var(--ink); border:1px solid var(--line); }
@@ -1400,11 +1588,19 @@ $chPaxKey = (static function (array $rows): string {
      (Transfer / Seat / Mark due / Delete), the fine box and the tools row are
      finger-sized. Desktop keeps the compact 30 / 36px. !important only beats
      the fine box's inline min-height:30px. */
+  /* 26 Nov 2026 (fx1): 44 px, not 40 (the panel's touch rule); typed boxes at 16 px so
+     a phone does not zoom the page on focus; the call / WhatsApp / map circles were
+     22 px - too small to hit on a moving bus. Touch phones only. */
   @media (max-width:820px) and (pointer:coarse) {
-    .mf-tools .btn, .mf-tools input, .mf-tools select, .mf-link input { min-height:40px; }
-    .mf-acts .btn, .mf-pay .btn, .mf-pay select, .mf-pay input { min-height:40px; }
-    .mf-acts input { min-height:40px !important; }
-    details.mf-chart summary { padding:10px 0; }
+    .mf-tools .btn, .mf-tools input, .mf-tools select, .mf-link input { min-height:44px; }
+    .mf-acts .btn, .mf-pay .btn, .mf-pay select, .mf-pay input { min-height:44px; }
+    .mf-acts input { min-height:44px !important; }
+    .mf-tools input, .mf-tools select, .mf-link input, .mf-pay select, .mf-pay input, .mf-acts input { font-size:16px; }
+    .mf-live button { min-height:44px; }
+    .wa-mini { width:44px; height:44px; margin:2px 2px 2px 0; }
+    .wa-mini svg, .wa-mini .a-ic { width:20px; height:20px; }
+    a.mf-geo { min-height:44px; padding:10px 0; font-size:13px; }
+    details.mf-chart summary, details.mf-ctr summary { padding:12px 0; }
   }
   /* the place list's total row is a card on a phone: no rule above each line */
   @media (max-width:820px) { table.mf-pl.card-table tfoot td { border-top:0; } }
@@ -1420,7 +1616,7 @@ $chPaxKey = (static function (array $rows): string {
   :root[data-theme="dark"] .mf-pm.pm-agent, :root[data-theme="dark"] .mf-pm.pm-pending { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.35); color:#FBC56B; }
   .mf-qr { display:inline-flex; align-items:center; gap:4px; margin:3px 0 0 4px; min-height:30px; padding:0 10px; border-radius:7px; border:1px solid #1D4FA3; background:#EEF4FF; color:#1D4FA3; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; white-space:nowrap; }
   :root[data-theme="dark"] .mf-qr { background:rgba(59,130,246,.16); border-color:rgba(147,197,253,.5); color:#BFDBFE; }
-  @media (max-width:820px) and (pointer:coarse) { .mf-qr { min-height:40px; } }
+  @media (max-width:820px) and (pointer:coarse) { .mf-qr { min-height:44px; } }
   dialog.pq { width:min(92vw, 360px); max-width:calc(100vw - 32px); border:1px solid var(--line); border-radius:14px; padding:14px 16px 16px; background:var(--card); color:var(--ink); }
   dialog.pq::backdrop { background:rgba(8,15,30,.55); }
   .pq h3 { margin:0 28px 4px 0; font-size:16px; }
@@ -1503,6 +1699,8 @@ $chPaxKey = (static function (array $rows): string {
     <?php if ($chExport): ?>
     <a class="btn" href="<?= Security::e($chLink(['format' => 'chalanipdf'])) ?>"><?= pc_icon('download') ?> PDF</a>
     <a class="btn" href="<?= Security::e($chLink(['format' => 'chalanipng'])) ?>"><?= pc_icon('image') ?> PNG</a>
+    <?php /* 26 Nov 2026 (fx1): the 80 mm thermal list for the counter's receipt printer (switch chalani_thermal_on) */ ?>
+    <?php if (ChalaniStrip::thermalOn()): ?><a class="btn" target="_blank" rel="noopener" href="<?= Security::e($chLink(['format' => 'chalani80'])) ?>" title="८० मिमि थर्मल प्रिन्टरका लागि चलानी · Chalani for the 80 mm thermal printer"><?= pc_icon('printer') ?> ८० मिमि · 80 mm</a><?php endif; ?>
     <?php if ($scopeId === null): ?><a class="btn" target="_blank" rel="noopener" href="<?= Security::e($chLink(['format' => 'chalanishare'])) ?>" title="PNG पेजको लिंक WhatsApp मा पठाउनुहोस् · Share the PNG page links on WhatsApp">💬 WhatsApp</a><?php endif; ?>
     <?php endif; ?>
   <?php endif; ?>
@@ -1543,7 +1741,7 @@ $chPaxKey = (static function (array $rows): string {
       <span><b><?= $boarded ?></b> boarded</span>
       <span><b><?= $unpaid ?></b> unpaid</span>
       <span><b><?= Security::e(inr($revenue)) ?></b> booked value</span>
-      <?php if ($womenSingleCount > 0): ?><span style="color:#880E4F"><b>♀ <?= (int) $womenSingleCount ?></b> women on single sleeper</span><?php endif; ?>
+      <?php if ($womenSingleCount > 0): ?><span class="mf-wsn"><b>♀ <?= (int) $womenSingleCount ?></b> women on single sleeper</span><?php endif; ?>
     </div>
     <div class="mf-money">
       <?= pc_badge('Paid ' . $mfCount['paid'] . ' · ' . inr($mfMoney['paid']), 'ok') ?>
@@ -1751,7 +1949,7 @@ $chPaxKey = (static function (array $rows): string {
               <br><small style="opacity:.7"><?= Security::e(trim(($r['age'] ? $r['age'] . 'y ' : '') . (string) $r['gender'])) ?></small>
             <?php endif; ?>
             <?php if (!empty($r['special_need'])): ?>
-              <br><small style="color:#0f5c36;font-weight:700" title="Priority boarding">Priority · <?= Security::e(ucfirst((string) $r['special_need'])) ?></small>
+              <br><small class="mf-prio" title="Priority boarding">Priority · <?= Security::e(ucfirst((string) $r['special_need'])) ?></small>
             <?php endif; ?>
             <?php /* 25 Nov 2026 (op5): the optional border ID, office / counter screen only */
               $pidS = $scopeId === null && PaxId::enabled() ? PaxId::short((string) ($r['id_type'] ?? ''), (string) ($r['id_number'] ?? '')) : '';
@@ -1773,6 +1971,11 @@ $chPaxKey = (static function (array $rows): string {
               <?php /* 8 Oct 2026 (master prompt 2.0): one tap to call from the crew phone. */ ?>
               <a href="tel:<?= Security::e($waNum) ?>" class="wa-mini mf-call" title="Call passenger" aria-label="Call <?= Security::e((string) $r['full_name']) ?>"><?= pc_icon('phone') ?></a>
             <?php endif; ?>
+            <?php /* 26 Nov 2026 (fx1): where the ticket was cut - the booking phone's GPS (BookGeo, cp1).
+                     It was only on the printed sheet, where a link cannot be tapped. */
+              if (!empty($r['booked_lat'])): require_once INCLUDE_PATH . '/bookgeo.php'; $bgUrl = BookGeo::mapUrl($r); if ($bgUrl !== ''): ?>
+              <br><a class="mf-geo" href="<?= Security::e($bgUrl) ?>" target="_blank" rel="noopener" title="<?= Security::e('टिकट काटेको ठाउँ · Booked from: ' . BookGeo::line($r)) ?>">📍 <?= Security::e(mb_strimwidth((string) (($r['booked_place'] ?? '') ?: 'GPS'), 0, 24, '…')) ?></a>
+            <?php endif; endif; ?>
           </td>
           <td><?= Security::e($r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—') ?>
             <?php
@@ -1811,7 +2014,7 @@ $chPaxKey = (static function (array $rows): string {
               <br><small>बुक गर्ने · by <b><?= Security::e((string) (($r['agent_name'] ?? '') ?: ($r['agent_user'] ?? ''))) ?></b></small>
             <?php endif; ?>
             <?php if ($bookedTime($r) !== ''): ?>
-              <br><small<?= $isLate($r) ? ' style="color:#8a1111;font-weight:700"' : ' class="muted"' ?>><?= $isLate($r) ? '⚠ after dep · ' : 'booked ' ?><?= Security::e($bookedTime($r)) ?></small>
+              <br><small<?= $isLate($r) ? ' class="mf-late"' : ' class="muted"' ?>><?= $isLate($r) ? '⚠ after dep · ' : 'booked ' ?><?= Security::e($bookedTime($r)) ?></small>
             <?php endif; ?>
           </td>
           <td><?= Security::e($agentLabel($r) ?: '—') ?></td>

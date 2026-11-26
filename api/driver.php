@@ -10,6 +10,9 @@
  *    POST {action:'start', scheduleId}       -> {trip}
  *    POST {action:'ping', tripId, points[], battery?}  -> {ack, stored, moved}
  *                                              (battery {pct, charging}: TripEvents::noteBattery, optional)
+ *                                              (26 Nov 2026: me / start / ping also answer netTimeoutSec, clockFix and,
+ *                                               while clockFix is on, nowMs = this server's clock - the web app
+ *                                               measures its phone's clock against it and sends real fix times)
  *    POST {action:'end', tripId}             -> {}
  *    POST {action:'logout'}                  -> {}
  *
@@ -103,6 +106,19 @@ try {
         Response::success();
     }
 
+    /* 26 Nov 2026 (fx1): the web app gives a stuck request up after this many seconds
+       (0 = never, as before). It rides on answers the app already reads; the native
+       app ignores a field it does not know. */
+    $netTimeout = max(0, min(120, Settings::getInt('driver_net_timeout_sec', 20)));
+    /* A phone whose clock is wrong was never live ("position is 10 min old" for a fix taken now).
+       While this switch is on the answers carry the server's clock; the web app works out how far
+       its phone is off and sends each fix with its real time (driver/index.php fixTime). The
+       points are taken exactly as sent, as always. Off = no clock in the answers, the app sends
+       the phone's own times as before. */
+    $clockFix   = Settings::getBool('driver_clock_fix_on', true);
+    $appNet     = static fn(): array => ['netTimeoutSec' => $netTimeout, 'clockFix' => $clockFix]
+        + ($clockFix ? ['nowMs' => (int) round(microtime(true) * 1000)] : []);
+
     /* ---------------- who am I, what can I start ---------------- */
     if ($action === 'me') {
         $trip = Database::fetch(
@@ -120,7 +136,7 @@ try {
             'trips'   => LiveTrips::choosable(),
             'pingSec' => LiveTrips::pingSeconds(),
             'crew'    => TripEvents::config(),
-        ]);
+        ] + $appNet());
     }
 
     /* The trip this phone runs, or 409: a driver can only ever read or write
@@ -160,7 +176,7 @@ try {
             Response::error($e->getMessage(), 422);
         }
         Response::success(['trip' => ['tripId' => (int) $row['id'], 'scheduleId' => (int) $row['schedule_id'],
-            'lastSeq' => (int) $row['last_seq']], 'pingSec' => LiveTrips::pingSeconds()]);
+            'lastSeq' => (int) $row['last_seq']], 'pingSec' => LiveTrips::pingSeconds()] + $appNet());
     }
 
     /* ---------------- GPS points / End Trip / buttons: only on this phone's trip ---------------- */
@@ -195,7 +211,7 @@ try {
         }
         $res = LiveTrips::ingest($trip, array_values($points));
         TripEvents::noteBattery($tripId, Response::field('battery', null));   // optional, never throws
-        Response::success($res + ['pingSec' => LiveTrips::pingSeconds()]);
+        Response::success($res + ['pingSec' => LiveTrips::pingSeconds()] + $appNet());
     }
 
     if ($action === 'end') {

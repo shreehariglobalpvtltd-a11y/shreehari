@@ -117,9 +117,12 @@ $budget  = $ready ? MkAutopilot::budget() : [];
 $scores  = $ready ? MkAutopilot::scores() : [];
 $lessons = $ready ? MkAutopilot::lessons() : ['good' => [], 'bad' => []];
 $fest    = MkAutopilot::festivalNow();
-$hist    = MkAutopilot::history();
+/* fx1 (26 Nov 2026): a log entry that is not an array (an old plain-string
+   row in kv_store) made this page fatal with "Cannot access offset of type
+   string on string". Keep only well-formed rows. */
+$hist    = array_values(array_filter(MkAutopilot::history(), 'is_array'));
 $lc      = AiLearn::counts();
-$lhist   = AiLearn::history();
+$lhist   = array_values(array_filter(AiLearn::history(), 'is_array'));
 $autoCamps = $ready ? Database::fetchAll("SELECT * FROM mk_campaigns WHERE audience LIKE 'autopilot=%' ORDER BY id DESC LIMIT 20") : [];
 $learned = [];
 $needs   = [];

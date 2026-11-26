@@ -53,7 +53,25 @@ if ($isOffice) {
     } elseif ($desk === '' || !in_array($desk, $nprList, true)) {
         $desk = in_array('NPJ', $nprList, true) ? 'NPJ' : (string) ($nprList[0] ?? '');
     }
+} elseif ($desk !== '' && !in_array($desk, $nprList, true)) {
+    /* fx1 (26 Nov 2026): a clerk on an INDIA desk (₹) who opened this page saw
+       their rupee desk drawn with रू labels at rate 1. This home is for an
+       NPR desk only - anyone else gets the "not on a Nepal desk" note below. */
+    $desk = '';
 }
+/* fx1: which of the home's buttons this login can really open. Today's list
+   is open to a clerk on their own desk (admin/desk-day.php, desk_day_clerk_on);
+   the cash memo is an office page (reports.view). */
+$mayMemo = Auth::can('reports.view');
+$mayList = $isOffice || (Settings::getBool('desk_day_clerk_on', true) && Auth::can('payments.view')
+    && CounterDesk::dayListDesk($admin, $desk, false) !== null);
+/* The "Today at <desk>" panel is the WHOLE window's day - every clerk's and every
+   agent's tickets and money. It was drawn for any login with bookings.view on the
+   desk, so an agent (own sales only) and a login with no payments.view read the
+   desk's takings. Office and the desk's own money-handling clerks only; no switch
+   (a leak, not a feature) and it does not follow desk_day_clerk_on, so a clerk
+   keeps the panel they always had when that switch is off. */
+$mayDay  = $isOffice || (Auth::can('payments.view') && Auth::bookingScopeAdminId() === null);
 $deskRow = $desk !== '' ? CounterDesk::get($desk) : null;
 $cur     = $desk !== '' ? CounterDesk::currency($desk) : 'NPR';
 $rate    = $desk !== '' ? CounterDesk::rate($desk) : Settings::getFloat('npr_per_inr', 1.6);
@@ -127,7 +145,7 @@ ksort($fareRows, SORT_NUMERIC);
 
 /* ---- today at this desk ------------------------------------------------ */
 $day = ['tickets' => 0, 'pax' => 0, 'npr' => 0.0, 'inr' => 0.0, 'pending' => 0, 'methods' => []];
-if ($desk !== '') {
+if ($desk !== '' && $mayDay) {
     try {
         $hasProf = Database::fetch("SHOW COLUMNS FROM admin_profiles LIKE 'counter_code'") !== null;
         $hasBy   = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'booked_by_admin_id'") !== null;
@@ -255,9 +273,12 @@ admin_header('Nepal counter', 'nepal-counter');
 
   <nav class="nc-acts" aria-label="Counter actions">
     <a class="main" href="<?= $e($sb()) ?>"><span>🎫</span>नयाँ टिकट काट्नुहोस् · New ticket</a>
-    <a href="/admin/quick-ticket.php"><span>⚡</span>छिटो टिकट · Quick ticket</a>
-    <a href="/admin/desk-day.php?desk=<?= $e($desk) ?>"><span>📋</span>आजको सूची · Today's list</a>
-    <a href="/admin/day-memo.php?desk=<?= $e($desk) ?>"><span>🧾</span>नगद हिसाब · Cash memo</a>
+    <?php /* fx1: "Quick ticket" only redirected to the same SmartBook as "New ticket" - the tile is the cash book now. */ ?>
+    <?php /* ?desk= : the book of THIS desk, in its own money (रू with ₹ beside it); without it the page lists every desk in ₹.
+             An agent's book is their own sales whatever the desk, so the plain link is theirs. */ ?>
+    <a href="/admin/cash-book.php<?= Auth::bookingScopeAdminId() === null ? '?desk=' . $e(rawurlencode($desk)) : '' ?>"><span>💵</span>नगद बुक · Cash book</a>
+    <?php if ($mayList): ?><a href="/admin/desk-day.php?desk=<?= $e($desk) ?>"><span>📋</span>आजको सूची · Today's list</a><?php endif; ?>
+    <?php if ($mayMemo): ?><a href="/admin/day-memo.php?desk=<?= $e($desk) ?>"><span>🧾</span>नगद हिसाब · Cash memo</a><?php endif; ?>
     <a href="#ncRoad"><span>🗺️</span>बाटो / नक्सा · Road to parking</a>
   </nav>
 
@@ -315,6 +336,7 @@ admin_header('Nepal counter', 'nepal-counter');
       </div>
     </section>
 
+    <?php if ($mayDay): ?>
     <section class="nc-card" aria-labelledby="ncDayH">
       <h3 id="ncDayH">📊 आज यो काउन्टरमा · Today at <?= $e($desk) ?></h3>
       <div class="nc-kpi">
@@ -329,8 +351,9 @@ admin_header('Nepal counter', 'nepal-counter');
         </p>
       <?php endif; ?>
       <?php if ($day['pending'] > 0): ?><p class="nc-pill lo" style="margin-top:8px">⏳ <?= (int) $day['pending'] ?> टिकटको पैसा बाँकी · payment pending</p><?php endif; ?>
-      <p style="margin:10px 0 0"><a href="/admin/desk-day.php?desk=<?= $e($desk) ?>">📋 टिकट-टिकट सूची, कसले काट्यो →</a></p>
+      <?php if ($mayList): ?><p style="margin:10px 0 0"><a href="/admin/desk-day.php?desk=<?= $e($desk) ?>">📋 टिकट-टिकट सूची, कसले काट्यो →</a></p><?php endif; ?>
     </section>
+    <?php endif; ?>
   </div>
 
   <section class="nc-card" id="ncRoad" style="margin-top:14px" aria-labelledby="ncRoadH">

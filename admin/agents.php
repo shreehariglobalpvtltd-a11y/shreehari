@@ -122,6 +122,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // never record the same cash handover a second time.
             $_SESSION['shg_agents_flash'] = $flash;
             Response::redirect('admin/agents.php');
+        } elseif (in_array($act, ['save_branch', 'save_pvt_ltd'], true) && !Auth::isSuperadmin()) {
+            /* 26 Nov 2026 (fx1): company legal / bank / UPI details are the super-admin's
+               (owner rule: credentials, payment ids and bank settings). A staff manager
+               could save them here before. */
+            $flash = ['bad', 'कम्पनी र बैंक विवरण सुपर-एडमिनले मात्र बदल्न मिल्छ · Only the super-admin can change company and bank details.'];
         } elseif ($act === 'save_branch') {
             $branchName = trim(Security::clean($_POST['branch_name'] ?? '', 120));
             $city       = trim(Security::clean($_POST['city'] ?? '', 120));
@@ -159,7 +164,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } elseif ($act === 'duty_status') {
             $staffId = (int) ($_POST['staff_id'] ?? 0);
             $status  = (string) ($_POST['duty_status'] ?? 'on_duty');
-            if (in_array($status, ['on_duty', 'off_duty', 'on_leave'], true) && $staffId > 0) {
+            // 26 Nov 2026 (fx1): only a real company-staff row (the ones this tab lists) - any id was accepted.
+            $isStaffRow = $staffId > 0 && Database::exists(
+                "SELECT 1 FROM admins WHERE id = :i AND role IN ('admin','counter','staff','driver','accountant')", ['i' => $staffId]);
+            if (!$isStaffRow) {
+                $flash = ['bad', 'Staff member not found.'];
+            } elseif (in_array($status, ['on_duty', 'off_duty', 'on_leave'], true)) {
                 Database::run("INSERT INTO admin_profiles (admin_id, duty_status) VALUES (:aid, :st) ON DUPLICATE KEY UPDATE duty_status = :st2", [
                     'aid' => $staffId, 'st' => $status, 'st2' => $status
                 ]);
@@ -168,7 +178,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } elseif ($act === 'link_parent_agent') {
             $subId    = (int) ($_POST['subagent_id'] ?? 0);
             $parentId = (int) ($_POST['parent_id'] ?? 0) ?: null;
-            if ($subId > 0) {
+            /* 26 Nov 2026 (fx1): both ends must be agent accounts, never the same row, the
+               main agent must not itself be someone's staff, and an agent who already has
+               staff cannot be put under another (one level only). Any id was accepted. */
+            if (!AgentWallet::isAgentRow($subId)) {
+                $flash = ['bad', 'Agent not found.'];
+            } elseif ($parentId !== null && ($parentId === $subId || !AgentWallet::isAgentRow($parentId))) {
+                $flash = ['bad', 'Choose a different agent account as the main agent.'];
+            } elseif ($parentId !== null && Database::exists('SELECT 1 FROM admin_profiles WHERE admin_id = :p AND parent_agent_id IS NOT NULL', ['p' => $parentId])) {
+                $flash = ['bad', 'That agent is counter staff of another agent — pick a main agent.'];
+            } elseif ($parentId !== null && Database::exists('SELECT 1 FROM admin_profiles WHERE parent_agent_id = :s', ['s' => $subId])) {
+                $flash = ['bad', 'This agent has counter staff of their own, so cannot be put under another agent.'];
+            } else {
                 Database::run("INSERT INTO admin_profiles (admin_id, parent_agent_id) VALUES (:aid, :pid) ON DUPLICATE KEY UPDATE parent_agent_id = :pid2", [
                     'aid' => $subId, 'pid' => $parentId, 'pid2' => $parentId
                 ]);
@@ -355,8 +376,13 @@ if (!in_array($activeTier, ['pvt_ltd', 'staff', 'master_agents', 'sub_agents'], 
 }
 $parentFilter = (int) ($_GET['parent'] ?? 0);
 
+/* 26 Nov 2026 (fx1): KYC state on the register. One rule everywhere - only
+   admin_profiles.kyc_status = 'verified' is verified; no profile row, NULL, none,
+   pending and rejected are all "KYC बाँकी". The column is read only when it exists. */
+$kycCol = AgentWallet::kycAvailable() ? 'p.kyc_status' : 'NULL';
 $rows = Database::fetchAll(
     "SELECT a.id, a.username, a.full_name, a.phone, a.email, a.is_active, a.last_login_at, a.created_at,
+            $kycCol AS kyc_status,
             p.display_phone, p.whatsapp, p.counter_name, p.agent_kind, p.contact_person, p.address, p.id_type, p.id_number,
             p.cash_limit, p.daily_booking_limit, p.suspended_reason, p.suspended_at, p.joined_on, p.payout_method, p.payout_account, p.notes, p.photo_path,
             p.parent_agent_id,
@@ -390,25 +416,26 @@ $staffRows = Database::fetchAll(
       ORDER BY a.role, a.id"
 );
 
+/* 26 Nov 2026 (fx1): until something is saved the form used to be PRE-FILLED with a made-up
+   CIN, GST, PAN, UPI id, bank account and IFSC, and the branch list with made-up phone
+   numbers - one tap on Save stored them as the company's. Now the legal name and CIN come
+   from Settings::company() (what the ticket and the statement print) and everything nobody
+   has typed stays blank. Saving is the super-admin's (see the action above). */
+$pvtCo  = Settings::company();
 $pvtLtd = json_decode(Settings::getString('pvt_ltd_config', ''), true) ?: [
-    'legal_name' => 'S Hari Global Pvt Ltd',
-    'cin' => 'U63040GJ2024PTC152341',
-    'gst' => '24AAECS4912J1Z8',
-    'pan' => 'AAECS4912J',
-    'upi' => 'shreehariglobal@sbi',
-    'bank_name' => 'State Bank of India',
-    'bank_acc' => '41238947291',
-    'bank_ifsc' => 'SBIN0001234',
-    'announcement' => Settings::getString('company_announcement', 'Welcome to S Hari Global Pvt Ltd - Premium Gujarat <-> Nepal Direct Bus Services.')
+    'legal_name' => (string) ($pvtCo['legal'] ?? ''),
+    'cin' => (string) ($pvtCo['cin'] ?? ''),
+    'gst' => '',
+    'pan' => '',
+    'upi' => '',
+    'bank_name' => '',
+    'bank_acc' => '',
+    'bank_ifsc' => '',
+    'announcement' => Settings::getString('company_announcement', '')
 ];
+$pvtMayEdit = Auth::isSuperadmin();
 
-$branches = json_decode(Settings::getString('company_branches', ''), true) ?: [
-    'br_mehsana' => ['name' => 'Head Office Mehsana', 'city' => 'Mehsana', 'phone' => '+91 98250 12345', 'manager' => 'Head Office Admin', 'address' => 'Radhanpur Road, Mehsana Highway, Gujarat'],
-    'br_ahmedabad' => ['name' => 'Ahmedabad Branch', 'city' => 'Ahmedabad', 'phone' => '+91 98251 23456', 'manager' => 'Ahmedabad Counter Lead', 'address' => 'Nana Chiloda Ring Road / Geeta Mandir, Ahmedabad'],
-    'br_surat' => ['name' => 'Surat Branch', 'city' => 'Surat', 'phone' => '+91 98252 34567', 'manager' => 'Surat Counter Manager', 'address' => 'Kamrej Char Rasta / Sahara Darwaja, Surat'],
-    'br_rajkot' => ['name' => 'Rajkot Branch', 'city' => 'Rajkot', 'phone' => '+91 98253 45678', 'manager' => 'Rajkot Office Lead', 'address' => 'Greenland Chokdi, Rajkot, Gujarat'],
-    'br_nepalgunj' => ['name' => 'Nepalgunj / Border Branch', 'city' => 'Nepalgunj', 'phone' => '+977 98012 34567', 'manager' => 'Border Operations Head', 'address' => 'Jamunaha Border / B.P. Chowk, Nepalgunj, Banke, Nepal'],
-];
+$branches = json_decode(Settings::getString('company_branches', ''), true) ?: [];
 $flatOn     = AgentWallet::flatMode();
 $rateDirect = Settings::getFloat('agent_flat_direct', 200.0);
 $rateJoint  = Settings::getFloat('agent_flat_joint', 400.0);
@@ -433,6 +460,12 @@ foreach ($rows as &$r) {
     $r['comm_due'] = (float) ($bal['commission'] ?? 0);
     $r['cash_bal'] = (float) ($bal['cash'] ?? 0);
     $r['status']  = (int) $r['is_active'] === 1 ? 'active' : ($r['code'] === '' && (int) $r['sales_all'] === 0 ? 'pending' : 'inactive');
+    // 26 Nov 2026 (fx1): counter staff an agent added (they get a code at once) wait for the office - "Pending", not "Deactivated".
+    if ($r['status'] === 'inactive' && !empty($r['parent_agent_id']) && empty($r['last_login_at']) && (int) $r['sales_all'] === 0) {
+        $r['status'] = 'pending';
+    }
+    $r['kyc']     = strtolower(trim((string) ($r['kyc_status'] ?? '')));
+    $r['kyc_ok']  = $r['kyc'] === 'verified';
     $r['wa']      = (string) ($r['whatsapp'] ?: $r['phone'] ?: $r['display_phone'] ?: '');
     // What this agent is actually paid per passenger (override > tier > percent engine).
     $ov = AgentWallet::commissionOverrideFor($id);
@@ -452,14 +485,18 @@ foreach ($rows as &$r) {
 }
 unset($r);
 // Serial order: numbered agents first (1, 2, 3...), then the un-numbered by id.
-usort($rows, static function (array $x, array $y): int {
+// 26 Nov 2026 (fx1): KYC-verified agents come first, each group still in serial order
+// (switch agent_list_verified_first_on, default 1; 0 = plain serial order as before).
+$verifiedFirst = Settings::getBool('agent_list_verified_first_on', true);
+usort($rows, static function (array $x, array $y) use ($verifiedFirst): int {
+    if ($verifiedFirst && $x['kyc_ok'] !== $y['kyc_ok']) { return $x['kyc_ok'] ? -1 : 1; }
     $sx = $x['serial'] ?? PHP_INT_MAX; $sy = $y['serial'] ?? PHP_INT_MAX;
     if ($sx !== $sy) { return $sx <=> $sy; }
     return (int) $x['id'] <=> (int) $y['id'];
 });
 
 $header = ['Serial', 'Type', 'Agent code', 'Name', 'Contact person', 'Mobile', 'WhatsApp', 'City / counter', 'Address', 'Email', 'Document',
-           'Commission rate', 'Commission due (Rs)', 'Cash held (Rs)', 'Sales', 'Revenue (Rs)', 'Daily limit', 'Status', 'Last sale', 'Last login', 'Joined'];
+           'Commission rate', 'Commission due (Rs)', 'Cash held (Rs)', 'Sales', 'Revenue (Rs)', 'Daily limit', 'Status', 'Last sale', 'Last login', 'Joined', 'KYC'];   // KYC last: the numeric column numbers below stay as they were
 $flat   = static fn(array $r): array => [
     $r['serial'] === null ? '' : (int) $r['serial'], AgentWallet::kindLabel($r['kind']), (string) $r['code'],
     (string) ($r['full_name'] ?? ''), (string) ($r['contact_person'] ?? ''), (string) ($r['phone'] ?? ''), (string) $r['wa'],
@@ -468,6 +505,7 @@ $flat   = static fn(array $r): array => [
     $r['rate'] . ' (' . $r['rate_note'] . ')', $r['comm_due'], $r['cash_bal'], (int) $r['sales'], (float) $r['revenue'], (int) ($r['daily_booking_limit'] ?? 0),
     ucfirst((string) $r['status']), (string) ($r['last_sale'] ?? ''), (string) ($r['last_login_at'] ?? ''),
     (string) ($r['joined_on'] ?: substr((string) $r['created_at'], 0, 10)),
+    $r['kyc_ok'] ? 'Verified' : ($r['kyc'] === 'rejected' ? 'Rejected' : ($r['kyc'] === 'submitted' ? 'Submitted - to check' : 'Not done')),
 ];
 $export = (string) ($_GET['export'] ?? '');
 if ($export === 'csv' || $export === 'xlsx') {
@@ -497,6 +535,11 @@ $dueSum  = array_sum(array_map(static fn($r) => $r['comm_due'], $tableRows));
 $csrf    = Security::e(Security::csrfToken());
 $k       = CSRF_TOKEN_NAME;
 $e       = static fn($v): string => Security::e((string) ($v ?? ''));
+/* 26 Nov 2026 (fx1): a value handed to an inline onclick="fn('…')" as a JS string. '<?= $e($name) ?>'
+   was not safe there: the browser turns &#039; back into ' before the script runs, so a name with an
+   apostrophe (O'Brien) killed the ID-card / settlement buttons, and a crafted applicant name could
+   run script in the office user's session. JSON-encoded, then HTML-escaped for the attribute. */
+$jsq     = static fn($v): string => Security::e((string) json_encode((string) ($v ?? ''), JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP));
 $cities  = array_values(array_unique(array_filter(array_map(static fn($r) => (string) ($r['counter_name'] ?? ''), $rows))));
 sort($cities);
 $nextOrg    = AgentWallet::nextFreeAgentCode(AgentWallet::KIND_ORG);
@@ -535,7 +578,7 @@ admin_header('Agents & Organization Hub', 'agents');
     <span>👔 2. Company Staff</span><span class="tier-badge"><?= count($staffRows) ?></span>
   </a>
   <a href="?tier=pvt_ltd" class="tier-tab <?= $activeTier === 'pvt_ltd' ? 'active' : '' ?>">
-    <span>🏢 1. Pvt Ltd &amp; Branches</span><span class="tier-badge">5 Offices</span>
+    <span>🏢 1. Pvt Ltd &amp; Branches</span><?php if ($branches !== []): ?><span class="tier-badge"><?= count($branches) ?> Offices</span><?php endif; ?>
   </a>
 </div>
 
@@ -565,6 +608,7 @@ admin_header('Agents & Organization Hub', 'agents');
     <select data-dt-filter="city" aria-label="City"><option value="">All cities</option><?php foreach ($cities as $c): ?><option value="<?= $e($c) ?>"><?= $e($c) ?></option><?php endforeach; ?></select>
     <?php endif; ?>
     <select data-dt-filter="sold" aria-label="Sales"><option value="">Any sales</option><option value="1">Has sales</option><option value="0">No sales yet</option></select>
+    <select data-dt-filter="kyc" aria-label="KYC"><option value="">KYC: सबै · all</option><option value="1">KYC ✓ verified</option><option value="0">KYC बाँकी · pending</option></select>
     <a class="btn ghost" href="agents.php?tier=<?= $activeTier ?>&amp;export=csv">⬇ CSV</a>
     <a class="btn ghost" href="agents.php?tier=<?= $activeTier ?>&amp;export=xlsx">⬇ Excel</a>
     <?php if ($canManage): ?><a class="btn" href="staff.php#addStaff">＋ New <?= $activeTier === 'sub_agents' ? 'Sub-Agent' : 'Agent' ?></a><?php endif; ?>
@@ -599,7 +643,7 @@ admin_header('Agents & Organization Hub', 'agents');
       if ($waDigits !== '' && strlen($waDigits) === 10) { $waDigits = '91' . $waDigits; }
       $appRef = (string) ($r['app_ref'] ?: ('AGR-' . str_pad((string) $r['id'], 6, '0', STR_PAD_LEFT)));
     ?>
-      <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
+      <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>" data-kyc="<?= $r['kyc_ok'] ? '1' : '0' ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
         <td style="text-align:center"><input type="checkbox" class="agent-cb" value="<?= (int) $r['id'] ?>" data-name="<?= $e($r['full_name'] ?: $r['username']) ?>" style="width:16px;height:16px;cursor:pointer"></td>
         <td class="num" data-sort="<?= $r['serial'] === null ? 99999 : (int) $r['serial'] ?>"><?= $r['serial'] === null ? '<span class="muted">—</span>' : '<b>' . (int) $r['serial'] . '</b>' ?></td>
         <td data-sort="<?= $e($r['kind']) ?>"><?= $isOrg
@@ -608,8 +652,13 @@ admin_header('Agents & Organization Hub', 'agents');
         <td class="mono"><?= $r['code'] !== '' ? '<span class="pill" style="background:#efeaff;color:#5a3fb0;font-weight:700">' . $e($r['code']) . '</span>' : '<span class="muted">—</span>' ?></td>
         <td>
           <b><?= $e($r['full_name'] ?: $r['username']) ?></b>
+          <?php if (!$r['kyc_ok']): /* 26 Nov 2026 (fx1): unverified agents are marked on the list */ ?>
+            <?php if ($r['kyc'] === 'rejected'): ?><span class="pill" data-kyc-pill style="background:#f7dcdc;color:#8a1f1f;font-size:11px">KYC ✗ मिलेन</span>
+            <?php elseif ($r['kyc'] === 'submitted'): ?><span class="pill" data-kyc-pill style="background:#fef3c7;color:#92400e;font-size:11px" title="Documents sent — the office has to check them">KYC बाँकी · जाँच गर्नुपर्ने</span>
+            <?php else: ?><span class="pill" data-kyc-pill style="background:#fef3c7;color:#92400e;font-size:11px" title="No verified ID on file">KYC बाँकी</span><?php endif; ?>
+          <?php endif; ?>
           <?php if (!empty($r['parent_agent_name'])): ?>
-            <div style="font-size:11.5px;color:#0d3b66;font-weight:600">🏢 Master: <?= $e($r['parent_agent_name']) ?></div>
+            <div style="font-size:11.5px;color:var(--mut);font-weight:600">🏢 Master: <?= $e($r['parent_agent_name']) ?></div>
           <?php elseif ((int)($r['subagent_count'] ?? 0) > 0): ?>
             <div><a href="agents.php?tier=sub_agents&amp;parent=<?= (int)$r['id'] ?>" class="pill" style="background:#e0f2fe;color:#0369a1;font-size:11px;text-decoration:none">👥 <?= (int)$r['subagent_count'] ?> Sub-agents &rarr;</a></div>
           <?php endif; ?>
@@ -623,7 +672,7 @@ admin_header('Agents & Organization Hub', 'agents');
         <td class="num" data-sort="<?= (int) ($r['pax'] ?? 0) ?>"><b><?= (int) ($r['pax'] ?? 0) ?> जना</b><div class="muted" style="font-size:11px"><?= (int) $r['sales'] ?> tickets · ₹<?= number_format((float) $r['revenue']) ?></div></td>
         <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?><?php if (isset($creditHeld[(int) $r['id']])): /* 25 Nov 2026 (op5-credit): Agent 360 "Stop selling" */ ?> <span class="pill" style="background:#f7dcdc;color:#8a1f1f" title="<?= $e($creditHeld[(int) $r['id']]) ?>">⛔ On hold · रोकिएको</span><?php endif; ?></td>
         <td><span class="dt-acts">
-          <button type="button" class="btn ghost" onclick="openIdModal('<?= $e($appRef) ?>','<?= $e($r['full_name'] ?: $r['username']) ?>','<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>','<?= $e($r['code']) ?>','<?= $e($r['phone']) ?>','<?= $e($waDigits) ?>','<?= $e($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>')" title="One-Tap ID Card &amp; Agreement Preview">🪪 ID Card</button>
+          <button type="button" class="btn ghost" onclick="openIdModal(<?= $jsq($appRef) ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,'<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>',<?= $jsq($r['code']) ?>,<?= $jsq($r['phone']) ?>,<?= $jsq($waDigits) ?>,<?= $jsq($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>,'<?= $r['kyc_ok'] ? '1' : '0' ?>')" title="One-Tap ID Card &amp; Agreement Preview">🪪 ID Card</button>
           <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
           <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
           <a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>" title="Wallet, ledger, payouts">💼 Wallet</a>
@@ -655,8 +704,8 @@ admin_header('Agents & Organization Hub', 'agents');
           <div class="kv"><label>Joined Date</label><b><?= $e($r['joined_on'] ?: substr((string) $r['created_at'], 0, 10)) ?></b></div>
         </div>
         <div class="dt-acts" style="padding:6px 2px">
-          <button type="button" class="btn" onclick="openIdModal('<?= $e($appRef) ?>','<?= $e($r['full_name'] ?: $r['username']) ?>','<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>','<?= $e($r['code']) ?>','<?= $e($r['phone']) ?>','<?= $e($waDigits) ?>','<?= $e($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>')">🪪 ID Card &amp; Agreement Preview</button>
-          <?php if ($canSettleWallet): ?><button type="button" class="btn ghost" onclick="openSettleModal(<?= (int)$r['id'] ?>,'<?= $e($r['full_name'] ?: $r['username']) ?>',<?= (float)$r['comm_due'] ?>,<?= (float)$r['cash_bal'] ?>)">💵 Record Wallet Settlement</button><?php endif; ?>
+          <button type="button" class="btn" onclick="openIdModal(<?= $jsq($appRef) ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,'<?= $isOrg ? 'Master Agent (Partner)' : 'Authorized Booking Agent' ?>',<?= $jsq($r['code']) ?>,<?= $jsq($r['phone']) ?>,<?= $jsq($waDigits) ?>,<?= $jsq($r['joined_on'] ?: substr((string)$r['created_at'],0,10)) ?>,'<?= $r['kyc_ok'] ? '1' : '0' ?>')">🪪 ID Card &amp; Agreement Preview</button>
+          <?php if ($canSettleWallet): ?><button type="button" class="btn ghost" onclick="openSettleModal(<?= (int)$r['id'] ?>,<?= $jsq($r['full_name'] ?: $r['username']) ?>,<?= (float)$r['comm_due'] ?>,<?= (float)$r['cash_bal'] ?>)">💵 Record Wallet Settlement</button><?php endif; ?>
           <a class="btn ghost" href="agent-passengers.php?agent=<?= (int) $r['id'] ?>">🧑‍🤝‍🧑 Passengers</a>
           <a class="btn ghost" href="agent-offline.php?agent=<?= (int) $r['id'] ?>">🧾 Paper tickets</a>
         </div>
@@ -758,7 +807,7 @@ admin_header('Agents & Organization Hub', 'agents');
           </form>
         </td>
         <td>
-          <button type="button" class="btn ghost" onclick="openIdModal('<?= $e($sRef) ?>','<?= $e($st['full_name'] ?: $st['username']) ?>','<?= ucfirst($st['role']) ?> - S Hari Global','SHG-STF-<?= str_pad((string)$st['id'],4,'0',STR_PAD_LEFT) ?>','<?= $e($st['phone']) ?>','<?= $e($waDigits) ?>','<?= substr((string)$st['created_at'],0,10) ?>')">🪪 View Staff ID</button>
+          <button type="button" class="btn ghost" onclick="openIdModal(<?= $jsq($sRef) ?>,<?= $jsq($st['full_name'] ?: $st['username']) ?>,<?= $jsq(ucfirst((string) $st['role']) . ' - S Hari Global') ?>,'SHG-STF-<?= str_pad((string)$st['id'],4,'0',STR_PAD_LEFT) ?>',<?= $jsq($st['phone']) ?>,<?= $jsq($waDigits) ?>,'<?= substr((string)$st['created_at'],0,10) ?>')">🪪 View Staff ID</button>
         </td>
       </tr>
     <?php endforeach; ?>
@@ -772,44 +821,52 @@ admin_header('Agents & Organization Hub', 'agents');
     
     <!-- CORPORATE & BANK SETTINGS -->
     <div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:18px">
-      <h3 style="margin:0 0 12px;font-size:16px;color:#0d3b66;display:flex;align-items:center;gap:8px">🏢 Corporate Profile &amp; Banking</h3>
+      <h3 style="margin:0 0 12px;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:8px">🏢 Corporate Profile &amp; Banking</h3>
+      <?php /* 26 Nov 2026 (fx1): the super-admin edits; anyone else reads the public lines only - UPI and
+               bank numbers are neither shown to nor posted by a staff manager. */
+            $pvtRo = $pvtMayEdit ? '' : ' disabled';
+            $pvtSecret = static fn(string $key) => $pvtMayEdit ? Security::e((string) ($pvtLtd[$key] ?? '')) : ''; ?>
+      <?php if (!$pvtMayEdit): ?><p class="muted" style="margin:0 0 10px;font-size:12.5px">🔒 सुपर-एडमिनले मात्र बदल्न मिल्छ · Only the super-admin can change these. Bank and UPI details are hidden.</p><?php endif; ?>
       <form method="post">
-        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="save_pvt_ltd">
+        <?php if ($pvtMayEdit): ?><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="save_pvt_ltd"><?php endif; ?>
         <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
-          <label>Company Legal Name<input name="legal_name" value="<?= $e($pvtLtd['legal_name'] ?? 'S Hari Global Pvt Ltd') ?>" required></label>
+          <label>Company Legal Name<input name="legal_name" value="<?= $e($pvtLtd['legal_name'] ?? '') ?>" required<?= $pvtRo ?>></label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <label>CIN Number<input name="cin_number" value="<?= $e($pvtLtd['cin'] ?? '') ?>"></label>
-            <label>GST Number<input name="gst_number" value="<?= $e($pvtLtd['gst'] ?? '') ?>"></label>
+            <label>CIN Number<input name="cin_number" value="<?= $e($pvtLtd['cin'] ?? '') ?>"<?= $pvtRo ?>></label>
+            <label>GST Number<input name="gst_number" value="<?= $e($pvtLtd['gst'] ?? '') ?>"<?= $pvtRo ?>></label>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <label>PAN Number<input name="pan_number" value="<?= $e($pvtLtd['pan'] ?? '') ?>"></label>
-            <label>Company UPI ID<input name="upi_id" value="<?= $e($pvtLtd['upi'] ?? '') ?>"></label>
+            <label>PAN Number<input name="pan_number" value="<?= $pvtSecret('pan') ?>"<?= $pvtRo ?>></label>
+            <label>Company UPI ID<input name="upi_id" value="<?= $pvtSecret('upi') ?>"<?= $pvtRo ?>></label>
           </div>
-          <label>Bank Name<input name="bank_name" value="<?= $e($pvtLtd['bank_name'] ?? 'State Bank of India') ?>"></label>
+          <label>Bank Name<input name="bank_name" value="<?= $pvtSecret('bank_name') ?>"<?= $pvtRo ?>></label>
           <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:8px">
-            <label>Bank Account No.<input name="bank_acc" value="<?= $e($pvtLtd['bank_acc'] ?? '') ?>"></label>
-            <label>IFSC Code<input name="bank_ifsc" value="<?= $e($pvtLtd['bank_ifsc'] ?? '') ?>"></label>
+            <label>Bank Account No.<input name="bank_acc" value="<?= $pvtSecret('bank_acc') ?>"<?= $pvtRo ?>></label>
+            <label>IFSC Code<input name="bank_ifsc" value="<?= $pvtSecret('bank_ifsc') ?>"<?= $pvtRo ?>></label>
           </div>
           <label>Broadcast Notice / Official Policy Announcement
-            <textarea name="announcement" rows="3" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--line)"><?= $e($pvtLtd['announcement'] ?? '') ?></textarea>
+            <textarea name="announcement" rows="3" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--ink)"<?= $pvtRo ?>><?= $e($pvtLtd['announcement'] ?? '') ?></textarea>
           </label>
-          <button class="btn" type="submit" style="margin-top:6px">💾 Save Corporate Details</button>
+          <?php if ($pvtMayEdit): ?><button class="btn" type="submit" style="margin-top:6px">💾 Save Corporate Details</button><?php endif; ?>
         </div>
       </form>
     </div>
 
-    <!-- 5 OFFICIAL BRANCH OFFICES -->
+    <!-- BRANCH OFFICES (as saved; the live office list is Locations) -->
     <div style="background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:18px">
-      <h3 style="margin:0 0 12px;font-size:16px;color:#0d3b66;display:flex;align-items:center;gap:8px">📍 Head Office &amp; 4 Branch Offices</h3>
+      <h3 style="margin:0 0 12px;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:8px">📍 Head Office &amp; Branch Offices</h3>
       <div style="display:flex;flex-direction:column;gap:12px">
+        <?php if ($branches === []): ?>
+          <p class="muted" style="margin:0;font-size:13px">यहाँ कुनै शाखा राखिएको छैन। अफिसहरू (ठेगाना, फोन, इन्चार्ज) <a href="/admin/locations.php">Locations</a> मा राखिन्छन् — वेबसाइटले त्यही देखाउँछ।<br>No branch is saved here. Offices (address, phone, in-charge) are kept in <a href="/admin/locations.php">Locations</a>, which is what the website shows.</p>
+        <?php endif; ?>
         <?php foreach ($branches as $bKey => $br): ?>
           <div style="padding:12px;background:var(--hover,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:8px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-              <b style="color:#0d3b66"><?= $e($br['name'] ?? $bKey) ?></b>
+              <b style="color:var(--ink)"><?= $e($br['name'] ?? $bKey) ?></b>
               <span class="pill" style="background:#e0f2fe;color:#0369a1;font-size:11px"><?= $e($br['city'] ?? '') ?></span>
             </div>
             <div style="font-size:12px;color:var(--mut);margin-bottom:4px">👤 Manager: <b><?= $e($br['manager'] ?? '—') ?></b> · 📞 <?= $e($br['phone'] ?? '—') ?></div>
-            <div style="font-size:12px;color:#475569">🏢 <?= $e($br['address'] ?? '—') ?></div>
+            <div style="font-size:12px;color:var(--mut)">🏢 <?= $e($br['address'] ?? '—') ?></div>
           </div>
         <?php endforeach; ?>
       </div>
@@ -823,7 +880,7 @@ admin_header('Agents & Organization Hub', 'agents');
   <div class="id-preview-box">
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
       <div>
-        <h3 style="margin:0;font-size:18px;color:#0d3b66" id="mName">Official ID Card &amp; Agreement</h3>
+        <h3 style="margin:0;font-size:18px;color:var(--ink)" id="mName">Official ID Card &amp; Agreement</h3>
         <div style="font-size:12px;color:var(--mut)" id="mRole">S Hari Global Pvt Ltd Official Credentials</div>
       </div>
       <button type="button" class="btn ghost" onclick="closeIdModal()" style="font-size:18px;padding:4px 10px">&times;</button>
@@ -845,9 +902,11 @@ admin_header('Agents & Organization Hub', 'agents');
       </div>
     </div>
 
-    <div style="margin-top:18px;padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div style="font-size:12.5px;color:#166534">
-        <b>✓ Verified Credentials:</b> Authentic S Hari Global Identity with official Verification QR &amp; signed agreement.
+    <?php /* 26 Nov 2026 (fx1): this line said "✓ Verified Credentials ... signed agreement" for EVERY agent,
+             KYC done or not. It now follows the row: verified, KYC pending, or (staff) the plain card line. */ ?>
+    <div id="mVerifyBox" style="margin-top:18px;padding:12px 16px;background:var(--head);border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-size:12.5px;color:var(--ink)" id="mVerifyText">
+        S Hari Global ID card with the verification QR.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a id="mBtnPdf" href="" target="_blank" class="btn" style="background:#0d3b66;color:#fff">⬇ Download ID Card PDF</a>
@@ -862,7 +921,7 @@ admin_header('Agents & Organization Hub', 'agents');
 <div class="id-preview-modal" id="settleModal" hidden onclick="if(event.target===this)closeSettleModal()">
   <div class="id-preview-box" style="max-width:480px">
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:14px">
-      <h3 style="margin:0;font-size:17px;color:#0d3b66">💵 Record Wallet Settlement</h3>
+      <h3 style="margin:0;font-size:17px;color:var(--ink)">💵 Record Wallet Settlement</h3>
       <button type="button" class="btn ghost" onclick="closeSettleModal()">&times;</button>
     </div>
     <form method="post">
@@ -896,7 +955,12 @@ admin_header('Agents & Organization Hub', 'agents');
 </div>
 
 <script>
-function openIdModal(ref, name, role, code, phone, waDigits, date) {
+function openIdModal(ref, name, role, code, phone, waDigits, date, kyc) {
+  // kyc: '1' verified, '0' not yet (agents); undefined for company staff
+  var vt = document.getElementById('mVerifyText'), vb = document.getElementById('mVerifyBox');
+  if (kyc === '1') { vt.textContent = '✓ KYC प्रमाणित · KYC verified — ID card with the verification QR.'; vb.style.borderColor = '#0a8b4b'; }
+  else if (kyc === '0') { vt.textContent = '⚠ KYC बाँकी · KYC not verified yet — check the ID document before handing this card over.'; vb.style.borderColor = '#F07C1F'; }
+  else { vt.textContent = 'S Hari Global ID card with the verification QR.'; vb.style.borderColor = ''; }
   document.getElementById('mName').textContent = name + (code ? ' (' + code + ')' : '');
   document.getElementById('mRole').textContent = role + ' · Joined: ' + (date || 'Active');
   document.getElementById('mImgFront').src = 'id-card.php?ref=' + encodeURIComponent(ref) + '&side=front';

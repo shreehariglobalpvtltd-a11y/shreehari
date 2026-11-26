@@ -1399,7 +1399,9 @@ final class AiTools
                 'esewaId' => Settings::getString('esewa_id', ''),
                 'bookingId' => (int) $detail['id'],
             ],
+            // fx1 (26 Nov 2026): a pay-at-boarding (COD) booking never gets a pay QR, whatever its status
             'media' => (string) $detail['status'] === 'pending' && Settings::getString('upi_id', '') !== '' && $due > 0
+                && (int) ($detail['is_cod'] ?? 0) !== 1
                 ? appUrl('pay-image.php?pnr=' . urlencode((string) $detail['pnr']))
                 : null,
         ];
@@ -1774,8 +1776,16 @@ final class AiTools
         if (self::cancelAsRequest($ctx)) {
             require_once INCLUDE_PATH . '/waedit.php';
             $quoted = (float) ($staged['amount'] ?? 0);
-            $req = WaEdit::requestCancel($pnr, (string) (($ctx['intl'] ?? '') !== '' ? $ctx['intl'] : ($ctx['phone'] ?? '')),
-                (string) ($ctx['country'] ?? ''), Security::clean((string) ($args['reason'] ?? ''), 200), $quoted);
+            /* fx1 (26 Nov 2026): the request is also filed from the website and Messenger. It needs the
+               passenger's number for the office to call back; a sender with none is sent to the office. */
+            $reqFrom = (string) (($ctx['intl'] ?? '') !== '' ? $ctx['intl'] : ($ctx['phone'] ?? ''));
+            if (strlen((string) preg_replace('/\D+/', '', $reqFrom)) < 10) {
+                return self::no('A cancel request needs the mobile number of the booking. Give the office number: ' . Settings::officePhone() . ' — the office cancels and refunds by hand.');
+            }
+            $reqVia = (string) ($ctx['via'] ?? '') === 'facebook' ? '[Messenger] '
+                : (((string) ($ctx['channel'] ?? 'whatsapp')) === 'web' ? '[Website] ' : '');
+            $req = WaEdit::requestCancel($pnr, $reqFrom,
+                (string) ($ctx['country'] ?? ''), $reqVia . Security::clean((string) ($args['reason'] ?? ''), 200), $quoted);
             if (!$req['ok']) {
                 return self::no((string) $req['why']);
             }
@@ -2698,6 +2708,24 @@ final class AiTools
         }
         if ((string) ($ctx['role'] ?? '') !== 'admin') {
             return self::no('Only an office number may confirm a payment.');
+        }
+        /* 26 Nov 2026 (fx1; owner's rule: approving a payment is the super-admin's): role 'admin' is a manager
+           too, and the step-up gate in run() applies only while wa_ops_stepup_on is on — so with it off a
+           manager's NUMBER alone could confirm a pending payment from chat. Now: the super-admin only, and
+           always behind a FRESH step-up (the one-time link opened while signed in to the panel), whatever the
+           global step-up switch says. Switch wa_confirm_super_only_on (default 1) — off = the rule above only. */
+        if (Settings::getBool('wa_confirm_super_only_on', true)) {
+            if (self::adminRole($ctx) !== 'superadmin') {
+                return self::no('Only the super-admin may confirm a payment from WhatsApp — use Admin → Payments.');
+            }
+            if (!AiVerify::available() || !AiVerify::isFresh($ctx)) {
+                if (AiVerify::available() && (int) ($ctx['adminId'] ?? 0) > 0 && (string) ($ctx['phone'] ?? '') !== '') {
+                    $c = AiVerify::challenge($ctx);
+                    return ['ok' => false, 'say' => 'VERIFICATION NEEDED before office_confirm. ' . $c['say'],
+                        'data' => $c['data'] + ['tool' => 'office_confirm', 'needs_verification' => true], 'media' => null];
+                }
+                return self::no('Confirming a payment from WhatsApp needs a fresh verification, which is not available here — use Admin → Payments.');
+            }
         }
 
         $pnr    = strtoupper(trim((string) ($args['pnr'] ?? '')));
@@ -3808,15 +3836,26 @@ final class AiTools
     /**
      * P6-2d (16 Nov 2026): does cancel_ticket only FILE a request for this sender?
      * A passenger (role customer) on WhatsApp, while wa_ai_cancel_mode is 'request'
-     * (the default; 'self' = the old self-cancel). Staff, agents, the office, the
-     * website and Messenger are unchanged.
+     * (the default; 'self' = the old self-cancel). Staff, agents and the office are
+     * unchanged.
+     * 26 Nov 2026 (fx1; owner's rule: every cancel and refund is settled by hand): the
+     * WEBSITE and MESSENGER assistants called BookingService::cancel() for a verified
+     * passenger — a real cancel with a registered refund. With ai_cancel_request_all_on
+     * (default 1) a passenger only files the request on EVERY channel. The owner's own
+     * override wa_ai_cancel_mode = 'self' (now a super-admin's setting) still means
+     * self-cancel, as before. Switch off = the WhatsApp-only rule of 16 Nov.
      */
     private static function cancelAsRequest(array $ctx): bool
     {
-        return ((string) ($ctx['role'] ?? 'customer')) === 'customer'
-            && ((string) ($ctx['channel'] ?? 'whatsapp')) === 'whatsapp'
-            && ((string) ($ctx['via'] ?? '')) !== 'facebook'
-            && strtolower(trim(Settings::getString('wa_ai_cancel_mode', 'request'))) !== 'self';
+        if (((string) ($ctx['role'] ?? 'customer')) !== 'customer'
+            || strtolower(trim(Settings::getString('wa_ai_cancel_mode', 'request'))) === 'self') {
+            return false;
+        }
+        if (Settings::getBool('ai_cancel_request_all_on', true)) {
+            return true;
+        }
+        return ((string) ($ctx['channel'] ?? 'whatsapp')) === 'whatsapp'
+            && ((string) ($ctx['via'] ?? '')) !== 'facebook';
     }
 
     /**

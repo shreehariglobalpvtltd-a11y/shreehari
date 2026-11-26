@@ -488,6 +488,44 @@ final class CounterDesk
     }
 
     /**
+     * Whose day may this login read on admin/desk-day.php? (fx1, 26 Nov 2026.)
+     *
+     * The Nepal counter home links "Today's list" for the clerk, but the list
+     * booted with reports.view, which a counter login does not hold - the
+     * clerk's own button answered "not for your role".
+     *
+     *   office (super-admin / reports.view): the desk asked for when it
+     *     exists, else NPJ, else the first desk - exactly as before.
+     *   anyone else: ONLY the desk they sit on, whatever ?desk= says. A
+     *     counter AGENT (may see only their own sales - a desk's day lists
+     *     every clerk's tickets) and a login with no desk get null = no page.
+     *
+     * Decides nothing about money and reads no booking.
+     *
+     * @param array<string,mixed>|null $admin the signed-in admins row
+     */
+    public static function dayListDesk(?array $admin, string $asked, bool $isOffice): ?string
+    {
+        $desks = self::all();
+        if ($isOffice) {
+            $asked = self::normaliseCode($asked);
+            if ($asked !== '' && isset($desks[$asked])) {
+                return $asked;
+            }
+            $first = isset($desks['NPJ']) ? 'NPJ' : (string) (array_key_first($desks) ?? '');
+
+            return $first === '' ? null : $first;
+        }
+        $id = (int) ($admin['id'] ?? 0);
+        if ($id <= 0 || (string) ($admin['role'] ?? '') === 'agent') {
+            return null;
+        }
+        $own = self::forAdmin($id)['code'];
+
+        return $own !== '' && isset($desks[$own]) ? $own : null;
+    }
+
+    /**
      * Create or update a desk. Returns the stored code.
      *
      * The settings mirror (counter_locations, "CODE|Name" per line) is

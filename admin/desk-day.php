@@ -13,13 +13,41 @@
  *
  * Read-only. reports.view; a desk-isolated clerk sees only their own desk.
  *   ?day=YYYY-MM-DD (default today)   ?desk=<code> (default NPJ when it exists)
+ *
+ * fx1 (26 Nov 2026): the Nepal counter home links this page for the CLERK, but
+ * a counter login has no reports.view, so their own "Today's list" button said
+ * "not for your role". The page now boots signed-in only and then decides:
+ *   office (super-admin / reports.view) - exactly as before, any desk;
+ *   a clerk who sits on a desk and may see bookings + payments - that ONE desk, whatever
+ *   ?desk= says (switch desk_day_clerk_on, default on; off = office only);
+ *   an agent (own sales only), a login with no desk, anyone else - 403.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/counterdesk.php';
 
-$admin = admin_boot('reports.view');
+/* Signed-in only at the door; WHO may read is decided right below. (Booting with
+   bookings.view shut out a login that holds reports.view without it - an office
+   role the owner built in Permissions - which this page always let in.) */
+$admin = admin_boot('');
 $e     = static fn($v): string => Security::e((string) $v);
+$isOffice = Auth::isSuperadmin() || Auth::can('reports.view');
+$clerkDesk = null;
+if (!$isOffice) {
+    $clerkDesk = Settings::getBool('desk_day_clerk_on', true) && Auth::can('bookings.view') && Auth::can('payments.view')
+        ? CounterDesk::dayListDesk($admin, (string) ($_GET['desk'] ?? ''), false)
+        : null;
+    if ($clerkDesk === null) {
+        Logger::warning('Permission denied', ['admin' => $admin['username'] ?? '', 'permission' => 'desk-day']);
+        http_response_code(403);
+        admin_header('Counter day', 'desk-day');
+        echo '<div class="flash bad">यो सूची कार्यालय र आफ्नै काउन्टरमा बसेको काउन्टर कर्मचारीका लागि मात्र हो। '
+           . '· This list is for the office and for a counter clerk on their own desk.</div>'
+           . '<p><a class="btn" href="/admin/smartbook.php">← टिकट काट्ने ठाउँ · Back to the desk</a></p>';
+        admin_footer();
+        exit;
+    }
+}
 $day   = Security::isValidDate((string) ($_GET['day'] ?? '')) ? (string) $_GET['day'] : todayISO();
 $desks = CounterDesk::all();
 $desk  = strtoupper(trim((string) ($_GET['desk'] ?? '')));
@@ -27,6 +55,11 @@ $scope = method_exists('Auth', 'deskScopeCode') ? Auth::deskScopeCode() : null;
 if ($scope !== null && $scope !== '') {
     $desk = strtoupper($scope);
 }
+if ($clerkDesk !== null) {
+    $desk  = $clerkDesk;      // a clerk reads their own desk only - ?desk= is ignored
+    $scope = $clerkDesk;      // ... and the picker is locked, like under desk isolation
+}
+$mayMemo = Auth::can('reports.view');   // admin/day-memo.php boots with reports.view
 if ($desk === '' || !isset($desks[$desk])) {
     $desk = isset($desks['NPJ']) ? 'NPJ' : (string) (array_key_first($desks) ?? '');
 }
@@ -92,7 +125,8 @@ admin_header('Counter day · ' . $desk, 'desk-day');
 <style>
 .dd-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:0 0 14px}
 .dd-bar label{display:flex;flex-direction:column;font-size:12.5px;gap:4px}
-.dd-bar input,.dd-bar select{min-height:44px;padding:0 10px;border-radius:10px;border:1px solid #cbd5e1;font-size:15px}
+.dd-bar input,.dd-bar select{min-height:44px;padding:0 10px;border-radius:10px;border:1px solid #cbd5e1;font-size:16px}
+.dd-bar .btn{min-height:44px;display:inline-flex;align-items:center}
 .dd-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:0 0 14px}
 .dd-kpi div{background:var(--card,#fff);border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px}
 .dd-kpi b{display:block;font-size:22px}
@@ -111,7 +145,7 @@ admin_header('Counter day · ' . $desk, 'desk-day');
   <a class="btn ghost" href="?desk=<?= $e($desk) ?>&amp;day=<?= $e(date('Y-m-d', strtotime($day . ' -1 day'))) ?>">← अघिल्लो</a>
   <a class="btn ghost" href="?desk=<?= $e($desk) ?>&amp;day=<?= $e(date('Y-m-d', strtotime($day . ' +1 day'))) ?>">अर्को →</a>
   <button class="btn ghost" type="button" onclick="window.print()">🖨️ Print / PDF</button>
-  <a class="btn ghost" href="day-memo.php?day=<?= $e($day) ?>&amp;desk=<?= $e($desk) ?>">🧾 Day memo (cash)</a>
+  <?php if ($mayMemo): ?><a class="btn ghost" href="day-memo.php?day=<?= $e($day) ?>&amp;desk=<?= $e($desk) ?>">🧾 Day memo (cash)</a><?php endif; ?>
 </form>
 
 <h2 style="margin:0 0 10px">🧾 <?= $e(CounterDesk::label($desk, (string) ($d['name'] ?? ''))) ?> · <?= $e(formatDate($day, 'j M Y')) ?></h2>
@@ -154,5 +188,5 @@ admin_header('Counter day · ' . $desk, 'desk-day');
 </tbody></table>
 <?php endif; ?>
 </div>
-<p class="muted" style="font-size:12.5px">Tickets cut at this desk (the desk saved on the sale, else the clerk's desk). Cancelled tickets are listed but not counted. Cash in the drawer and closing: <a href="day-memo.php?day=<?= $e($day) ?>&amp;desk=<?= $e($desk) ?>">Day memo</a>.</p>
+<p class="muted" style="font-size:12.5px">Tickets cut at this desk (the desk saved on the sale, else the clerk's desk). Cancelled tickets are listed but not counted.<?php if ($mayMemo): ?> Cash in the drawer and closing: <a href="day-memo.php?day=<?= $e($day) ?>&amp;desk=<?= $e($desk) ?>">Day memo</a>.<?php endif; ?></p>
 <?php admin_footer();

@@ -483,6 +483,13 @@ final class WebPush
         ]);
         if ($id !== (int) $old['id']) {
             Database::update('push_subscriptions', ['is_active' => 0], 'id = :i', ['i' => (int) $old['id']]);
+            /* 26 Nov 2026 (fx1): a phone that rings for new tickets (alert_push_optin) keeps
+               ringing after the rotation. Its own try: the table may not exist yet. */
+            try {
+                Database::run('UPDATE IGNORE alert_push_optin SET endpoint_hash = :n WHERE endpoint_hash = :o',
+                    ['n' => sha1($sub['endpoint']), 'o' => (string) $old['endpoint_hash']]);
+            } catch (Throwable $e) {
+            }
         }
         return $id;
     }
@@ -552,8 +559,14 @@ final class WebPush
         }
     }
 
-    /** @return array{sent:int, failed:int, skipped:int} */
-    public static function sendToAdmin(int $adminId, array $payload, string $event = ''): array
+    /**
+     * 26 Nov 2026 (fx1): $ttl / $urgency / $topic - a ring ("new ticket") must not arrive
+     * hours late on a phone that was off, and a queued repeat replaces the one before it
+     * (Topic). Every older caller keeps the one-day default and sends no Topic.
+     *
+     * @return array{sent:int, failed:int, skipped:int}
+     */
+    public static function sendToAdmin(int $adminId, array $payload, string $event = '', int $ttl = self::TTL_DEFAULT, string $urgency = 'high', string $topic = ''): array
     {
         $out = ['sent' => 0, 'failed' => 0, 'skipped' => 0];
         try {
@@ -568,10 +581,16 @@ final class WebPush
         }
         $payload['event'] = $event;
         foreach ($subs as $sub) {
-            $r = self::send($sub, $payload);
+            $r = self::send($sub, $payload, $ttl, $urgency, $topic);
             $r['ok'] ? $out['sent']++ : $out['failed']++;
         }
         return $out;
+    }
+
+    /** The Topic header value: at most 32 URL-safe characters (RFC 8030), '' when nothing usable is left. */
+    public static function topicHeader(string $topic): string
+    {
+        return substr((string) preg_replace('/[^A-Za-z0-9_\-]/', '', $topic), 0, 32);
     }
 
     /* =================================================================
@@ -585,7 +604,7 @@ final class WebPush
      * @param array<string,mixed> $payload {title, body, url, tag, ...} — JSON for sw.js
      * @return array{ok:bool, http:int, error:string}
      */
-    public static function send(array $sub, array $payload, int $ttl = self::TTL_DEFAULT, string $urgency = 'high'): array
+    public static function send(array $sub, array $payload, int $ttl = self::TTL_DEFAULT, string $urgency = 'high', string $topic = ''): array
     {
         $endpoint = (string) ($sub['endpoint'] ?? '');
         $res = ['ok' => false, 'http' => 0, 'error' => ''];
@@ -610,6 +629,18 @@ final class WebPush
             $body = self::encrypt($json, (string) $sub['p256dh'], (string) $sub['auth']);
             $auth = self::vapidAuthorization($endpoint);
 
+            $headers = [
+                'Content-Type: application/octet-stream',
+                'Content-Encoding: aes128gcm',
+                'Content-Length: ' . strlen($body),
+                'TTL: ' . max(0, $ttl),
+                'Urgency: ' . (in_array($urgency, ['very-low', 'low', 'normal', 'high'], true) ? $urgency : 'normal'),
+                'Authorization: ' . $auth,
+            ];
+            $topic = self::topicHeader($topic);
+            if ($topic !== '') {
+                $headers[] = 'Topic: ' . $topic;
+            }
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_POST           => true,
@@ -617,14 +648,7 @@ final class WebPush
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT        => 12,
                 CURLOPT_CONNECTTIMEOUT => 6,
-                CURLOPT_HTTPHEADER     => [
-                    'Content-Type: application/octet-stream',
-                    'Content-Encoding: aes128gcm',
-                    'Content-Length: ' . strlen($body),
-                    'TTL: ' . max(0, $ttl),
-                    'Urgency: ' . (in_array($urgency, ['very-low', 'low', 'normal', 'high'], true) ? $urgency : 'normal'),
-                    'Authorization: ' . $auth,
-                ],
+                CURLOPT_HTTPHEADER     => $headers,
             ]);
             $out  = curl_exec($ch);
             $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

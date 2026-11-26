@@ -321,6 +321,19 @@ final class AiOps
         return $b ??= Database::fetchAll('SELECT id, bus_number, bus_name, is_active FROM buses ORDER BY id');
     }
 
+    /**
+     * 26 Nov 2026 (fx1): the same reading for the WhatsApp office questions ("bus 3 kaha cha?", WaOffice) —
+     * the buses row {id, bus_number, bus_name, is_active}, or null when the words name no bus we know. Read-only.
+     */
+    public static function busFor(string $text): ?array
+    {
+        try {
+            return self::findBus(mb_strtolower(trim($text)));
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
     /** Which bus "Bus 02" / "bus 2" / a plate / a name means. */
     private static function findBus(string $t): ?array
     {
@@ -1862,7 +1875,14 @@ final class AiOps
      */
     public const SUPER_ONLY_SETTING_PREFIXES = ['bankapi_', 'bankmail_', 'pay_bankmail_', 'india_upi_', 'nepal_esewa_', 'icici_', 'upi_', 'esewa_',
         /* 25 Nov 2026 (mp2 "bank Gmail"): the Google OAuth client that signs a bank Gmail box in */
-        'google_oauth_'];
+        'google_oauth_',
+        /* 26 Nov 2026 (fx1): who may let the AI cancel a ticket by itself (wa_ai_cancel_mode = self) and who may
+           un-gate a payment approval from chat - the owner's rule "cancel / refund / payment approval by hand" is
+           a super-admin's to relax, never a settings manager's. Prefixes (SUPER_ONLY_SETTINGS stays the mp1 list). */
+        'wa_ai_cancel_', 'ai_cancel_request_', 'wa_confirm_super_',
+        /* 26 Nov 2026 (fx1 menu): the menu arrangement each role sees (RoleMenu) is the super-admin's to set on
+           admin/menu-setup.php - a settings manager must not rewrite it through the generic Settings save. */
+        'rolemenu_', 'admin_hub_', 'admin_bottom_bar_'];
 
     /** Is $key one of SUPER_ONLY_SETTINGS (or under a SUPER_ONLY_SETTING_PREFIXES prefix)? */
     public static function superOnlySetting(string $key): bool

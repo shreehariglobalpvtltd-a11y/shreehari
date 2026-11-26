@@ -769,6 +769,12 @@ final class WaFaq
         return false;
     }
 
+    /** 26 Nov 2026 (fx1): is this line a bare hello? WaBot's welcome shows the menu for it even with wa_faq_on off. */
+    public static function greets(string $text): bool
+    {
+        return self::isGreeting(' ' . self::norm($text) . ' ');
+    }
+
     private static function isGreeting(string $t): bool
     {
         $s = trim(preg_replace('/[!.,?🙏\s]+/u', ' ', $t) ?? $t);

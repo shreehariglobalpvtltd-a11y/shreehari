@@ -222,7 +222,8 @@ echo LiveSync::anchor('agent:' . $viewId, 'auto');
          value="<?= Security::e($q) ?>" style="min-width:220px">
   <button class="btn" type="submit">Search</button>
   <?php if ($q !== '' || $date !== ''): ?>
-    <a class="btn ghost" href="<?= $base ?>/admin/agent-passengers.php?view=<?= Security::e($view) ?>">Clear</a>
+    <?php /* 26 Nov 2026 (fx1): an office viewer keeps the agent they opened - Clear used to drop back to their own (empty) book. */ ?>
+    <a class="btn ghost" href="<?= $base ?>/admin/agent-passengers.php?view=<?= Security::e($view) ?><?= $isSupervisor && $scopeId === null && !$isOwn ? '&amp;agent=' . $viewId : '' ?>">Clear</a>
   <?php endif; ?>
 </form>
 
@@ -259,10 +260,7 @@ echo LiveSync::anchor('agent:' . $viewId, 'auto');
     <div class="dash-panel"><div class="muted" style="padding:24px;text-align:center">
       No confirmed passengers <?= $date !== '' ? 'on ' . Security::e(formatDate($date)) : 'on upcoming trips' ?>.
     </div></div>
-  <?php else: foreach ($trips as $t):
-    $value = 0.0;
-    foreach ($t['pax'] as $p) { $value += (float) $p['total_amount']; }
-  ?>
+  <?php else: foreach ($trips as $t): ?>
     <div class="dash-panel" style="margin-bottom:20px">
       <div class="dp-head">🚌 <?= Security::e(($t['from'] ?? '—') . ' → ' . ($t['to'] ?? '—')) ?>
         · <?= Security::e(formatDate((string) $t['date'])) ?>
@@ -357,7 +355,7 @@ echo LiveSync::anchor('agent:' . $viewId, 'auto');
           <td><?= Security::e(inr((float) $c['spend'])) ?></td>
           <td class="muted"><?= Security::e(timeAgo((string) $c['last_booked'])) ?></td>
           <td><a class="btn ghost" style="padding:5px 10px;font-size:12px"
-                 href="<?= $base ?>/admin/agent-sales.php?range=all&q=<?= urlencode((string) $c['contact_phone']) ?>">Tickets →</a></td>
+                 href="<?= $base ?>/admin/agent-sales.php?range=all<?= $isSupervisor && $scopeId === null && !$isOwn ? '&amp;agent=' . $viewId : '' ?>&amp;q=<?= urlencode((string) $c['contact_phone']) ?>">Tickets →</a></td>
         </tr>
       <?php endforeach; endif; ?>
       </tbody>

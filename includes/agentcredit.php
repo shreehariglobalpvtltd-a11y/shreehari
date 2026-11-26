@@ -42,6 +42,12 @@
  *   agent_credit_block_on       bool  true  refuse sales at / over the limit or on hold
  *   agent_credit_limit_default  float 0     company default limit, 0 = none
  *   agent_credit_warn_pct       int   80    banner on the agent's desk from this % of the limit
+ *   agent_credit_parent_hold_on bool  true  26 Nov 2026 (fx1): a sub-agent (admin_profiles.parent_agent_id)
+ *                                           is refused while the MAIN agent is on hold / at the limit / switched
+ *                                           off by the office (admins.is_active = 0), so a stopped agent
+ *                                           cannot keep selling through a counter-staff login.
+ *                                           Off = every ledger is judged alone, as before. The sub-agent is
+ *                                           told only THAT the main agent must settle, never how much.
  *
  * Columns: admin_profiles.credit_limit, credit_hold_at, credit_hold_reason
  * (database/upgrade-2026-11-25-op5-credit.sql). Without them the per-agent limit
@@ -209,6 +215,77 @@ final class AgentCredit
         if ($adminId <= 0 || !self::blockOn()) {
             return null;
         }
+        return self::ownRefusal($adminId) ?? self::parentRefusal($adminId);
+    }
+
+    /**
+     * The main agent this login sells under (admin_profiles.parent_agent_id), or 0.
+     * One scalar; 0 on a database without the column.
+     */
+    public static function parentOf(int $adminId): int
+    {
+        if ($adminId <= 0 || !AgentWallet::profileHasColumn('parent_agent_id')) {
+            return 0;
+        }
+        try {
+            $p = (int) Database::scalar('SELECT parent_agent_id FROM admin_profiles WHERE admin_id = :a', ['a' => $adminId], 0);
+        } catch (Throwable $e) {
+            return 0;
+        }
+        return $p > 0 && $p !== $adminId ? $p : 0;
+    }
+
+    /**
+     * 26 Nov 2026 (fx1): a sub-agent is refused while the MAIN agent is on hold, at
+     * the limit or switched off by the office (admins.is_active = 0)
+     * (switch agent_credit_parent_hold_on, default on). Before this an
+     * agent the office had stopped could register a counter-staff login with an
+     * empty ledger and keep selling through it. One level only (a main agent has
+     * no main agent), and the text carries NO figures: a sub-agent must not read
+     * the main agent's money.
+     */
+    public static function parentRefusal(int $adminId): ?string
+    {
+        if ($adminId <= 0 || !self::blockOn() || !Settings::getBool('agent_credit_parent_hold_on', true)) {
+            return null;
+        }
+        $parent = self::parentOf($adminId);
+        if ($parent <= 0) {
+            return null;
+        }
+        // The office switched the MAIN agent's login off (agents.php toggle / bulk
+        // pause): the counter-staff logins under it stop with it. Before this they
+        // stayed open, so a stopped agent could sign in as their own staff and keep
+        // selling. Only a row that EXISTS and is off refuses - a read error or a
+        // missing row changes nothing.
+        if (self::parentSwitchedOff($parent)) {
+            return 'तपाईंको मुख्य एजेन्टको खाता अफिसले बन्द गरेको छ — खाता खुलेपछि मात्र टिकट काट्न मिल्छ। अफिसलाई सम्पर्क गर्नुहोस्।'
+                . ' / Your main agent\'s account is switched off by the office. You can sell again when it is switched on. Ask the office.';
+        }
+        if (self::ownRefusal($parent) === null) {
+            return null;
+        }
+        return 'तपाईंको मुख्य एजेन्टको हिसाब मिलाउन बाँकी छ — उहाँले अफिसमा हिसाब मिलाएपछि मात्र टिकट काट्न मिल्छ।'
+            . ' / Your main agent has to settle with the office first. You can sell again after that.';
+    }
+
+    /** True only when the main agent's admins row exists and is_active = 0. */
+    private static function parentSwitchedOff(int $parentId): bool
+    {
+        try {
+            $v = Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => $parentId], null);
+        } catch (Throwable $e) {
+            return false;
+        }
+        return $v !== null && $v !== '' && (int) $v === 0;
+    }
+
+    /** This agent's OWN ledger and hold only (no parent look-up). */
+    private static function ownRefusal(int $adminId): ?string
+    {
+        if ($adminId <= 0 || !self::blockOn()) {
+            return null;
+        }
         $hold  = self::hold($adminId);
         $limit = self::limitFor($adminId);
         if (!$hold['held'] && $limit <= 0.009) {
@@ -327,9 +404,14 @@ final class AgentCredit
             }
             $hold = self::hold($adminId);
             if (!$hold['held'] && self::limitFor($adminId) <= 0.009) {
-                return '';
+                // 26 Nov 2026 (fx1): nothing of their own to show - a sub-agent still learns the main agent is stopped
+                $up = self::parentRefusal($adminId);
+                return $up === null ? '' : '<div class="flash bad" role="alert" data-credit="parent">⛔ ' . Security::e($up) . '</div>';
             }
             $s = self::status($adminId);
+            if (!$s['blocked'] && ($up = self::parentRefusal($adminId)) !== null) {
+                return '<div class="flash bad" role="alert" data-credit="parent">⛔ ' . Security::e($up) . '</div>';
+            }
             if ($s['blocked']) {
                 return '<div class="flash bad" role="alert" data-credit="blocked">⛔ ' . Security::e((string) $s['refusal']) . '</div>';
             }

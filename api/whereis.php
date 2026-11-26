@@ -31,7 +31,11 @@ try {
         echo json_encode(['ok' => false, 'error' => 'Not found.']);
         exit;
     }
-    echo json_encode(['ok' => true, 'data' => WhereIs::status($booking)], JSON_UNESCAPED_UNICODE);
+    /* 26 Nov 2026 (fx1): how long the asking screen may keep calling this answer "live" when
+       its own connection brings no newer one (track_stale_sec, 0 = off, else 30..600 s). */
+    $stale = Settings::getInt('track_stale_sec', 60);
+    $data  = WhereIs::status($booking) + ['staleSec' => $stale > 0 ? max(30, min(600, $stale)) : 0];
+    echo json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     Logger::error('whereis failed', ['e' => $e->getMessage()]);
     http_response_code(500);

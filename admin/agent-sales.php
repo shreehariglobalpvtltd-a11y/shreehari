@@ -195,9 +195,14 @@ $otherCount = Database::fetch(
     ['agent' => $viewId, 'from' => $from, 'to' => $to, 'agent2' => $viewId, 'from2' => $from, 'to2' => $to]
 ) ?? ['tickets' => 0, 'pax' => 0];
 
-/* ---- The sales themselves ------------------------------------------- */
+/* ---- The sales themselves -------------------------------------------
+   26 Nov 2026 (fx1): the NPR frozen on a Nepal-desk sale rides along (when the columns exist) so the
+   Amount cell prints what the ticket prints - "NPR 3,520 (INR 2,200)". Totals above stay INR. */
+$rowsFx = CounterDesk::hasColumn('bookings', 'fx_currency') && CounterDesk::hasColumn('bookings', 'fx_total')
+    ? ' b.fx_currency, b.fx_total,' . (CounterDesk::hasColumn('bookings', 'fx_rate') ? ' b.fx_rate,' : '')
+    : '';
 $rows = Database::fetchAll(
-    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
+    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,$rowsFx
             r.from_city, r.to_city, bl.travel_date, s.route_id, s.slot,
             COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
@@ -455,7 +460,7 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
                 if ($rBus !== ''): ?><div class="bus-mini">🚌 <?= Security::e($rBus) ?></div><?php endif; ?></span></td>
         <td class="mono" data-label="Seats"><span><?= Security::e((string) ($b['seats'] ? Seats::displayLabels(explode(' ', (string) $b['seats']), 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'), ' ') : '—')) ?>
           <div class="muted" style="font-size:11px"><?= (int) $b['seat_count'] ?> seat<?= (int) $b['seat_count'] === 1 ? '' : 's' ?></div></span></td>
-        <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>
+        <td data-label="Amount"><?= Security::e(Ticket::isNprSale($b) ? Ticket::money($b, (float) $b['total_amount']) : inr((float) $b['total_amount'])) ?></td>
         <td data-label="Source"><span class="src-badge <?= Security::e((string) ($b['source'] ?? 'web')) ?>"><?= Security::e(ucfirst((string) ($b['source'] ?? 'web'))) ?></span></td>
         <td data-label="Status"><?= admin_pill((string) $b['status']) ?></td>
         <td class="muted" data-label="Sold"><?= Security::e(timeAgo((string) $b['created_at'])) ?></td>
@@ -474,6 +479,9 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
     </tbody>
   </table>
   </div>
+  <?php foreach ($rows as $b) { if (Ticket::isNprSale($b)) { ?>
+    <p class="muted" style="font-size:12px;margin:8px 16px 12px">NPR = नेपाल काउन्टरमा काटेको टिकटको रकम। माथिको जम्मा, कमिसन र स्टेटमेन्ट INR (₹) मा राखिन्छ · The totals above, commission and the statement are kept in INR.</p>
+  <?php break; } } ?>
 </div>
 <?php
 admin_footer();
