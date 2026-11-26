@@ -159,7 +159,7 @@ function staffFillFromPhone() {
         fillPaxRow(row, person);
         filled++;
       });
-      if (filled && typeof toast === 'function') toast('🤖 ' + (r.name || p) + ' · ' + r.trips + ' trip' + (r.trips === 1 ? '' : 's') + ' — auto-filled');
+      if (filled && typeof toast === 'function') toast('🤖 ' + tf('coWhoFilled', { n: r.name || p, c: r.trips }));
     }).catch(() => {});
   }, 350);
 }
@@ -414,7 +414,7 @@ function coAskNepal(p) {
 function coGoStep(n) {
   if (n === 2) {
     const dv = validateCheckoutDetails();
-    if (dv.blocked) { toast('⛔ This number is blocked from booking — contact office +91 91048 01507'); SFX.error(); return; }
+    if (dv.blocked) { toast('⛔ ' + tf('tBlockedNum', { p: S().phone })); SFX.error(); return; }   // 26 Nov 2026 (fx2 #14): 3 languages, the office's own number
     if (!dv.ok) { coFixToast(dv); return; }
     if (coAskNepal(dv.phoneVal)) return;   // its two buttons come back here
     /* A SIGNED-IN traveller's session is refreshed in the background while
@@ -469,7 +469,8 @@ function setPayMethod(m) {
     /* checkoutTotals is a function; this read .grand off it, which never
        existed, so the cash panel always told the passenger ₹0. */
     const ct = Flow.checkoutTotals ? Flow.checkoutTotals() : null;
-    const el = $('#codAmount'); if (el) el.textContent = ct && !ct.fareBad ? inr(ct.total) : '—';
+    /* fx2 #25: the cash panel follows the chosen money, as the headline does (the sale is frozen in it) */
+    const el = $('#codAmount'); if (el) el.textContent = ct && !ct.fareBad ? (coCur() === 'NPR' ? coNpr(Math.round(ct.total * CONFIG.nprPerInr)) : inr(ct.total)) : '—';
   }
 }
 
@@ -498,7 +499,8 @@ function coCurDefault(rOut) {
 }
 /* the money the customer chose for this draft ('INR' when the chips are off) */
 function coCur() { return coCurOn() && Flow.coCur && Flow.coCur.id === Flow.draftId && Flow.coCur.cur === 'NPR' ? 'NPR' : 'INR'; }
-const coNpr = (n) => 'रू ' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+/* 26 Nov 2026 (fx2 #25): 'NPR ' like the eSewa panel, SmartBook and the ticket (it was 'रू ' here only) */
+const coNpr = (n) => 'NPR ' + Math.round(Number(n) || 0).toLocaleString('en-IN');
 /* build (once) + paint the chips next to the payment methods; onPick re-runs the totals */
 function coCurChips(rOut, onPick) {
   const tabs = $('.pm-tabs');
@@ -796,6 +798,25 @@ function rebookFrom(bookingId, reverse) {
   if (!r) { toast(t('errRouteNotFound') || 'That route is no longer available.'); return; }
 
   PaxMemory.remember(b);
+
+  /* 26 Nov 2026 (fx2 #4): SmartBook is the booking door (html.sb-on): #/results is steered
+     straight back to the home card (27-smartbook.js steerClassic), which knew nothing of this
+     and stayed on its old direction while the toast said "route loaded". Put the direction on
+     the card itself - its own button, so its own reset runs - and toast only once the card
+     shows it. A staff session (card hidden) or a failed engine boot keeps the classic path. */
+  const sbRoot = document.getElementById('smartBook');
+  if (document.documentElement.classList.contains('sb-on') && sbRoot && !sbRoot.hidden && window.SmartBook && window.SmartBook.state) {
+    const nepFn = (typeof isNepalPoint === 'function') ? isNepalPoint : (() => false);
+    const sbDir = nepFn(reverse ? r.to : r.from) ? 'toIndia' : 'toNepal';
+    if (location.hash !== '#/') location.hash = '#/';
+    setTimeout(function () {
+      const btn = sbRoot.querySelector('.sb-dir-b[data-dir="' + sbDir + '"]');
+      if (btn && window.SmartBook.state.dir !== sbDir) btn.click();
+      try { sbRoot.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+      if (window.SmartBook.state.dir === sbDir) toast(t(reverse ? 'tRebookRet' : 'tRebookOn'));
+    }, 150);
+    return;
+  }
 
   const setVal = (sel, v) => { const el = $(sel); if (el && $$('option', el).some(o => o.value === v)) el.value = v; };
   let from = r.from, to = r.to;
@@ -1108,7 +1129,8 @@ function renderCheckout() {
     var rc = $('#coRecap');
     if (rc) {
       var dv = pa ? pa.getAttribute('data-val') : null;
-      var amt = (dv != null && dv !== '' && !isNaN(parseInt(dv, 10))) ? inr(parseInt(dv, 10)) : ((pa && pa.textContent) || '');
+      /* 26 Nov 2026 (fx2 #24): data-val holds the NPR figure when NPR is the pay money - label it NPR, not ₹ */
+      var amt = (dv != null && dv !== '' && !isNaN(parseInt(dv, 10))) ? (coCur() === 'NPR' ? coNpr : inr)(parseInt(dv, 10)) : ((pa && pa.textContent) || '');
       rc.textContent = (rOut.from || '') + ' → ' + (rOut.to || '') + ' · ' + seatLabelJoin(out.seats, rOut.type, out.bookingType) + (amt ? ' · ' + amt : '');
     }
   }
@@ -1148,11 +1170,15 @@ function renderCheckout() {
         { seat: row.getAttribute('data-ret-seat'), leg: Flow.legs[1] || null },
       ];
       let msg = '';
+      /* 26 Nov 2026 (fx2 #14): the refusal in the customer's language (it was English + a Nepali
+         tag, no Hindi). Its own keys - the seat map's text says "tap 👩 Woman", a button this
+         form does not have. */
+      const warnMsg = (key, c) => '⚠️ ' + tf(key, { s: seatLabel(c.seat, (routeById(c.leg.routeId) || {}).type, c.leg.bookingType) });
       for (let j = 0; j < checks.length; j++) {
         const lk = lockFor(checks[j].seat, checks[j].leg);
-        if (lk === 'female_only' && g === 'Male') { msg = '⚠️ Seat ' + seatLabel(checks[j].seat, (routeById(checks[j].leg.routeId) || {}).type, checks[j].leg.bookingType) + ' is in a women-only cabin — a male passenger can’t be booked here. Please choose another seat. · महिला मात्र केबिन'; break; }
-        if (lk === 'male_only' && g === 'Female') { msg = '⚠️ Seat ' + seatLabel(checks[j].seat, (routeById(checks[j].leg.routeId) || {}).type, checks[j].leg.bookingType) + ' is in a men-only cabin — a female passenger can’t be booked here. Please choose another seat. · पुरुष मात्र केबिन'; break; }
-        if (g === 'Male' && femFor(checks[j].seat, checks[j].leg)) { msg = '⚠️ Seat ' + seatLabel(checks[j].seat, (routeById(checks[j].leg.routeId) || {}).type, checks[j].leg.bookingType) + ' is reserved for women — please choose another seat. · महिलाका लागि आरक्षित सिट'; break; }
+        if (lk === 'female_only' && g === 'Male') { msg = warnMsg('coWomenOnly', checks[j]); break; }
+        if (lk === 'male_only' && g === 'Female') { msg = warnMsg('coMenOnly', checks[j]); break; }
+        if (g === 'Male' && femFor(checks[j].seat, checks[j].leg)) { msg = warnMsg('coWomenOnly', checks[j]); break; }
       }
       let warn = row.querySelector('.gender-lock-warn');
       if (msg) {
@@ -1186,8 +1212,8 @@ function renderCheckout() {
     const cf = calcCabinFare(l.cabinType, l.bookingType, l.seats.length, true, (routeById(l.routeId) || {}).to, l.fareOverride, l.stopFare);
     cabinTotal += cf.total;
     return '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>'
-      + (l.sharingTier ? '<div class="sum-row"><span>Sharing tier · साझा टियर</span><b>' + sharingTierLabel(l.sharingTier) + '</b></div>' : '')
-      + (cf.saved > 0 ? '<div class="sum-row disc"><span>🌐 Online Discount</span><b>− ' + inr(cf.saved) + '</b></div>' : '')
+      + (l.sharingTier ? '<div class="sum-row"><span>' + esc(t('rowShareTier')) + '</span><b>' + sharingTierLabel(l.sharingTier) + '</b></div>' : '')
+      + (cf.saved > 0 ? '<div class="sum-row disc"><span>🌐 ' + esc(t('rowOnlineDisc')) + '</span><b>− ' + inr(cf.saved) + '</b></div>' : '')
       /* Fare by passenger count — "2 passengers × ₹2,000" — so the total is never a surprise. */
       + '<div class="sum-row"><span>' + tf('rowPaxFare', { n: l.seats.length, f: inr(cf.perPerson) }) + '</span><b>' + inr(cf.total) + '</b></div>';
   }).join('');
@@ -1302,7 +1328,7 @@ function renderCheckout() {
     const coNp = coCur() === 'NPR';
     flipNumber($('#payAmount'), coNp ? Math.round(x.total * CONFIG.nprPerInr) : x.total, x.fareBad ? (() => '—') : (coNp ? coNpr : inr), $('#bpAmt'));
     $('#payAmountNpr').textContent = x.fareBad ? '' : (coNp ? '≈ ' + inr(x.total) : nprEst(x.total));
-    const codEl = $('#codAmount'); if (codEl) codEl.textContent = x.fareBad ? '—' : inr(x.total);
+    const codEl = $('#codAmount'); if (codEl) codEl.textContent = x.fareBad ? '—' : (coNp ? coNpr(Math.round(x.total * CONFIG.nprPerInr)) : inr(x.total));   // fx2 #25
     if (typeof updateCoSummary === 'function') updateCoSummary();
 
     /* — UPI panel — */
@@ -1577,7 +1603,7 @@ async function submitBooking() {
   const phone = dv.phone, email = dv.email, idNum = dv.idNum;
   const phoneVal = dv.phoneVal;
   if (dv.blocked) {
-    toast('⛔ This number is blocked from booking — contact office +91 91048 01507');
+    toast('⛔ ' + tf('tBlockedNum', { p: S().phone }));
     SFX.error(); shgHaptic('error');
     return;
   }
@@ -2004,6 +2030,10 @@ function bookingFromServer(d, phone) {
     wa: (d.wa === undefined) ? undefined : (d.wa || null),
     fromServer: true
   };
+  /* 26 Nov 2026 (fx2 #2): has the office ANY proof (UTR / screenshot) for this booking?
+     Only when the server says so (payment.proof true/false) - an older payload leaves it
+     undefined and nothing is guessed. See payNotSent(). */
+  if (d.payment && typeof d.payment.proof === 'boolean') b.payment.proof = d.payment.proof;
   Object.assign(b, coServerExtras(d, out));
   if (b.pickupMap === undefined) delete b.pickupMap;
   ['fxCurrency', 'fxTotal', 'fxRate', 'npPay'].forEach(k => { if (b[k] === undefined) delete b[k]; });
@@ -2047,6 +2077,8 @@ async function syncBooking(b) {
        payment was refused — without syncing it they only ever see the
        generic fallback. */
     if (b.payment.reason !== (d.payment.reason || '')) { b.payment.reason = d.payment.reason || ''; changed = true; }
+    /* fx2 #2: the proof flag flips the ticket from "pay now" to "being checked" - redraw */
+    if (typeof d.payment.proof === 'boolean' && b.payment.proof !== d.payment.proof) { b.payment.proof = d.payment.proof; changed = true; }
   }
   /* WhatsApp delivery state (17 Sep 2026) — informational, never flips `changed`
      on its own, the ticket page re-renders itself when it asked for it. */
@@ -2252,7 +2284,7 @@ function openCancelModal(id) {
         return;
       }
       if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = t('cancelYes'); }
-      toast(e.message || 'Could not cancel this booking. Please try again or contact support.');
+      toast(e.message || t('errCancelFail'));
       return;
     }
     b.status = 'cancelled';
@@ -2377,11 +2409,21 @@ function wireRatingCard(b) {
     } catch (e) {
       send.disabled = false;
       send.classList.remove('loading');
-      toast((e && e.message) ? e.message : 'Could not send the rating.');
+      toast((e && e.message) ? e.message : t('errRateFail'));
     }
   });
 }
 
+/* 26 Nov 2026 (fx2 #2): an ONLINE booking the server says has NO proof yet (SmartBook books
+   first and asks for the money after - the customer may have closed the pay popup). Strict
+   === false: a classic-checkout booking and an older payload (no flag) keep today's wording.
+   Never true for pay-at-boarding, a paid or a confirmed ticket. */
+function payNotSent(b) {
+  return !!b && b.status === 'pending' && !b.codFlag && !(b.payment && b.payment.method === 'cod')
+    && !b.proofPending && !!b.payment && b.payment.proof === false && !(Number(b.paidAmount) > 0)
+    /* fx2 review: proof sent from THIS browser (UTR, or a pending pvSubmit entry) wins over a stale flag until the next sync */
+    && !b.payment.utr && !(typeof PV !== 'undefined' && PV.submissions && PV.submissions.some(s => s.bookingId === b.id && s.status === 'pending'));
+}
 function paymentStepper(b) {
   if (!b) return '';
 
@@ -2428,6 +2470,8 @@ function paymentStepper(b) {
     step2State = 'bad'; step2Label = t('pstProofMissing');
     step3State = 'off';
   }
+  /* fx2 #2: nothing was sent yet - step 2 is the customer's to do, nothing is being checked */
+  if (payNotSent(b)) { step2State = 'now'; step2Label = t('pstPayNow'); step3State = 'off'; }
 
   function li(state, label) {
     var mark = state === 'done' ? '✓' : (state === 'bad' ? '!' : (state === 'now' ? '•' : '–'));
@@ -2794,7 +2838,10 @@ function renderStatus(id) {
      row stays 'confirmed' by design (the owner settles each one by hand), so
      the ticket says it plainly — no track, no countdown, no refund promise. */
   const tripCancelled = b.tripStatus === 'cancelled' || !!(b.live_status && b.live_status.key === 'trip_cancelled');
-  const paxRows = b.passengers.map((p, i) => '<tr><td>' + esc(seatLabel(p.seat, r.type, b.bookingType)) + (b.ret ? ' <small style="color:var(--muted)">/ ↩ ' + esc(seatLabel((b.ret.seats || [])[i] || '', rr.type, b.ret.bookingType)) + '</small>' : '') + '</td><td>' + esc(p.name) + (p.special ? ' <span class="chip" style="font-size:11px;padding:2px 8px">' + esc(t('patientTag')) + '</span>' : '') + '</td><td>' + esc(p.age) + '</td><td>' + esc(p.gender) + '</td></tr>').join('');
+  /* 26 Nov 2026 (fx2 #13): the stored gender in the customer's language - only the exact
+     known values; a blank or anything else prints as stored (a gender is never guessed). */
+  const gWord = g => { const k = { Male: 'gM', Female: 'gF', Other: 'gO' }[g]; return k ? t(k) : (g || ''); };
+  const paxRows = b.passengers.map((p, i) => '<tr><td>' + esc(seatLabel(p.seat, r.type, b.bookingType)) + (b.ret ? ' <small style="color:var(--muted)">/ ↩ ' + esc(seatLabel((b.ret.seats || [])[i] || '', rr.type, b.ret.bookingType)) + '</small>' : '') + '</td><td>' + esc(p.name) + (p.special ? ' <span class="chip" style="font-size:11px;padding:2px 8px">' + esc(t('patientTag')) + '</span>' : '') + '</td><td>' + esc(p.age) + '</td><td>' + esc(gWord(p.gender)) + '</td></tr>').join('');
 
   let band = '', extra = '', bpHeader = '';
   const stepper = paymentStepper(b);
@@ -2812,9 +2859,16 @@ function renderStatus(id) {
       var verId = pvSub ? esc(pvSub.id) : esc(b.id);
       /* No fake "waiting for verification" when the proof never arrived
          (D4-M1) — the red resend band at the top says what to do instead. */
-      if (!b.proofPending) extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">⏳</div><div class="pp-st-title">Waiting for Verification...</div>'
-        + '<div class="pp-st-sub">Usually verified <b>' + esc(CONFIG.verifyTimeText || 'within 30 minutes (9 AM–9 PM IST)') + '</b><br>Reference: <b>' + verId + '</b><br>Our team will confirm your ticket shortly.<br>'
-        + '<a href="#" onclick="event.preventDefault(); pvOpenForm(\'' + esc(b.id) + '\')" style="font-size:12px;color:var(--muted);text-decoration:underline">Resend payment proof if needed</a></div></div>';
+      /* 26 Nov 2026 (fx2 #2): the server says NO proof has arrived (payNotSent) - a "pay now"
+         box with the proof entry as a real button, not "waiting for verification".
+         fx2 #13: the waiting box speaks the customer's language (it was English only). */
+      if (payNotSent(b)) extra = '<div class="pp-status show" style="margin-bottom:14px;background:#FFF8E1;border:1.5px solid #FFE082"><div class="pp-st-ico">💳</div><div class="pp-st-title">' + esc(t('stPayNowT')) + '</div>'
+        + '<div class="pp-st-sub">' + esc(tf('stPayNowP', { s: seatLabelJoin(b.seats, r.type, b.bookingType) })) + '<br>'
+        + '<button class="btn btn-orange" type="button" style="min-height:44px;margin-top:10px" onclick="pvOpenForm(\'' + esc(b.id) + '\')">' + esc(t('stPayNowBtn')) + '</button></div></div>';
+      else if (!b.proofPending) extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">⏳</div><div class="pp-st-title">' + esc(t('pvPending')) + '</div>'
+        /* fx2 review: the office window (CONFIG.verifyTimeText, English) on an English page, its translation otherwise */
+        + '<div class="pp-st-sub">' + tf('tkWaitWin', { w: '<b>' + esc((LANG === 'en' && CONFIG.verifyTimeText) || t('tkWaitWinDef')) + '</b>' }) + '<br>' + esc(t('tkWaitRef')) + ': <b>' + verId + '</b><br>'
+        + '<a href="#" onclick="event.preventDefault(); pvOpenForm(\'' + esc(b.id) + '\')" style="font-size:12px;color:var(--muted);text-decoration:underline">' + esc(t('proofResendBtn')) + '</a></div></div>';
     }
   } else if (b.status === 'confirmed') {
     band = '<div class="status-band confirmed"><div class="confetti-burst"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="confirm-checkmark"><svg viewBox="0 0 44 44"><circle class="ck-circle" cx="22" cy="22" r="20"/><polyline class="ck-check" points="13,23 20,30 32,16"/></svg></div><h2>' + t('stConfT') + '</h2><p>' + t('stConfP') + '</p></div>';
@@ -2848,7 +2902,7 @@ function renderStatus(id) {
     extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">🔄</div><div class="pp-st-title">' + t('stExpT') + '</div>'
       + '<div class="pp-st-sub">' + t('stExpP') + '<br><a href="#/" style="font-size:13px;color:var(--orange);font-weight:700;text-decoration:underline">' + t('stExpBtn') + '</a></div></div>';
   } else {
-    band = '<div class="status-band rejected"><div class="big-ico">!</div><h2>' + t('stRejT') + '</h2><p>' + esc(b.payment.reason || 'We could not verify this payment.') + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</p></div>';
+    band = '<div class="status-band rejected"><div class="big-ico">!</div><h2>' + t('stRejT') + '</h2><p>' + esc(b.payment.reason || t('stRejP')) + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</p></div>';
     /* Rejected payments get a clear re-submit path (§3): no ticket actions,
        but the customer can re-send a clearer proof for review, or call support. */
     extra = '<div class="pp-status show waiting" style="margin-bottom:14px;background:#FDECEC;border-color:#F3C6C6"><div class="pp-st-ico">🔄</div><div class="pp-st-title">' + t('rejResubT') + '</div>'
@@ -2876,8 +2930,8 @@ function renderStatus(id) {
   let fareRows;
   if (b.bookingType && b.cabinLabel) {
     fareRows = paxFareRow + '<div class="sum-row"><span>' + esc(b.cabinLabel) + '</span><b>' + inr(b.cabinFare || b.total) + '</b></div>'
-      + '<div class="sum-row"><span>Booking</span><b>' + esc(b.bookingType.charAt(0).toUpperCase() + b.bookingType.slice(1)) + '</b></div>'
-      + (b.sharingTier ? '<div class="sum-row"><span>Sharing tier · साझा टियर</span><b>' + sharingTierLabel(b.sharingTier) + '</b></div>' : '')
+      + '<div class="sum-row"><span>' + esc(t('rowBookingType')) + '</span><b>' + esc(b.bookingType === 'private' ? t('cabPriv') : (b.bookingType === 'sharing' ? t('cabShare') : b.bookingType.charAt(0).toUpperCase() + b.bookingType.slice(1))) + '</b></div>'
+      + (b.sharingTier ? '<div class="sum-row"><span>' + esc(t('rowShareTier')) + '</span><b>' + sharingTierLabel(b.sharingTier) + '</b></div>' : '')
       + (b.offerDiscount > 0 ? '<div class="sum-row disc"><span>🪔 ' + esc(b.offerTitle || '') + '</span><b>− ' + inr(b.offerDiscount) + '</b></div>' : '')
       + (b.tierDiscount > 0 ? '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: esc(b.tierName || '⭐') }) + '</span><b>− ' + inr(b.tierDiscount) + '</b></div>' : '')
       + (b.pointsValue > 0 ? '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + b.pointsUsed + ')</span><b>− ' + inr(b.pointsValue) + '</b></div>' : '')
@@ -2904,9 +2958,9 @@ function renderStatus(id) {
     <div class="ret-block">
       <div class="ret-tag">↩ ${t('tkRet')}</div>
       <div class="tk-route" style="margin-bottom:10px">
-        <div class="city">${esc(rr.from || '—')}<small>DEP ${esc(rr.depTime || '')}</small></div>
+        <div class="city">${esc(rr.from || '—')}<small>${esc(t('tkDep'))} ${esc(rr.depTime || '')}</small></div>
         <span class="route-dash" style="flex:1;max-width:110px"><span class="dot"></span><span class="line"></span><span class="dot end"></span></span>
-        <div class="city" style="text-align:right">${esc(rr.to || '—')}<small>ARR ${esc(rr.arrTime || '')}${rr.dayOffset ? ' (+' + rr.dayOffset + 'd)' : ''}</small></div>
+        <div class="city" style="text-align:right">${esc(rr.to || '—')}<small>${esc(t('tkArr'))} ${esc(rr.arrTime || '')}${rr.dayOffset ? ' (+' + rr.dayOffset + 'd)' : ''}</small></div>
       </div>
       <div class="tk-grid">
         <div class="sum-row"><span>${t('tkDate')}</span><b>${fmtDate(b.ret.date)}</b></div>
@@ -2976,18 +3030,18 @@ function renderStatus(id) {
   const soon = (b.status === 'pending' || conf) && depTimestamp(b) > Date.now() && !tripCancelled;
   let pill2;
   if (conf) pill2 = '<span class="tk2-pill ok">' + esc(t('stConfT')) + '</span>';
-  else if (b.status === 'pending') pill2 = '<span class="tk2-pill pend">' + (isCod2 ? '💵 ' : '⏳ ') + esc(t('stPendT')) + '</span>';
+  else if (b.status === 'pending') pill2 = '<span class="tk2-pill pend">' + (isCod2 ? '💵 ' : '⏳ ') + esc(t(payNotSent(b) ? 'stPayNowT' : 'stPendT')) + '</span>';   // fx2 #2: no proof yet = not "under verification"
   else if (b.status === 'cancelled') pill2 = '<span class="tk2-pill off">✕ ' + esc(t('stCancT')) + '</span>';
   else if (b.status === 'expired' || b.status === 'completed') pill2 = '<span class="tk2-pill off">⏱ ' + esc(t('stExpT')) + '</span>';
   else pill2 = '<span class="tk2-pill bad">! ' + esc(t('stRejT')) + '</span>';
   let note2 = '';
   if (b.status === 'pending' && !isCod2 && b.proofPending) note2 = '';   // the red resend band above says it
-  else if (b.status === 'pending' && !isCod2) note2 = '<div class="tk2-note wait">⏳ ' + tf('stPendP', { s: seatLabelJoin(b.seats, r.type, b.bookingType) }) + '</div>';
+  else if (b.status === 'pending' && !isCod2) note2 = '<div class="tk2-note wait">⏳ ' + tf(payNotSent(b) ? 'stPayNowP' : 'stPendP', { s: seatLabelJoin(b.seats, r.type, b.bookingType) }) + '</div>';
   else if (b.status === 'pending' && isCod2) note2 = '<div class="tk2-note cash">💵 ' + esc(seatLabelJoin(b.seats, r.type, b.bookingType)) + ' · ' + t('codCashNote') + '</div>';
   else if (conf && isCod2) note2 = '<div class="tk2-note cash">' + t('codCashNote') + '</div>';
   else if (b.status === 'cancelled') note2 = '<div class="tk2-note">' + t('stCancP') + (b.refundNote ? ' ' + esc(b.refundNote) : '') + '</div>';
   else if (b.status === 'expired' || b.status === 'completed') note2 = '<div class="tk2-note">' + t('stExpP') + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</div>';
-  else if (!conf) note2 = '<div class="tk2-note">' + esc(b.payment.reason || 'We could not verify this payment.') + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</div>';
+  else if (!conf) note2 = '<div class="tk2-note">' + esc(b.payment.reason || t('stRejP')) + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</div>';
   /* Did the office's WhatsApp ticket reach the passenger? (17 Sep 2026.) Known
      once the ticket has been read back from track.php (b.wa defined); a
      confirmed ticket that has never synced asks the server once. */
@@ -3042,7 +3096,7 @@ function renderStatus(id) {
         ? 'मेरो बुकिङ ' + b.id + ' को टिकट पठाउनुहोस्।'
         : 'मेरो बुकिङ ' + b.id + ' को भुक्तानी QR र टिकट पठाउनुहोस्।';
       waGetBtn = '<a class="btn btn-wa tk2-wide" target="_blank" rel="noopener" href="https://wa.me/'
-        + bizWa + '?text=' + encodeURIComponent(waAsk) + '">🎫 WhatsApp मा टिकट पाउनुहोस्</a>';
+        + bizWa + '?text=' + encodeURIComponent(waAsk) + '">' + esc(t('tkWaGet')) + '</a>';   // fx2 #13: was Nepali for every language
     }
   } catch (e) {}
 
@@ -3085,7 +3139,7 @@ function renderStatus(id) {
   const secondary2 = (conf ? '<button class="btn btn-ghost" id="pdfBtn" type="button">' + t('btnPdf') + '</button>'
       + (soon ? '<button class="btn btn-ghost" type="button" data-ics="' + esc(b.id) + '">' + t('btnCal') + '</button>' : '')
       + ((typeof navigator.share === 'function') ? '<button class="btn btn-ghost" id="shareBtn" type="button">' + t('btnShare') + '</button>' : '')
-      + (tripCancelled ? '' : '<a class="btn btn-ghost" href="#/trip/' + esc(b.id) + '">🚌 Trip Companion</a>')
+      + (tripCancelled ? '' : '<a class="btn btn-ghost" href="#/trip/' + esc(b.id) + '">🚌 ' + esc(t('tcMyTrip')) + '</a>')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
       + '<a class="btn btn-ghost" href="#/">' + t('tkNewTicket') + '</a>' : '')
     + fixBtn2
@@ -3093,28 +3147,34 @@ function renderStatus(id) {
     + '<a class="btn btn-ghost" href="#/">' + t('btnHome') + '</a>';
   const pax2 = (lead2.name ? esc(lead2.name) : '—') + (lead2.special ? ' <span class="chip" style="font-size:11px;padding:2px 8px">' + esc(t('patientTag')) + '</span>' : '');
   const phone2 = digits((b.contact && b.contact.phone) || '');
-  const currency2 = b.currency || 'INR';
-  const money2 = amount => currency2 + ' ' + Number(amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  /* 26 Nov 2026 (fx2 #9): the card's money as its own PDF and the server ticket print it -
+     fbMoney() (11-pdf-ticket.js, a later deferred script, hence the guard): '₹2,200', or
+     'NPR 2,880' at the frozen rate for an NPR sale. It was 'INR 2,200.00' on every ticket. */
+  const money2 = amount => (typeof fbMoney === 'function') ? fbMoney(b, amount) : inr(amount);
   const paymentKnown2 = typeof b.paidAmount === 'number';
   const paid2 = Math.max(0, Number(b.paidAmount || 0));
   const due2 = Math.max(0, Number(b.total || 0) - paid2);
   const merchant2 = S();
-  const payUrl2 = paymentKnown2 && due2 > 0 && currency2 === 'INR' && merchant2.upiId && (b.status === 'pending' || conf)
-    ? 'upi://pay?pa=' + encodeURIComponent(merchant2.upiId) + '&pn=' + encodeURIComponent(merchant2.upiName || '') + '&am=' + due2.toFixed(2) + '&cu=INR&tn=' + encodeURIComponent(b.id) : '';
+  /* Gold ticket (9 Oct 2026): the payment QR is on EVERY ticket, beside the
+     verify QR (confirmed only) - see tkGoldPay() for the rule. */
+  const gp2 = tkGoldPay(b);
+  /* 26 Nov 2026 (fx2 #7): the pay card takes its link from tkGoldPay() - ONE rule. It built
+     its own raw upi:// amount link, also on a pay-at-boarding ticket, while a proof was
+     waiting and on an NPR sale (money paid twice, nothing recorded). Now: raw UPI only on a
+     confirmed, not-COD ticket with no proof waiting; pending / proof waiting -> pay.php
+     (records the UTR); COD (switch on), NPR sale, Nepal QR -> no card. */
+  const payUrl2 = (paymentKnown2 && due2 > 0 && gp2 && gp2.kind === 'due') ? gp2.url : '';
   /* A confirmed cash-on-boarding seat (D6-13): ONE message — cash due on
      boarding — instead of "verification pending" + SCAN & PAY + the cash note
      side by side. Paying now by UPI stays possible, folded away. */
   const codDue2 = isCod2 && due2 > 0 && (conf || b.status === 'pending');
-  let paymentCard2 = payUrl2 ? '<section class="premium-pay-card"><div><h3>' + esc(t('premiumPay')) + '</h3><b>' + esc(money2(due2)) + '</b><p>' + esc(merchant2.upiName || '') + '<br>' + esc(merchant2.upiId) + '</p><a class="btn btn-orange" href="' + esc(payUrl2) + '">' + esc(t('premiumPay')) + '</a></div><div id="premiumPayQr"><small>' + esc(codDue2 ? t('payScanUpi') : t('premiumPending')) + '</small></div></section>' : '';
+  let paymentCard2 = payUrl2 ? '<section class="premium-pay-card"><div><h3>' + esc(t('premiumPay')) + '</h3><b>' + esc(inr(due2)) + '</b><p>' + esc(merchant2.upiName || '') + '<br>' + esc(merchant2.upiId) + '</p><a class="btn btn-orange" href="' + esc(payUrl2) + '">' + esc(t('premiumPay')) + '</a></div><div id="premiumPayQr"><small>' + esc(codDue2 ? t('payScanUpi') : t('premiumPending')) + '</small></div></section>' : '';
   if (paymentCard2 && codDue2) paymentCard2 = '<details class="premium-pay-opt"><summary>' + esc(t('payNowUpiQ')) + '</summary>' + paymentCard2 + '</details>';
   const payStateLbl2 = codDue2 ? tf('codDueLbl', { a: money2(due2) }) : t(due2 <= 0 ? 'premiumPaid' : 'premiumPending');
   /* Live security band (9 Oct 2026) - confirmed tickets only, never on a
      departure the office cancelled. */
   let secBand = '';
   try { if (conf && !tripCancelled) { tkSecCss(); secBand = tkSecureBandHTML(b); } } catch (e) { secBand = ''; }
-  /* Gold ticket (9 Oct 2026): the payment QR is on EVERY ticket, beside the
-     verify QR (confirmed only) - see tkGoldPay() for the rule. */
-  const gp2 = tkGoldPay(b);
   /* mp1 tk: the clean ticket (ticket_clean_v2_on): no mantra / blessing, ONE flag by direction */
   const tkClean = !!(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.ticket_clean_v2_on !== false);
   const tkFromNp = typeof isNepalPoint === 'function' && isNepalPoint(r.from) && !isNepalPoint(r.to);
@@ -3133,10 +3193,10 @@ function renderStatus(id) {
     ${tkClean ? '' : '<div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ' + esc(tkMantraLine()) + ' <span aria-hidden="true">❖</span></div>'}
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-tm.webp?v=20261126c" width="439" height="228" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-tm.webp?v=20261126d" width="439" height="228" alt="" loading="lazy" decoding="async">
         <div>${tkBrandHtml(CONFIG.company.name)}<small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126c" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126c" width="600" height="312" alt="" decoding="async">'}
+      ${tkClean ? '<img class="tk-flag1" src="/assets/img/flag-' + (tkFromNp ? 'np' : 'in') + '.png?v=20261126d" height="56" alt="' + (tkFromNp ? 'Nepal' : 'India') + '" style="height:56px;width:auto;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);align-self:center">' : '<img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261126d" width="600" height="312" alt="" decoding="async">'}
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}
@@ -3154,7 +3214,7 @@ function renderStatus(id) {
     <div class="tk2-ess">
       <div class="tk2-tiles">
         <div class="tk2-tile wide"><small>📍 ${esc(t('tkBoard'))}</small><b>${esc(bp2.name || bpShort(b.boarding))}</b>${bp2.time ? '<em><span class="np">' + esc(bpNp2) + '</span> · ' + esc(bp2.time) + ' IST</em>' : ''}</div>
-        <div class="tk2-tile"><small>💺 ${esc(t('tkSeats'))}</small><b>${esc(seatLabelJoin(b.seats, r.type, b.bookingType))}</b><em>${paxN2} ${paxN2 > 1 ? 'seats' : 'seat'}${b.bookingType === 'private' ? ' · 🔒 Private' : ''}</em></div>
+        <div class="tk2-tile"><small>💺 ${esc(t('tkSeats'))}</small><b>${esc(seatLabelJoin(b.seats, r.type, b.bookingType))}</b><em>${paxN2} ${esc(t(paxN2 > 1 ? 'rowSeats' : 'qtSeatLbl'))}${b.bookingType === 'private' ? ' · 🔒 ' + esc(t('cabPriv')) : ''}</em></div>
         <div class="tk2-tile"><small>🏁 ${esc(t('tkDrop'))}</small><b>${esc(parseBP(b.drop || '').name || bpShort(b.drop) || '—')}</b></div>
         <div class="tk2-tile wide"><small>👤 ${esc(t('tkPaxLbl'))}</small><b>${pax2}</b>${phone2 ? '<em>' + esc(fmtContact(b)) + (paxN2 > 1 ? ' · ' + paxN2 + ' ' + esc(t('coPax')) : '') + '</em>' : ''}</div>
       </div>

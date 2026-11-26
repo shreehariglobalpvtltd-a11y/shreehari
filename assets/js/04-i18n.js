@@ -528,6 +528,15 @@ en: {
   pvSuccess: 'Payment Proof Submitted!', pvSuccessSub: 'Our team will verify your payment within 30 minutes.',
   pvApproved: 'Payment Verified ✅', pvRejected: 'Payment Rejected', pvPending: 'Under Verification',
   pvWhatsApp: 'WhatsApp Support',
+  /* 26 Nov 2026 (fx2): payment-proof card + proof form strings that were typed in English only */
+  ppTitle: '✅ Payment Completed?', ppSub: 'If you have already paid, send your payment proof below.',
+  ppUpload: 'Upload Screenshot', ppUploadS: 'JPG, PNG, WebP · Max 10 MB',
+  ppWa: 'Send via WhatsApp', ppWaS: 'Pre-filled message · just attach and send',
+  ppEmail: 'Send via Email', ppEmailS: 'Opens your email app with details filled',
+  ppChange: 'Change Screenshot', ppChangeS: 'Replace with a different image',
+  pvDropT: 'Tap to upload payment screenshot', pvBkId: 'Booking ID', pvVerIdLbl: 'Verification ID:',
+  pvErrUtr: 'Please enter a valid UTR/reference number', pvErrSender: 'Please enter sender name',
+  pvErrMobile: 'Please enter a valid mobile number',
   micLbl: 'Speak', micListening: 'Listening…', micNA: 'Voice not available',
   /* ---- 13 Sep 2026: PWA layer (17-pwa.js) — install sheet, push alerts, border card, split-pay, seat-fill chart, route guide ---- */
   pwaInstallT: 'Install the S Hari Global app', pwaInstallP: 'Faster booking, offline ticket, delay alerts — no Play Store needed',
@@ -604,6 +613,19 @@ en: {
   /* BIZ: footer / menu link + the cargo FAQ */
   fBusiness: 'Business services', mmBusiness: 'Business services · व्यापार सेवा',
   faqCargoQ: 'Do you do cargo or parcels to Nepal?', faqCargoA: 'Not yet — import-export, truck booking, packaging and shop-to-Nepal delivery are coming soon. The bus carries personal luggage only.', faqCargoLink: 'Register interest on the Business services page',
+  /* 26 Nov 2026 (fx2, 07-checkout.js): ticket screen - an online booking with no proof yet says PAY NOW (not being checked) */
+  pstPayNow: 'Pay now', stPayNowT: 'Payment not received yet',
+  stPayNowP: 'Seats {s} are held for a short time. Pay and send the UTR or screenshot to keep them.',
+  stPayNowBtn: 'I have paid - send proof',
+  /* fx2: ticket screen + classic checkout strings that were typed into the code in one language */
+  tkWaitRef: 'Reference', tkWaGet: '🎫 Get the ticket on WhatsApp', stRejP: 'We could not verify this payment.',
+  tkWaitWin: 'Usually verified {w}. Our team will confirm your ticket shortly.', tkWaitWinDef: 'within 30 minutes (9 AM–9 PM IST)',
+  rowBookingType: 'Booking type', rowShareTier: 'Sharing tier', rowOnlineDisc: 'Online Discount',
+  coWomenOnly: 'Seat {s} is for women only — a male passenger can’t be booked here. Go back and choose another seat.',
+  coMenOnly: 'Seat {s} is in a men-only cabin — a female passenger can’t be booked here. Go back and choose another seat.',
+  tBlockedNum: 'This number is blocked from booking — call the office {p}',
+  errCancelFail: 'Could not cancel this booking. Please try again or contact support.', errRateFail: 'Could not send the rating.',
+  coWhoFilled: '{n} · trips: {c} — auto-filled',
 },
 hi: {
   premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
@@ -684,7 +706,7 @@ hi: {
   haMy: 'मेरी बुकिंग', haMySub: 'टिकट, स्टेटस और इतिहास',
   haTrack: 'बस ट्रैक करें', haTrackSub: 'बस कहाँ है देखें',
   haHelp: 'सहायता', haHelpSub: '📞 कॉल · 💬 WhatsApp',
-  qtBadge: '🤖 QuickBot Ticket — 10 सेकंड में booking',
+  qtBadge: '🤖 QuickBot टिकट — 10 सेकंड में बुकिंग',
   bkQuick: '⚡ QuickBot · 10 सेकंड', bkQuickSub: 'नाम + मोबाइल → टिकट', bkRegular: '🪑 सीट चुनें', bkRegularSub: 'तारीख · सीट मैप · भुगतान', bkBackQuick: 'QuickBot: नाम + मोबाइल → 10 सेकंड में टिकट', bkSwitch: 'बदलें →', qtAi1: 'नेपाली · हिन्दी · गुजराती · English पढ़ता है', qtAi2: 'अगली बस · सुरक्षित सीट · किराया खुद चुनता है', qtAi3: 'टिकट जारी', qtAlt: 'अपनी सीट खुद चुनना है? सीट-मैप बुकिंग खोलें', qtMicErr: 'आवाज़ समझ नहीं आई — कृपया टाइप करें।', qtMicTip: 'बोलकर बुक करें',
   waTicketTitle: 'WhatsApp से टिकट',
   waTicketIntro: 'अपना नाम, मोबाइल और यात्रा की जानकारी भेजें। WhatsApp पर बुकिंग जारी रखें, टिकट में सुधार माँगें, या ऑफिस से मदद लें।',
@@ -708,7 +730,7 @@ hi: {
   qtS1: 'नाम + मोबाइल', qtS2: 'Auto: बस · सीट · किराया', qtS3: 'टिकट PNG + PDF तुरंत',
   qtErr: 'अपना नाम और सही 10 अंकों का मोबाइल नंबर लिखें।', qtSent: 'WhatsApp खुल गया — message भेजें, टिकट आ जाएगा।', qtWaTail: 'कृपया मेरा Quick Ticket बना दें।',
   qtChecking: 'आपकी बस ढूँढ रहे हैं…', qtIssuing: 'टिकट बन रहा है…', qtPlanT: 'आपका टिकट — देखें और confirm करें',
-  qtDepLbl: 'रवाना', qtBoardLbl: 'Boarding point', qtSeatLbl: 'सीट', qtFareLbl: 'किराया', qtSeatsLbl: 'यात्री', qtPaxLbl: 'यात्रा कर रहे',
+  qtDepLbl: 'रवाना', qtBoardLbl: 'चढ़ने का स्थान', qtSeatLbl: 'सीट', qtFareLbl: 'किराया', qtSeatsLbl: 'यात्री', qtPaxLbl: 'यात्रा कर रहे',
   qtDirGo: '🇮🇳→🇳🇵 जाना', qtDirBack: '🇳🇵→🇮🇳 वापसी', qtGAny: 'कोई भी', qtGF: '♀ महिला', qtGM: '♂ पुरुष', qtLeft: '{n} सीटें बाकी',
   qtPayCod: 'बस में चढ़ते समय {amt} नकद दें — आपका टिकट अभी confirm है।',
   qtPayOnline: 'अगली स्क्रीन पर {amt} UPI / eSewa से दें — office की जाँच के बाद टिकट confirm होगा।',
@@ -1116,6 +1138,15 @@ hi: {
   pvSuccess: 'भुगतान प्रमाण जमा हुआ!', pvSuccessSub: 'हमारी टीम 30 मिनट में भुगतान सत्यापित करेगी।',
   pvApproved: 'भुगतान सत्यापित ✅', pvRejected: 'भुगतान अस्वीकृत', pvPending: 'सत्यापन जारी',
   pvWhatsApp: 'WhatsApp सहायता',
+  /* 26 Nov 2026 (fx2): payment-proof card + proof form */
+  ppTitle: '✅ भुगतान कर दिया?', ppSub: 'अगर भुगतान कर दिया है तो नीचे भुगतान का प्रमाण भेजें।',
+  ppUpload: 'स्क्रीनशॉट अपलोड करें', ppUploadS: 'JPG, PNG, WebP · अधिकतम 10 MB',
+  ppWa: 'WhatsApp से भेजें', ppWaS: 'संदेश तैयार है · फोटो जोड़कर भेजें',
+  ppEmail: 'ईमेल से भेजें', ppEmailS: 'विवरण भरा हुआ ईमेल खुलेगा',
+  ppChange: 'स्क्रीनशॉट बदलें', ppChangeS: 'दूसरी फोटो लगाएँ',
+  pvDropT: 'भुगतान का स्क्रीनशॉट लगाने के लिए यहाँ दबाएँ', pvBkId: 'बुकिंग नंबर (PNR)', pvVerIdLbl: 'सत्यापन नंबर:',
+  pvErrUtr: 'सही UTR / रेफरेंस नंबर लिखें', pvErrSender: 'पैसा भेजने वाले का नाम लिखें',
+  pvErrMobile: 'सही मोबाइल नंबर लिखें',
   micLbl: 'बोलें', micListening: 'सुन रहा है…', micNA: 'वॉइस उपलब्ध नहीं',
   /* ---- 13 Sep 2026: PWA layer ---- */
   pwaInstallT: 'S Hari Global ऐप इंस्टॉल करें', pwaInstallP: 'तेज़ बुकिंग, ऑफलाइन टिकट, बस देरी की सूचना — Play Store की ज़रूरत नहीं',
@@ -1188,6 +1219,18 @@ hi: {
   hxAudSolo: 'अकेले', hxAudCouple: 'कपल', hxAudFamily: 'परिवार', hxAudGroup: 'ग्रुप', hxAudPilgrim: 'तीर्थ',
   fBusiness: 'व्यापार सेवाएँ', mmBusiness: 'व्यापार सेवाएँ · Business services',
   faqCargoQ: 'क्या आप नेपाल के लिए कार्गो या पार्सल भेजते हैं?', faqCargoA: 'अभी नहीं — इम्पोर्ट-एक्सपोर्ट, ट्रक बुकिंग, पैकेजिंग और शॉप-टू-नेपाल डिलीवरी जल्द आ रही है। बस में सिर्फ़ निजी सामान जाता है।', faqCargoLink: 'व्यापार सेवाएँ पेज पर रुचि दर्ज करें',
+  /* 26 Nov 2026 (fx2, 07-checkout.js) */
+  pstPayNow: 'अभी भुगतान करें', stPayNowT: 'भुगतान अभी नहीं मिला',
+  stPayNowP: 'सीटें {s} थोड़े समय के लिए होल्ड पर हैं। इन्हें रखने के लिए भुगतान करके UTR या स्क्रीनशॉट भेजें।',
+  stPayNowBtn: 'मैंने भुगतान किया - प्रमाण भेजें',
+  tkWaitRef: 'संदर्भ नंबर', tkWaGet: '🎫 WhatsApp पर टिकट पाएँ', stRejP: 'यह भुगतान सत्यापित नहीं हो सका।',
+  tkWaitWin: 'आम तौर पर {w} भुगतान सत्यापित हो जाता है। हमारी टीम जल्द ही आपका टिकट पक्का करेगी।', tkWaitWinDef: '30 मिनट के अंदर (सुबह 9 – रात 9 बजे IST)',
+  rowBookingType: 'बुकिंग प्रकार', rowShareTier: 'शेयरिंग टियर', rowOnlineDisc: 'ऑनलाइन छूट',
+  coWomenOnly: 'सीट {s} सिर्फ़ महिलाओं के लिए है — पुरुष यात्री यहाँ बुक नहीं हो सकता। वापस जाकर दूसरी सीट चुनें।',
+  coMenOnly: 'सीट {s} सिर्फ़ पुरुषों वाले केबिन में है — महिला यात्री यहाँ बुक नहीं हो सकती। वापस जाकर दूसरी सीट चुनें।',
+  tBlockedNum: 'इस नंबर से बुकिंग रोकी गई है — ऑफ़िस को फ़ोन करें {p}',
+  errCancelFail: 'यह बुकिंग रद्द नहीं हो सकी। फिर कोशिश करें या ऑफ़िस से संपर्क करें।', errRateFail: 'रेटिंग नहीं भेजी जा सकी।',
+  coWhoFilled: '{n} · यात्राएँ: {c} — अपने-आप भरा गया',
 },
 ne: {
   premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
@@ -1700,6 +1743,15 @@ ne: {
   pvSuccess: 'भुक्तानी प्रमाण पेस भयो!', pvSuccessSub: 'हाम्रो टोलीले ३० मिनेटभित्र भुक्तानी प्रमाणित गर्नेछ।',
   pvApproved: 'भुक्तानी प्रमाणित ✅', pvRejected: 'भुक्तानी अस्वीकृत', pvPending: 'प्रमाणीकरण जारी',
   pvWhatsApp: 'WhatsApp सहायता',
+  /* 26 Nov 2026 (fx2): payment-proof card + proof form */
+  ppTitle: '✅ भुक्तानी गरिसक्नुभयो?', ppSub: 'पैसा तिरिसक्नुभएको छ भने तल भुक्तानीको प्रमाण पठाउनुहोस्।',
+  ppUpload: 'स्क्रिनसट अपलोड गर्नुहोस्', ppUploadS: 'JPG, PNG, WebP · बढीमा 10 MB',
+  ppWa: 'WhatsApp बाट पठाउनुहोस्', ppWaS: 'सन्देश तयार छ · फोटो जोडेर पठाउनुहोस्',
+  ppEmail: 'इमेलबाट पठाउनुहोस्', ppEmailS: 'विवरण भरिएको इमेल खुल्छ',
+  ppChange: 'स्क्रिनसट बदल्नुहोस्', ppChangeS: 'अर्को फोटो राख्नुहोस्',
+  pvDropT: 'भुक्तानीको स्क्रिनसट राख्न यहाँ थिच्नुहोस्', pvBkId: 'बुकिङ नम्बर (PNR)', pvVerIdLbl: 'प्रमाणीकरण नम्बर:',
+  pvErrUtr: 'सही UTR / रेफरेन्स नम्बर लेख्नुहोस्', pvErrSender: 'पैसा पठाउनेको नाम लेख्नुहोस्',
+  pvErrMobile: 'सही मोबाइल नम्बर लेख्नुहोस्',
   micLbl: 'बोल्नुहोस्', micListening: 'सुन्दैछ…', micNA: 'भ्वाइस उपलब्ध छैन',
   /* ---- 13 Sep 2026: PWA layer ---- */
   pwaInstallT: 'S Hari Global एप इन्स्टल गर्नुहोस्', pwaInstallP: 'छिटो बुकिङ, अफलाइन टिकट, बस ढिलो भएको सूचना — Play Store चाहिँदैन',
@@ -1772,6 +1824,18 @@ ne: {
   hxAudSolo: 'एक्लै', hxAudCouple: 'जोडी', hxAudFamily: 'परिवार', hxAudGroup: 'समूह', hxAudPilgrim: 'तीर्थ',
   fBusiness: 'व्यापार सेवा', mmBusiness: 'व्यापार सेवा · Business services',
   faqCargoQ: 'के तपाईं नेपालका लागि कार्गो वा पार्सल पठाउनुहुन्छ?', faqCargoA: 'अहिले होइन — आयात-निर्यात, ट्रक बुकिङ, प्याकेजिङ र सप-टु-नेपाल डेलिभरी छिट्टै आउँदैछ। बसमा निजी सामान मात्र जान्छ।', faqCargoLink: 'व्यापार सेवा पृष्ठमा रुचि दर्ता गर्नुहोस्',
+  /* 26 Nov 2026 (fx2, 07-checkout.js) */
+  pstPayNow: 'अहिले तिर्नुहोस्', stPayNowT: 'भुक्तानी अझै आएको छैन',
+  stPayNowP: 'सिट {s} केही समयका लागि होल्डमा छन्। सिट राख्न तिरेर UTR वा स्क्रिनसट पठाउनुहोस्।',
+  stPayNowBtn: 'मैले तिरेँ - प्रमाण पठाउनुहोस्',
+  tkWaitRef: 'सन्दर्भ नम्बर', tkWaGet: '🎫 WhatsApp मा टिकट पाउनुहोस्', stRejP: 'यो भुक्तानी प्रमाणित गर्न सकिएन।',
+  tkWaitWin: 'प्रायः {w} भुक्तानी प्रमाणित हुन्छ। हाम्रो टोलीले छिट्टै तपाईंको टिकट पक्का गर्नेछ।', tkWaitWinDef: '३० मिनेटभित्र (बिहान ९ – राति ९ बजे IST)',
+  rowBookingType: 'बुकिङ प्रकार', rowShareTier: 'साझा टियर', rowOnlineDisc: 'अनलाइन छुट',
+  coWomenOnly: 'सिट {s} महिलाका लागि मात्र हो — पुरुष यात्रु यहाँ बुक हुँदैन। फर्केर अर्को सिट छान्नुहोस्।',
+  coMenOnly: 'सिट {s} पुरुष मात्रको केबिनमा छ — महिला यात्रु यहाँ बुक हुँदैन। फर्केर अर्को सिट छान्नुहोस्।',
+  tBlockedNum: 'यो नम्बरबाट बुकिङ रोकिएको छ — कार्यालयमा फोन गर्नुहोस् {p}',
+  errCancelFail: 'यो बुकिङ रद्द गर्न सकिएन। फेरि प्रयास गर्नुहोस् वा कार्यालयमा सम्पर्क गर्नुहोस्।', errRateFail: 'रेटिङ पठाउन सकिएन।',
+  coWhoFilled: '{n} · यात्रा: {c} — आफैँ भरियो',
 }
 };
 

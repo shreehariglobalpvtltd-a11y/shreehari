@@ -205,7 +205,8 @@ if (($_GET['ajax'] ?? '') === 'rows') {
     );
     header('Content-Type: text/html; charset=utf-8');
     if ($rows === []) { echo '<p class="pc-note">No ticket.</p>'; exit; }
-    echo '<div style="overflow-x:auto"><table class="pc-table ts-det"><thead><tr><th>#</th><th>Time</th><th>PNR</th><th>Passenger</th><th>Journey</th><th>Seats</th><th>Amount</th><th>Agent name · Cut by</th><th>Status</th></tr></thead><tbody>';
+    /* 26 Nov 2026 (fx2): no-card + data-label - on a phone this list is drawn as cards by the page's own .ts-det rules */
+    echo '<div style="overflow-x:auto"><table class="pc-table ts-det no-card"><thead><tr><th>#</th><th>Time</th><th>PNR</th><th>Passenger</th><th>Journey</th><th>Seats</th><th>Amount</th><th>Agent name · Cut by</th><th>Status</th></tr></thead><tbody>';
     $i = 0;
     foreach ($rows as $r) {
         $i++;
@@ -215,15 +216,15 @@ if (($_GET['ajax'] ?? '') === 'rows') {
             'cancelled' => pc_badge('Cancelled', 'bad'), 'pending' => pc_badge('Pending', 'warn'),
             'completed' => pc_badge('Travelled', 'info'), default => pc_badge('Confirmed', 'ok'),
         };
-        echo '<tr' . ($cx ? ' class="ts-cx"' : '') . '><td>' . $i . '</td>'
-           . '<td>' . $e(date('h:i A', strtotime((string) $r['created_at']))) . '</td>'
-           . '<td><a href="/admin/booking-view.php?pnr=' . rawurlencode((string) $r['pnr']) . '"><b>' . $e($r['pnr']) . '</b></a></td>'
-           . '<td>' . $e($r['pax'] ?: '—') . '<br><small class="pc-note">' . $e($r['contact_phone']) . '</small></td>'
-           . '<td>' . ($bf . $dr !== '' ? $e($bf) . ' → ' . $e($dr) : '—') . ($td !== '' ? '<br><small class="pc-note">' . $e(formatDate($td, 'j M Y')) . '</small>' : '') . '</td>'
-           . '<td><b>' . (int) $r['seats'] . '</b>' . ($r['seat_nos'] ? '<br><small class="pc-note">' . $e($r['seat_nos']) . '</small>' : '') . '</td>'
-           . '<td>' . $e(inr((float) $r['total_amount'])) . '</td>'
-           . '<td><b>' . $e($r['agent_name'] ?: 'Online') . '</b><br><small class="pc-note">cut by ' . $e($r['cut_name'] ?: 'customer (online)') . '</small></td>'
-           . '<td>' . $st . '</td></tr>';
+        echo '<tr' . ($cx ? ' class="ts-cx"' : '') . '><td data-label="#">' . $i . '</td>'
+           . '<td data-label="Time">' . $e(date('h:i A', strtotime((string) $r['created_at']))) . '</td>'
+           . '<td data-label="PNR"><a href="/admin/booking-view.php?pnr=' . rawurlencode((string) $r['pnr']) . '"><b>' . $e($r['pnr']) . '</b></a></td>'
+           . '<td data-label="Passenger">' . $e($r['pax'] ?: '—') . '<br><small class="pc-note">' . $e($r['contact_phone']) . '</small></td>'
+           . '<td data-label="Journey">' . ($bf . $dr !== '' ? $e($bf) . ' → ' . $e($dr) : '—') . ($td !== '' ? '<br><small class="pc-note">' . $e(formatDate($td, 'j M Y')) . '</small>' : '') . '</td>'
+           . '<td data-label="Seats"><b>' . (int) $r['seats'] . '</b>' . ($r['seat_nos'] ? '<br><small class="pc-note">' . $e($r['seat_nos']) . '</small>' : '') . '</td>'
+           . '<td data-label="Amount">' . $e(inr((float) $r['total_amount'])) . '</td>'
+           . '<td data-label="Agent · Cut by"><b>' . $e($r['agent_name'] ?: 'Online') . '</b><br><small class="pc-note">cut by ' . $e($r['cut_name'] ?: 'customer (online)') . '</small></td>'
+           . '<td data-label="Status">' . $st . '</td></tr>';
     }
     echo '</tbody></table></div>';
     exit;
@@ -378,7 +379,19 @@ admin_header('Ticket Statement', 'ticket-statement');
 .ts-cx td{opacity:.55;text-decoration:line-through}
 .ts-cx td:last-child{text-decoration:none}
 .ts-pick{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-@media (max-width:560px){.ts-row > summary{grid-template-columns:22px 1fr auto}.ts-amt{display:none}}
+/* 26 Nov 2026 (fx2): phones hid the rupee amount per person (.ts-amt{display:none}) - it now sits on its own line under the name */
+@media (max-width:560px){.ts-row > summary{grid-template-columns:22px 1fr auto}.ts-amt{grid-column:2/-1;text-align:left}.ts-amt br{display:none}.ts-amt small{margin-left:8px}}
+/* 26 Nov 2026 (fx2): the tapped-open ticket list arrives after admin_cards_js() has run, so it stayed a 9-column sideways
+   table on a phone. Page-local cards, screen only (Print keeps the table). The label is floated so the strike-through of a
+   cancelled ticket (.ts-cx) does not run through it. */
+@media screen and (max-width:560px){
+  .ts-body{padding:4px 8px 10px}
+  .ts-det,.ts-det tbody{display:block}
+  .ts-det thead{display:none}
+  .ts-det tbody tr{display:block;border:1px solid var(--line,#e5e9f0);border-radius:10px;padding:8px 10px;margin:0 0 8px}
+  .ts-det tbody td{display:block;overflow:hidden;padding:3px 0;border:0;text-align:right;overflow-wrap:anywhere}
+  .ts-det tbody td::before{content:attr(data-label);float:left;margin-right:10px;font-weight:700;font-size:11px;line-height:1.7;color:#64748b;text-transform:uppercase;letter-spacing:.3px}
+}
 @media print{.pc-head-a,.ts-chips,.ts-pick,nav,aside,.sidebar{display:none!important}.ts-row > summary{padding:6px 8px}}
 </style>
 <div class="pc">

@@ -19,12 +19,16 @@ declare(strict_types=1);
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/busroutine.php';
+require_once INCLUDE_PATH . '/fare.php';
 
 Security::requireRateLimit('routine_page', Security::clientIp(), 60, 60);
 
 $today  = todayISO();
 $on     = BusRoutine::enabled();
 $days   = BusRoutine::departures($today, 30);
+// 26 Nov 2026 (fx2): the fare shown is the fare board's range (the numbers the checkout bills per
+// pickup / drop), not the flat direction setting - "Book seat" opens Surat, which can cost more.
+try { $fareRange = Fare::board()['range']; } catch (Throwable $ex) { $fareRange = null; }
 $lines  = BusRoutine::lines();
 $pos    = BusRoutine::positions($today);
 $todays = array_values(array_filter($days, static fn(array $d): bool => $d['date'] === $today));
@@ -194,7 +198,10 @@ footer{background:var(--navy);color:#cbd5e1;padding:16px 0;font-size:13px}
         <?php else: ?>
           <div class="when"><?= $e(formatDate($d['date'], 'D, j M')) ?> · <?= $e($d['depTime']) ?></div>
           <div class="meta"><?= $e($d['line']) ?> · <?= $e($d['from']) ?> → <?= $e($d['to']) ?> · पुग्ने · reaches <?= $e(formatDate($d['reachDate'], 'D j M')) ?></div>
-          <div class="fare">₹<?= number_format((float) $d['fare']) ?> <span class="none" style="font-size:13px;font-weight:600">per seat</span></div>
+          <?php $goUp = $d['direction'] === BusRoutine::DIR_TO_NEPAL;
+                $rg   = $fareRange[$goUp ? 'go' : 'back'] ?? null;
+                $fMin = (float) ($rg['min'] ?? $d['fare']); $fMax = (float) ($rg['max'] ?? $d['fare']); ?>
+          <div class="fare">₹<?= number_format($fMin) ?><?= $fMax > $fMin ? '–₹' . number_format($fMax) : '' ?> <span class="none" style="font-size:13px;font-weight:600">प्रति सिट · per seat<?= $fMax > $fMin ? ($goUp ? ' · चढ्ने ठाउँ अनुसार · by pickup town' : ' · ओर्लने ठाउँ अनुसार · by drop town') : '' ?></span></div>
           <a class="btn" href="<?= $e($bookUrl($d)) ?>">Book seat · <?= $title ?></a>
         <?php endif; ?>
       </div>

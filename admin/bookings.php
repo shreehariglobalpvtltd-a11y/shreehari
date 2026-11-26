@@ -543,6 +543,10 @@ $canEdit   = Auth::can('bookings.edit');
 .filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .filter-row + .filter-row{margin-top:8px}
 .filter-actions{display:flex;gap:8px;align-items:flex-end;margin-left:auto}
+/* 26 Nov 2026 (fx2): phones fold #advFilters shut and the only Search / Clear sat inside it.
+   .fa-phone is a twin under the fold: shown on phones, and anywhere the fold is closed. Desktop is unchanged. */
+.filter-actions.fa-phone{display:none;width:100%;margin:10px 0 0}
+#advFilters:not([open]) ~ .filter-actions.fa-phone{display:flex}
 .export-links{display:flex;gap:8px;align-items:center}
 .tk-acts{display:flex;gap:4px;flex-wrap:wrap}
 .tk-acts .btn,.tk-acts form .btn{padding:5px 8px;font-size:12px;white-space:nowrap}
@@ -551,6 +555,9 @@ $canEdit   = Auth::can('bookings.edit');
 .pager .btn{padding:6px 10px;font-size:12.5px}
 @media(max-width:820px){
   .filter-actions{margin-left:0;width:100%}
+  #advFilters .filter-actions{display:none}
+  .filter-actions.fa-phone{display:flex}
+  .filter-actions.fa-phone .btn{flex:1 1 0;min-height:44px;justify-content:center;text-align:center}
   .export-links{width:100%;justify-content:flex-start}
   .filter-group{min-width:0;flex:1 1 140px}
   .tk-acts{justify-content:flex-start}
@@ -727,6 +734,11 @@ $canEdit   = Auth::can('bookings.edit');
       </div>
     </div>
     </details>
+    <?php /* 26 Nov 2026 (fx2): phone twin of Search / Clear (see .fa-phone) - the pair above is inside the fold. */ ?>
+    <div class="filter-actions fa-phone">
+      <button class="btn" type="submit">खोज्नुहोस् · Search</button>
+      <?php if ($hasFilters): ?><a class="btn ghost" href="<?= $base ?>/admin/bookings.php">हटाउनुहोस् · Clear</a><?php endif; ?>
+    </div>
   </div>
 </form>
 <script>

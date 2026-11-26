@@ -1275,7 +1275,16 @@ $haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinn
   </div>
   <?php endif; ?>
 </div>
-<?php foreach ($routes as $r):
+<?php
+/* 26 Nov 2026 (fx2): a switched-OFF route prints a one-line stub with a
+   "Show stops" link (?route=<id>) instead of its whole stop editor - 11 off
+   routes were a third of this page. ?off=1 opens all of them. A POST always
+   renders everything, so "route created OFF - add its stops below" and any
+   save on an off route look exactly as before. */
+$rtShowOff = ($_GET['off'] ?? '') === '1' || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+$rtOpenRid = is_scalar($_GET['route'] ?? null) ? (int) $_GET['route'] : 0;
+$rtFolded  = [];
+foreach ($routes as $r):
   $rid = (int) $r['id'];
   $boarding = $routeStops[$rid]['boarding'] ?? [];
   $drops    = $routeStops[$rid]['drop'] ?? [];
@@ -1284,6 +1293,12 @@ $haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinn
   // The list that carries the per-pickup fare: boarding going to Nepal, drop coming back.
   $pricedType = Fare::routeDir($r) === 'toNepal' ? 'boarding' : 'drop';
   $defFare    = (float) $dirFaresNow[Fare::routeDir($r)];
+  if ((int) $r['is_active'] !== 1 && !$rtShowOff && $rid !== $rtOpenRid): $rtFolded[] = $rid; ?>
+<div class="panel stop-editor" id="stops-<?= $rid ?>">
+  <h2><?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city']) ?> — Stops <span class="muted" style="font-weight:400">(route OFF)</span></h2>
+  <p style="padding:0 18px 16px;margin:0"><a class="btn" href="?route=<?= $rid ?>#stops-<?= $rid ?>" style="min-height:44px">स्टप देखाउनुहोस् · Show stops (<?= count($boarding) + count($drops) ?>)</a></p>
+</div>
+<?php continue; endif;
 ?>
 <div class="panel stop-editor" id="stops-<?= $rid ?>">
   <h2><?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city']) ?> — Stops<?= (int) $r['is_active'] === 1 ? '' : ' <span class="muted" style="font-weight:400">(route OFF)</span>' ?></h2>
@@ -1596,6 +1611,9 @@ $haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinn
   <?php endforeach; ?>
 </div>
 <?php endforeach; ?>
+<?php if (count($rtFolded) > 1): /* 26 Nov 2026 (fx2): one link that opens every folded (switched-off) route */ ?>
+<p class="muted" style="margin:0 0 28px"><a class="btn ghost" href="?off=1#stops-<?= (int) $rtFolded[0] ?>" style="min-height:44px">बन्द रुटका सबै स्टप देखाउनुहोस् · Show stops of all <?= count($rtFolded) ?> switched-off routes</a></p>
+<?php endif; ?>
 <script>
 function toggleStopEdit(id){
   var f = document.getElementById('stop-edit-' + id);

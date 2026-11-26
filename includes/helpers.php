@@ -685,6 +685,26 @@ function shg_wa_last(int $bookingId, string $custPhone = ''): ?array
  * @param array<string, mixed> $detail BookingService::detail() row
  * @return array<string, mixed>
  */
+/**
+ * 26 Nov 2026 (fx2): did the customer send any payment proof for this booking - a UTR / reference
+ * on a payment row, or a payment screenshot? On a database error the answer is true, so the app
+ * keeps its old, safe "being checked" wording rather than asking someone who paid to pay again.
+ */
+function shg_payment_proof_sent(int $bookingId): bool
+{
+    if ($bookingId <= 0) {
+        return true;
+    }
+    try {
+        if (Database::exists("SELECT 1 FROM payments WHERE booking_id = :b AND utr_number IS NOT NULL AND TRIM(utr_number) <> ''", ['b' => $bookingId])) {
+            return true;
+        }
+        return Database::exists('SELECT 1 FROM payment_screenshots WHERE booking_id = :b', ['b' => $bookingId]);
+    } catch (Throwable $e) {
+        return true;
+    }
+}
+
 function shg_customer_payload(array $detail): array
 {
     $legs = array_map(static function (array $leg): array {
@@ -763,6 +783,13 @@ function shg_customer_payload(array $detail): array
             // Why a payment was refused, so the ticket page can show the real
             // reason instead of a generic "could not be verified".
             'reason' => (string) ($detail['payment']['reject_reason'] ?? ($detail['cancel_reason'] ?? '')),
+            /* 26 Nov 2026 (fx2): has the customer SENT a payment proof (a UTR, or a screenshot) for an
+               unpaid online booking? false = not yet, so the app says "pay now" instead of "being
+               checked". null = not asked (confirmed, COD, cancelled) - the app then guesses nothing.
+               Two indexed lookups, only for a pending online booking. */
+            'proof'  => (($detail['status'] ?? '') === 'pending' && empty($detail['is_cod']))
+                ? shg_payment_proof_sent((int) $detail['id'])
+                : null,
         ],
         'canCancel'   => in_array($detail['status'], ['pending', 'confirmed'], true),
         'ticketUrl'   => $detail['status'] === 'confirmed'

@@ -335,6 +335,13 @@ if ($flash !== null) {
 .cu-qa input,.cu-qa select{min-height:44px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:15px;min-width:0;width:100%;box-sizing:border-box}
 .cu-qa .btn{min-height:44px;white-space:nowrap}
 @media (max-width:700px){.cu-qa{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cu-qa .btn{grid-column:1/-1}.cu-sug .ph{display:none}}
+/* 26 Nov 2026 (fx2): phones - an open View / Edit panel is as wide as the screen, not as the 10-column
+   sheet: its blocks pin to the left edge of the scroll box, so all fields and Save show without a sideways swipe.
+   The sheet itself (dt no-card, sorting, sticky name column) stays as it is. 64px = page gutter 46px + slack. */
+@media (max-width:820px){
+  table.dt tr.dt-x>td>*{position:sticky;left:10px;width:calc(100vw - 64px);max-width:100%;box-sizing:border-box}
+  table.dt tr.dt-x>td>.dt-acts{display:flex}
+}
 </style>
 <form method="get" id="custCtl" autocomplete="off">
   <div class="cu-find">
